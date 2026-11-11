@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+analyzer-core    = { path = "../../core/analyzer-core" }
+analyzer-testkit = { path = "../../core/analyzer-testkit" }
+
+# the engine: ONE rev, written once (ENGINE.md records why this one)
+# TODO engine pin
+
+rust-syntax   = { path = "crates/rust-syntax" }
+rust-analysis = { path = "crates/rust-analysis" }
+
+[workspace.lints.rust]
+unreachable_pub = "warn"
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

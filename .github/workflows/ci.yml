@@ -1,0 +1,8 @@
+# TODO: shape in docs/01-monorepo/05-ci.md
+name: ci
+on: { pull_request: {}, push: { branches: [main] } }
+jobs:
+  ci-ok:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "placeholder"

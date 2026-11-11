@@ -1,0 +1,7 @@
+language_driver_rs bundles or depends on the following engines:
+
+- ruff / ty (MIT)
+- tsrs (Apache-2.0, derived from TypeScript)
+- rust-analyzer (MIT OR Apache-2.0)
+
+Each languages/<lang>/ENGINE.md repeats its own notice.

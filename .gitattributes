@@ -1,0 +1,5 @@
+* text=auto eol=lf
+**/tests/fixtures/**   -text
+**/tests/snapshots/**  -text
+scenarios/**           -text
+languages/python/vendor/**  -text

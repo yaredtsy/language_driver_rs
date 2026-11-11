@@ -1,0 +1,8 @@
+# TODO: see docs/01-monorepo/05-ci.md §5
+name: nightly
+on: { schedule: [{ cron: "0 3 * * *" }] }
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "placeholder"
