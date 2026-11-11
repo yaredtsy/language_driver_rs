@@ -67,7 +67,8 @@ language_driver_rs
 ├── PYTHON: MIGRATING pylspt ──────────────────────── 05-python-migration/
 │   ├── what changes               against the earlier `python-analyzer` plan ─────── 01-what-changes.md
 │   ├── what moves where           every module: move · rework · stay ─────────────── 02-what-moves-where.md
-│   └── PY0–PY8                    the steps, each with a proof ───────────────────── 03-steps.md
+│   ├── PY0–PY8                    the steps, each with a proof ───────────────────── 03-steps.md
+│   └── the wire                   a fix: the wire is an output, merged on request ── 04-the-wire.md
 │
 ├── THE ROADMAP ───────────────────────────────────── 06-roadmap.md
 │   └── B0 bootstrap, then three tracks; what blocks what
