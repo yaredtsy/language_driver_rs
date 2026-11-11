@@ -851,7 +851,19 @@ fn relative_to(root: &Path, engine_path: &str) -> String {
 
 /// tsrs spells every path absolute, with `/` as the separator.
 fn to_engine_path(path: &Path) -> String {
-    tspath::normalize_slashes(&path.to_string_lossy())
+    tspath::normalize_slashes(&without_verbatim_prefix(&path.to_string_lossy()))
+}
+
+/// On Windows `canonicalize` answers with a verbatim path (`\\?\D:\repo`, `\\?\UNC\server\share`), which tsrs cannot read: with `/` it becomes
+/// `//?/D:/repo`, a path on a server named `?`. This gives the ordinary spelling back (`D:\repo`, `\\server\share`). Any other path is unchanged.
+fn without_verbatim_prefix(path: &str) -> String {
+    match path.strip_prefix(r"\\?\") {
+        Some(rest) => match rest.strip_prefix(r"UNC\") {
+            Some(share) => format!(r"\\{share}"),
+            None => rest.to_owned(),
+        },
+        None => path.to_owned(),
+    }
 }
 
 /// What a site calls, and what a def is (TS4 step 3). The resolver is a port of `tsrs_ls`'s `resolve_call_hierarchy_declaration` (`callhierarchy.rs`, a
@@ -1506,6 +1518,19 @@ mod tests {
         let file = sem.file("./src/../src/main.ts").unwrap();
         assert_eq!(sem.relative_path(file), Some("src/main.ts".into()));
         assert!(sem.file("src/gone.ts").is_none());
+    }
+
+    #[test]
+    fn a_windows_verbatim_path_is_spelled_the_way_the_engine_reads_it() {
+        let engine = |path: &str| to_engine_path(Path::new(path));
+        assert_eq!(engine(r"\\?\D:\repo\src\main.ts"), "D:/repo/src/main.ts");
+        assert_eq!(
+            engine(r"\\?\UNC\server\share\main.ts"),
+            "//server/share/main.ts"
+        );
+        // already ordinary: unchanged but for the separator
+        assert_eq!(engine(r"D:\repo\main.ts"), "D:/repo/main.ts");
+        assert_eq!(engine("/repo/src/main.ts"), "/repo/src/main.ts");
     }
 
     #[test]
