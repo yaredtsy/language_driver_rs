@@ -1,0 +1,4 @@
+Function tabs_new [0..25] name [4..12]
+Class Tabs [28..102] name [34..38]
+  Method Tabs.m [58..81] name [62..63] (self)
+  Method Tabs.one [84..102] name [88..91] (self)

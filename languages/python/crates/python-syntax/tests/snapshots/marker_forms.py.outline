@@ -1,0 +1,13 @@
+Function new_statement [0..33] name [4..17]
+Function one_liner [36..56] name [40..49]
+Class OneLiner [59..79] name [65..73]
+Function one_line_docstring [82..122] name [86..104]
+Function triple_single_line [125..169] name [129..147]
+Function triple_multi_line [172..234] name [176..193]
+Function single_quoted [237..272] name [241..254]
+Function implicit_concat [275..319] name [279..294]
+Function raw_docstring [322..361] name [326..339]
+Function with_decorator [364..405] name [379..393]
+Class WithDoc [408..514] name [414..421]
+  Method WithDoc.method [447..477] name [451..457] (self)
+  Method WithDoc.nested_one_liner [483..514] name [487..503] (self)

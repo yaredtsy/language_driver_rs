@@ -1,7 +1,9 @@
-//! The outline of every fixture equals its reviewed snapshot, and never panics.
+//! The outline of every fixture equals its reviewed snapshot, never panics, and takes a marker on every def that can.
 
-use analyzer_testkit::syntax::{Subject, cut_every_50_bytes, snapshot_every_fixture};
-use python_syntax::{MarkerStyle, outline};
+use analyzer_testkit::syntax::{
+    Subject, cut_every_50_bytes, marker_round_trip, snapshot_every_fixture,
+};
+use python_syntax::{MarkerStyle, outline, plan_marker};
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
@@ -11,8 +13,7 @@ const STYLE: MarkerStyle<'static> = MarkerStyle {
 fn subject() -> Subject {
     Subject {
         outline: |t| outline(t, STYLE),
-        // markers come next: until then nothing is planned
-        plan_marker: |_, _, _| None,
+        plan_marker: |text, def, marker| plan_marker(text, def, marker, STYLE).ok(),
         fixtures: "tests/fixtures",
         snapshots: "tests/snapshots",
     }
@@ -26,4 +27,9 @@ fn every_fixture_matches_its_snapshot() {
 #[test]
 fn nothing_panics_on_a_cut_fixture() {
     cut_every_50_bytes(&subject());
+}
+
+#[test]
+fn a_marker_round_trips_on_every_def() {
+    marker_round_trip(&subject());
 }
