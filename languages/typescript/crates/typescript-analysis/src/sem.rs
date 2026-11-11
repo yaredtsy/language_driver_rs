@@ -950,9 +950,9 @@ mod resolve {
             let mut unresolved_members = false;
             if declarations.is_empty()
                 && let Some((members, all_resolved)) =
-                    declarations_of_union_members(&mut checker, callee)
+                    declarations_of_union_symbol(&mut checker, callee)
             {
-                // checked before the signature: for a union the checker's signature names the first member only, which would pass for the answer
+                // checked before the signature: for a union the checker's signature names the first member only, which would pass for the whole answer
                 declarations = members;
                 unresolved_members = !all_resolved;
             }
@@ -997,7 +997,7 @@ mod resolve {
                     self.relative_path(file)
                         .unwrap_or_else(|| source_file.file_name().to_owned())
                 });
-                let name = declaration
+                let own = declaration
                     .name()
                     .map(|name| name.text().to_owned())
                     .or_else(|| {
@@ -1005,6 +1005,7 @@ mod resolve {
                             .map(|symbol| checker.symbol_to_string_exported(symbol))
                     })
                     .unwrap_or_default();
+                let name = qualified_name(declaration, own);
                 return Resolved::External { package, name };
             }
             let Some(defs) = self.file_defs(file, style) else {
@@ -1020,7 +1021,16 @@ mod resolve {
             };
             match defs.def_of.get(&node).copied() {
                 Some(def) => Resolved::Def(Func { file, def }),
-                None => Resolved::Unknown(Why::NotInOutline),
+                None => {
+                    // a bug in one of the two rules (what the engine calls callable, what the outline calls a def): a test must find it,
+                    // and a release counts it
+                    debug_assert!(
+                        false,
+                        "the engine's declaration in {} is not a def of the outline",
+                        source_file.file_name()
+                    );
+                    Resolved::Unknown(Why::NotInOutline)
+                }
             }
         }
 
@@ -1047,6 +1057,29 @@ mod resolve {
             };
             DefInfo::new(id, def.qualname.clone(), def.kind.clone(), file, def.range)
         }
+    }
+
+    /// The name of an external as the outline would qualify it: the names of the classes, interfaces and namespaces around the declaration, then its own
+    /// (`Math.max`, `Array.map`, `helper`). Two methods of one package must not share a name: the merged wire counts a repeated target as one. A module
+    /// whose name is a string (`declare module "x"`) adds nothing, since the package says it.
+    fn qualified_name(declaration: P<Node>, own: String) -> String {
+        let mut parts = vec![own];
+        let mut parent = declaration.parent();
+        while let Some(node) = parent {
+            if matches!(
+                node.kind(),
+                Kind::ClassDeclaration
+                    | Kind::ClassExpression
+                    | Kind::InterfaceDeclaration
+                    | Kind::ModuleDeclaration
+            ) && let Some(name) = node.name().filter(|name| ast::is_identifier(*name))
+            {
+                parts.push(name.text().to_owned());
+            }
+            parent = node.parent();
+        }
+        parts.reverse();
+        parts.join(".")
     }
 
     /// The declaration with a body among those of the symbol of an overload signature: the implementation, in the same file.
@@ -1261,39 +1294,36 @@ mod resolve {
         if all.is_empty() { vec![node] } else { all }
     }
 
-    /// A call on a union (`w.write()` with `w: JsonWriter | CsvWriter`): the declarations of the property in each member, in (file, offset) order, and
-    /// whether every member had one. `None` when the callee is not a property of a union. The policy table says one target per member; the engine's
-    /// call hierarchy gives none for a union and the checker's resolved signature gives the first member's, so the members are asked one by one.
-    fn declarations_of_union_members(
+    /// A call on a union (`w.write()` with `w: JsonWriter | CsvWriter`): the checker gives the property of a union a synthetic symbol that holds the
+    /// declarations of **every** member (`checker_11.rs`, `create_union_or_intersection_property`) and sets its value declaration only when the members
+    /// share one. The engine's call hierarchy follows the value declaration alone, so it finds nothing; the declarations are asked here instead. They
+    /// are the answer for `a.b` and for `a["b"]` with a literal name (the symbol of the literal), and `undefined` in the union adds nothing, since the
+    /// checker's symbol is the property's, not the type's. Returns the targets in (file, offset) order and whether every declaration was one that
+    /// can be entered; `None` when the callee has no such symbol (the declarations are not a union's, or there is a value declaration to follow).
+    fn declarations_of_union_symbol(
         checker: &mut Checker,
         callee: P<Node>,
     ) -> Option<(Vec<P<Node>>, bool)> {
-        if !ast::is_property_access_expression(callee) {
+        let location = if ast::is_property_access_expression(callee) {
+            callee
+        } else if ast::is_element_access_expression(callee) {
+            let argument = callee.as_element_access_expression().argument_expression;
+            ast::is_string_literal_like(argument).then_some(argument)?
+        } else {
             return None;
-        }
-        let receiver = callee.expression()?;
-        let name = callee.name()?.text();
-        let ty = checker.get_type_at_location(receiver);
-        if !ty.flags().intersects(TypeFlags::Union) {
+        };
+        let symbol = checker.get_symbol_at_location_exported(location)?;
+        if symbol.value_declaration().is_some() || symbol.declarations().is_empty() {
             return None;
         }
         let mut found: Vec<P<Node>> = Vec::new();
         let mut all_resolved = true;
-        for &member in ty.types() {
-            let declarations: Vec<P<Node>> = checker
-                .get_property_of_type_exported(member, name)
-                .map(|symbol| symbol.declarations().to_vec())
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|declaration| is_valid_call_hierarchy_declaration(Some(*declaration)))
-                .flat_map(|declaration| {
-                    find_implementation_or_all_initial_declarations(checker, declaration)
-                })
-                .collect();
-            all_resolved &= !declarations.is_empty();
-            for declaration in declarations {
-                if !found.contains(&declaration) {
-                    found.push(declaration);
+        for &declaration in symbol.declarations() {
+            let targets = callable_declarations(checker, declaration);
+            all_resolved &= !targets.is_empty();
+            for target in targets {
+                if !found.contains(&target) {
+                    found.push(target);
                 }
             }
         }
@@ -1304,6 +1334,23 @@ mod resolve {
             )
         });
         Some((found, all_resolved))
+    }
+
+    /// What a declaration of a property or method is, as something to enter: a callable declaration (its implementation, or all its initial
+    /// declarations), or the arrow or function a property or variable holds (`write = () => {}`), which is what the engine does for a declaration
+    /// name. Empty when it is neither: a method signature of a function type, a property of type `any`.
+    fn callable_declarations(checker: &mut Checker, declaration: P<Node>) -> Vec<P<Node>> {
+        if is_valid_call_hierarchy_declaration(Some(declaration)) {
+            return find_implementation_or_all_initial_declarations(checker, declaration);
+        }
+        if is_variable_like(Some(declaration))
+            && let Some(initializer) = declaration
+                .initializer()
+                .filter(|initializer| is_assigned_expression(*initializer))
+        {
+            return vec![initializer];
+        }
+        Vec::new()
     }
 
     /// What the checker's resolved signature says, for a call the hierarchy's rule finds nothing for (`counter["bump"]()`, whose callee is not a name
@@ -1849,10 +1896,10 @@ mod tests {
 
     /// What the engine says each site of `callers` in `tests/fixtures/resolve` calls, as `file qualname`, `external package name` or `unknown why`.
     /// Written from the policy table (`docs/03-typescript/06-ts4-calls.md` §5) and the engine's own rule before the run.
-    fn resolved_sites(sem: &Sem) -> Vec<(String, Vec<String>)> {
-        let file = sem.file("src/main.ts").unwrap();
-        let text = file.node.text();
-        let func = sem.entry("src/main.ts", "callers", 0, STYLE).unwrap();
+    fn resolved_sites(sem: &Sem, file: &str, qualname: &str) -> Vec<(String, Vec<String>)> {
+        let source = sem.file(file).unwrap();
+        let text = source.node.text();
+        let func = sem.entry(file, qualname, 0, STYLE).unwrap();
         let spans = sem.call_sites(func, STYLE).unwrap();
         (0..spans.len())
             .map(|index| {
@@ -1862,7 +1909,13 @@ mod tests {
                     .map(|resolved| match resolved {
                         Resolved::Def(target) => {
                             let info = sem.describe(target, STYLE);
-                            format!("{} {}", info.file, info.qname)
+                            // the nth of a def that shares its qualname (merged declarations) is shown, as `#n`, when it is not the first
+                            match info.id {
+                                analyzer_core::graph::StableDef::Path { nth, .. } if nth > 0 => {
+                                    format!("{} {}#{nth}", info.file, info.qname)
+                                }
+                                _ => format!("{} {}", info.file, info.qname),
+                            }
                         }
                         Resolved::External { package, name } => {
                             format!("external {package} {name}")
@@ -1882,7 +1935,7 @@ mod tests {
             Path::new("src/main.ts"),
         )
         .unwrap();
-        let found = resolved_sites(&sem);
+        let found = resolved_sites(&sem, "src/main.ts", "callers");
         let one = |site: &str, target: &str| (site.to_owned(), vec![target.to_owned()]);
         let expected = vec![
             one("plain", "src/lib.ts plain"),
@@ -1911,8 +1964,8 @@ mod tests {
             // outside project code: a package, the repo's own `.d.ts` (named by its path), the bundled libraries
             one("helper", "external pkg helper"),
             one("declared", "external src/types.d.ts declared"),
-            one("Math.max", "external typescript:lib max"),
-            one("[1].map", "external typescript:lib map"),
+            one("Math.max", "external typescript:lib Math.max"),
+            one("[1].map", "external typescript:lib Array.map"),
             // the engine has no declaration to enter, and says why
             one("cb", "unknown function_typed_value"),
             one("anyValue.run", "unknown any_or_untyped"),
@@ -1920,8 +1973,60 @@ mod tests {
             one("(lib as any)[key]", "unknown computed_name"),
             // a computed name the checker narrows to a literal is resolved
             one("counter[\"bump\"]", "src/lib.ts Counter.bump"),
+            // a union through an element access with a literal name: the members are asked the same way
+            (
+                "either[\"write\"]".to_owned(),
+                vec![
+                    "src/lib.ts JsonWriter.write".to_owned(),
+                    "src/lib.ts CsvWriter.write".to_owned(),
+                ],
+            ),
+            // members that hold an arrow (a def named like a method) are targets too, as they are on a plain receiver
+            (
+                "arrows.write".to_owned(),
+                vec![
+                    "src/lib.ts ArrowA.write".to_owned(),
+                    "src/lib.ts ArrowB.write".to_owned(),
+                ],
+            ),
+            // `undefined` in the union has no property and adds nothing
+            (
+                "maybe?.write".to_owned(),
+                vec![
+                    "src/lib.ts JsonWriter.write".to_owned(),
+                    "src/lib.ts CsvWriter.write".to_owned(),
+                ],
+            ),
+            // an inherited method is where it is declared
+            one("child.bump", "src/lib.ts Counter.bump"),
+            // a method of an object literal is a def (D9)
+            one("api.load", "src/lib.ts api.load"),
+            // merged declarations: one target per declaration, told apart by their nth
+            (
+                "reader.read".to_owned(),
+                vec![
+                    "src/lib.ts Reader.read".to_owned(),
+                    "src/lib.ts Reader.read#1".to_owned(),
+                ],
+            ),
         ];
         assert_eq!(found, expected);
+    }
+
+    #[test]
+    fn sem_contract_this_dot_method_is_the_method_of_the_class() {
+        let sem = Sem::open(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/resolve"),
+            Path::new("src/main.ts"),
+        )
+        .unwrap();
+        assert_eq!(
+            resolved_sites(&sem, "src/lib.ts", "Greeter.run"),
+            [(
+                "this.helper".to_owned(),
+                vec!["src/lib.ts Greeter.helper".to_owned()]
+            )]
+        );
     }
 
     #[test]

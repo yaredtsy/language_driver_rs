@@ -1,5 +1,18 @@
-import fallback, { arrow, Counter, CsvWriter, generic, JsonWriter, overloaded, plain, reexported } from "./lib";
-import type { Writer } from "./lib";
+import fallback, {
+  api,
+  arrow,
+  ArrowA,
+  ArrowB,
+  Child,
+  Counter,
+  CsvWriter,
+  generic,
+  JsonWriter,
+  overloaded,
+  plain,
+  reexported,
+} from "./lib";
+import type { Reader, Writer } from "./lib";
 import * as lib from "./lib";
 import { plain as renamed } from "./lib";
 import { helper } from "pkg";
@@ -8,7 +21,16 @@ import { declared } from "./types";
 declare const anyValue: any;
 declare const key: string;
 
-export function callers(counter: Counter, writer: Writer, either: JsonWriter | CsvWriter, cb: () => void) {
+export function callers(
+  counter: Counter,
+  writer: Writer,
+  either: JsonWriter | CsvWriter,
+  cb: () => void,
+  arrows: ArrowA | ArrowB,
+  maybe: JsonWriter | CsvWriter | undefined,
+  child: Child,
+  reader: Reader,
+) {
   plain();
   counter.bump();
   Counter.make();
@@ -30,4 +52,10 @@ export function callers(counter: Counter, writer: Writer, either: JsonWriter | C
   anyValue();
   (lib as any)[key]();
   counter["bump"]();
+  either["write"]("z");
+  arrows.write("a");
+  maybe?.write("m");
+  child.bump();
+  api.load();
+  reader.read(1);
 }

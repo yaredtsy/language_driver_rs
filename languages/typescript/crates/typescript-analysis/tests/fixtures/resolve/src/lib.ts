@@ -42,4 +42,37 @@ export default function fallback(): void {}
 
 export const arrow = (): number => 2;
 
+export class ArrowA {
+  write = (text: string): void => {};
+}
+
+export class ArrowB {
+  write = (text: string): void => {};
+}
+
+export class Child extends Counter {}
+
+export const api = {
+  load(): number {
+    return 1;
+  },
+};
+
+export interface Reader {
+  read(a: string): void;
+}
+
+export interface Reader {
+  read(a: number): void;
+}
+
+export class Greeter {
+  helper(): number {
+    return 1;
+  }
+  run(): number {
+    return this.helper();
+  }
+}
+
 export * from "./more";
