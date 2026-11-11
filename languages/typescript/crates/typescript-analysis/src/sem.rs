@@ -172,6 +172,8 @@ pub struct Sem {
     _not_shared: PhantomData<Cell<()>>,
     /// One outline per (file, marker label), made on first use. A `Sem` is not `Sync`, so a `RefCell` is enough.
     file_defs: RefCell<FileDefsCache>,
+    /// The plain calls of each def, made on first use, by the def's node.
+    call_nodes: RefCell<HashMap<P<Node>, Arc<Vec<CallNode>>>>,
     // Fields drop in this order, after `Drop::drop` has freed the program: the loaders' regions, then the program's own.
     _loaders: Arc<ProgramRegions>,
     _region: Region,
@@ -256,6 +258,7 @@ impl Sem {
             config_file,
             _not_shared: PhantomData,
             file_defs: RefCell::new(HashMap::new()),
+            call_nodes: RefCell::new(HashMap::new()),
             _loaders: loaders,
             _region: region,
         };
@@ -380,8 +383,17 @@ impl Sem {
         expect(dead_code, reason = "walk.rs turns these into the solver's sites")
     )]
     pub(crate) fn call_sites(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Vec<Span>> {
+        let calls = self.call_nodes(func, style)?;
+        Some(calls.iter().map(|call| call.span).collect())
+    }
+
+    /// The plain calls of `func`'s body with their nodes, sorted by span: what `call_sites` reports and `callee` asks the checker about.
+    fn call_nodes(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Arc<Vec<CallNode>>> {
         let defs = self.file_defs(func.file, style)?;
         let node = defs.nodes[func.def]?;
+        if let Some(found) = self.call_nodes.borrow().get(&node) {
+            return Some(Arc::clone(found));
+        }
         let _scope = self._region.enter();
         let mut collector = Collector {
             text: func.file.node.text(),
@@ -390,8 +402,10 @@ impl Sem {
             sites: Vec::new(),
         };
         collector.body_of(node);
-        collector.sites.sort();
-        Some(collector.sites)
+        collector.sites.sort_by_key(|call| call.span);
+        let made = Arc::new(collector.sites);
+        self.call_nodes.borrow_mut().insert(node, Arc::clone(&made));
+        Some(made)
     }
 
     /// What the outline says the def is (qualname, kind, range, marker).
@@ -513,7 +527,15 @@ struct Collector<'a> {
     def_of: &'a HashMap<P<Node>, usize>,
     /// The def being walked: it is in `def_of` too, and must not stop its own walk.
     own: P<Node>,
-    sites: Vec<Span>,
+    sites: Vec<CallNode>,
+}
+
+/// A plain call found in a body: the span of its callee expression (absolute, in the file) and the call node. Kept privately by `Sem`, per def, so
+/// that `callee` can ask the checker about a site given only its index: the index is plain data, the node never leaves `sem.rs`.
+#[derive(Clone, Copy)]
+struct CallNode {
+    span: Span,
+    call: P<Node>,
 }
 
 impl Collector<'_> {
@@ -561,7 +583,10 @@ impl Collector<'_> {
                 if is_plain_call(node)
                     && let Some(callee) = node.expression()
                 {
-                    self.sites.push(own_span(self.text, callee));
+                    self.sites.push(CallNode {
+                        span: own_span(self.text, callee),
+                        call: node,
+                    });
                 }
                 // not the type arguments
                 self.collect(node.expression());
@@ -828,6 +853,538 @@ fn relative_to(root: &Path, engine_path: &str) -> String {
 fn to_engine_path(path: &Path) -> String {
     tspath::normalize_slashes(&path.to_string_lossy())
 }
+
+/// What a site calls, and what a def is (TS4 step 3). The resolver is a port of `tsrs_ls`'s `resolve_call_hierarchy_declaration` (`callhierarchy.rs`, a
+/// private module there, so it cannot be called: S-TS3 in `ENGINE.md`), which is what "follow the engine" (D7) means for a call: from the callee
+/// expression, a declaration that is itself callable, else the declaration of the symbol the checker finds there, once.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "TS4 step 4's `Lang` impl calls it")
+)]
+mod resolve {
+    use analyzer_core::graph::{DefInfo, StableDef};
+    use tsrs_ast::{Symbol, SymbolFlags};
+    use tsrs_checker::{Checker, TypeFlags};
+    use tsrs_compiler::Context;
+
+    use super::*;
+
+    /// What one declaration the engine found for a site is.
+    #[derive(Clone, PartialEq, Eq)]
+    pub(crate) enum Resolved<'p> {
+        /// A def of project code: a function, method, accessor or constructor, or a class. The solver walks it.
+        Def(Func<'p>),
+        /// Outside project code: the package (`pkg`, `typescript:lib`, or the path of the repo's own `.d.ts`) and the declaration's own name.
+        External { package: String, name: String },
+        /// The engine gives no declaration to enter.
+        Unknown(Why),
+    }
+
+    /// Why a site has no target. Each is counted apart in `Stats.language` (D16, rule 8), so a missing edge can be explained from a number.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(crate) enum Why {
+        /// A callback parameter, a prop, a store action, a field of type `() => void`: the engine answers with a function type, which has no body (D16).
+        FunctionTypedValue,
+        /// A value of type `any`, or an untyped JavaScript value.
+        AnyOrUntyped,
+        /// The receiver is a union (`JsonWriter | CsvWriter`) and a member of it has no declaration to enter (a member of type `any`, a function
+        /// type). The members that do are targets; this marks the ones that are not, so the answer is not mistaken for complete.
+        UnionReceiver,
+        /// `obj[name]()` where the checker cannot narrow `name` to a literal.
+        ComputedName,
+        /// The engine found a declaration in project code that is not a def of the outline: a bug in one of the two rules (rule 8: counted).
+        NotInOutline,
+        /// None of the above: no symbol, or a symbol with nothing to call.
+        NoDeclaration,
+    }
+
+    impl Why {
+        /// The key in `Stats.language`.
+        pub(crate) fn counter(self) -> &'static str {
+            match self {
+                Why::FunctionTypedValue => "function_typed_value",
+                Why::AnyOrUntyped => "any_or_untyped",
+                Why::UnionReceiver => "union_receiver",
+                Why::ComputedName => "computed_name",
+                Why::NotInOutline => "decl_not_in_outline",
+                Why::NoDeclaration => "no_declaration",
+            }
+        }
+    }
+
+    impl Sem {
+        /// What the site at `site_index` of `func` calls, as the engine's call hierarchy would say. Never empty: a site with no target is one
+        /// `Unknown`. A union receiver, or merged declarations, give one `Resolved` per declaration, in (file, offset) order (rule 9).
+        pub(crate) fn callee(
+            &self,
+            func: Func<'_>,
+            site_index: usize,
+            style: MarkerStyle<'_>,
+        ) -> Vec<Resolved<'_>> {
+            let Some(calls) = self.call_nodes(func, style) else {
+                return vec![Resolved::Unknown(Why::NoDeclaration)];
+            };
+            let Some(call) = calls.get(site_index) else {
+                debug_assert!(false, "a site index outside the def's sites");
+                return vec![Resolved::Unknown(Why::NoDeclaration)];
+            };
+            let _scope = self._region.enter();
+            // one checker, so one handle at a time: it is dropped before this returns
+            let mut checker = self.program.get_type_checker(&Context::default());
+            let Some(callee) = call.call.expression() else {
+                return vec![Resolved::Unknown(Why::NoDeclaration)];
+            };
+            let mut declarations = declarations_of(&mut checker, callee);
+            let mut unresolved_members = false;
+            if declarations.is_empty()
+                && let Some((members, all_resolved)) =
+                    declarations_of_union_members(&mut checker, callee)
+            {
+                // checked before the signature: for a union the checker's signature names the first member only, which would pass for the answer
+                declarations = members;
+                unresolved_members = !all_resolved;
+            }
+            if declarations.is_empty() {
+                declarations = declarations_of_signature(&mut checker, call.call);
+            }
+            if declarations.is_empty() {
+                return vec![Resolved::Unknown(why_unknown(&mut checker, callee))];
+            }
+            let mut found: Vec<Resolved<'_>> = Vec::new();
+            for declaration in declarations {
+                let resolved = self.classify(&mut checker, declaration, style);
+                if !found.contains(&resolved) {
+                    found.push(resolved);
+                }
+            }
+            if unresolved_members {
+                // a member of the union that has no declaration to enter is not dropped
+                found.push(Resolved::Unknown(Why::UnionReceiver));
+            }
+            found
+        }
+
+        /// A declaration the engine found, as a def of project code, an external, or a bug to count.
+        fn classify(
+            &self,
+            checker: &mut Checker,
+            declaration: P<Node>,
+            style: MarkerStyle<'_>,
+        ) -> Resolved<'_> {
+            let Some(source_file) = ast::get_source_file_of_node(declaration) else {
+                return Resolved::Unknown(Why::NoDeclaration);
+            };
+            let file = File {
+                node: source_file,
+                _sem: PhantomData,
+                _one_thread: PhantomData,
+            };
+            if !self.is_project_code(file) {
+                let package = self.package_of(file).unwrap_or_else(|| {
+                    // not in `node_modules` and not a bundled library: the repo's own `.d.ts`, named by where it is
+                    self.relative_path(file)
+                        .unwrap_or_else(|| source_file.file_name().to_owned())
+                });
+                let name = declaration
+                    .name()
+                    .map(|name| name.text().to_owned())
+                    .or_else(|| {
+                        symbol_of_declaration(checker, declaration)
+                            .map(|symbol| checker.symbol_to_string_exported(symbol))
+                    })
+                    .unwrap_or_default();
+                return Resolved::External { package, name };
+            }
+            let Some(defs) = self.file_defs(file, style) else {
+                return Resolved::Unknown(Why::NotInOutline);
+            };
+            // The engine names the first signature of an overloaded function (its call hierarchy finds the implementation only when it is the symbol's
+            // value declaration), and the outline's def is the implementation: so a function or method with no body is looked up among the
+            // declarations of its own symbol for the one that has.
+            let node = if defs.def_of.contains_key(&declaration) || declaration.body().is_some() {
+                declaration
+            } else {
+                implementation_of(checker, declaration).unwrap_or(declaration)
+            };
+            match defs.def_of.get(&node).copied() {
+                Some(def) => Resolved::Def(Func { file, def }),
+                None => Resolved::Unknown(Why::NotInOutline),
+            }
+        }
+
+        /// What the def is, in the core's terms: `Marked` by its marker when it has one, else named by where it is (the file relative to the root,
+        /// its qualname, and which of the same-named defs of the file it is, in source order).
+        pub(crate) fn describe(&self, func: Func<'_>, style: MarkerStyle<'_>) -> DefInfo {
+            let defs = self
+                .file_defs(func.file, style)
+                .expect("a Func is made from an outline, so its file has one");
+            let def = &defs.outline.defs[func.def];
+            let file = self
+                .relative_path(func.file)
+                .unwrap_or_else(|| func.file.node.file_name().to_owned());
+            let id = match &def.marker {
+                Some(marker) => StableDef::Marked(marker.clone()),
+                None => StableDef::Path {
+                    module: file.clone(),
+                    qname: def.qualname.clone(),
+                    nth: defs.outline.defs[..func.def]
+                        .iter()
+                        .filter(|earlier| earlier.qualname == def.qualname)
+                        .count() as u16,
+                },
+            };
+            DefInfo::new(id, def.qualname.clone(), def.kind.clone(), file, def.range)
+        }
+    }
+
+    /// The declaration with a body among those of the symbol of an overload signature: the implementation, in the same file.
+    fn implementation_of(checker: &mut Checker, signature: P<Node>) -> Option<P<Node>> {
+        if !(ast::is_function_declaration(signature) || ast::is_method_declaration(signature)) {
+            return None;
+        }
+        let file = ast::get_source_file_of_node(signature)?;
+        symbol_of_declaration(checker, signature)?
+            .declarations()
+            .iter()
+            .copied()
+            .find(|declaration| {
+                declaration.body().is_some()
+                    && ast::get_source_file_of_node(*declaration) == Some(file)
+                    && (ast::is_function_declaration(*declaration)
+                        || ast::is_method_declaration(*declaration))
+            })
+    }
+
+    /// Why the engine has no declaration for this callee: syntax first (a computed name), then the type the checker gives it.
+    fn why_unknown(checker: &mut Checker, callee: P<Node>) -> Why {
+        if ast::is_element_access_expression(callee) {
+            return Why::ComputedName;
+        }
+        let ty = checker.get_type_at_location(callee);
+        if ty.flags().intersects(TypeFlags::Any) {
+            Why::AnyOrUntyped
+        } else if ast::is_property_access_expression(callee)
+            && callee.expression().is_some_and(|receiver| {
+                checker
+                    .get_type_at_location(receiver)
+                    .flags()
+                    .intersects(TypeFlags::Union)
+            })
+        {
+            Why::UnionReceiver
+        } else if checker.type_has_call_or_construct_signatures_exported(ty) {
+            Why::FunctionTypedValue
+        } else {
+            Why::NoDeclaration
+        }
+    }
+
+    // ---- the port of `tsrs_ls`'s `callhierarchy.rs`. Names and shapes follow the original so an engine bump can be checked line by line.
+
+    /// A function or class expression with an identifier name.
+    fn is_named_expression(node: P<Node>) -> bool {
+        (ast::is_function_expression(node) || ast::is_class_expression(node))
+            && node.name().is_some_and(ast::is_identifier)
+    }
+
+    fn is_variable_like(node: Option<P<Node>>) -> bool {
+        node.is_some_and(|node| {
+            ast::is_property_declaration(node) || ast::is_variable_declaration(node)
+        })
+    }
+
+    /// A function, arrow or class expression assigned to a constant variable or class property.
+    fn is_assigned_expression(node: P<Node>) -> bool {
+        if !(ast::is_function_expression(node)
+            || ast::is_arrow_function(node)
+            || ast::is_class_expression(node))
+        {
+            return false;
+        }
+        if node.name().is_some() {
+            return false;
+        }
+        let parent = node.parent();
+        if !is_variable_like(parent) {
+            return false;
+        }
+        let parent = parent.expect("is_variable_like says there is one");
+        if parent.initializer() != Some(node) {
+            return false;
+        }
+        if !parent.name().is_some_and(ast::is_identifier) {
+            return false;
+        }
+        ast::get_combined_node_flags(parent).intersects(NodeFlags::Const)
+            || ast::is_property_declaration(parent)
+    }
+
+    fn is_possible_call_hierarchy_declaration(node: Option<P<Node>>) -> bool {
+        node.is_some_and(|node| {
+            ast::is_source_file(node)
+                || ast::is_module_declaration(node)
+                || ast::is_function_declaration(node)
+                || ast::is_function_expression(node)
+                || ast::is_class_declaration(node)
+                || ast::is_class_expression(node)
+                || ast::is_class_static_block_declaration(node)
+                || ast::is_method_declaration(node)
+                || ast::is_method_signature_declaration(node)
+                || ast::is_get_accessor_declaration(node)
+                || ast::is_set_accessor_declaration(node)
+        })
+    }
+
+    fn is_valid_call_hierarchy_declaration(node: Option<P<Node>>) -> bool {
+        let Some(node) = node else {
+            return false;
+        };
+        if ast::is_source_file(node) {
+            return true;
+        }
+        if ast::is_module_declaration(node) {
+            return node.name().is_some_and(ast::is_identifier);
+        }
+        ast::is_function_declaration(node)
+            || ast::is_class_declaration(node)
+            || ast::is_class_static_block_declaration(node)
+            || ast::is_method_declaration(node)
+            || ast::is_method_signature_declaration(node)
+            || ast::is_get_accessor_declaration(node)
+            || ast::is_set_accessor_declaration(node)
+            || is_named_expression(node)
+            || is_assigned_expression(node)
+    }
+
+    /// The node that stands for a declaration when asking the checker about it.
+    fn reference_node(node: P<Node>) -> Option<P<Node>> {
+        if ast::is_source_file(node) {
+            return Some(node);
+        }
+        if let Some(name) = node.name() {
+            return Some(name);
+        }
+        if is_assigned_expression(node) {
+            return node.parent().and_then(|parent| parent.name());
+        }
+        node.modifiers().and_then(|modifiers| {
+            modifiers
+                .nodes()
+                .iter()
+                .copied()
+                .find(|modifier| modifier.kind() == Kind::DefaultKeyword)
+        })
+    }
+
+    fn symbol_of_declaration(checker: &mut Checker, node: P<Node>) -> Option<P<Symbol>> {
+        if ast::is_class_static_block_declaration(node) {
+            return None;
+        }
+        checker.get_symbol_at_location_exported(reference_node(node)?)
+    }
+
+    /// The implementation of an overloaded function, method or constructor: the declaration with a body.
+    fn find_implementation(checker: &mut Checker, node: P<Node>) -> Option<P<Node>> {
+        if !ast::is_function_like_declaration(Some(node)) || node.body().is_some() {
+            return Some(node);
+        }
+        if ast::is_constructor_declaration(node) {
+            return ast::get_first_constructor_with_body(node.parent()?);
+        }
+        if ast::is_function_declaration(node) || ast::is_method_declaration(node) {
+            let value_declaration =
+                symbol_of_declaration(checker, node).and_then(|symbol| symbol.value_declaration());
+            return value_declaration.filter(|declaration| {
+                ast::is_function_like_declaration(Some(*declaration))
+                    && declaration.body().is_some()
+            });
+        }
+        Some(node)
+    }
+
+    /// Every declaration of the symbol that is itself a call hierarchy declaration, in (file, offset) order, with adjacent overload signatures of
+    /// one parent counted once.
+    fn find_all_initial_declarations(checker: &mut Checker, node: P<Node>) -> Vec<P<Node>> {
+        let Some(symbol) = symbol_of_declaration(checker, node) else {
+            return Vec::new();
+        };
+        let mut declarations: Vec<P<Node>> = symbol.declarations().to_vec();
+        declarations.sort_by_key(|declaration| {
+            (
+                ast::get_source_file_of_node(*declaration).map(|file| file.file_name().to_owned()),
+                declaration.pos(),
+            )
+        });
+        let mut found: Vec<P<Node>> = Vec::new();
+        let mut last: Option<P<Node>> = None;
+        for declaration in declarations {
+            if is_valid_call_hierarchy_declaration(Some(declaration)) {
+                let separate = last.is_none_or(|last| {
+                    last.parent() != declaration.parent() || last.end() != declaration.pos()
+                });
+                if separate {
+                    found.push(declaration);
+                }
+                last = Some(declaration);
+            }
+        }
+        found
+    }
+
+    fn find_implementation_or_all_initial_declarations(
+        checker: &mut Checker,
+        node: P<Node>,
+    ) -> Vec<P<Node>> {
+        if ast::is_class_static_block_declaration(node) {
+            return vec![node];
+        }
+        if ast::is_function_like_declaration(Some(node)) {
+            if let Some(implementation) = find_implementation(checker, node) {
+                return vec![implementation];
+            }
+            let all = find_all_initial_declarations(checker, node);
+            return if all.is_empty() { vec![node] } else { all };
+        }
+        let all = find_all_initial_declarations(checker, node);
+        if all.is_empty() { vec![node] } else { all }
+    }
+
+    /// A call on a union (`w.write()` with `w: JsonWriter | CsvWriter`): the declarations of the property in each member, in (file, offset) order, and
+    /// whether every member had one. `None` when the callee is not a property of a union. The policy table says one target per member; the engine's
+    /// call hierarchy gives none for a union and the checker's resolved signature gives the first member's, so the members are asked one by one.
+    fn declarations_of_union_members(
+        checker: &mut Checker,
+        callee: P<Node>,
+    ) -> Option<(Vec<P<Node>>, bool)> {
+        if !ast::is_property_access_expression(callee) {
+            return None;
+        }
+        let receiver = callee.expression()?;
+        let name = callee.name()?.text();
+        let ty = checker.get_type_at_location(receiver);
+        if !ty.flags().intersects(TypeFlags::Union) {
+            return None;
+        }
+        let mut found: Vec<P<Node>> = Vec::new();
+        let mut all_resolved = true;
+        for &member in ty.types() {
+            let declarations: Vec<P<Node>> = checker
+                .get_property_of_type_exported(member, name)
+                .map(|symbol| symbol.declarations().to_vec())
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|declaration| is_valid_call_hierarchy_declaration(Some(*declaration)))
+                .flat_map(|declaration| {
+                    find_implementation_or_all_initial_declarations(checker, declaration)
+                })
+                .collect();
+            all_resolved &= !declarations.is_empty();
+            for declaration in declarations {
+                if !found.contains(&declaration) {
+                    found.push(declaration);
+                }
+            }
+        }
+        found.sort_by_key(|declaration| {
+            (
+                ast::get_source_file_of_node(*declaration).map(|file| file.file_name().to_owned()),
+                declaration.pos(),
+            )
+        });
+        Some((found, all_resolved))
+    }
+
+    /// What the checker's resolved signature says, for a call the hierarchy's rule finds nothing for (`counter["bump"]()`, whose callee is not a name
+    /// the hierarchy can follow, but whose method the checker knows). Only a declaration that is itself callable counts: a function **type** (a callback
+    /// parameter) has a signature and no declaration to enter.
+    fn declarations_of_signature(checker: &mut Checker, call: P<Node>) -> Vec<P<Node>> {
+        let signature = checker.get_resolved_signature_exported(call);
+        match signature.declaration() {
+            Some(declaration) if is_valid_call_hierarchy_declaration(Some(declaration)) => {
+                find_implementation_or_all_initial_declarations(checker, declaration)
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// The declarations the engine's call hierarchy gives for the callee expression `location`; empty when it gives none.
+    fn declarations_of(checker: &mut Checker, location: P<Node>) -> Vec<P<Node>> {
+        let mut following_symbol = false;
+        let mut location = location;
+        loop {
+            if is_valid_call_hierarchy_declaration(Some(location)) {
+                return find_implementation_or_all_initial_declarations(checker, location);
+            }
+            if is_possible_call_hierarchy_declaration(Some(location))
+                && let Some(ancestor) = ast::find_ancestor(Some(location), |n| {
+                    is_valid_call_hierarchy_declaration(Some(n))
+                })
+            {
+                return find_implementation_or_all_initial_declarations(checker, ancestor);
+            }
+            if ast::is_declaration_name(location) {
+                let parent = location.parent();
+                if is_valid_call_hierarchy_declaration(parent) {
+                    return find_implementation_or_all_initial_declarations(
+                        checker,
+                        parent.expect("valid says there is one"),
+                    );
+                }
+                if is_possible_call_hierarchy_declaration(parent)
+                    && let Some(ancestor) =
+                        ast::find_ancestor(parent, |n| is_valid_call_hierarchy_declaration(Some(n)))
+                {
+                    return find_implementation_or_all_initial_declarations(checker, ancestor);
+                }
+                if is_variable_like(parent)
+                    && let Some(initializer) = parent
+                        .and_then(|parent| parent.initializer())
+                        .filter(|initializer| is_assigned_expression(*initializer))
+                {
+                    return vec![initializer];
+                }
+                return Vec::new();
+            }
+            if ast::is_constructor_declaration(location) {
+                return match location.parent() {
+                    Some(class) if is_valid_call_hierarchy_declaration(Some(class)) => vec![class],
+                    _ => Vec::new(),
+                };
+            }
+            if location.kind() == Kind::StaticKeyword
+                && let Some(block) = location
+                    .parent()
+                    .filter(|parent| ast::is_class_static_block_declaration(*parent))
+            {
+                location = block;
+                continue;
+            }
+            if ast::is_variable_declaration(location)
+                && let Some(initializer) = location
+                    .initializer()
+                    .filter(|initializer| is_assigned_expression(*initializer))
+            {
+                return vec![initializer];
+            }
+            if !following_symbol
+                && let Some(mut symbol) = checker.get_symbol_at_location_exported(location)
+            {
+                if symbol.flags().intersects(SymbolFlags::Alias) {
+                    symbol = checker.get_aliased_symbol(symbol);
+                }
+                if let Some(value_declaration) = symbol.value_declaration() {
+                    following_symbol = true;
+                    location = value_declaration;
+                    continue;
+                }
+            }
+            return Vec::new();
+        }
+    }
+}
+
+#[cfg(test)]
+use resolve::Resolved;
 
 #[cfg(test)]
 mod tests {
@@ -1263,5 +1820,128 @@ mod tests {
         // two reads share the one outline
         let again = sem.def(func, STYLE);
         assert!(std::ptr::eq(&*def, &*again));
+    }
+
+    /// What the engine says each site of `callers` in `tests/fixtures/resolve` calls, as `file qualname`, `external package name` or `unknown why`.
+    /// Written from the policy table (`docs/03-typescript/06-ts4-calls.md` §5) and the engine's own rule before the run.
+    fn resolved_sites(sem: &Sem) -> Vec<(String, Vec<String>)> {
+        let file = sem.file("src/main.ts").unwrap();
+        let text = file.node.text();
+        let func = sem.entry("src/main.ts", "callers", 0, STYLE).unwrap();
+        let spans = sem.call_sites(func, STYLE).unwrap();
+        (0..spans.len())
+            .map(|index| {
+                let described = sem
+                    .callee(func, index, STYLE)
+                    .into_iter()
+                    .map(|resolved| match resolved {
+                        Resolved::Def(target) => {
+                            let info = sem.describe(target, STYLE);
+                            format!("{} {}", info.file, info.qname)
+                        }
+                        Resolved::External { package, name } => {
+                            format!("external {package} {name}")
+                        }
+                        Resolved::Unknown(why) => format!("unknown {}", why.counter()),
+                    })
+                    .collect();
+                (spans[index].slice(text).unwrap().to_owned(), described)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn sem_contract_each_site_resolves_as_the_policy_table_says() {
+        let sem = Sem::open(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/resolve"),
+            Path::new("src/main.ts"),
+        )
+        .unwrap();
+        let found = resolved_sites(&sem);
+        let one = |site: &str, target: &str| (site.to_owned(), vec![target.to_owned()]);
+        let expected = vec![
+            one("plain", "src/lib.ts plain"),
+            one("counter.bump", "src/lib.ts Counter.bump"),
+            one("Counter.make", "src/lib.ts Counter.make"),
+            // an interface method: the signature, a leaf with no body, not the implementations
+            one("writer.write", "src/lib.ts Writer.write"),
+            // a union receiver: one target per member that declares the method (policy table). The engine's call hierarchy gives none and the
+            // checker's signature gives only the first member, so the members are asked one by one
+            (
+                "either.write".to_owned(),
+                vec![
+                    "src/lib.ts JsonWriter.write".to_owned(),
+                    "src/lib.ts CsvWriter.write".to_owned(),
+                ],
+            ),
+            // overloads: the implementation, which is the one def
+            one("overloaded", "src/lib.ts overloaded"),
+            one("generic", "src/lib.ts generic"),
+            one("fallback", "src/lib.ts fallback"),
+            one("arrow", "src/lib.ts arrow"),
+            // followed through `export *`, a namespace import and a renamed import to the real declaration
+            one("reexported", "src/more.ts reexported"),
+            one("lib.plain", "src/lib.ts plain"),
+            one("renamed", "src/lib.ts plain"),
+            // outside project code: a package, the repo's own `.d.ts` (named by its path), the bundled libraries
+            one("helper", "external pkg helper"),
+            one("declared", "external src/types.d.ts declared"),
+            one("Math.max", "external typescript:lib max"),
+            one("[1].map", "external typescript:lib map"),
+            // the engine has no declaration to enter, and says why
+            one("cb", "unknown function_typed_value"),
+            one("anyValue.run", "unknown any_or_untyped"),
+            one("anyValue", "unknown any_or_untyped"),
+            one("(lib as any)[key]", "unknown computed_name"),
+            // a computed name the checker narrows to a literal is resolved
+            one("counter[\"bump\"]", "src/lib.ts Counter.bump"),
+        ];
+        assert_eq!(found, expected);
+    }
+
+    #[test]
+    fn describe_names_a_def_by_its_marker_or_by_where_it_is() {
+        use analyzer_core::graph::StableDef;
+        let resolve = Sem::open(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/resolve"),
+            Path::new("src/main.ts"),
+        )
+        .unwrap();
+        // a def with a marker is named by it: it survives a rename or a move
+        let plain = resolve.entry("src/lib.ts", "plain", 0, STYLE).unwrap();
+        let info = resolve.describe(plain, STYLE);
+        assert_eq!(info.id, StableDef::Marked("PLAIN-0001".into()));
+        assert_eq!(info.qname, "plain");
+        assert_eq!(info.file, "src/lib.ts");
+        assert_eq!(info.range, resolve.def(plain, STYLE).range);
+        // one without is named by its file, qualname and which of the same-named defs it is
+        let bump = resolve
+            .entry("src/lib.ts", "Counter.bump", 0, STYLE)
+            .unwrap();
+        assert_eq!(
+            resolve.describe(bump, STYLE).id,
+            StableDef::Path {
+                module: "src/lib.ts".into(),
+                qname: "Counter.bump".into(),
+                nth: 0
+            }
+        );
+        // a getter and its setter have one qualname: the second is nth 1
+        let entries = entries();
+        let setter = entries.entry("src/main.ts", "Box.size", 1, STYLE).unwrap();
+        assert_eq!(
+            entries.describe(setter, STYLE).id,
+            StableDef::Path {
+                module: "src/main.ts".into(),
+                qname: "Box.size".into(),
+                nth: 1
+            }
+        );
+        // and a class is described like a function
+        let class = entries.entry("src/main.ts", "Box", 0, STYLE).unwrap();
+        assert_eq!(
+            entries.describe(class, STYLE).kind,
+            analyzer_core::outline::DefKind::Class
+        );
     }
 }
