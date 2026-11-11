@@ -3,6 +3,7 @@
 //! One context per function (`Key = ()`, digest zeros): TypeScript is not context sensitive yet (`docs/03-typescript/08-later-context-sensitive.md`). The seam
 //! is kept: a target is `Target::Call(func, ())`, and `walk` is the only place that would take a key.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -45,6 +46,24 @@ impl Options {
 pub(crate) struct TypeScript<'p> {
     pub(crate) sem: &'p Sem,
     pub(crate) style: MarkerStyle<'p>,
+    /// Counters that are not the reason of an edge (`walk::INHERITED_*`), filled as bodies are walked, once each, and put in `Stats.language` by
+    /// `call_graph`.
+    notes: RefCell<BTreeMap<&'static str, u64>>,
+}
+
+impl<'p> TypeScript<'p> {
+    fn new(sem: &'p Sem, style: MarkerStyle<'p>) -> Self {
+        TypeScript {
+            sem,
+            style,
+            notes: RefCell::new(BTreeMap::new()),
+        }
+    }
+
+    /// Count one more of `key`.
+    pub(crate) fn note(&self, key: &'static str) {
+        *self.notes.borrow_mut().entry(key).or_default() += 1;
+    }
 }
 
 impl<'p> Lang for TypeScript<'p> {
@@ -78,10 +97,7 @@ pub fn call_graph(
 ) -> Option<Graph> {
     let sem = &project.sem;
     let func = sem.entry(file, entry.qualname, entry.occurrence, opts.marker)?;
-    let lang = TypeScript {
-        sem,
-        style: opts.marker,
-    };
+    let lang = TypeScript::new(sem, opts.marker);
     let mut solver = Solver::new(lang, opts.limits.clone());
     let mut graph = solver.graph(&[(func, ())], cancel);
     // Each unresolved edge carries its reason, and `Stats.language` counts them: a count is what the edges say
@@ -92,6 +108,9 @@ pub fn call_graph(
         }
     }
     graph.stats.language.extend(reasons);
+    for (key, count) in solver.lang().notes.borrow().iter() {
+        graph.stats.language.insert((*key).to_owned(), *count);
+    }
     Some(graph)
 }
 
@@ -105,6 +124,10 @@ pub struct Breakdown {
     pub unresolved: u64,
     /// `unresolved` by reason; the values sum to `unresolved`.
     pub reasons: BTreeMap<String, u64>,
+    /// A construction with no `init` because its base classes could not be followed (`inherited_constructor_external`, `inherited_constructor_unknown`,
+    /// from `Stats.language`). The edge is a known class, so it is not `unresolved`, but it is not complete. Only these two keys: the heading of `Display`
+    /// says what they are, so another counter is added to a field of its own.
+    pub notes: BTreeMap<String, u64>,
     pub contexts: u64,
     pub walks: u64,
     pub reuse_hits: u64,
@@ -142,6 +165,15 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
             _ => {}
         }
     }
+    summary.notes = graph
+        .stats
+        .language
+        .iter()
+        .filter(|(key, _)| {
+            key.as_str() == walk::INHERITED_EXTERNAL || key.as_str() == walk::INHERITED_UNKNOWN
+        })
+        .map(|(key, count)| (key.clone(), *count))
+        .collect();
     summary
 }
 
@@ -157,6 +189,12 @@ impl fmt::Display for Breakdown {
             writeln!(f, "  unresolved by reason:")?;
             for (reason, count) in &self.reasons {
                 writeln!(f, "    {reason}: {count}")?;
+            }
+        }
+        if !self.notes.is_empty() {
+            writeln!(f, "  constructions with no constructor entered, by why:")?;
+            for (note, count) in &self.notes {
+                writeln!(f, "    {note}: {count}")?;
             }
         }
         writeln!(

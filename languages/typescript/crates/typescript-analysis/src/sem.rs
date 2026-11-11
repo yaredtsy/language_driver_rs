@@ -447,19 +447,28 @@ impl Sem {
         Some(made)
     }
 
-    /// The class's own `constructor`, a def of the same file whose parent is the class: what `init` of a construction is. `None` when the class
-    /// declares none (an inherited constructor is the base class's, which needs the engine and belongs to `new`, step 5), or when `class` is not a class.
+    /// The class's own `constructor`, a def of the same file whose parent is the class. `None` when the class declares none, or when `class` is not a
+    /// class. What a construction runs is `init_of`, which also looks at the base classes.
     pub(crate) fn constructor_of<'p>(
         &'p self,
         class: Func<'p>,
         style: MarkerStyle<'_>,
     ) -> Option<Func<'p>> {
         let defs = self.file_defs(class.file, style)?;
-        let index = defs
+        // Overloads are one def each (two signatures and the implementation): the one that runs is the one with a body, and a signature has nothing to
+        // walk, so choosing the first would lose every call of the constructor.
+        let mut candidates = defs
             .outline
             .defs
             .iter()
-            .position(|def| def.parent == Some(class.def) && def.name == "constructor")?;
+            .enumerate()
+            .filter(|(_, def)| def.parent == Some(class.def) && def.name == "constructor")
+            .map(|(index, _)| index);
+        let first = candidates.next()?;
+        let index = std::iter::once(first)
+            .chain(candidates)
+            .find(|&index| defs.nodes[index].is_some_and(|node| node.body().is_some()))
+            .unwrap_or(first);
         Some(Func {
             file: class.file,
             def: index,
@@ -579,8 +588,8 @@ fn own_span(text: &str, node: P<Node>) -> Span {
 /// The plain calls in one def's body, as the callee expression's span of each. It follows `tsrs_ls`'s `CallSiteCollector` (`callhierarchy.rs`, `collect`),
 /// the same node kinds and the same places where it does not descend, with the plan's differences: it stops at any nested node that is a def of the
 /// **outline** (`def_of`), not at what tsrs's call hierarchy calls a declaration, so an anonymous function is part of the def around it and a named one is
-/// not; and a class's static block and property initializers are the class's own body. Only plain calls are sites so far (`f(x)`, `a.b(x)`, `a?.b(x)`,
-/// `super(x)`): `new`, a tagged template, a decorator, a JSX element and an accessor are TS4 steps 5 and 6.
+/// not; and a class's static block and property initializers are the class's own body. Only calls and constructions are sites so far (`f(x)`, `a.b(x)`,
+/// `a?.b(x)`, `super(x)`, `new C(x)`): a tagged template, a decorator, a JSX element and an accessor are TS4 step 6.
 struct Collector<'a> {
     text: &'a str,
     def_of: &'a HashMap<P<Node>, usize>,
@@ -589,7 +598,7 @@ struct Collector<'a> {
     sites: Vec<CallNode>,
 }
 
-/// A plain call found in a body: the span of its callee expression (absolute, in the file) and the call node. Kept privately by `Sem`, per def, so
+/// A call or a `new` found in a body: the span of its callee (or class) expression (absolute, in the file) and the call node. Kept privately by `Sem`, per def, so
 /// that `callee` can ask the checker about a site given only its index: the index is plain data, the node never leaves `sem.rs`.
 #[derive(Clone, Copy)]
 struct CallNode {
@@ -655,6 +664,13 @@ impl Collector<'_> {
                 return;
             }
             Kind::NewExpression => {
+                // a construction is a site on the class expression, as a call is one on the callee
+                if let Some(class) = node.expression() {
+                    self.sites.push(CallNode {
+                        span: own_span(self.text, class),
+                        call: node,
+                    });
+                }
                 self.collect(node.expression());
                 for &argument in node.arguments() {
                     self.collect(Some(argument));
@@ -930,6 +946,7 @@ fn without_verbatim_prefix(path: &str) -> String {
 /// expression, a declaration that is itself callable, else the declaration of the symbol the checker finds there, once.
 mod resolve {
     use analyzer_core::graph::{DefInfo, StableDef};
+    use analyzer_core::outline::DefKind;
     use tsrs_ast::{Symbol, SymbolFlags};
     use tsrs_checker::{Checker, TypeFlags};
     use tsrs_compiler::Context;
@@ -945,6 +962,20 @@ mod resolve {
         External { package: String, name: String },
         /// The engine gives no declaration to enter.
         Unknown(Why),
+    }
+
+    /// What runs when a class is constructed: the first constructor up its chain of base classes, since a class with none uses its base's.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub(crate) enum Init<'p> {
+        /// The constructor to enter: the class's own, or the nearest base class's in project code.
+        Enter(Func<'p>),
+        /// No class on the chain declares one: there is nothing to enter.
+        Nothing,
+        /// The chain reaches a base class outside project code (a package's, a library's): its constructor is never entered, and the class is not
+        /// the project's to look into.
+        External,
+        /// The chain reaches a base the checker cannot name as a class (`extends mixin(Base)`, a value of type `any`): we do not know.
+        Unknown,
     }
 
     /// Why a site has no target. Each is counted apart in `Stats.language` (D16, rule 8), so a missing edge can be explained from a number.
@@ -1021,7 +1052,7 @@ mod resolve {
                 declarations = declarations_of_signature(&mut checker, call.call);
             }
             if declarations.is_empty() {
-                if let Some(external) = self.external_value_holder(&mut checker, callee) {
+                if let Some(external) = self.external_declarations(&mut checker, callee) {
                     return external;
                 }
                 return vec![Resolved::Unknown(why_unknown(&mut checker, callee))];
@@ -1077,24 +1108,30 @@ mod resolve {
             }
         }
 
-        /// A callee declared as a holder of a value (`export declare const useThing: () => number`, a property of function type in a package) **outside**
-        /// project code is a named call into that package, as a function declaration there would be: an `External`, not one of D16's function-typed
-        /// values, which are the ones declared in the project. `None` when it is not a value holder, or any declaration is the project's.
-        fn external_value_holder(
+        /// A callee whose every declaration is **outside** project code, when the engine's hierarchy has no body to enter: a named call into that package
+        /// or library, an `External`. It is a holder of a value in a package (`export declare const useThing: () => number`, a property of function type:
+        /// not one of D16's function-typed values, which are the ones declared in the project), and it is a library global declared as an interface and a
+        /// `var`, which has no body either: `new Map()`, `String(x)`, `Date()`. `None` when any declaration is the project's, so a project's own holder
+        /// stays D16's.
+        fn external_declarations(
             &self,
             checker: &mut Checker,
             callee: P<Node>,
         ) -> Option<Vec<Resolved<'_>>> {
+            // `super(…)` names the base class's constructor: the checker's symbol for the keyword is the constructor's *type* (`ErrorConstructor`), and
+            // the same class must not have two names (`new Error()` is `Error`), so the base is read from the `extends` expression, as `init_of` does
+            let callee = if callee.kind() == Kind::SuperKeyword {
+                let class = ast::find_ancestor(Some(callee), ast::is_class_like)?;
+                ast::get_class_extends_heritage_element(class)?.expression()?
+            } else {
+                callee
+            };
             let mut symbol = checker.get_symbol_at_location_exported(callee)?;
             if symbol.flags().intersects(SymbolFlags::Alias) {
                 symbol = checker.get_aliased_symbol(symbol);
             }
             let declarations = symbol.declarations().to_vec();
-            if declarations.is_empty()
-                || !declarations
-                    .iter()
-                    .all(|declaration| is_value_holder_declaration(*declaration))
-            {
+            if declarations.is_empty() {
                 return None;
             }
             let mut found: Vec<Resolved<'_>> = Vec::new();
@@ -1182,6 +1219,68 @@ mod resolve {
                         source_file.file_name()
                     );
                     Resolved::Unknown(Why::NotInOutline)
+                }
+            }
+        }
+
+        /// What constructing `class` runs: its own constructor, or the one it inherits. `Nothing` is an answer (no class up the chain declares one);
+        /// `External` and `Unknown` are limits, and the caller counts them (rule 8) so that "no constructor to enter" is never read as "no constructor".
+        pub(crate) fn init_of<'p>(&'p self, class: Func<'p>, style: MarkerStyle<'_>) -> Init<'p> {
+            let mut class = class;
+            let mut seen = vec![class];
+            loop {
+                if let Some(constructor) = self.constructor_of(class, style) {
+                    return Init::Enter(constructor);
+                }
+                let Some(defs) = self.file_defs(class.file, style) else {
+                    return Init::Unknown;
+                };
+                let Some(node) = defs.nodes[class.def] else {
+                    return Init::Unknown;
+                };
+                let Some(heritage) = ast::get_class_extends_heritage_element(node) else {
+                    return Init::Nothing;
+                };
+                let Some(base) = heritage.expression() else {
+                    return Init::Unknown;
+                };
+                let _scope = self._region.enter();
+                let mut checker = self.program.get_type_checker(&Context::default());
+                let mut resolved: Vec<Resolved<'_>> = Vec::new();
+                let mut declarations = declarations_of(&mut checker, base);
+                if declarations.is_empty() {
+                    // a library's class (`Error`) is an interface and a `var`: the same fallback as a `new` of it
+                    if let Some(external) = self.external_declarations(&mut checker, base) {
+                        resolved = external;
+                    }
+                } else {
+                    declarations.dedup();
+                    for declaration in declarations {
+                        let found = self.classify(&mut checker, declaration, style);
+                        if !resolved.contains(&found) {
+                            resolved.push(found);
+                        }
+                    }
+                }
+                match resolved.as_slice() {
+                    [Resolved::Def(base_class)]
+                        if self.def(*base_class, style).kind == DefKind::Class =>
+                    {
+                        // a class that extends itself is an error in the program, not a loop here
+                        if seen.contains(base_class) {
+                            return Init::Unknown;
+                        }
+                        seen.push(*base_class);
+                        class = *base_class;
+                    }
+                    [_, ..]
+                        if resolved
+                            .iter()
+                            .all(|r| matches!(r, Resolved::External { .. })) =>
+                    {
+                        return Init::External;
+                    }
+                    _ => return Init::Unknown,
                 }
             }
         }
@@ -1647,7 +1746,7 @@ mod resolve {
     }
 }
 
-pub(crate) use resolve::Resolved;
+pub(crate) use resolve::{Init, Resolved};
 
 #[cfg(test)]
 mod tests {
@@ -2015,8 +2114,8 @@ mod tests {
         expect("nested", &["f"]);
         expect("nested.<locals>.inner", &["g"]);
         expect("nested.<locals>.arrow", &["a.b"]);
-        // `new`, a tagged template, `import()`, `require()` and a property read are not plain calls (steps 5 and 6, or never)
-        assert_eq!(found.get("not_sites"), None);
+        // `new Base()` is a site since step 5, on the class expression. A tagged template and a property read are step 6's, `import()` and `require()` are never
+        expect("not_sites", &["Base"]);
         // a class: `extends`, a property initializer, a static property, a static block and a decorator are its body; its methods are not
         expect("Widget", &["mixin", "f", "g", "a.init", "dec"]);
         expect("Widget.method", &["f"]);
@@ -2049,6 +2148,7 @@ mod tests {
             "nested",
             "nested.<locals>.inner",
             "nested.<locals>.arrow",
+            "not_sites",
             "Widget",
             "Widget.method",
             "Widget.value",

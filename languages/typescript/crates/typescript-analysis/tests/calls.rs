@@ -52,8 +52,8 @@ fn the_shared_scenarios_in_typescript_give_their_trees() {
         scenarios: "../../../../scenarios",
         graph: scenario_graph,
     };
-    // straight-line, recursion-direct and method-on-class; the others are not written in TypeScript yet (steps 5 and later)
-    assert_eq!(run(&subject, Level::Default), 3);
+    // every scenario that has a TypeScript program: straight-line, recursion-direct, method-on-class, external-call, construct-marked-class; `two-callers` is not written in TypeScript yet
+    assert_eq!(run(&subject, Level::Default), 5);
 }
 
 #[test]
@@ -276,4 +276,171 @@ fn merged_turns_two_sibling_calls_of_one_function_into_one_node_with_call_count_
     assert_eq!(merged.children[0].target_qname, "plain");
     // "the calls joined into this node, less one"
     assert_eq!(merged.children[0].call_count, 1);
+}
+
+/// Every edge of a graph as `from-qname | callee text | what it is`, in the graph's order (edges are sorted: rule 9). The callee text is read from the
+/// file at the site, so a test names what an editor would highlight.
+fn edges_as_text(graph: &Graph, root: &Path) -> Vec<String> {
+    let name = |id: &StableDef| graph.def(id).unwrap().qname.clone();
+    graph
+        .edges
+        .iter()
+        .map(|edge| {
+            let from = graph.def(&edge.from.func).unwrap();
+            let text = std::fs::read_to_string(root.join(&from.file)).unwrap();
+            let callee = &text[(from.range.start + edge.site.start) as usize
+                ..(from.range.start + edge.site.end) as usize];
+            let to = match &edge.to {
+                EdgeTo::Context(id, _) => format!("call {}", name(&id.func)),
+                EdgeTo::Construct { class, init, .. } => match init {
+                    Some(init) => format!("construct {} init {}", name(class), name(&init.func)),
+                    None => format!("construct {} no init", name(class)),
+                },
+                EdgeTo::External(external, _) => {
+                    format!("external {} {}", external.package, external.name)
+                }
+                EdgeTo::Unresolved(reason) => format!("unresolved {}", reason.as_str()),
+                _ => unreachable!("an edge kind this test does not know"),
+            };
+            format!("{} | {callee} | {to}", from.qname)
+        })
+        .collect()
+}
+
+#[test]
+fn construct_each_new_is_a_construction_an_external_or_an_unresolved_edge_that_says_why() {
+    let root = fixture("construct");
+    let graph = graph_of(&root, "src/main.ts", "build");
+    check_invariants(&graph);
+    let found = edges_as_text(&graph, &root);
+    let build = |site: &str, to: &str| format!("build | {site} | {to}");
+    let expected = [
+        build("Renamed", "construct Report init Report.constructor"),
+        build("Plain", "construct Plain no init"),
+        build("Plain", "construct Plain no init"),
+        // no constructor of its own: the base class's, one level up and two levels up
+        build("Child", "construct Child init Parent.constructor"),
+        build("Grandchild", "construct Grandchild init Parent.constructor"),
+        build("Own", "construct Own init Own.constructor"),
+        // the base is outside the project (a package's class, a library's), or is not a class the checker can name: there is no constructor to enter, and
+        // the graph says it has none because it could not look (counted below), not because there is none
+        build("FromPackage", "construct FromPackage no init"),
+        build("MyError", "construct MyError no init"),
+        // an own constructor with an external base: the construction has its init, and the base's constructor is an external edge from the `super()` site
+        build(
+            "WithSuper",
+            "construct WithSuper init WithSuper.constructor",
+        ),
+        build(
+            "PackageWithSuper",
+            "construct PackageWithSuper init PackageWithSuper.constructor",
+        ),
+        build("Mixed", "construct Mixed no init"),
+        // overloads: the implementation
+        build(
+            "Overloaded",
+            "construct Overloaded init Overloaded.constructor",
+        ),
+        build("Generic", "construct Generic init Generic.constructor"),
+        build(
+            "Anonymous",
+            "construct Anonymous init Anonymous.constructor",
+        ),
+        build("classes.Report", "construct Report init Report.constructor"),
+        // a class outside the project is an external edge, never a construction (the graph's `defs` table is for classes of the project)
+        build("Map", "external typescript:lib Map"),
+        build("Boxed", "external pkg Boxed"),
+        build("Declared", "external src/types.d.ts Declared"),
+        // a class held by a value, as a callback parameter is held (D16)
+        build("Ctor", "unresolved function_typed_value"),
+        build("Kind", "unresolved function_typed_value"),
+        build("(pick())", "unresolved no_declaration"),
+        // a `declare function` of the project is a def with no body: a leaf, as an interface method is
+        build("pick", "call pick"),
+        build("(class {})", "unresolved no_declaration"),
+        build("(Legacy as any)", "unresolved any_or_untyped"),
+        // a constructor function is a function: it is entered as a call
+        build("Legacy", "call Legacy"),
+        "Own.constructor | super | construct Parent init Parent.constructor".to_owned(),
+        "WithSuper.constructor | super | external typescript:lib Error".to_owned(),
+        "PackageWithSuper.constructor | super | external pkg Base".to_owned(),
+        "Legacy | prepare | call prepare".to_owned(),
+    ];
+    // Sorted by the graph, so compare as sets of the same lines and then check the lines of `build` in source order
+    let mut found_sorted = found.clone();
+    found_sorted.sort();
+    let mut expected_sorted: Vec<String> = expected.iter().map(|line| line.to_owned()).collect();
+    expected_sorted.extend(
+        [
+            "Anonymous.constructor | prepare | call prepare",
+            "Generic.constructor | prepare | call prepare",
+            "Overloaded.constructor | prepare | call prepare",
+            "Parent.constructor | prepare | call prepare",
+            "Report.constructor | prepare | call prepare",
+        ]
+        .map(str::to_owned),
+    );
+    expected_sorted.sort();
+    assert_eq!(found_sorted, expected_sorted);
+    let in_build: Vec<&String> = found.iter().filter(|l| l.starts_with("build |")).collect();
+    let expected_build: Vec<&String> = expected
+        .iter()
+        .filter(|l| l.starts_with("build |"))
+        .collect();
+    assert_eq!(in_build, expected_build);
+}
+
+#[test]
+fn construct_a_construction_that_cannot_enter_an_inherited_constructor_is_counted() {
+    let graph = graph_of(&fixture("construct"), "src/main.ts", "build");
+    // `FromPackage` and `MyError` extend a class outside the project; `Mixed` extends something the checker cannot name. The count is the evidence
+    // that `no init` is a limit and not an answer.
+    assert_eq!(
+        graph.stats.language.get("inherited_constructor_external"),
+        Some(&2)
+    );
+    assert_eq!(
+        graph.stats.language.get("inherited_constructor_unknown"),
+        Some(&1)
+    );
+    assert_eq!(breakdown(&graph).notes.len(), 2);
+    // and `Plain`, `Child`, `Own` did not add to either: a class with no base, or a base we entered, is complete
+    assert!(
+        breakdown(&graph)
+            .notes
+            .keys()
+            .all(|key| key.starts_with("inherited_constructor_"))
+    );
+}
+
+#[test]
+fn construct_a_library_global_called_as_a_function_is_an_external_edge_not_an_unknown_one() {
+    // `String(x)` has no declaration with a body: the library declares `String` as an interface and a `var`. It is a call into the library, and
+    // `no_declaration` would say the engine could not tell. Found on the V-NOC frontend (`applyOps`: 4 of its 4 unresolved edges).
+    let root = fixture("construct");
+    let graph = graph_of(&root, "src/main.ts", "convert");
+    check_invariants(&graph);
+    assert_eq!(
+        edges_as_text(&graph, &root),
+        [
+            "convert | String | external typescript:lib String",
+            "convert | Number | external typescript:lib Number",
+            "convert | Boolean | external typescript:lib Boolean",
+            "convert | Date | external typescript:lib Date",
+            "convert | Intl.DateTimeFormat | external typescript:lib Intl.DateTimeFormat",
+        ]
+    );
+    assert_eq!(graph.stats.unresolved, 0);
+}
+
+#[test]
+fn construct_a_counter_that_is_not_about_constructions_does_not_print_under_their_heading() {
+    let mut graph = graph_of(&fixture("construct"), "src/main.ts", "build");
+    graph
+        .stats
+        .language
+        .insert("some_later_counter".to_owned(), 7);
+    let summary = breakdown(&graph);
+    assert!(!summary.notes.contains_key("some_later_counter"));
+    assert!(!summary.to_string().contains("some_later_counter"));
 }

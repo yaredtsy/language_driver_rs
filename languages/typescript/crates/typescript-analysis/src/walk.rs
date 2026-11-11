@@ -9,11 +9,17 @@ use typescript_syntax::MarkerStyle;
 
 use crate::calls::TypeScript;
 use crate::env::Env;
-use crate::sem::{Func, Resolved, Sem};
+use crate::sem::{Func, Init, Resolved, Sem};
 
 /// The reason of an `Unresolved` edge, and the key of its counter in `Stats.language`, for a def whose node is missing from the program's tree: a bug
 /// in one of the two parses, which must show on the graph and not as a body with no calls.
 const DEF_WITHOUT_NODE: &str = "def_without_node";
+
+/// The keys of the counters, in `Stats.language`, for a construction whose `init` is none **because the chain of base classes could not be followed**
+/// and not because no class on it has a constructor. They are not reasons of an `Unresolved` edge (the construction is known, and so is its class), so
+/// they are counted apart and `Breakdown` lists them as notes.
+pub(crate) const INHERITED_EXTERNAL: &str = "inherited_constructor_external";
+pub(crate) const INHERITED_UNKNOWN: &str = "inherited_constructor_unknown";
 
 /// Read `f`'s body once: its sites, each with its targets. The solver does the recursion.
 pub(crate) fn body<'p>(
@@ -52,7 +58,7 @@ fn resolve<'p>(
         lang.sem
             .callee(f, site_index, lang.style)
             .into_iter()
-            .map(|resolved| target(lang.sem, lang.style, resolved))
+            .map(|resolved| target(lang, resolved))
             .collect()
     })
 }
@@ -68,18 +74,27 @@ fn resolve_from_env<'p>(
 }
 
 /// What the engine said one declaration of a site is, in the solver's terms.
-fn target<'p>(
-    sem: &'p Sem,
-    style: MarkerStyle<'_>,
-    resolved: Resolved<'p>,
-) -> Target<TypeScript<'p>> {
+fn target<'p>(lang: &TypeScript<'p>, resolved: Resolved<'p>) -> Target<TypeScript<'p>> {
     match resolved {
-        // A class reached by a call (`super(x)` names the base class) has nothing to walk as a body: it is a construction, and its `init` is its own
-        // constructor when it declares one. An inherited constructor is the base class's: that needs `new`'s resolution (step 5).
-        Resolved::Def(def) if sem.def(def, style).kind == DefKind::Class => Target::Construct {
-            class: def,
-            init: sem.constructor_of(def, style).map(|init| (init, ())),
-        },
+        // A class reached by `new` (or by `super(x)`, which names the base class) has nothing to walk as a body: it is a construction, and its `init` is
+        // the constructor that runs, its own or the one it inherits. A function reached by `new` is a function: its body is the constructor, so it is a
+        // call.
+        Resolved::Def(def) if lang.sem.def(def, lang.style).kind == DefKind::Class => {
+            let init = match lang.sem.init_of(def, lang.style) {
+                Init::Enter(init) => Some((init, ())),
+                Init::Nothing => None,
+                // no constructor to enter, and it is a limit rather than an answer: say so on the graph (rule 8)
+                Init::External => {
+                    lang.note(INHERITED_EXTERNAL);
+                    None
+                }
+                Init::Unknown => {
+                    lang.note(INHERITED_UNKNOWN);
+                    None
+                }
+            };
+            Target::Construct { class: def, init }
+        }
         Resolved::Def(def) => Target::Call(def, ()),
         Resolved::External { package, name } => Target::External(External { package, name }),
         Resolved::Unknown(why) => Target::Unresolved(Reason::new(why.counter())),

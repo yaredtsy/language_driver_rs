@@ -1,5 +1,5 @@
 breakdown:
-  edges: 24 call, 0 construct, 4 external, 4 unresolved
+  edges: 24 call, 1 construct, 4 external, 4 unresolved
   unresolved by reason:
     any_or_untyped: 2
     computed_name: 1
