@@ -70,6 +70,10 @@ Toolchain: 1.99.1 (`rust-toolchain.toml`). Run `cargo fmt` and `cargo clippy -p 
 - In phase 1, calls inside an anonymous function belong to the enclosing def.
 - Order: bootstrap (B0) → Python syntax (PY1–PY4) → TypeScript (TS0 spikes first) → the rest. See `docs/06-roadmap.md`.
 - Drivers stay in `vnoc`. Tags are per language (`typescript-v0.1.0`); `core/` is never tagged.
+- **The wire tree is the output that is used; the graph is how it is computed.** Every analyzer has a public wire view of its graph
+  (`graph → render → Node → wire`), merged on request (`call_count`). The id prefixes are parameters (`WireStyle`), like the marker
+  label, so rule 1 holds. Never remove or reduce the wire or the merge when moving code (D17, `docs/05-python-migration/04-the-wire.md`).
+- **A call through a function-typed value is `Unresolved`**, counted in `Stats.language["function_typed_value"]`; no new edge kind (D16).
 
 ## How to work here
 
