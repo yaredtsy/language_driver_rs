@@ -2,8 +2,8 @@
 //!
 //! A `Sem` is one loaded program: the tsconfig that owns a file, every file it pulls in, parsed and bound. It follows `tsrs_lint`'s
 //! `engine.rs` (`create_program`) and the memory pattern measured in S-TS3 (`ENGINE.md`): build inside one region, give the loaders
-//! a region set. Freeing the program itself (`free_unshared_program`, an `unsafe fn`) is TS3 step 5; until then dropping a `Sem` drops
-//! its region, which returns what was allocated in it.
+//! a region set, and free the program on drop with that region entered. The region alone is not enough: the `Program` and its processed
+//! files are `Box::leak`ed on the heap, outside it (60 opens grew RSS to 349 MB without the free, 24 MB with it: `tests/memory.rs`).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -36,9 +36,9 @@ impl ParseConfigHost for ConfigHost {
 
 pub(crate) struct Sem {
     root: PathBuf,
-    /// The program lives in `_region`. A `P<…>` taken from it must not outlive `self`.
+    /// The program is freed by `Drop`. A `P<…>` taken from it must not outlive `self`.
     program: &'static Program,
-    // Fields drop in this order: the loaders' regions, then the program's own.
+    // Fields drop in this order, after `Drop::drop` has freed the program: the loaders' regions, then the program's own.
     _loaders: Arc<ProgramRegions>,
     _region: Region,
 }
@@ -148,6 +148,17 @@ impl Sem {
             .collect();
         files.sort();
         files
+    }
+}
+
+impl Drop for Sem {
+    /// The only `unsafe` in the workspace: tsrs's contract for freeing a program (`tsrs_lint` does the same in `ProgramOwner::drop`).
+    #[allow(unsafe_code)]
+    fn drop(&mut self) {
+        let _scope = self._region.enter();
+        // SAFETY: `open` made this program and shared nothing of it with another (no `update_program`); `Sem` holds no checker handle and
+        // hands none out, and nothing reads `self.program` after this.
+        unsafe { tsrs_compiler::free_unshared_program(self.program) };
     }
 }
 

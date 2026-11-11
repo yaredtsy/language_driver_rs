@@ -26,7 +26,8 @@ typescript-analysis = { path = "crates/typescript-analysis" }
 
 [workspace.lints.rust]
 unreachable_pub = "warn"
-unsafe_code = "forbid"
+# deny, not forbid: `sem.rs` has one `#[allow(unsafe_code)]`, on the `Drop` that calls tsrs's `unsafe fn free_unshared_program` (ENGINE.md, S-TS3)
+unsafe_code = "deny"
 
 [workspace.lints.clippy]
 dbg_macro = "deny"

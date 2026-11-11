@@ -256,3 +256,37 @@ This is what the plan expected: JavaScript resolves less, and `Unresolved` says 
 - Whether a call through a `FunctionType` is `Unresolved` or a distinct edge is a decision for the owner before TS4 (it bends "follow the engine").
 - Not tried: object-literal methods, JSX elements, accessors, tagged templates, decorators as call sites; a class without a constructor; a project with project references; Linux and Windows.
 - The resolve time includes the checker's lazy work for the visited files only, so the cost of the **first** query in a fresh program is in the 57 ms; a second query is cheaper.
+
+## TS3: what `sem.rs` found when it loaded programs
+
+Measured and read on 2026-11-11, macOS, `typescript-analysis` at the pin above.
+
+### Freeing a program: the region alone is not enough
+
+`tests/memory.rs` opens and drops a three-file project 100 times (RSS by `memory-stats`, peak over rounds 11–100 against round 10).
+
+| `Sem::drop` | RSS at round 1 | round 10 | round 60 |
+|---|---|---|---|
+| region only, no `free_unshared_program` | 20 MB | 115 MB | 349 MB (the 100-round test: 115 → 440 MB) |
+| region entered, then `free_unshared_program` | 12 MB | 19 MB | 24 MB |
+
+Why, from the source (`tsrs_compiler/src/program.rs`): `new_program` does `Box::leak(Box::new(program))`, and the file loader leaks the processed files, the
+project-reference mapper and the resolution hosts the same way. They sit on the **global heap**, so a region does not hold them. `free_program` drops the
+`Program` and its resolution host, and dropping the `Program` drops its checker pool, which frees the leaked slice of checkers (`PoolState::drop`);
+`free_unshared_program` also frees the processed files and the mapper (`SharedProgramData::free`). None of the `Drop` impls in `tsrs_compiler` closes a
+file or stops a thread (read: `grep "impl.*Drop for"`), so the cost of skipping the call is memory. Which of those boxes holds most of the 5 MB per
+open was not measured.
+
+So the plan (`docs/03-typescript/05-ts3-project.md` §4) was right that `Drop` frees the program, and the lint was in its way: `free_unshared_program` is an
+`unsafe fn`, `unsafe_code = "forbid"` cannot be lifted locally. The TypeScript workspace is `deny`, with one `#[allow(unsafe_code)]` on `Sem::drop`
+(`scripts/check-all.sh` fails on that attribute anywhere but a `sem.rs`). tsrs has no safe wrapper; its own users (`tsrs_lint`, `tsrs_execute`,
+`tsrs_project`, `tsrs_api`) call the `unsafe fn` the same way. The call is made with the program's region entered, as in S-TS3.
+
+### Loading a tsconfig
+
+- A `tsconfig.json` with a **syntax error still parses**: `get_parsed_command_line_of_config_file` returns no diagnostics for it. Its errors live on
+  `config.config_file.source_file.diagnostics()`, which `tsrs_lint`'s `find_tsconfig` also checks. `Sem::open` reports both as `OpenError::ConfigError`.
+- The upward search for `tsconfig.json` (then `jsconfig.json`, per directory) **stops at the root** the caller gave. `tsrs_lint`'s `find_tsconfig` goes to the
+  filesystem root; ours must not pick up a stray config outside the repository, and `files()` is relative to the root.
+- A program loaded from a tsconfig that does not include the file has no source file for it. `open` says so (`ConfigError`) rather than answering for a
+  file the program does not hold. A solution config (`"files": []` plus `references`) is TS3 step 6.

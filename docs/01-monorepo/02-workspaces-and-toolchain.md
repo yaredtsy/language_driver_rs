@@ -154,12 +154,17 @@ The block is short on purpose:
 ```toml
 [workspace.lints.rust]
 unreachable_pub = "warn"          # `pub` means "part of the public API", nothing else (PA plan, step 2)
-unsafe_code = "forbid"            # our code has no reason to be unsafe; the engines are a different matter
+unsafe_code = "forbid"            # our code has no reason to be unsafe; the engines are a different matter (see below)
 
 [workspace.lints.clippy]
 dbg_macro = "deny"
 todo = "deny"
 ```
+
+A language whose engine's API makes us call an `unsafe fn` sets `unsafe_code = "deny"` instead, and puts one `#[allow(unsafe_code)]` on the
+function that does, **in `sem.rs`** (`forbid` cannot be lifted locally, `deny` can). TypeScript does: `Sem::drop` calls tsrs's
+`free_unshared_program`, which `languages/typescript/ENGINE.md` (S-TS3) shows is needed (60 opens: 349 MB without it, 24 MB with it).
+`scripts/check-all.sh` accepts `forbid` or `deny`, and fails on an `allow(unsafe_code)` anywhere but a `sem.rs`.
 
 Do not copy tsrs's lint list. It is tuned for a mechanical port of a Go compiler with its own arenas; most of it would be noise here.
 

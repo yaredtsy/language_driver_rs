@@ -37,12 +37,16 @@ none "a personal path (rule 6)" \
 none "fs::write or uuid in a library (rule 2)" \
   "$(rs -E 'fs::write|uuid' core/analyzer-core/src "${crates[@]}" | grep -v -- '-cli/' || true)"
 
-# one lint style: every language's [workspace.lints] block equals the template's
-lints() { awk '/^\[workspace\.lints/{p=1} /^\[profile/{p=0} p' "$1"; }
+# one lint style: every language's [workspace.lints] block equals the template's, except the value of unsafe_code and comments
+lints() { awk '/^\[workspace\.lints/{p=1} /^\[profile/{p=0} p' "$1" | grep -v -e '^#' -e '^unsafe_code'; }
 for f in languages/*/Cargo.toml; do
   [ "$f" = languages/_template/Cargo.toml ] && continue
   [ "$(lints "$f")" = "$(lints languages/_template/Cargo.toml)" ] || bad "$f: [workspace.lints] differs from the template's"
+  # `deny` (not `forbid`) is the one allowed difference: it lets sem.rs, and only sem.rs, say #[allow(unsafe_code)]
+  grep -qE '^unsafe_code = "(forbid|deny)"' "$f" || bad "$f: unsafe_code must be \"forbid\" or \"deny\""
 done
+none "unsafe_code is allowed outside sem.rs (rule 4)" \
+  "$(rs_files -E 'allow\(unsafe_code\)' core "${crates[@]}" | grep -v '/sem\.rs$' || true)"
 
 # there is no Cargo.toml at the root, on purpose
 [ ! -e Cargo.toml ] || bad "a Cargo.toml at the repo root (ruff and rust-analyzer pin different salsa)"
