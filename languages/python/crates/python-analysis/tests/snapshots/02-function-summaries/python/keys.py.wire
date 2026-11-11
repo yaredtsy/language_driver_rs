@@ -1,0 +1,37 @@
+== main
+keys.main
+  keys.same_twice @44:5
+    keys.run @23:5
+      keys.a @15:5
+    keys.run @24:5
+      keys.a @15:5
+  keys.different @45:5
+    keys.run @28:5
+      keys.a @15:5
+    keys.run @29:5
+      keys.b @15:5
+  keys.literals @46:5
+    keys.note @33:5
+    keys.note @34:5
+    keys.note @35:5
+  keys.either @47:5
+    keys.run @40:5
+      keys.a @15:5
+      keys.b @15:5
+
+== main (merged)
+keys.main
+  keys.same_twice @44:5
+    keys.run x2 @23:5
+      keys.a x2 @15:5
+  keys.different @45:5
+    keys.run x2 @28:5
+      keys.a @15:5
+      keys.b @15:5
+  keys.literals @46:5
+    keys.note x3 @33:5
+  keys.either @47:5
+    keys.run @40:5
+      keys.a @15:5
+      keys.b @15:5
+

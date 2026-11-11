@@ -1,0 +1,32 @@
+== main
+construct.main
+  construct.Plain @47:5
+  construct.Pipeline @48:5
+    construct.setup @20:9
+  construct.Wrapper @49:5
+    construct.log @25:9
+  construct.Pipeline @49:13
+    construct.setup @20:9
+  construct.Child @50:5
+    construct.log @30:9
+  construct.make @51:5
+    construct.Pipeline @43:12
+      construct.setup @20:9
+  construct.Tree @52:5
+    construct.Tree [recursive] @39:9
+
+== main (merged)
+construct.main
+  construct.Plain @47:5
+  construct.Pipeline x2 @48:5
+    construct.setup x2 @20:9
+  construct.Wrapper @49:5
+    construct.log @25:9
+  construct.Child @50:5
+    construct.log @30:9
+  construct.make @51:5
+    construct.Pipeline @43:12
+      construct.setup @20:9
+  construct.Tree @52:5
+    construct.Tree [recursive] @39:9
+

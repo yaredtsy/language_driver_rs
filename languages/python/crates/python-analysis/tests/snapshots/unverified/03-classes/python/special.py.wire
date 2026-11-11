@@ -1,0 +1,41 @@
+# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
+# This pins what it says today so a change is noticed; it is not a right answer.
+
+== main
+special.main
+  special.Registry.make @47:5
+    special.on_ok @27:9
+  special.Registry.create @48:9
+    special.Registry @31:16
+  special.JsonHandler @48:25
+
+== main (merged)
+special.main
+  special.Registry.make @47:5
+    special.on_ok @27:9
+  special.Registry.create @48:9
+    special.Registry @31:16
+  special.JsonHandler @48:25
+
+== swap
+special.swap
+  special.Box @69:9
+  special.JsonHandler @69:13
+  special.CsvHandler @70:17
+
+== swap (merged)
+special.swap
+  special.Box @69:9
+  special.JsonHandler @69:13
+  special.CsvHandler @70:17
+
+== lazy
+special.lazy
+  special.Lazy @84:5
+  special.JsonHandler @84:10
+
+== lazy (merged)
+special.lazy
+  special.Lazy @84:5
+  special.JsonHandler @84:10
+

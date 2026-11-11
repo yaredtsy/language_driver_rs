@@ -1,0 +1,97 @@
+# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
+# This pins what it says today so a change is noticed; it is not a right answer.
+
+== two_alive
+isolation.two_alive
+  isolation.Pipeline @59:9
+  isolation.JsonHandler @59:18
+  isolation.Pipeline @60:9
+  isolation.CsvHandler @60:18
+  isolation.Pipeline.run @61:5
+  isolation.Pipeline.run @62:5
+
+== two_alive (merged)
+isolation.two_alive
+  isolation.Pipeline x2 @59:9
+  isolation.JsonHandler @59:18
+  isolation.CsvHandler @60:18
+  isolation.Pipeline.run x2 @61:5
+
+== one_site
+isolation.one_site
+  isolation.make @70:9
+    isolation.Pipeline @66:12
+  isolation.JsonHandler @70:14
+  isolation.make @71:9
+    isolation.Pipeline @66:12
+  isolation.CsvHandler @71:14
+
+== one_site (merged)
+isolation.one_site
+  isolation.make x2 @70:9
+    isolation.Pipeline x2 @66:12
+  isolation.JsonHandler @70:14
+  isolation.CsvHandler @71:14
+
+== opaque
+isolation.opaque
+  isolation.FileHandler @77:21
+  isolation.Logger.emit @78:5
+
+== opaque (merged)
+isolation.opaque
+  isolation.FileHandler @77:21
+  isolation.Logger.emit @78:5
+
+== global_write
+isolation.global_write
+  isolation.FileHandler @82:21
+  isolation.Logger.emit @83:5
+
+== global_write (merged)
+isolation.global_write
+  isolation.FileHandler @82:21
+  isolation.Logger.emit @83:5
+
+== global_method
+isolation.global_method
+  isolation.Greeter.greet @87:5
+    isolation.on_ok @40:9
+
+== global_method (merged)
+isolation.global_method
+  isolation.Greeter.greet @87:5
+    isolation.on_ok @40:9
+
+== maybe_opaque
+isolation.maybe_opaque
+  isolation.Pipeline @91:9
+  isolation.JsonHandler @91:18
+  isolation.CsvHandler @96:17
+  isolation.Pipeline.run @97:5
+    isolation.CsvHandler.process @30:9
+
+== maybe_opaque (merged)
+isolation.maybe_opaque
+  isolation.Pipeline @91:9
+  isolation.JsonHandler @91:18
+  isolation.CsvHandler @96:17
+  isolation.Pipeline.run @97:5
+    isolation.CsvHandler.process @30:9
+
+== subclass_of
+isolation.subclass_of
+  isolation.Logger @101:5
+
+== subclass_of (merged)
+isolation.subclass_of
+  isolation.Logger @101:5
+
+== via_alias
+isolation.via_alias
+  isolation.JsonHandler.process @105:5
+
+== via_alias (merged)
+isolation.via_alias
+  isolation.JsonHandler.process @105:5
+

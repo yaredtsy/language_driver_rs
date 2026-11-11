@@ -1,0 +1,85 @@
+# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
+# This pins what it says today so a change is noticed; it is not a right answer.
+
+== outside
+writes.outside
+  writes.Pipeline @42:9
+  writes.CsvHandler @42:18
+  writes.JsonHandler @43:17
+  writes.Pipeline.run @44:5
+    writes.JsonHandler.process @21:9
+
+== outside (merged)
+writes.outside
+  writes.Pipeline @42:9
+  writes.CsvHandler @42:18
+  writes.JsonHandler @43:17
+  writes.Pipeline.run @44:5
+    writes.JsonHandler.process @21:9
+
+== in_another_method
+writes.in_another_method
+  writes.Controller @48:9
+  writes.Controller.setup @49:5
+    writes.JsonHandler @26:18
+  writes.Controller.go @50:5
+    writes.JsonHandler.process @29:9
+
+== in_another_method (merged)
+writes.in_another_method
+  writes.Controller @48:9
+  writes.Controller.setup @49:5
+    writes.JsonHandler @26:18
+  writes.Controller.go @50:5
+    writes.JsonHandler.process @29:9
+
+== through_a_function
+writes.through_a_function
+  writes.Pipeline @54:9
+  writes.CsvHandler @54:18
+  writes.install @55:5
+  writes.JsonHandler @55:16
+  writes.Pipeline.run @56:5
+
+== through_a_function (merged)
+writes.through_a_function
+  writes.Pipeline @54:9
+  writes.CsvHandler @54:18
+  writes.install @55:5
+  writes.JsonHandler @55:16
+  writes.Pipeline.run @56:5
+
+== on_one_path
+writes.on_one_path
+  writes.Pipeline @60:9
+  writes.CsvHandler @60:18
+  writes.maybe @61:5
+  writes.JsonHandler @61:14
+  writes.Pipeline.run @62:5
+
+== on_one_path (merged)
+writes.on_one_path
+  writes.Pipeline @60:9
+  writes.CsvHandler @60:18
+  writes.maybe @61:5
+  writes.JsonHandler @61:14
+  writes.Pipeline.run @62:5
+
+== two_candidates
+writes.two_candidates
+  writes.Pipeline @66:9
+  writes.CsvHandler @66:18
+  writes.Pipeline @67:9
+  writes.CsvHandler @67:18
+  writes.JsonHandler @69:17
+  writes.Pipeline.run @70:5
+    writes.JsonHandler.process @21:9
+
+== two_candidates (merged)
+writes.two_candidates
+  writes.Pipeline x2 @66:9
+  writes.CsvHandler x2 @66:18
+  writes.JsonHandler @69:17
+  writes.Pipeline.run @70:5
+    writes.JsonHandler.process @21:9
+

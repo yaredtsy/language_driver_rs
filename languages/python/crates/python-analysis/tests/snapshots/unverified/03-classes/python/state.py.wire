@@ -1,0 +1,52 @@
+# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
+# This pins what it says today so a change is noticed; it is not a right answer.
+
+== main
+state.main
+  state.read_json @33:5
+    state.Pipeline @25:5
+    state.Pipeline.run @25:5
+    state.JsonHandler @25:14
+  state.read_csv @34:5
+    state.Pipeline @29:5
+    state.Pipeline.run @29:5
+    state.CsvHandler @29:14
+
+== main (merged)
+state.main
+  state.read_json @33:5
+    state.Pipeline @25:5
+    state.Pipeline.run @25:5
+    state.JsonHandler @25:14
+  state.read_csv @34:5
+    state.Pipeline @29:5
+    state.Pipeline.run @29:5
+    state.CsvHandler @29:14
+
+== via_factory
+state.via_factory
+  state.make @42:5
+    state.Pipeline @38:12
+  state.JsonHandler @42:10
+
+== via_factory (merged)
+state.via_factory
+  state.make @42:5
+    state.Pipeline @38:12
+  state.JsonHandler @42:10
+
+== either
+state.either
+  state.Pipeline @47:13
+  state.JsonHandler @47:22
+  state.Pipeline @49:13
+  state.CsvHandler @49:22
+  state.Pipeline.run @50:5
+
+== either (merged)
+state.either
+  state.Pipeline x2 @47:13
+  state.JsonHandler @47:22
+  state.CsvHandler @49:22
+  state.Pipeline.run @50:5
+

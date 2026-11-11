@@ -1,0 +1,172 @@
+# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
+# This pins what it says today so a change is noticed; it is not a right answer.
+
+== process
+entries.process
+  entries.Handler.handle @33:5
+
+== process (merged)
+entries.process
+  entries.Handler.handle @33:5
+
+== Svc.run
+entries.Svc.run
+
+== Svc.run (merged)
+entries.Svc.run
+
+== Child.go
+entries.Child.go
+
+== Child.go (merged)
+entries.Child.go
+
+== Job.run
+entries.Job.run
+  entries.A.go @77:9
+  entries.B.go @77:9
+
+== Job.run (merged)
+entries.Job.run
+  entries.A.go @77:9
+  entries.B.go @77:9
+
+== Reg.create
+entries.Reg.create
+
+== Reg.create (merged)
+entries.Reg.create
+
+== Reg.make
+entries.Reg.make
+
+== Reg.make (merged)
+entries.Reg.make
+
+== Box.h
+entries.Box.h
+  entries.JsonHandler.process @99:9
+
+== Box.h (merged)
+entries.Box.h
+  entries.JsonHandler.process @99:9
+
+== outer.inner
+entries.outer.inner
+  entries.A.go @107:9
+  entries.B.go @107:9
+
+== outer.inner (merged)
+entries.outer.inner
+  entries.A.go @107:9
+  entries.B.go @107:9
+
+== Svc.build.step
+entries.Svc.build.step
+
+== Svc.build.step (merged)
+entries.Svc.build.step
+
+== with_param.inner
+entries.with_param.inner
+  entries.Handler.handle @114:9
+
+== with_param.inner (merged)
+entries.with_param.inner
+  entries.Handler.handle @114:9
+
+== with_default.inner
+entries.with_default.inner
+  entries.A.go @121:9
+
+== with_default.inner (merged)
+entries.with_default.inner
+  entries.A.go @121:9
+
+== siblings.inner
+entries.siblings.inner
+  entries.siblings.helper @131:9
+    entries.log @128:9
+
+== siblings.inner (merged)
+entries.siblings.inner
+  entries.siblings.helper @131:9
+    entries.log @128:9
+
+== branches.inner
+entries.branches.inner
+  entries.A.go @141:9
+  entries.B.go @141:9
+
+== branches.inner (merged)
+entries.branches.inner
+  entries.A.go @141:9
+  entries.B.go @141:9
+
+== recursive.walk
+entries.recursive.walk
+  entries.log @146:9
+  entries.recursive.walk [recursive] @147:9
+
+== recursive.walk (merged)
+entries.recursive.walk
+  entries.log @146:9
+  entries.recursive.walk [recursive] @147:9
+
+== a.b.c
+entries.a.b.c
+  entries.A.go @157:13
+  entries.B.go @158:13
+
+== a.b.c (merged)
+entries.a.b.c
+  entries.A.go @157:13
+  entries.B.go @158:13
+
+== make.Local.run
+entries.make.Local.run
+  entries.JsonHandler.process @173:13
+  entries.JsonHandler.process @174:13
+
+== make.Local.run (merged)
+entries.make.Local.run
+  entries.JsonHandler.process x2 @173:13
+
+== Outer.Inner.m
+entries.Outer.Inner.m
+  entries.JsonHandler.process @188:13
+
+== Outer.Inner.m (merged)
+entries.Outer.Inner.m
+  entries.JsonHandler.process @188:13
+
+== Host.meth.Local.m
+entries.Host.meth.Local.m
+  entries.JsonHandler.process @200:17
+
+== Host.meth.Local.m (merged)
+entries.Host.meth.Local.m
+  entries.JsonHandler.process @200:17
+
+== fire
+entries.fire
+  entries.Holder @220:14
+  entries.setup @221:5
+    entries.A @210:9
+    entries.B @216:9
+
+== fire (merged)
+entries.fire
+  entries.Holder @220:14
+  entries.setup @221:5
+    entries.A @210:9
+    entries.B @216:9
+
+== Tree.walk
+entries.Tree.walk
+  entries.log @230:9
+
+== Tree.walk (merged)
+entries.Tree.walk
+  entries.log @230:9
+

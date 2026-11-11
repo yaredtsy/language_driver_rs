@@ -1,0 +1,39 @@
+== main
+methods.main
+  methods.Greeter @37:9
+  methods.Greeter.greet @38:5
+    methods.on_ok @15:9
+  methods.Greeter.greet @39:5
+    methods.on_err @15:9
+  methods.Greeter.twice @40:5
+    methods.Greeter.greet @18:9
+      methods.on_ok @15:9
+    methods.Greeter.greet @19:9
+      methods.on_ok @15:9
+  methods.Loud @41:5
+  methods.Greeter.greet @41:5
+    methods.on_err @15:9
+  methods.Quiet @42:5
+  methods.Quiet.greet @42:5
+  methods.Greeter.greet @44:5
+    methods.on_err @15:9
+  methods.Greeter.make @45:5
+    methods.on_ok @23:9
+    methods.Greeter @24:16
+
+== main (merged)
+methods.main
+  methods.Greeter @37:9
+  methods.Greeter.greet x4 @38:5
+    methods.on_ok @15:9
+    methods.on_err x3 @15:9
+  methods.Greeter.twice @40:5
+    methods.Greeter.greet x2 @18:9
+      methods.on_ok x2 @15:9
+  methods.Loud @41:5
+  methods.Quiet @42:5
+  methods.Quiet.greet @42:5
+  methods.Greeter.make @45:5
+    methods.on_ok @23:9
+    methods.Greeter @24:16
+

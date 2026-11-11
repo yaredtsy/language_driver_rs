@@ -322,7 +322,7 @@ fn p01_13_wall() {
 
 #[test]
 fn p02_01_keys() {
-    check("02-function-summaries/python/keys.py");
+    check_both("02-function-summaries/python/keys.py");
     let stats = stats_for(
         "02-function-summaries/python/keys.py",
         "main",
@@ -467,12 +467,12 @@ fn p02_08_cuts() {
 
 #[test]
 fn p03_01_construct() {
-    check("03-classes/python/construct.py"); // inline mode only, until part 04
+    check_both("03-classes/python/construct.py");
 }
 
 #[test]
 fn p03_02_methods() {
-    check("03-classes/python/methods.py");
+    check_both("03-classes/python/methods.py");
 }
 #[test]
 fn p03_03_state() {
@@ -1002,19 +1002,20 @@ fn wire_text(frame: &crate::wire::Frame) -> String {
     out
 }
 
-/// The wire of every `# expect:` entry of every fixture a test runs, unmerged and merged, equals its reviewed snapshot. One file per
-/// program, `tests/snapshots/<fixture>.wire`; `ANALYZER_BLESS=1` rewrites them, and the diff is what you review.
+/// The wire of every `# expect:` entry of every fixture a test runs, unmerged and merged, equals its snapshot. One file per program,
+/// `tests/snapshots/<fixture>.wire`; `ANALYZER_BLESS=1` rewrites them, and the diff is what you review.
+///
+/// A program the suite checks in inline mode only (`check`, "until part 04") is one summary mode cannot answer completely yet, and the wire
+/// is made in summary mode. Its snapshot is in `tests/snapshots/unverified/`, headed as such: it detects a change, it does not bless an
+/// answer. Moving a program to `check_both` and re-blessing moves its snapshot out of that folder.
 #[test]
-fn the_wire_of_every_fixture_equals_its_reviewed_snapshot() {
+fn the_wire_of_every_fixture_equals_its_snapshot() {
     use crate::interp::call_frame;
-    let mut by_fixture: Vec<(String, String)> = Vec::new();
-    // A program the suite only checks in inline mode (`check`, "until part 04") is one summary mode cannot answer completely yet, and the wire
-    // is made in summary mode: a snapshot of it would bless an answer nothing verified. Those nine are left out, and say so here.
     let this_file = include_str!("fixture.rs");
+    // (the program, whether summary mode answers it completely, the text)
+    let mut by_fixture: Vec<(String, bool, String)> = Vec::new();
     for (fixture, entry, opts) in every_entry() {
-        if this_file.contains(&format!("check(\"{fixture}\")")) {
-            continue;
-        }
+        let verified = !this_file.contains(&format!("check(\"{fixture}\")"));
         let (db, file) = open_fixture(&fixture);
         let Some((plain, _)) = call_frame(&db, file, &entry, &opts, false) else {
             continue;
@@ -1026,14 +1027,33 @@ fn the_wire_of_every_fixture_equals_its_reviewed_snapshot() {
             wire_text(&merged)
         );
         match by_fixture.last_mut() {
-            Some((name, all)) if *name == fixture => all.push_str(&text),
-            _ => by_fixture.push((fixture, text)),
+            Some((name, _, all)) if *name == fixture => all.push_str(&text),
+            _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 25 programs are verified in both modes; 34 are run at all; 43 have `# expect:` blocks (nine were never run, even at the pin)
-    assert_eq!(by_fixture.len(), 25, "a program was added or lost");
-    for (fixture, text) in by_fixture {
-        let path = std::path::Path::new("tests/snapshots").join(format!("{fixture}.wire"));
+    // 28 programs are verified in both modes and 6 only inline; 34 are run at all; 42 have `# expect:` blocks (eight were never run,
+    // even at the pin: `every_entry` skips them)
+    let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
+    assert_eq!(
+        (verified, by_fixture.len() - verified),
+        (28, 6),
+        "a program was added or lost"
+    );
+    for (fixture, verified, text) in by_fixture {
+        let dir = if verified {
+            "tests/snapshots".to_owned()
+        } else {
+            "tests/snapshots/unverified".to_owned()
+        };
+        let text = if verified {
+            text
+        } else {
+            format!(
+                "# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).\n\
+                 # This pins what it says today so a change is noticed; it is not a right answer.\n\n{text}"
+            )
+        };
+        let path = std::path::Path::new(&dir).join(format!("{fixture}.wire"));
         analyzer_testkit::expect_file(&path, &text);
     }
 }
