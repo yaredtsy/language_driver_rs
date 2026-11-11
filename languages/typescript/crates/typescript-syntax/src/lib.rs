@@ -1,4 +1,31 @@
 //! FAST: outline, markers, header. `sem.rs` is the only file that imports the engine.
+//!
+//! Text in, data out: nothing here reads or writes a file, and nothing invents an ID. The caller owns the text, the label and the marker
+//! text, and applies the edits.
+//!
+//! ```
+//! use analyzer_core::edit::apply;
+//! use typescript_syntax::{Dialect, MarkerStyle, outline, plan_marker};
+//!
+//! let text = "/**\n * Parses an order.\n */\nexport function parseOrder(raw: string) {}\n";
+//! let style = MarkerStyle::docstring("ID"); // the label is the caller's
+//!
+//! let defs = outline(text, Dialect::Ts, style).defs;
+//! assert_eq!(defs[0].qualname, "parseOrder");
+//! assert_eq!(defs[0].marker, None);
+//!
+//! // plan a marker: an edit, or the reason it cannot be done
+//! let edit = plan_marker(text, Dialect::Ts, &defs[0], "3RGJ8M2K", style).unwrap();
+//! let marked = apply(text, &[edit]).unwrap();
+//! assert_eq!(
+//!     marked,
+//!     "/**\n * Parses an order.\n * ID: 3RGJ8M2K\n */\nexport function parseOrder(raw: string) {}\n"
+//! );
+//!
+//! // the marker is read back, and survives the def being moved
+//! let defs = outline(&marked, Dialect::Ts, style).defs;
+//! assert_eq!(defs[0].marker.as_deref(), Some("3RGJ8M2K"));
+//! ```
 
 mod header;
 mod marker;
