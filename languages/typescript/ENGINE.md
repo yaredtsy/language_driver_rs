@@ -79,7 +79,11 @@ leave the region.
   Parse time per stretch of 100,000 rounds stayed 360–420 µs, with one exception: the last stretch of the `new_scratch` run took about 505 µs
   per parse, and the same stretch of the `Region::new` run took 372 µs, so it is noise, not an effect of the full table. The table-full path
   (identifiers store their own text) is therefore exercised and costs nothing visible here.
-- Memory was read with `ps -o rss=` every 1,000 rounds. A portable crate (`memory-stats`) is for TS3.
+- Memory was read with `ps -o rss=` every 1,000 rounds. TS1's test uses the `memory-stats` crate (portable). **RSS is a noisy meter here:** a loop that leaks
+  (no region entered) swings between 30 and 390 MB from one sample to the next, because the OS takes freed pages back whenever it likes; the loop that does not
+  leak sits at about 8 MB. So read the **peak** over many samples, never one late value (the first S-TS2 table's "stopped growing" for the no-region run is this).
+  When mutating code to check a test, restore the file with a command that updates its modification time (`touch`): `mv` of an older copy makes Cargo keep the
+  mutated build, and the next runs measure the wrong code.
 
 The pattern to copy into `sem.rs`:
 
