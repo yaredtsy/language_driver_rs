@@ -11,6 +11,25 @@ workspace = true
 [dependencies]
 analyzer-core = { workspace = true }
 python-syntax = { workspace = true }
+ruff_db = { workspace = true }
+ruff_index = { workspace = true }
+ruff_python_ast = { workspace = true }
+ruff_python_stdlib = { workspace = true }
+ruff_source_file = { workspace = true }
+ruff_text_size = { workspace = true }
+ty_module_resolver = { workspace = true }
+ty_project = { workspace = true }
+ty_python_core = { workspace = true }
+ty_python_semantic = { workspace = true }
+salsa = { workspace = true }
+rustc-hash = { workspace = true }
+thin-vec = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+smallvec = { workspace = true }
+rpds = { workspace = true }
+xxhash-rust = { workspace = true }
 
 [dev-dependencies]
 analyzer-testkit = { workspace = true }
