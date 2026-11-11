@@ -1,0 +1,4 @@
+Function sameLineClose [35..62] name [44..57]
+Function bareLine [113..135] name [122..130]
+Function tagOnOpening [186..213] name [195..207] (x)
+Function fine [232..250] name [241..245]

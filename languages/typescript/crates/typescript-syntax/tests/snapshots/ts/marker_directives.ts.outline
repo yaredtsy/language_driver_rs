@@ -1,0 +1,6 @@
+Function ignored [14..35] name [23..30]
+Function linted [76..96] name [85..91]
+Function formatted [120..143] name [129..138]
+Function noted [161..180] name [170..175]
+Function directiveThenNote [231..262] name [240..257]
+Function separatedByBlank [279..309] name [288..304]

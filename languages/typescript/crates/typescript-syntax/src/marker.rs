@@ -3,8 +3,10 @@
 //!
 //! The rule is `docs/03-typescript/04-ts2-markers.md` §3 and `languages/typescript/docs/markers.md`.
 
+use analyzer_core::edit::{Edit, comment_marker};
 use analyzer_core::text::Span;
 
+use crate::Skip;
 use crate::sem::{Comment, CommentKind};
 
 /// The offset of the first byte of the line that `start` is on, past a byte-order mark. `None` when something other than blanks stands
@@ -113,6 +115,188 @@ pub(crate) fn marker_of(
     own_line(text, start)?;
     let block = doc_above(text, start, comments)?;
     read(block.slice(text)?, label)
+}
+
+/// Comments that apply to the line below them: a block put between one of these and the def would move what it points at.
+const DIRECTIVES: [&str; 10] = [
+    "@ts-",
+    "eslint",
+    "prettier-ignore",
+    "istanbul",
+    "c8 ",
+    "v8 ",
+    "biome-ignore",
+    "tslint:",
+    "jshint",
+    "jscs",
+];
+
+fn is_directive(comment: &str) -> bool {
+    let body = comment
+        .trim_start_matches("//")
+        .trim_start_matches("/*")
+        .trim_end_matches("*/")
+        .trim();
+    DIRECTIVES.iter().any(|d| body.starts_with(d))
+}
+
+/// The edit that puts `marker_text` on the def starting at `start`, or why not. `errors` are the file's parse errors.
+pub(crate) fn plan(
+    text: &str,
+    start: u32,
+    comments: &[Comment],
+    def_has_error: bool,
+    errors: &[Span],
+    label: &str,
+    marker_text: &str,
+) -> Result<Edit, Skip> {
+    let own = own_line(text, start).ok_or(Skip::NotOnOwnLine)?;
+    // the marker goes inside a `/** */` block on one line: it cannot be empty, hold a line break, or close the comment
+    if marker_text.trim().is_empty()
+        || marker_text.contains(['\n', '\r'])
+        || marker_text.contains("*/")
+    {
+        return Err(Skip::InvalidText);
+    }
+    let block = doc_above(text, start, comments);
+    let touches = |b: Span| {
+        errors
+            .iter()
+            .any(|e| e.start < b.end && e.end.max(e.start + 1) > b.start)
+    };
+    if def_has_error || block.is_some_and(touches) {
+        return Err(Skip::SyntaxError);
+    }
+    if let Some(existing) = block
+        .and_then(|b| b.slice(text))
+        .and_then(|b| read(b, label))
+    {
+        return Err(Skip::AlreadyMarked { existing });
+    }
+    let eol = comment_marker::line_ending(text);
+    match block {
+        Some(block) => plan_in_block(text, block, label, marker_text),
+        None => {
+            // a new block goes directly above the def, below any plain comment: unless that comment points at the def
+            if let Some(last) = comments.last() {
+                let between = text
+                    .get(last.span.end as usize..start as usize)
+                    .unwrap_or("");
+                let adjacent =
+                    between.chars().all(char::is_whitespace) && line_breaks(between) <= 1;
+                if adjacent && last.span.slice(text).is_some_and(is_directive) {
+                    return Err(Skip::DirectiveAbove);
+                }
+            }
+            let indent = &text[own as usize..start as usize];
+            Ok(Edit::insert(
+                own,
+                format!("{indent}/** {label}: {marker_text} */{eol}"),
+            ))
+        }
+    }
+}
+
+/// Where a block's lines begin and end (without their breaks), as offsets into `text`.
+fn line_spans(text: &str, block: Span) -> Vec<Span> {
+    let body = block.slice(text).unwrap_or("");
+    let mut spans = Vec::new();
+    let mut from = 0usize;
+    let bytes = body.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' | b'\r' => {
+                spans.push(Span::new(block.start + from as u32, block.start + i as u32));
+                i += if bytes[i] == b'\r' && bytes.get(i + 1) == Some(&b'\n') {
+                    2
+                } else {
+                    1
+                };
+                from = i;
+            }
+            _ => i += 1,
+        }
+    }
+    spans.push(Span::new(block.start + from as u32, block.end));
+    spans
+}
+
+fn leading_blanks(line: &str) -> &str {
+    &line[..line.len() - line.trim_start_matches([' ', '\t']).len()]
+}
+
+/// Put the marker in an existing JSDoc block. A multi-line block gets a ` * <label>: <text>` line before its first block tag, or before the
+/// closing line when it has none. A one-line block is rewritten as several lines.
+fn plan_in_block(text: &str, block: Span, label: &str, marker_text: &str) -> Result<Edit, Skip> {
+    let body = block.slice(text).ok_or(Skip::UnsafeDocComment)?;
+    let lines = line_spans(text, block);
+    if lines.len() == 1 {
+        return one_line(text, block, body, label, marker_text);
+    }
+    let eol = comment_marker::line_ending(body);
+    let at = |i: usize| lines[i].slice(text).unwrap_or("");
+    let last = lines.len() - 1;
+    if at(last).trim() != "*/" {
+        return Err(Skip::UnsafeDocComment);
+    }
+    let opening = at(0).trim_start().strip_prefix("/**").unwrap_or("").trim();
+    if opening.starts_with('@') {
+        return Err(Skip::UnsafeDocComment);
+    }
+    let mut star_indent: Option<&str> = None;
+    let mut tag_line: Option<usize> = None;
+    for i in 1..last {
+        let line = at(i);
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Some(after_star) = trimmed.strip_prefix('*') else {
+            return Err(Skip::UnsafeDocComment);
+        };
+        star_indent.get_or_insert_with(|| leading_blanks(line));
+        if tag_line.is_none() && after_star.trim_start().starts_with('@') {
+            tag_line = Some(i);
+        }
+    }
+    let star_indent = star_indent.unwrap_or_else(|| leading_blanks(at(last)));
+    let insert_at = lines[tag_line.unwrap_or(last)].start;
+    Ok(Edit::insert(
+        insert_at,
+        format!("{star_indent}* {label}: {marker_text}{eol}"),
+    ))
+}
+
+fn one_line(
+    text: &str,
+    block: Span,
+    body: &str,
+    label: &str,
+    marker_text: &str,
+) -> Result<Edit, Skip> {
+    let line_start = own_line(text, block.start).ok_or(Skip::NotOnOwnLine)?;
+    let indent = &text[line_start as usize..block.start as usize];
+    let eol = comment_marker::line_ending(text);
+    let content = body
+        .strip_prefix("/**")
+        .and_then(|b| b.strip_suffix("*/"))
+        .ok_or(Skip::UnsafeDocComment)?
+        .trim();
+    let marker_line = format!("{indent} * {label}: {marker_text}");
+    let mut lines = vec!["/**".to_owned()];
+    if content.is_empty() {
+        lines.push(marker_line);
+    } else if content.starts_with('@') {
+        // the marker ends the description: it goes before a block tag
+        lines.push(marker_line);
+        lines.push(format!("{indent} * {content}"));
+    } else {
+        lines.push(format!("{indent} * {content}"));
+        lines.push(marker_line);
+    }
+    lines.push(format!("{indent} */"));
+    Ok(Edit::replace(block, lines.join(eol)))
 }
 
 #[cfg(test)]
