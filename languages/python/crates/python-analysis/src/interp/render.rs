@@ -35,6 +35,7 @@ pub fn render_root(s: &Solver<'_>, root: ContextId) -> FrameJson {
     budget.tick();
     let mut node = FrameJson {
         target_qname: qname.clone(),
+        target_id: s.target_id(func),
         call_count: 0,
         call_site: None,
         contexts: vec![s.stable_id(root)],

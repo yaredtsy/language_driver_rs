@@ -7,6 +7,8 @@ use crate::interp::tree::{Mark, Node};
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct FrameJson {
     pub target_qname: String,
+    /// The style's prefix and the docstring ID; empty only when the function has no ID.
+    pub target_id: String,
     pub call_count: u32, // always 0: merging siblings is the consumer's job
     pub call_site: Option<Span>,
     pub contexts: Vec<StableContextId>, // which graph contexts this node shows
@@ -36,4 +38,40 @@ impl FrameJson {
             children: self.children.iter().map(FrameJson::to_node).collect(),
         }
     }
+}
+
+/// The merge, as an option: siblings with one `target_qname` become one node with `call_count = Σ call_count + k − 1`, and their
+/// children are merged the same way. The analyzer's own default is one node per call site; a consumer that wants the merged tree asks
+/// for it.
+pub fn merge_for_output(root: &FrameJson) -> FrameJson {
+    let mut out = FrameJson {
+        children: Vec::new(),
+        ..root.clone()
+    };
+    for c in &root.children {
+        match out
+            .children
+            .iter_mut()
+            .find(|m| m.target_qname == c.target_qname)
+        {
+            Some(m) => {
+                m.call_count += c.call_count + 1;
+                for id in &c.contexts {
+                    if !m.contexts.contains(id) {
+                        m.contexts.push(id.clone());
+                    }
+                }
+                for mark in &c.marks {
+                    if !m.marks.contains(mark) {
+                        m.marks.push(*mark);
+                    }
+                }
+                m.children.extend(c.children.iter().cloned());
+            }
+            None => out.children.push(c.clone()),
+        }
+    }
+    out.children = out.children.iter().map(merge_for_output).collect();
+    out.contexts.sort();
+    out
 }

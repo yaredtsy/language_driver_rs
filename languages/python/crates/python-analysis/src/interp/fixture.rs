@@ -579,24 +579,107 @@ fn p05_02_wire_tree() {
 }
 
 #[test]
-fn p05_02_one_node_per_call_site() {
-    use crate::interp::call_wire;
-    // `twice` calls `run` twice from one function: two nodes on the wire. Merging them is the consumer's job, not ours.
+fn p05_02_merge_joins_the_calls_of_one_site_and_keeps_the_unmerged_form() {
+    use crate::interp::{call_wire, merge_for_output};
+    // `twice` calls `run` twice from one function: two nodes on the wire, one after the merge
     let path =
         std::fs::canonicalize("tests/fixtures/02-function-summaries/python/graph.py").unwrap();
     let db = open_project(SystemPath::from_std_path(path.parent().unwrap()).unwrap()).unwrap();
     let (file, _) = open(&db, SystemPath::from_std_path(&path).unwrap()).unwrap();
     let (wire, _) = call_wire(&db, file, "main", &summary()).unwrap();
-    let twice = wire
-        .children
-        .iter()
-        .find(|c| c.target_qname == "graph.twice")
-        .unwrap();
-    assert_eq!(twice.children.len(), 2);
+    let twice = |t: &crate::interp::FrameJson| {
+        t.children
+            .iter()
+            .find(|c| c.target_qname == "graph.twice")
+            .unwrap()
+            .clone()
+    };
+    let before = twice(&wire);
+    assert_eq!(before.children.len(), 2);
     assert!(
-        twice
+        before
             .children
             .iter()
             .all(|c| c.call_count == 0 && c.call_site.is_some())
     );
+    let after = twice(&merge_for_output(&wire));
+    assert_eq!(after.children.len(), 1);
+    assert_eq!(after.children[0].call_count, 1);
+}
+
+fn wire_of(fixture: &str, opts: &Options) -> crate::interp::FrameJson {
+    let path = std::fs::canonicalize(format!("tests/fixtures/{fixture}")).unwrap();
+    let db = open_project(SystemPath::from_std_path(path.parent().unwrap()).unwrap()).unwrap();
+    let (file, _) = open(&db, SystemPath::from_std_path(&path).unwrap()).unwrap();
+    crate::interp::call_wire(&db, file, "main", opts).unwrap().0
+}
+
+fn styled() -> Options {
+    use crate::interp::WireStyle;
+    Options {
+        wire: WireStyle {
+            function_prefix: "F/".into(),
+            class_prefix: "C/".into(),
+        },
+        ..summary()
+    }
+}
+
+/// `(qname, target_id)` of every node, depth first.
+fn ids(f: &crate::interp::FrameJson, out: &mut Vec<(String, String)>) {
+    out.push((f.target_qname.clone(), f.target_id.clone()));
+    f.children.iter().for_each(|c| ids(c, out));
+}
+
+#[test]
+fn wire_ids_use_the_style_by_kind_and_are_empty_without_an_id() {
+    let mut got = Vec::new();
+    ids(
+        &wire_of("06-wire/python/ids_and_classes.py", &styled()),
+        &mut got,
+    );
+    let want = |q: &str, id: &str| (format!("ids_and_classes.{q}"), id.to_owned());
+    assert_eq!(
+        got,
+        [
+            want("main", "F/06000000-0003-0000-0000-000000000000"),
+            want("Report", "C/06000000-0001-0000-0000-000000000000"),
+            want("Report.prepare", ""),
+            want("marked", "F/06000000-0002-0000-0000-000000000000"),
+            want("unmarked", ""),
+            want("unmarked", ""),
+            want("unmarked", ""),
+        ]
+    );
+}
+
+#[test]
+fn wire_ids_are_bare_when_no_prefix_is_given() {
+    let wire = wire_of("06-wire/python/ids_and_classes.py", &summary());
+    assert_eq!(wire.target_id, "06000000-0003-0000-0000-000000000000");
+}
+
+#[test]
+fn merging_joins_siblings_of_one_target_and_is_idempotent() {
+    use crate::interp::merge_for_output;
+    let wire = wire_of("06-wire/python/ids_and_classes.py", &styled());
+    // `main` calls `unmarked` twice itself: two nodes before the merge, one after, counted
+    let unmarked = |f: &crate::interp::FrameJson| {
+        f.children
+            .iter()
+            .filter(|c| c.target_qname == "ids_and_classes.unmarked")
+            .map(|c| c.call_count)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(unmarked(&wire), [0, 0]);
+    let merged = merge_for_output(&wire);
+    assert_eq!(unmarked(&merged), [1]);
+    assert_eq!(merge_for_output(&merged), merged);
+    // the id travels with the merged node
+    let node = merged
+        .children
+        .iter()
+        .find(|c| c.target_qname == "ids_and_classes.marked")
+        .unwrap();
+    assert_eq!(node.target_id, "F/06000000-0002-0000-0000-000000000000");
 }
