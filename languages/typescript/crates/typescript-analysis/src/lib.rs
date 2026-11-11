@@ -199,9 +199,14 @@ pub enum OpenError {
     NoSuchFile,
     /// The config could not be read, or has a syntax error. The text is for a person.
     ConfigError(String),
-    /// The config is valid and was loaded, but its program does not hold the file (its `include` / `exclude` leave it out). Holds the
-    /// config's path relative to the root, or `(inferred project)` when there was none (the file is not TypeScript or JavaScript). A solution config's `references` are not followed yet (TS3 step 6).
-    NotInProject(String),
+    /// No config's program holds the file: its `include` / `exclude` leave it out, or it is not TypeScript or JavaScript at all.
+    NotInProject {
+        /// The nearest config, relative to the root, or `(inferred project)` when there was none.
+        config: String,
+        /// Configs the search had to skip because they did not parse, as `path: reason`. One of them may be the real owner of the file, so a
+        /// person looking at "not in project" should look here first.
+        skipped: Vec<String>,
+    },
 }
 
 impl fmt::Display for OpenError {
@@ -209,7 +214,14 @@ impl fmt::Display for OpenError {
         match self {
             OpenError::NoSuchFile => f.write_str("no such file"),
             OpenError::ConfigError(reason) => write!(f, "config error: {reason}"),
-            OpenError::NotInProject(config) => write!(f, "{config} does not include the file"),
+            OpenError::NotInProject { config, skipped } if skipped.is_empty() => {
+                write!(f, "{config} does not include the file")
+            }
+            OpenError::NotInProject { config, skipped } => write!(
+                f,
+                "{config} does not include the file (configs skipped because they did not parse: {})",
+                skipped.join("; ")
+            ),
         }
     }
 }

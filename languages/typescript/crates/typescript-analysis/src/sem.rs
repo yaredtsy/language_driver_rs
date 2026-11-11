@@ -97,11 +97,15 @@ impl Sem {
         let mut config_inputs = BTreeSet::new();
         let (program, config_name) = {
             let _scope = region.enter();
-            let owner = find_owner(&root, &file, &config_host, &mut config_inputs)?;
+            let mut skipped = Vec::new();
+            let owner = find_owner(&root, &file, &config_host, &mut config_inputs, &mut skipped)?;
             let (config_name, mut config) = match owner {
                 Owner::Config(name, config) => (Some(name), *config),
                 Owner::NoneHolds(name) => {
-                    return Err(OpenError::NotInProject(relative_to(&root, &name)));
+                    return Err(OpenError::NotInProject {
+                        config: relative_to(&root, &name),
+                        skipped,
+                    });
                 }
                 Owner::NoConfig => (None, inferred_config(&file, &config_host)),
             };
@@ -153,10 +157,13 @@ impl Sem {
             .get_source_file(&to_engine_path(&file))
             .is_none()
         {
-            return Err(OpenError::NotInProject(match &config_name {
-                Some(name) => relative_to(&sem.root, name),
-                None => INFERRED.into(),
-            }));
+            return Err(OpenError::NotInProject {
+                config: match &config_name {
+                    Some(name) => relative_to(&sem.root, name),
+                    None => INFERRED.into(),
+                },
+                skipped: Vec::new(),
+            });
         }
         Ok(sem)
     }
@@ -352,12 +359,13 @@ enum Owner {
 /// Every config it reads goes into `inputs` (see `Sem::config_files`).
 ///
 /// A syntax error in the **nearest** config is the person's to fix (`ConfigError`). One in a config only reached by a reference or a climb is
-/// skipped, as `tsrs_lint` does: it may have nothing to do with this file.
+/// skipped, as `tsrs_lint` does (it may have nothing to do with this file), and listed in `skipped` for `NotInProject` to carry.
 fn find_owner(
     root: &Path,
     file: &Path,
     host: &ConfigHost,
     inputs: &mut BTreeSet<String>,
+    skipped: &mut Vec<String>,
 ) -> Result<Owner, OpenError> {
     let Some(nearest) = file.parent().and_then(|dir| find_config(root, dir)) else {
         return Ok(Owner::NoConfig);
@@ -384,7 +392,15 @@ fn find_owner(
             let config = match load_config(Path::new(&name), host) {
                 Ok(config) => config,
                 Err(error) if name == nearest => return Err(error),
-                Err(_) => continue,
+                Err(error) => {
+                    // never silent: `NotInProject` lists these, as the likely cause of "not in project"
+                    let reason = match error {
+                        OpenError::ConfigError(reason) => reason,
+                        other => other.to_string(),
+                    };
+                    skipped.push(format!("{}: {reason}", relative_to(root, &name)));
+                    continue;
+                }
             };
             inputs.extend(config.extended_source_files());
             if name == config_name {

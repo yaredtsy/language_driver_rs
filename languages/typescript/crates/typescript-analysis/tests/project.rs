@@ -70,7 +70,10 @@ fn a_file_that_is_not_source_has_no_program() {
     let error = Project::open(&fixture("no-config"), Path::new("notes.txt")).err();
     assert_eq!(
         error,
-        Some(OpenError::NotInProject("(inferred project)".into()))
+        Some(OpenError::NotInProject {
+            config: "(inferred project)".into(),
+            skipped: vec![]
+        })
     );
 }
 
@@ -88,7 +91,13 @@ fn a_file_the_config_does_not_include_is_not_in_project() {
     let root = fixture("excluded-file");
     assert!(Project::open(&root, Path::new("src/a.ts")).is_ok());
     let error = Project::open(&root, Path::new("b.ts")).err();
-    assert_eq!(error, Some(OpenError::NotInProject("tsconfig.json".into())));
+    assert_eq!(
+        error,
+        Some(OpenError::NotInProject {
+            config: "tsconfig.json".into(),
+            skipped: vec![]
+        })
+    );
 }
 
 #[test]
@@ -180,4 +189,23 @@ fn the_repos_own_declaration_files_are_listed_apart_from_files() {
     // not `node_modules` packages, not the bundled libraries, and not in `files()`
     let none = Project::open(&fixture("three-files"), Path::new("src/main.ts")).unwrap();
     assert!(none.declaration_files().is_empty());
+}
+
+#[test]
+fn not_in_project_says_which_configs_were_skipped_for_not_parsing() {
+    let root = fixture("broken-reference");
+    let error = Project::open(&root, Path::new("elsewhere/x.ts"))
+        .err()
+        .unwrap();
+    let OpenError::NotInProject { config, skipped } = &error else {
+        panic!("{error:?}");
+    };
+    assert_eq!(config, "tsconfig.json");
+    // `configs/broken.json` may have been the one that holds the file; the person is told it could not be read
+    assert_eq!(skipped.len(), 1, "{skipped:?}");
+    assert!(
+        skipped[0].starts_with("configs/broken.json: "),
+        "{skipped:?}"
+    );
+    assert!(error.to_string().contains("configs/broken.json"), "{error}");
 }
