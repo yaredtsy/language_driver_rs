@@ -1,0 +1,5 @@
+Function alpha [0..20] name [15..20] marker="top1"
+  Function alpha.inner [21..31] name [26..31]
+    Function alpha.inner.deep [32..43] name [39..43]
+Function beta [44..51] name [47..51]
+  Function beta.child [52..75] name [70..75] marker="kid"

@@ -1,0 +1,7 @@
+// ID: top1
+fn alpha
+  fn inner
+    fn deep
+fn beta
+  // ID: kid
+  fn child
