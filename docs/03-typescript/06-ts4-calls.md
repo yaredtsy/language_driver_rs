@@ -32,6 +32,12 @@ pub struct Options { pub limits: Limits, pub marker: MarkerStyle<'static> }
 It returns the graph (rule 1). The tree is `render(&graph, &graph.entries[0], &render_options)`, from the core. The same two calls work for
 Python and Rust, which is what lets the V-NOC drivers share their conversion code.
 
+**The wire (D17).** What the owner consumes is the wire tree, not the graph: `wire(&graph, entry, sources, &WireOptions)` gives a `Frame`
+(`target_qname`, `target_id`, `call_count`, `call_site`, `contexts`, `marks`, `children`), merged when `merged: true`. It is a view of the
+graph, like the tree, so `call_graph` still returns a `Graph`. The module is written for Python first
+([`05-python-migration/04-the-wire.md`](../05-python-migration/04-the-wire.md)); TypeScript is its second user, so **TS4 moves it to
+`analyzer-core`** (rule 5) and `typescript-analysis` re-exports `wire`, `merge`, `WireOptions`, `WireStyle`, `Frame` and implements `Sources`.
+
 ## 2. The pipeline
 
 pylspt's seven steps, with the ones a default resolver does not need crossed out:
@@ -100,7 +106,8 @@ implemented with the checker, because `tsrs_ls::callhierarchy::resolve_call_hier
 `get_aliased_symbol` → `value_declaration()`. `sem` then does what the call hierarchy did for us: it maps a matched overload signature to the
 implementation, and accepts only declarations that are function-like **with a body** (the symbol path also returns parameters and variables).
 `FunctionType`, `MethodSignature`, `CallSignature` and `ConstructSignature` answers have no body: on the V-NOC frontend 140 of 437 sites were a
-`FunctionType` (a call through a function-typed value). Whether those are `Unknown` (→ `Unresolved`) or a distinct edge is **open, for the owner**.
+`FunctionType` (a call through a function-typed value). Those are `Unknown` (→ `Unresolved`), and `walk` counts them in
+`Stats.language["function_typed_value"]` so that they can be told apart from a call on `any` (D16). There is no distinct edge kind.
 When there are several declarations, `sem` sorts them by (file, offset) before returning (rule 11).
 
 Then `walk.rs` turns each declaration into a core target:
@@ -167,6 +174,7 @@ before the table is frozen.
 | decorators | a site in the body of the **class** that holds the decorated member (or of the decorated class itself). The decorated function is treated as if it had no decorator | `decorators.ts` |
 | `async` / `await`, generators | transparent; the body is walked | `async.ts` |
 | a callback **parameter** being called (`function run(cb) { cb() }`) | `Unresolved`: the declaration is a parameter, not a function. This is the headline case for context sensitivity | `callback_param.ts` |
+| any other **function-typed value** being called (a prop, a `setState`, a store action, a field of type `() => void`) | `Unresolved`, like the callback parameter: the engine answers with a `FunctionType`, which is a type and has no body. Counted in `Stats.language["function_typed_value"]` (the callback parameter too) (D16) | `function_typed.ts` |
 | a value of type `any` or an untyped JavaScript value | `Unresolved` | `any.js` |
 | `obj[name]()` with a computed name | `Unresolved` unless the checker narrows the name to a literal | `computed.ts` |
 | project code | not under `node_modules`, not a `.d.ts`, not a bundled lib. A call that resolves into the **repo's own** `.d.ts` is `External`, not a def (TS3 pinned that such a file is absent from `files()`; this is the half that needs call resolution) | `external/` (include a repo `.d.ts`) |
@@ -216,6 +224,7 @@ pub fn call_graph(project: &Project, file: &str, entry: &Entry, opts: &Options, 
 | 2 | `sem::body_parts` + `walk.rs` for plain calls only; targets all `Unresolved` | `sites.ts`: the right sites, in order |
 | 3 | `sem::callee` with the engine's resolver; `describe`; the bridge by range | `straight-line` and `method-on-class` scenarios pass |
 | 4 | `impl Lang`, `call_graph`, `typescript-cli calls <dir> <file> --entry <qualname> [--id <marker>] [--graph]`. A qualname is not unique in a file (D15): when `--entry` matches several defs, the CLI prints every match (kind, line, marker) and asks for `--id`; it never picks the first. With `--id`, the def carrying that marker is the entry | the CLI prints a tree for a fixture; an ambiguous `--entry` prints the list and exits 2 |
+| 4a | the wire (D17): move `wire.rs` from `python-analysis` to `analyzer-core` unchanged (needs W3 of [05/04](../05-python-migration/04-the-wire.md) done); `Sources` for `Project`; `typescript-cli calls … --wire [--merged] --function-prefix … --class-prefix …` | Python's wire tests still pass from core; a fixture's wire has a `target_id` with the passed prefix for a marked def and `""` for an unmarked one; `--merged` turns two sibling calls of one function into one node with `call_count: 1` |
 | 5 | `Construct`, `External`, project-code test. Write `scenarios/construct-marked-class/typescript/`: the Python program of that scenario in TypeScript, with an `ID: …` line in the JSDoc of both classes | `constructor`, `external-call` and `construct-marked-class` scenarios; a `new` of a library class is an `External` edge |
 | 6 | the remaining site kinds of §3 | their fixtures |
 | 7 | the policy table, row by row, each with its fixture | the `policy` test, including the "row without fixture" check |

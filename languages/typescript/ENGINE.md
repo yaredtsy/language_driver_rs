@@ -211,8 +211,9 @@ The spike did not try `free_program` (the variant that keeps data shared between
 | `CallSignature` / `ConstructSignature` | 0 | 12 | 16 | no body |
 
 So 78 sites reach a project def; 323 are external (`node_modules` 200, bundled 123) and 36 more point at a
-project type (an interface member or function-typed property). The 140 `FunctionType` sites (32%) are the policy decision TS4 must make: the engine
-resolves them, but there is no def to link, so I propose `Unresolved` (calls through a function-typed value), never a guess.
+project type (an interface member or function-typed property). The 140 `FunctionType` sites (32%) were a policy decision: the engine
+resolves them, but there is no def to link, so they are `Unresolved` (calls through a function-typed value), never a guess, and counted in
+`Stats.language["function_typed_value"]` (decided, D16 in `docs/07-decisions-and-questions.md`).
 
 **The hand-written seven cases** (`spikes/s-ts3/cases/a.ts`, deleted at TS0 close: `git show 147da9d:languages/typescript/spikes/s-ts3/cases/a.ts`; 0 diagnostics):
 
@@ -253,7 +254,7 @@ This is what the plan expected: JavaScript resolves less, and `Unresolved` says 
   already localized; ordinary ones carry a `Message` and arguments, and **`Diagnostic::localize()`** builds the text. The spikes' one diagnostic was not re-read with it: TS3 does.
 - One checker (`program.get_type_checker`) answered for every file, with tsrs's default checker count. `tsrs_lint` asks `get_type_checker_for_file(ctx, file)`.
   The plan sets the count to 1 (`docs/03-typescript/05-ts3-project.md` §3), which makes both calls the same checker; TS3 checks that setting.
-- Whether a call through a `FunctionType` is `Unresolved` or a distinct edge is a decision for the owner before TS4 (it bends "follow the engine").
+- A call through a `FunctionType` is `Unresolved` and counted, not a distinct edge (D16). TS4 builds it.
 - Not tried: object-literal methods, JSX elements, accessors, tagged templates, decorators as call sites; a class without a constructor; a project with project references; Linux and Windows.
 - The resolve time includes the checker's lazy work for the visited files only, so the cost of the **first** query in a fresh program is in the 57 ms; a second query is cheaper.
 
