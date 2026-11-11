@@ -109,6 +109,10 @@ impl Walker<'_, '_> {
             NodeKind::FunctionExpression => self.function_expression(n),
             NodeKind::VariableStatement => self.variable_statement(n),
             NodeKind::ObjectLiteral => self.object_literal(n, None),
+            NodeKind::InterfaceDeclaration => self.interface(n),
+            NodeKind::EnumDeclaration => self.leaf(n, DefKind::Enum),
+            NodeKind::TypeAliasDeclaration => self.leaf(n, DefKind::Type),
+            NodeKind::ModuleDeclaration => self.module(n),
             NodeKind::ExportAssignment => match self.p.expression(n) {
                 // `export default { load() {} }`: the literal is named like a default function
                 Some(e) if self.p.kind(e) == NodeKind::ObjectLiteral => {
@@ -453,5 +457,75 @@ impl Walker<'_, '_> {
         } else {
             self.visit(init);
         }
+    }
+
+    /// A def with nothing to look inside: an enum, a type alias.
+    fn leaf(&mut self, n: RawNode, kind: DefKind) {
+        let Some((name, name_range)) = self.name_of(n) else {
+            return;
+        };
+        self.enter(Entry {
+            name,
+            kind,
+            is_function: false,
+            range: self.p.span(n),
+            name_range,
+            params: Vec::new(),
+        });
+        self.leave();
+    }
+
+    /// An interface and its method signatures. Overload signatures have no implementation here, so each one is its own def with the same
+    /// qualname (the core's `occurrence` tells them apart, as for duplicates in Python). Properties and call signatures are not defs.
+    fn interface(&mut self, n: RawNode) {
+        let Some((name, name_range)) = self.name_of(n) else {
+            return;
+        };
+        self.enter(Entry {
+            name,
+            kind: DefKind::Interface,
+            is_function: false,
+            range: self.p.span(n),
+            name_range,
+            params: Vec::new(),
+        });
+        for m in self.p.members(n) {
+            if self.p.kind(m) != NodeKind::MethodSignature {
+                continue;
+            }
+            let Some((name, name_range)) = self.name_of(m) else {
+                continue;
+            };
+            self.enter(Entry {
+                name,
+                kind: DefKind::Method,
+                is_function: true,
+                range: self.p.span(m),
+                name_range,
+                params: self.p.params(m),
+            });
+            self.leave();
+        }
+        self.leave();
+    }
+
+    /// `namespace N {}`, `module M {}`, `declare module "x" {}`, `declare global {}`. `namespace A.B {}` is two levels, `A` and `A.B`.
+    /// A string name keeps its quotes, so `"x".f` cannot be mistaken for a path.
+    fn module(&mut self, n: RawNode) {
+        let Some((name, name_range)) = self.name_of(n) else {
+            return;
+        };
+        self.enter(Entry {
+            name,
+            kind: DefKind::Namespace,
+            is_function: false,
+            range: self.p.span(n),
+            name_range,
+            params: Vec::new(),
+        });
+        if let Some(body) = self.p.body(n) {
+            self.visit(body);
+        }
+        self.leave();
     }
 }

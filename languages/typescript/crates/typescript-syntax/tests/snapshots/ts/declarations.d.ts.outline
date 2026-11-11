@@ -1,0 +1,8 @@
+Function overloaded [0..54] name [24..34] (a)
+Function overloaded [55..109] name [79..89] (a)
+Class Widget [111..244] name [132..138]
+  Method Widget.constructor [143..166] name [143..154] (x)
+  Method Widget.render [169..184] name [169..175]
+  Method Widget.render [187..215] name [187..193] (flag)
+  Method Widget.create [218..242] name [225..231]
+Function noImplementation [278..320] name [295..311]
