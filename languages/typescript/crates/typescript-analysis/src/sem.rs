@@ -130,13 +130,8 @@ impl Sem {
             .get_source_file(&to_engine_path(&file))
             .is_none()
         {
-            return Err(OpenError::ConfigError(format!(
-                "{} does not include the file",
-                config_path
-                    .strip_prefix(&sem.root)
-                    .unwrap_or(&config_path)
-                    .display()
-            )));
+            let config = config_path.strip_prefix(&sem.root).unwrap_or(&config_path);
+            return Err(OpenError::NotInProject(to_engine_path(config)));
         }
         Ok(sem)
     }

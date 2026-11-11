@@ -31,8 +31,11 @@ impl Project {
 pub enum OpenError {
     /// The root or the file does not exist, or the file is not a file.
     NoSuchFile,
-    /// No config was found, the config could not be read, or it does not include the file. The text is for a person.
+    /// No config was found, or the config could not be read. The text is for a person.
     ConfigError(String),
+    /// The config is valid and was loaded, but its program does not hold the file (its `include` / `exclude` leave it out). Holds the
+    /// config's path relative to the root. A solution config's `references` are not followed yet (TS3 step 6).
+    NotInProject(String),
 }
 
 impl fmt::Display for OpenError {
@@ -40,6 +43,7 @@ impl fmt::Display for OpenError {
         match self {
             OpenError::NoSuchFile => f.write_str("no such file"),
             OpenError::ConfigError(reason) => write!(f, "config error: {reason}"),
+            OpenError::NotInProject(config) => write!(f, "{config} does not include the file"),
         }
     }
 }

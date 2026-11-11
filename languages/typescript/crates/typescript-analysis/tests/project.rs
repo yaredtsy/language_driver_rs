@@ -65,14 +65,11 @@ fn a_config_that_cannot_be_parsed_is_a_config_error() {
 }
 
 #[test]
-fn a_file_the_config_does_not_include_is_a_config_error() {
+fn a_file_the_config_does_not_include_is_not_in_project() {
     let root = fixture("excluded-file");
     assert!(Project::open(&root, Path::new("src/a.ts")).is_ok());
     let error = Project::open(&root, Path::new("b.ts")).err();
-    assert!(
-        matches!(error, Some(OpenError::ConfigError(_))),
-        "{error:?}"
-    );
+    assert_eq!(error, Some(OpenError::NotInProject("tsconfig.json".into())));
 }
 
 #[test]
