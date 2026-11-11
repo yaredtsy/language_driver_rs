@@ -313,3 +313,29 @@ branch), with the plan's changes: `allow_js` on, `check_js` off, `no_emit` on, `
 `source_map` (nothing is emitted), `strict_null_checks` / `strict_function_types` (not set; whether they ever change which signature a call resolves to was not checked), and
 `allow_non_ts_extensions`: without it a `.txt` root is ignored, so `open` says `NotInProject("(inferred project)")` instead of reading prose as TypeScript.
 Not checked: that the options above change a resolved call target compared with `tsc`'s own inferred-project defaults (TS4's fixtures will show it).
+
+### Which files are the project's, and what package a file belongs to
+
+`Sem::is_project_code` is false for: a path in `node_modules` (or a file the program found by searching it: `is_source_file_from_external_library`), a
+declaration file (`tspath::is_declaration_file_name`: `.d.ts`, `.d.mts`, `.d.cts`; this includes the project's own `src/types.d.ts`, as the plan said), and a
+bundled library (`is_source_file_default_library`; these live outside the root, and there are 91 of them in a one-file program). `Project::files()` lists
+project code only, relative to the root.
+
+`Sem::package_of` names the package for an `External` edge: the first segment after the **last** `node_modules/` (pnpm nests them), `@scope/pkg` with
+its scope, **`@types/x` as `x` and `@types/scope__x` as `@scope/x`** (the package a types package describes: a policy, not an engine fact), and
+`typescript:lib` for every bundled library. `None` for the project's own files. Fixture `with-node-modules` covers a plain package, a scoped one and an
+`@types` one; the pnpm and `__` cases are unit-tested on strings only, not on a real pnpm tree.
+
+### The proof that a `File<'p>` cannot outlive its `Sem`
+
+`File<'p>` is `P<SourceFile>` plus `PhantomData<&'p Sem>`; `Sem::drop`'s `unsafe` rests on no `File` outliving it. The proof is a `compile_fail` doctest
+(`typescript_analysis::proof`, `#[doc(hidden)]`): `drop(sem)` while a `File` is used later. A doctest is a separate crate, so the real `Sem` and `File` are
+re-exported there (a wrapper function would prove only its own signature).
+
+- **A first version used a wrapper (`Project::handle_for_doctest`) and was too weak:** with `Sem::file` changed to `fn file<'p>(&self, ..) -> File<'p>` (an unbound
+  lifetime, the realistic mistake) the wrapper's own `-> FileHandle<'_>` re-tied the borrow, and the doctest still passed. On the real types the same mutation
+  makes it fail, which is the check that it protects something.
+- **`compile_fail,E0505` is not enforced by stable rustdoc**: pinning `E0499` instead still passed. With `RUSTC_BOOTSTRAP=1 RUSTDOCFLAGS=-Zunstable-options cargo test --doc`
+  the code is checked (the error is `E0505`, "cannot move out of `sem` because it is borrowed"; `E0499` failed). On stable the guard against "fails for the wrong reason" is
+  the **twin** doctest, which differs only in the order of the last two lines and must compile.
+- A `PhantomData<&'p ()>` in place of `PhantomData<&'p Sem>` also passes: it binds the borrow just the same through `Sem::file`'s signature, so it is not a bug.
