@@ -19,6 +19,12 @@ pub fn outline(text: &str, style: MarkerStyle<'_>) -> Outline {
     outline::outline(text, style)
 }
 
+/// The marker in a docstring's text, for a caller that already holds the docstring (the type checker's AST has it) and not the file's
+/// text. The same reader `outline` uses, so the two can never disagree about which defs are marked.
+pub fn docstring_marker(doc: &str, style: MarkerStyle<'_>) -> Option<String> {
+    ids::read(doc, style.label)
+}
+
 /// The marker on this def, read from `text` at the def's range. The outline already fills `Def::marker`; this reads it again from the
 /// text, so it answers for the text you have and not for the def you were handed. `None` when there is none, or no def at that range.
 pub fn marker(text: &str, def: &Def, style: MarkerStyle<'_>) -> Option<String> {
@@ -50,4 +56,25 @@ pub fn plan_header_marker(
     style: MarkerStyle<'_>,
 ) -> Result<Edit, Skip> {
     header::plan_header_marker(text, marker_text, style)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn docstring_marker_is_the_reader_the_outline_uses() {
+        let style = MarkerStyle {
+            label: "ID",
+            placement: Placement::Docstring,
+        };
+        let text = "def f():\n    \"\"\"Summary.\n\n    ID: abc\n    \"\"\"\n";
+        let def = &outline(text, style).defs[0];
+        assert_eq!(def.marker.as_deref(), Some("abc"));
+        assert_eq!(
+            docstring_marker("Summary.\n\nID: abc\n", style).as_deref(),
+            Some("abc")
+        );
+        assert_eq!(docstring_marker("no marker", style), None);
+    }
 }
