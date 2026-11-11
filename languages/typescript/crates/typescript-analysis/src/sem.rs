@@ -48,11 +48,13 @@ impl ParseConfigHost for ConfigHost {
 
 /// A source file of a `Sem`'s program. tsrs's `P<SourceFile>` is `'static` and the compiler cannot see the program being freed, so this adds a
 /// lifetime: a `File<'p>` can only come from a `&'p Sem` (`PhantomData<&'p Sem>` stores nothing and borrows the `Sem`), and `Sem::drop`'s
-/// `unsafe` rests on that. `tests/` has the proof that `drop(project)` while a file is alive does not compile (`lib.rs`, `E0505`).
+/// `unsafe` rests on that. `lib.rs`'s `proof` module has the compile-fail proofs: it cannot outlive its `Sem`, and it cannot cross threads.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct File<'p> {
     node: P<SourceFile>,
     _sem: PhantomData<&'p Sem>,
+    /// A raw pointer is neither `Send` nor `Sync`, so neither is `File`: a handle stays on the thread that asked for it (`proof` pins this).
+    _one_thread: PhantomData<*const ()>,
 }
 
 pub struct Sem {
@@ -146,6 +148,7 @@ impl Sem {
         self.program.get_source_files().iter().map(|&node| File {
             node,
             _sem: PhantomData,
+            _one_thread: PhantomData,
         })
     }
 
@@ -160,6 +163,7 @@ impl Sem {
         Some(File {
             node,
             _sem: PhantomData,
+            _one_thread: PhantomData,
         })
     }
 

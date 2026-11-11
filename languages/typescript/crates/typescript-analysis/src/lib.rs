@@ -66,6 +66,59 @@ pub mod proof {
     //! drop(sem);
     //! ```
     //!
+    //! A handle must not cross threads: tsrs enters its regions per thread and one checker answers one question at a time, so nothing here
+    //! claims a `File` is safe to move or share. (Whether that should change is TS5's question, when the driver asks for parallelism.)
+    //!
+    //! ```compile_fail,E0277
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let file = sem.file("src/main.ts").unwrap();
+    //! std::thread::scope(|scope| {
+    //!     scope.spawn(move || drop(file));
+    //! });
+    //! ```
+    //!
+    //! ```
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let file = sem.file("src/main.ts").unwrap();
+    //! (move || drop(file))();
+    //! ```
+    //!
+    //! Nor may two threads share one (`&File` crossing needs `File: Sync`):
+    //!
+    //! ```compile_fail,E0277
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let file = sem.file("src/main.ts").unwrap();
+    //! std::thread::scope(|scope| {
+    //!     scope.spawn(|| {
+    //!         let _shared = &file;
+    //!     });
+    //! });
+    //! ```
+    //!
+    //! ```
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let file = sem.file("src/main.ts").unwrap();
+    //! (|| {
+    //!     let _shared = &file;
+    //! })();
+    //! ```
+    //!
     //! The error code is pinned for the reader: stable rustdoc ignores it (checked: pinning `E0499` still passes), and `RUSTC_BOOTSTRAP=1
     //! RUSTDOCFLAGS=-Zunstable-options cargo test --doc` enforces it (`E0505`, "cannot move out of `sem` because it is borrowed").
     pub use crate::sem::{File, Sem};
