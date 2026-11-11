@@ -244,7 +244,8 @@ This is what the plan expected: JavaScript resolves less, and `Unresolved` says 
 
 ### 6. Not done
 
-- Both spikes report **1 program diagnostic** whose message text printed empty; not chased. It may be a compiler option tsrs does not support: TS3 prints it properly.
+- Both spikes report **1 program diagnostic** whose message text printed empty. Cause found in TS1: `Diagnostic::message_text()` is only filled for diagnostics that arrive
+  already localized; ordinary ones carry a `Message` and arguments, and **`Diagnostic::localize()`** builds the text. The spikes' one diagnostic was not re-read with it: TS3 does.
 - One checker (`program.get_type_checker`) answered for every file, with tsrs's default checker count. `tsrs_lint` asks `get_type_checker_for_file(ctx, file)`.
   The plan sets the count to 1 (`docs/03-typescript/05-ts3-project.md` §3), which makes both calls the same checker; TS3 checks that setting.
 - Whether a call through a `FunctionType` is `Unresolved` or a distinct edge is a decision for the owner before TS4 (it bends "follow the engine").
