@@ -8,14 +8,11 @@ use ruff_index::{Idx, IndexVec};
 use ruff_text_size::TextRange;
 
 use crate::interp::defer::{DeferredOp, no_values};
-use crate::interp::graph::Span;
 use crate::interp::key::{Context, ContextId, Fp, FpId, Interner};
 use crate::interp::summary::{Cut, FunctionResult, Gaps, SiteId, Status, same_svals};
 use crate::interp::walk::{Walk, contains_yield};
-use crate::interp::wire::FrameJson;
 use crate::interp::{Options, Stats};
 use crate::sem::{Definition, Sem};
-use crate::stable::StableDef;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 pub enum State {
@@ -510,44 +507,6 @@ impl<'db> Solver<'db> {
     /// that has a docstring `ID:`.
     pub fn shown(&self, def: Definition<'db>) -> bool {
         self.sem.is_project(def) && (!self.opts.require_ids || self.sem.docstring_id(def).is_some())
-    }
-
-    /// The id of `def` on the wire: the style's prefix for its kind, then the docstring `ID:`. Empty when there is no ID (an unmarked
-    /// function, or one whose ID is not written yet): the node is still on the wire, named by `target_qname`.
-    pub fn target_id(&self, def: Definition<'db>) -> String {
-        let style = &self.opts.wire;
-        let prefix = if self.sem.is_class(def) {
-            &style.class_prefix
-        } else {
-            &style.function_prefix
-        };
-        match self.sem.stable_def(def) {
-            StableDef::Marked(id) => format!("{prefix}{id}"),
-            StableDef::Path { .. } => String::new(),
-        }
-    }
-
-    /// The wire node for `callee`, called at `site` in `caller`, shown by `ctxs`.
-    pub fn frame_json(
-        &self,
-        callee: Definition<'db>,
-        caller: Definition<'db>,
-        site: SiteId,
-        ctxs: &[ContextId],
-    ) -> FrameJson {
-        let range = self.site_range(caller, site);
-        FrameJson {
-            target_qname: self.sem.qname(callee),
-            target_id: self.target_id(callee),
-            call_count: 0,
-            call_site: Some(Span {
-                start: self.sem.line_col(caller, range.start()),
-                end: self.sem.line_col(caller, range.end()),
-            }),
-            contexts: ctxs.iter().map(|&c| self.stable_id(c)).collect(),
-            marks: Vec::new(),
-            children: Vec::new(),
-        }
     }
 
     pub fn is_incomplete(&self, ctx: ContextId) -> bool {

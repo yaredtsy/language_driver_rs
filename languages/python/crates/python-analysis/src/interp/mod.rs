@@ -12,17 +12,14 @@ pub mod graph;
 pub mod key;
 pub mod member;
 pub mod relevant;
-pub mod render;
 pub mod solver;
 pub mod summary;
 pub mod tree;
 pub mod value;
 pub mod walk;
-pub mod wire;
 pub use canon::StableContextId;
 pub use graph::{ContextOut, EdgeOut, EdgeTo, GraphOut, Span};
 pub use tree::{Mark, Node, to_text};
-pub use wire::{FrameJson, merge_for_output};
 
 use std::time::Duration;
 
@@ -31,7 +28,7 @@ use summary::Cut;
 use ty_project::ProjectDatabase;
 
 use crate::{
-    interp::{graph::graph, key::ContextId, render::render_root, solver::Solver, walk::Walk},
+    interp::{graph::graph, key::ContextId, solver::Solver, walk::Walk},
     sem::Sem,
 };
 
@@ -239,20 +236,6 @@ pub fn call_frame(
     let wire_opts = crate::wire::WireOptions::new(opts.wire.clone(), merged, opts.render_options());
     let frame = crate::wire::wire(&graph, &root, &crate::sem::DbSources(db), &wire_opts);
     Some((frame, graph.stats.clone()))
-}
-
-/// The tree v-noc stores: summary mode, rendered with the ID filter and the node budget.
-pub fn call_wire(
-    db: &ProjectDatabase,
-    file: File,
-    entry: &str,
-    opts: &Options,
-) -> Option<(FrameJson, Stats)> {
-    let (mut s, root_ctx) = solve(db, file, entry, opts)?;
-    let wire = render_root(&s, root_ctx);
-    s.stats.contexts = s.contexts.len() as u32;
-    s.stats.nodes = wire.children.iter().map(FrameJson::count).sum();
-    Some((wire, s.stats))
 }
 
 /// Summary mode, stopped before rendering: the solver, with the entry solved.
