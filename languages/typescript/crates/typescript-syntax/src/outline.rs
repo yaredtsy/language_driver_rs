@@ -12,15 +12,9 @@ use crate::sem::{NodeKind, Parsed, RawNode, with_parsed};
 
 pub(crate) fn outline(text: &str, dialect: Dialect, style: MarkerStyle<'_>) -> Outline {
     with_parsed(text, dialect, |p| {
-        let mut walker = Walker {
-            p,
-            stack: Vec::new(),
-            defs: Vec::new(),
-        };
-        walker.statements(&p.statements(p.root()));
         let mut errors: Vec<(Span, String)> = p.syntax_errors();
         errors.sort_by_key(|(range, _)| *range);
-        let mut defs = walker.defs;
+        let mut defs = walk(p);
         for def in &mut defs {
             def.syntax_error = errors.iter().any(|(range, _)| overlaps(*range, def.range));
             def.marker = match style.placement {
@@ -42,6 +36,25 @@ pub(crate) fn outline(text: &str, dialect: Dialect, style: MarkerStyle<'_>) -> O
             .collect();
         outline
     })
+}
+
+/// The defs of a parsed file, in source order, parents first. `syntax_error` and `marker` are not filled in yet.
+fn walk(p: &Parsed<'_>) -> Vec<Def> {
+    let mut walker = Walker {
+        p,
+        stack: Vec::new(),
+        defs: Vec::new(),
+    };
+    walker.statements(&p.statements(p.root()));
+    walker.defs
+}
+
+/// Is `def` a def of this text: one with the same qualname and the same range? A def from the outline of another text (an older version of
+/// the file) is not, even when a def of that name is still there: its offsets point somewhere else now.
+pub(crate) fn has_def(p: &Parsed<'_>, def: &Def) -> bool {
+    walk(p)
+        .iter()
+        .any(|d| d.range == def.range && d.qualname == def.qualname)
 }
 
 /// Does a parse error touch a def? "When unsure, flag more": an empty error range counts as one byte, so an error at a def's first byte is in it.

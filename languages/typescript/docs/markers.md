@@ -65,8 +65,9 @@ words stay unchanged inside the new block.
 | `DirectiveAbove` | the comment directly above the def is a directive that applies to the next line: it starts with `@ts-`, `eslint`, `prettier-ignore`, `istanbul`, `c8 `, `v8 `, `biome-ignore`, `tslint:`, `jshint` or `jscs`. A block put between them would move what it points at |
 | `InvalidText` | the marker text is empty, has a line break, or contains `*/` (it would close the comment) |
 | `PlacementNotSupported` | the style asks for a placement other than `Docstring` |
+| `UnknownDef` | the text has no def with this qualname and range: the def comes from the outline of another text (an older version of the file). Its offsets are not trusted; outline the text again. `marker` returns `None` for such a def |
 
-`DirectiveAbove` and `InvalidText` are not in the plan's list; they were added for the two hazards above. The directive list is short on purpose:
+`DirectiveAbove`, `InvalidText` and `UnknownDef` are not in the plan's first list; they were added for the hazards above. The directive list is short on purpose:
 a comment that is not on it is treated as a plain comment, and the block goes below it.
 
 ## Where the file's marker lives (`header_marker`, `plan_header_marker`)

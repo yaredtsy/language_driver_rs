@@ -318,6 +318,33 @@ fn a_syntax_error_in_the_def_or_its_block_is_refused() {
 }
 
 #[test]
+fn a_def_from_another_text_is_refused() {
+    let old = "function f() {}\n";
+    let new = "const s = `\n  x\n`;\nfunction f() {}\n";
+    let stale = outline(old, Dialect::Ts, STYLE).defs[0].clone();
+    // the old offsets point into the template literal now: a block planned there would become part of the string
+    assert_eq!(
+        plan_marker(new, Dialect::Ts, &stale, "k", STYLE),
+        Err(Skip::UnknownDef)
+    );
+    // the same start is not enough: the def's end moved, so the caller's text is not this one
+    let longer = "function f() { return 1; }\n";
+    assert_eq!(
+        plan_marker(longer, Dialect::Ts, &stale, "k", STYLE),
+        Err(Skip::UnknownDef)
+    );
+    // and no marker is read at a stale offset: here the old `f` sits where `g` is now
+    let moved = "/** ID: of-g */\nfunction g() {}\nfunction f() {}\n";
+    let mut at_g = stale.clone();
+    at_g.range = outline(moved, Dialect::Ts, STYLE).defs[0].range;
+    assert_eq!(marker(moved, Dialect::Ts, &at_g, STYLE), None);
+    assert_eq!(
+        plan_marker(moved, Dialect::Ts, &at_g, "k", STYLE),
+        Err(Skip::UnknownDef)
+    );
+}
+
+#[test]
 fn a_marked_def_is_refused_with_what_it_has() {
     let text = "/**\n * Doc.\n * ID: abc\n */\nfunction f() {}\n";
     assert_eq!(

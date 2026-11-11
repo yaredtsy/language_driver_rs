@@ -75,12 +75,18 @@ pub enum Skip {
     InvalidText,
     /// The style asks for a placement this analyzer does not build.
     PlacementNotSupported,
+    /// The text has no def with this qualname and range: the def comes from the outline of another text (an older version of the file).
+    /// Its offsets are not trusted: outline the text again.
+    UnknownDef,
 }
 
-/// The marker written on this def, if any. `outline` already fills `Def::marker` with it.
+/// The marker written on this def, if any. `outline` already fills `Def::marker` with it. `None` too when `def` is not a def of this text.
 pub fn marker(text: &str, dialect: Dialect, def: &Def, style: MarkerStyle<'_>) -> Option<String> {
     match style.placement {
         Placement::Docstring => sem::with_parsed(text, dialect, |p| {
+            if !outline::has_def(p, def) {
+                return None;
+            }
             let start = def.range.start;
             marker::marker_of(text, start, &p.comments_before(start), style.label)
         }),
@@ -100,6 +106,10 @@ pub fn plan_marker(
         return Err(Skip::PlacementNotSupported);
     }
     sem::with_parsed(text, dialect, |p| {
+        // the edit is placed by the def's offsets: they must be this text's
+        if !outline::has_def(p, def) {
+            return Err(Skip::UnknownDef);
+        }
         let start = def.range.start;
         let errors: Vec<Span> = p
             .syntax_errors()

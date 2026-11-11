@@ -121,6 +121,7 @@ Where "above the def" is, for defs that are not a statement of their own:
 | the def already has a marker | `AlreadyMarked { existing }` |
 | the JSDoc block is malformed (no closing `*/` on its own, mixed prefixes we cannot copy safely) | `UnsafeDocComment`. A new block is **not** stacked on top of it: two JSDoc blocks would hide the user's own |
 | a blank line detaches the nearest JSDoc block, and that block has block tags (`@param`, `@type`, …) | `UnsafeDocComment` too (added in the TS2 review). TypeScript applies a detached block to the def all the same, and uses only the last one: a new block below it switched the tags off. A detached block with no tags still gets a new block below it |
+| the def is not one of this text's (no def with its qualname and range: it comes from an older outline) | `UnknownDef` (added in the TS2 review). The edit is placed by the def's offsets, so stale ones are refused, never trusted |
 
 Generated files and files V-NOC must never touch are the core's decision (V-NOC plan `09/04`), not the analyzer's.
 
@@ -137,7 +138,8 @@ pub fn marker(text: &str, dialect: Dialect, def: &Def, style: MarkerStyle<'_>) -
 pub fn plan_marker(text: &str, dialect: Dialect, def: &Def, marker_text: &str, style: MarkerStyle<'_>) -> Result<Edit, Skip>;
 
 #[non_exhaustive]
-pub enum Skip { NotOnOwnLine, SyntaxError, AlreadyMarked { existing: String }, UnsafeDocComment, PlacementNotSupported }
+pub enum Skip { NotOnOwnLine, SyntaxError, AlreadyMarked { existing: String }, UnsafeDocComment, DirectiveAbove, InvalidText,
+                PlacementNotSupported, UnknownDef }
 ```
 
 `marker.rs` does the work in two layers:
