@@ -7,27 +7,22 @@ use typescript_syntax::MarkerStyle;
 use crate::sem::{Func, Sem};
 
 /// The sites of `func`'s body in source order, each a byte range **relative to the start of the def** (`Def::range.start`), so an edit above the
-/// def does not move them. A def with no node in the program's tree has no sites (`FileDefs::nodes`: a bug in one of the two parses, which `describe`
-/// will turn into an `Unresolved` edge and a count; the debug assertion is how a test finds it).
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "TS4 step 4's `Lang::walk` calls it")
-)]
-pub(crate) fn sites(sem: &Sem, func: Func<'_>, style: MarkerStyle<'_>) -> Vec<Site> {
-    let Some(spans) = sem.call_sites(func, style) else {
-        debug_assert!(false, "a def with no node in the program's tree");
-        return Vec::new();
-    };
+/// def does not move them. `None` for a def with no node in the program's tree (`FileDefs::nodes`: a bug in one of the two parses): the caller says so
+/// on the graph and counts it (`def_without_node`) instead of reporting a body with no calls.
+pub(crate) fn sites(sem: &Sem, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Vec<Site>> {
+    let spans = sem.call_sites(func, style)?;
     let start = sem.def(func, style).range.start;
-    spans
-        .into_iter()
-        .map(|span| {
-            Site::new(
-                span.start.saturating_sub(start),
-                span.end.saturating_sub(start),
-            )
-        })
-        .collect()
+    Some(
+        spans
+            .into_iter()
+            .map(|span| {
+                Site::new(
+                    span.start.saturating_sub(start),
+                    span.end.saturating_sub(start),
+                )
+            })
+            .collect(),
+    )
 }
 
 #[cfg(test)]
@@ -50,7 +45,7 @@ mod tests {
         let text = std::fs::read_to_string(root.join("src/sites.ts")).unwrap();
         let plain = sem.entry("src/sites.ts", "plain", 0, STYLE).unwrap();
         let start = sem.def(plain, STYLE).range.start;
-        let found = sites(&sem, plain, STYLE);
+        let found = sites(&sem, plain, STYLE).unwrap();
         // adding the def's start gives the callee back in the file
         let callees: Vec<&str> = found
             .iter()
@@ -72,7 +67,7 @@ mod tests {
         let sem = Sem::open(&root, Path::new("src/sites.ts")).unwrap();
         let at = |qualname: &str| {
             let func = sem.entry("src/sites.ts", qualname, 0, STYLE).unwrap();
-            sites(&sem, func, STYLE)
+            sites(&sem, func, STYLE).unwrap()
         };
         // `Widget.method` and `table.load` both hold exactly `f();` as their body, at different places in the file and under different headers
         let method = at("Widget.method");

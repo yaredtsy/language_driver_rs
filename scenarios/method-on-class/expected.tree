@@ -1,0 +1,4 @@
+main
+  Counter.bump
+    Counter.read
+  Counter.reset

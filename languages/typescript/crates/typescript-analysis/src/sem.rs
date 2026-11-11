@@ -69,16 +69,8 @@ pub(crate) struct FileDefs {
     pub(crate) outline: Outline,
     /// The node of each def, in the order of `outline.defs`. `None` when no node, or more than one, has the span: a bug in one of the two parses,
     /// which `describe` turns into an `Unresolved` edge and a count (rule 8).
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "TS4 step 2b walks bodies from it")
-    )]
     pub(crate) nodes: Vec<Option<P<Node>>>,
     /// The def a node is, for the nodes in `nodes`: the way back, and how the walk knows a nested node is a def of its own.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "TS4 step 2b stops the walk at a def with it")
-    )]
     pub(crate) def_of: HashMap<P<Node>, usize>,
 }
 
@@ -288,10 +280,6 @@ impl Sem {
     }
 
     /// The file at `relative` (to the root, with `/`; `./` and `..` are folded), if the program holds it.
-    #[cfg_attr(
-        not(any(test, feature = "__proof")),
-        expect(dead_code, reason = "TS4 finds an entry with it")
-    )]
     pub fn file(&self, relative: &str) -> Option<File<'_>> {
         let name = tspath::get_normalized_absolute_path(relative, &to_engine_path(&self.root));
         let node = self.program.get_source_file(&name)?;
@@ -350,12 +338,36 @@ impl Sem {
         Some(made)
     }
 
+    /// Every def of `file` with this qualname, in source order, as `Project::defs_named` reports them.
+    pub(crate) fn defs_named(
+        &self,
+        file: &str,
+        qualname: &str,
+        style: MarkerStyle<'_>,
+    ) -> Option<Vec<crate::DefMatch>> {
+        let defs = self.file_defs(self.file(file)?, style)?;
+        Some(
+            defs.outline
+                .defs
+                .iter()
+                .filter(|def| def.qualname == qualname)
+                .enumerate()
+                .map(|(occurrence, def)| {
+                    let mut found = crate::DefMatch {
+                        occurrence: occurrence as u16,
+                        kind: def.kind.clone(),
+                        range: def.range,
+                        marker: None,
+                    };
+                    found.marker = def.marker.clone();
+                    found
+                })
+                .collect(),
+        )
+    }
+
     /// The `occurrence`th def (0-based, in source order: the number `StableDef::Path::nth` holds) with this `qualname` in the file at `file`
     /// (relative to the root). A qualname is not unique in a file (overloads, a getter and a setter), so the caller says which.
-    #[cfg_attr(
-        not(any(test, feature = "__proof")),
-        expect(dead_code, reason = "TS4 step 4 starts a graph from it")
-    )]
     pub fn entry(
         &self,
         file: &str,
@@ -378,10 +390,6 @@ impl Sem {
     /// The plain calls in the body of `func`: the callee expression of each, as an absolute byte span in the file, in source order (by where the
     /// callee starts, then where it ends). Walks the **program's** tree from the def's node, through `FileDefs`. `None` for a def with no node (see
     /// `FileDefs::nodes`).
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "walk.rs turns these into the solver's sites")
-    )]
     pub(crate) fn call_sites(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Vec<Span>> {
         let calls = self.call_nodes(func, style)?;
         Some(calls.iter().map(|call| call.span).collect())
@@ -409,10 +417,6 @@ impl Sem {
     }
 
     /// What the outline says the def is (qualname, kind, range, marker).
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "TS4 step 3's `describe` is built on it")
-    )]
     pub(crate) fn def(&self, func: Func<'_>, style: MarkerStyle<'_>) -> DefRef {
         let defs = self
             .file_defs(func.file, style)
@@ -869,14 +873,10 @@ fn without_verbatim_prefix(path: &str) -> String {
 /// What a site calls, and what a def is (TS4 step 3). The resolver is a port of `tsrs_ls`'s `resolve_call_hierarchy_declaration` (`callhierarchy.rs`, a
 /// private module there, so it cannot be called: S-TS3 in `ENGINE.md`), which is what "follow the engine" (D7) means for a call: from the callee
 /// expression, a declaration that is itself callable, else the declaration of the symbol the checker finds there, once.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "TS4 step 4's `Lang` impl calls it")
-)]
 mod resolve {
     use analyzer_core::graph::{DefInfo, StableDef};
     use tsrs_ast::{Symbol, SymbolFlags};
-    use tsrs_checker::{Checker, TypeFlags};
+    use tsrs_checker::{Checker, Type, TypeFlags};
     use tsrs_compiler::Context;
 
     use super::*;
@@ -1108,6 +1108,10 @@ mod resolve {
         let ty = checker.get_type_at_location(callee);
         if ty.flags().intersects(TypeFlags::Any) {
             Why::AnyOrUntyped
+        } else if is_callable_type(checker, ty) {
+            // a callback parameter, a prop, a store action, whether optional or one of a union's members' (what a react-query mutation is): a value that holds
+            // a function. This comes before the union check: `result.mutate()` on a union of results is a function-typed value, not a union problem
+            Why::FunctionTypedValue
         } else if ast::is_property_access_expression(callee)
             && callee.expression().is_some_and(|receiver| {
                 checker
@@ -1117,11 +1121,34 @@ mod resolve {
             })
         {
             Why::UnionReceiver
-        } else if checker.type_has_call_or_construct_signatures_exported(ty) {
-            Why::FunctionTypedValue
         } else {
             Why::NoDeclaration
         }
+    }
+
+    /// Whether the type can be called: it has call or construct signatures, or it is a union whose members other than `undefined` and `null` all do
+    /// (`(() => void) | undefined`, an optional callback: the call is guarded, the value is still a function).
+    fn is_callable_type(checker: &mut Checker, ty: P<Type>) -> bool {
+        if checker.type_has_call_or_construct_signatures_exported(ty) {
+            return true;
+        }
+        if !ty.flags().intersects(TypeFlags::Union) {
+            return false;
+        }
+        let members: Vec<P<Type>> = ty
+            .types()
+            .iter()
+            .copied()
+            .filter(|member| {
+                !member
+                    .flags()
+                    .intersects(TypeFlags::Undefined | TypeFlags::Null)
+            })
+            .collect();
+        !members.is_empty()
+            && members
+                .into_iter()
+                .all(|member| checker.type_has_call_or_construct_signatures_exported(member))
     }
 
     // ---- the port of `tsrs_ls`'s `callhierarchy.rs`. Names and shapes follow the original so an engine bump can be checked line by line.
@@ -1442,8 +1469,7 @@ mod resolve {
     }
 }
 
-#[cfg(test)]
-use resolve::Resolved;
+pub(crate) use resolve::Resolved;
 
 #[cfg(test)]
 mod tests {
@@ -2011,6 +2037,27 @@ mod tests {
             ),
         ];
         assert_eq!(found, expected);
+    }
+
+    #[test]
+    fn sem_contract_a_function_typed_value_is_one_even_when_optional_or_in_a_union() {
+        let sem = Sem::open(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/resolve"),
+            Path::new("src/main.ts"),
+        )
+        .unwrap();
+        let unknown = |site: &str| {
+            (
+                site.to_owned(),
+                vec!["unknown function_typed_value".to_owned()],
+            )
+        };
+        // `cb?.()` where `cb` may be undefined, and `result.mutate()` where `result` is a union whose every member holds a function (what a
+        // react-query mutation looks like): both are calls through a function-typed value (D16), not a union problem and not "no declaration"
+        assert_eq!(
+            resolved_sites(&sem, "src/main.ts", "optional_callbacks"),
+            [unknown("cb"), unknown("result.mutate")]
+        );
     }
 
     #[test]

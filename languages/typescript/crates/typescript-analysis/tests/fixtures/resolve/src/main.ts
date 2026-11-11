@@ -59,3 +59,10 @@ export function callers(
   api.load();
   reader.read(1);
 }
+
+type Result = { kind: "idle"; mutate: () => void } | { kind: "busy"; mutate: () => void };
+
+export function optional_callbacks(cb: (() => void) | undefined, result: Result) {
+  cb?.();
+  result.mutate();
+}

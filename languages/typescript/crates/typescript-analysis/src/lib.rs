@@ -1,10 +1,20 @@
 //! SLOW: project loading, call sites, call graph. `sem.rs` is the only file that imports the checker.
 
+mod calls;
 mod sem;
 mod walk;
 
 use std::fmt;
 use std::path::Path;
+
+pub use analyzer_core::graph::{
+    Basis, Context, ContextId, Cut, DefInfo, Edge, EdgeTo, External, Graph, Reason, Site,
+    StableDef, Stats, Status,
+};
+pub use analyzer_core::render::{Mark, Node, RenderOptions, render, to_text};
+pub use analyzer_core::solve::{Cancel, Limits};
+pub use calls::{Breakdown, Entry, Options, breakdown, call_graph};
+pub use typescript_syntax::{DefKind, MarkerStyle, Placement, Span};
 
 /// Config, package and lock files whose change means "load again". The last two are bun's text and binary lock files.
 const ENVIRONMENT_GLOBS: [&str; 9] = [
@@ -99,6 +109,18 @@ impl Project {
             .collect();
         files.sort();
         files
+    }
+
+    /// The defs of `file` (relative to the root) with this qualname, in source order: what a person must choose from when a qualname is not unique
+    /// (D15: overloads without an implementation, a getter and its setter, merged declarations). `occurrence` is the number `Entry` takes. `None` when
+    /// there is no such file, or it is not code.
+    pub fn defs_named(
+        &self,
+        file: &str,
+        qualname: &str,
+        marker: MarkerStyle<'_>,
+    ) -> Option<Vec<DefMatch>> {
+        self.sem.defs_named(file, qualname, marker)
     }
 }
 
@@ -296,6 +318,18 @@ pub mod proof {
     //! The error code is pinned for the reader: stable rustdoc ignores it (checked: pinning `E0499` still passes), and `RUSTC_BOOTSTRAP=1
     //! RUSTDOCFLAGS=-Zunstable-options cargo test --doc` enforces it (`E0505`, "cannot move out of `sem` because it is borrowed").
     pub use crate::sem::{File, Func, Sem};
+}
+
+/// A def found by qualname: which of the same-named defs it is, what it is, where, and its marker.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct DefMatch {
+    /// The number `Entry::occurrence` takes: 0-based, in source order.
+    pub occurrence: u16,
+    pub kind: DefKind,
+    /// The whole def, in bytes of the file.
+    pub range: Span,
+    pub marker: Option<String>,
 }
 
 /// Why a project did not load.

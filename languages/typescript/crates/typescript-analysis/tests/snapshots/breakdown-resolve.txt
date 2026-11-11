@@ -1,0 +1,8 @@
+breakdown:
+  edges: 24 call, 0 construct, 4 external, 4 unresolved
+  unresolved by reason:
+    any_or_untyped: 2
+    computed_name: 1
+    function_typed_value: 1
+  contexts 17, bodies walked 17, summaries reused 0
+  cuts: none
