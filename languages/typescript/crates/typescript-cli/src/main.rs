@@ -3,12 +3,20 @@
 use std::process::ExitCode;
 
 use analyzer_core::text::{Encoding, LineIndex};
-use typescript_syntax::{Dialect, outline};
+use typescript_syntax::{Dialect, MarkerStyle, outline};
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let label = match args.iter().position(|a| a == "--label") {
+        Some(i) if i + 1 < args.len() => {
+            let label = args.remove(i + 1);
+            args.remove(i);
+            label
+        }
+        _ => "ID".to_owned(),
+    };
     let [command, path] = args.as_slice() else {
-        eprintln!("usage: typescript-cli outline <file>");
+        eprintln!("usage: typescript-cli outline <file> [--label <label>]");
         return ExitCode::from(2);
     };
     if command != "outline" {
@@ -34,7 +42,8 @@ fn main() -> ExitCode {
             |p| format!("{}:{}", p.line + 1, p.column + 1),
         )
     };
-    let result = outline(&text, dialect);
+    // the label is a parameter of the analyzer; the command line gives it (default "ID")
+    let result = outline(&text, dialect, MarkerStyle::docstring(&label));
     for def in &result.defs {
         let depth = std::iter::successors(def.parent, |&p| result.defs[p].parent).count();
         let flag = if def.syntax_error {

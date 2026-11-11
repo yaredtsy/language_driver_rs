@@ -1,7 +1,12 @@
 //! The outline never panics and always returns a well-formed list, whatever the text: every fixture cut at every character boundary, and some
 //! hostile inputs.
 
-use typescript_syntax::{Dialect, outline};
+use typescript_syntax::{Dialect, MarkerStyle, outline};
+
+const STYLE: MarkerStyle<'static> = MarkerStyle {
+    label: "ID",
+    placement: typescript_syntax::Placement::Docstring,
+};
 
 fn fixtures(dir: &str) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = std::fs::read_dir(dir)
@@ -20,7 +25,7 @@ fn fixtures(dir: &str) -> Vec<(String, String)> {
 }
 
 fn check(name: &str, text: &str, dialect: Dialect) {
-    let o = outline(text, dialect);
+    let o = outline(text, dialect, STYLE);
     assert!(o.is_well_formed(), "{name}: not a well-formed list");
     let len = text.len() as u32;
     for d in &o.defs {

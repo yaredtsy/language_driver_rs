@@ -4,7 +4,12 @@
 //! a region RSS climbs fast and then swings at a high level, so a late "early" sample would hide the leak.) Checked by hand: with the region
 //! entered the peak is about 8 MB; with `region.enter()` removed from `sem.rs` the peak is 200-390 MB and this test fails.
 
-use typescript_syntax::{Dialect, outline};
+use typescript_syntax::{Dialect, MarkerStyle, outline};
+
+const STYLE: MarkerStyle<'static> = MarkerStyle {
+    label: "ID",
+    placement: typescript_syntax::Placement::Docstring,
+};
 
 /// About 2,000 lines of functions, classes and arrows.
 fn big_text() -> String {
@@ -27,7 +32,7 @@ fn rss_mb() -> f64 {
 fn ten_thousand_outlines_do_not_grow_the_process() {
     let text = big_text();
     assert!(text.lines().count() > 1_500);
-    let expected = outline(&text, Dialect::Ts).defs.len();
+    let expected = outline(&text, Dialect::Ts, STYLE).defs.len();
     assert!(
         expected > 700,
         "the text should hold many defs, got {expected}"
@@ -36,7 +41,7 @@ fn ten_thousand_outlines_do_not_grow_the_process() {
     let mut early = 0.0;
     let mut peak: f64 = 0.0;
     for round in 1..=10_000 {
-        let defs = outline(&text, Dialect::Ts).defs.len();
+        let defs = outline(&text, Dialect::Ts, STYLE).defs.len();
         assert_eq!(defs, expected);
         if round == 100 {
             early = rss_mb();

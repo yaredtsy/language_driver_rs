@@ -2,13 +2,14 @@
 //! TypeScript is tagged, `languages/typescript/docs/qualnames.md`. **Qualnames are stored in users' files: never change how an
 //! existing kind of def is named.**
 
+use analyzer_core::edit::MarkerStyle;
 use analyzer_core::outline::{Def, DefKind, Outline, SyntaxError};
 use analyzer_core::text::Span;
 
 use crate::Dialect;
 use crate::sem::{NodeKind, Parsed, RawNode, with_parsed};
 
-pub(crate) fn outline(text: &str, dialect: Dialect) -> Outline {
+pub(crate) fn outline(text: &str, dialect: Dialect, _style: MarkerStyle<'_>) -> Outline {
     with_parsed(text, dialect, |p| {
         let mut walker = Walker {
             p,

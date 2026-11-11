@@ -3,6 +3,7 @@
 mod outline;
 mod sem;
 
+pub use analyzer_core::edit::{Edit, MarkerStyle, Placement};
 pub use analyzer_core::outline::{Def, DefKind, Outline, SyntaxError};
 pub use analyzer_core::text::Span;
 
@@ -17,9 +18,10 @@ pub enum Dialect {
     Jsx,
 }
 
-/// The defs of one file, in source order, parents before children. Text in, data out: no file is read.
-pub fn outline(text: &str, dialect: Dialect) -> Outline {
-    outline::outline(text, dialect)
+/// The defs of one file, in source order, parents before children. Text in, data out: no file is read. `style` says which label to read a
+/// marker by (`Def::marker`).
+pub fn outline(text: &str, dialect: Dialect, style: MarkerStyle<'_>) -> Outline {
+    outline::outline(text, dialect, style)
 }
 
 impl Dialect {
