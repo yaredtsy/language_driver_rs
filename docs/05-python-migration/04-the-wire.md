@@ -124,7 +124,7 @@ They fit inside PY5–PY7; no step is added to the roadmap. Each is a commit.
 |---|---|---|---|
 | W1 | **done** (`e027756`) | Put back what `8363c23` cut, on the **old** renderer: `target_id` built from a `WireStyle` in `Options` (no product word in the crate), `merge_for_output`, and the second half of the merge test (`p05_02_merge_matches_v_noc`, renamed without the product name) | `cargo test -p python-analysis`: 49 pass (the 46 moved tests and three new ones), and that test checks `children.len() == 1` and `call_count == 1` after the merge; `scripts/check-all.sh --static` passes |
 | W2 | **done** | The golden baseline, once, from a worktree of `670ae79a15` (D14): `calls --wire` and `calls --wire --merged` on the Jarvis project, kept outside git. `cli-wire.json` is checked against the first | two files; the unmerged one equals `cli-wire.json` |
-| W3 | PY5, after the graph is core's | `wire.rs`: `wire(&graph, …)` and `merge`, built on `Graph` + `render` as in §3. A test on every fixture: the new wire equals the old renderer's wire, after the renames of §4 | the comparison passes on all 41 fixture tests' programs; it is PY6's renderer comparison, one level up |
+| W3 | **built; one decision open (§7, question 4)** | `wire.rs`: `wire(&graph, …)` and `merge`, built on `Graph` + `render` as in §3. A test on every fixture: the new wire equals the old renderer's wire, after the renames of §4 | the comparison passes on all 41 fixture tests' programs; it is PY6's renderer comparison, one level up |
 | W4 | PY6 | Delete the old renderer and the old `FrameJson` with it; `wire.rs` is the only wire | `cargo test -p python-analysis` passes with the same count |
 | W5 | PY7 | `python-cli calls --wire [--merged] --function-prefix … --class-prefix …`; the doc edits of §5; delete the sentence under this file's title | `calls --wire` on Jarvis equals W2's file and `--merged` equals the merged one, after the renames of §4; `grep -rn "not moved" docs` finds no line about the wire |
 
@@ -134,6 +134,12 @@ entry `CallGraphGenerator.do_pass`: `wire.json` has **195 nodes and is the same 
 the exact commands, so W3 and W5 compare against them. The count of tests is by source, not by running pylspt's suite: 46 tests moved, and the
 16 `#[test]` that stayed are in files that stayed. The golden was made with the owner's uncommitted `run-jarvis.sh` (`jarvis.py`), and the pin
 reproduces it, so the two agree on that project.
+
+**W3 result (2026-11-11).** `call_frame` is graph → core's `render` → `Frame`. Compared with the old renderer's wire:
+- on every fixture a test runs (125 `# expect:` entries): **identical content** (nodes, ids, counts, call sites, marks, contexts); **25 entries differ only in the order of siblings**;
+- on the Jarvis project: **195 nodes unmerged and 64 merged are the golden's content, digests included, in any sibling order**.
+
+The comparison found two things that the design had missed, both fixed: the children of a constructed class are anchored to the constructor and not to the class; and renaming `Node` to `Marked` changed **every context digest** (a digest hashes the serialized key). The digest is a context's identity outside the process, so a key's `StableDef` is still hashed as `Node` (`stable::hashed_def`, one unit test pins it), and the *JSON key* in `contexts` is the only place the rename shows (question 3).
 
 W1 is small and can be done today. It gives back a working, complete wire in this repo before the graph work starts, so nothing later is
 judged against a wire that was already cut.
@@ -145,5 +151,6 @@ judged against a wire that was already cut.
 | 1 | `target_qname`: with the module (`jarvis.CallGraphGenerator.do_pass`, as today) or without (`CallGraphGenerator.do_pass`, as the outline)? | **keep the module on the wire**, so what reads the wire today keeps working. The outline's qualname stays without it. It means the wire reads the module from `StableDef::Path` or a new `DefInfo` field, which is decided in W3 |
 | 2 | `target_id`: prefixes passed in (`FunctionSchema/…` comes out as today), or the bare id plus a `kind` field and V-NOC adds the prefix? | **prefixes passed in**: the wire stays byte-compatible, and rule 1 holds |
 | 3 | The `Node` → `Marked` rename inside `contexts` | **accept it**: the type is core's and is shared with the graph. If something parses that key today, say so and the wire keeps `Node` with a serde rename |
+| 4 | **The order of siblings.** The old wire lists a call in the order it is *evaluated* (`on_ok(fetch())` gives `fetch` first); core's renderer lists in *source* order (rule 3: `on_ok` first). Everything else is identical. See the W3 result below | **source order** (rule 3 as it is; no core change): the wire then equals `cli-wire.json` in content but not byte for byte. The alternative is exact evaluation order, which needs a sequence number on core's `Edge`, because byte ranges cannot give it (`[f(x) for x in g()]` evaluates `g()` first, and source order puts `f(x)` first) |
 
 Next: [`../06-roadmap.md`](../06-roadmap.md)
