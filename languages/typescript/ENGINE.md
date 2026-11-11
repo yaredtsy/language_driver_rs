@@ -443,3 +443,26 @@ Other facts: a call through a function type (`cb()`) has `get_type_at_location(c
 apart by the type). A project `.d.ts` is `External` and named by its **relative path** (`src/types.d.ts`), since it has no package; `node_modules` packages are named by `package_of` (`pkg`, `@types/x` as
 `x`), the bundled libraries `typescript:lib`, and the name is **qualified** by the classes, interfaces and namespaces around the declaration (`Math.max`, `Array.map`, `helper`), because the merged wire counts a repeated target as one and Python names an external by its qualname too. One checker handle is taken per `callee` and dropped before it returns
 (one checker, so one handle at a time); that is correct, and it was not timed.
+
+### The first graphs (TS4 step 4)
+
+`typescript-cli calls` on the V-NOC frontend (`src/frontend`, release build, 2026-11-12, read only), entry `TaskDetailPanel` (the largest component, 427 lines):
+
+| | |
+|---|---|
+| open the project | 63 ms warm, up to 230 ms cold |
+| the graph (18 contexts, 173 targets) | 13 to 31 ms: one checker handle per `callee`, so it is not a cost to worry about (S-TS3 measured 437 sites in 57 ms) |
+| edges | 32 call, 0 construct, 66 external, 75 unresolved |
+| unresolved by reason | `function_typed_value` 75 |
+
+- **The first run said otherwise, and the fixture reproduced it.** It reported `function_typed_value` 66, `union_receiver` 8 and `no_declaration` 1. The eight are react-query's `mutation.mutate(…)`: the
+  receiver is a union of result types and `mutate` is, in every member, a **property of function type**; the one is an optional callback prop (`(id) => void | undefined`). Both are calls through a
+  function-typed value (D16). `why_unknown` now asks whether the callee's type is callable (call signatures, or a union whose members other than `undefined` and `null` all have them) **before** it asks
+  about a union receiver, and `union_receiver` is left for a union where a member has no declaration to enter beside members that do (a class method and a function-typed property). Fixture:
+  `optional_callbacks` in `tests/fixtures/resolve`.
+- **A script file merges with the lib's globals.** The scenario `straight-line` (`function fetch() {…}` with no `import` or `export`) gave an extra `External` for `fetch`: in a script the function and
+  `lib.dom.d.ts`'s `fetch` are one symbol with two declarations, and the engine reports both. That is right, and real TypeScript files are modules, so the scenario programs start with `export {};`. An inferred
+  project of a plain script (`jsconfig`-less JavaScript) has the same merging with whatever the DOM lib declares (`name`, `status`, `open`, `close`, `parse` is not one).
+- **A class reached by a plain call** (`Foo()`, `super(x)` when the engine names the class) is a `Construct` with no `init` for now; `new` and the constructor are step 5.
+- **The breakdown is the first thing to read** when a tree looks short: `edges` says how many calls were not followed and why. 66 externals in one component is the React and library surface; the share of
+  `function_typed_value` is what context sensitivity (C3, unscheduled) would buy back.
