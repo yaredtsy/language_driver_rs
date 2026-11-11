@@ -26,7 +26,11 @@ impl Project {
 }
 
 #[non_exhaustive]
-pub enum OpenError { NoSuchFile, ConfigError(String) }
+pub enum OpenError {
+    NoSuchFile,
+    ConfigError(String),        // no config found, or it cannot be read (a syntax error in it counts)
+    NotInProject(String),       // the config loaded fine, but its program does not hold `file`; carries the config's path
+}
 ```
 
 This is the Python crate's `open_project` for TypeScript. `OpenError` is one of the two places an analyzer may return an error (rule 6); a
@@ -39,8 +43,8 @@ package; a `tsconfig.json` and a `tsconfig.test.json` side by side).
 
 | Situation | What `open` does |
 |---|---|
-| a `tsconfig.json` (or `jsconfig.json`) is found above `file`, and it includes `file` | load that one. This is the same upward search the editor does; `tsrs_lint/src/engine.rs` (`find_tsconfig`) is the code to follow |
-| the nearest tsconfig does **not** include `file` (it has `"files": []` and `"references"`, a "solution" config) | follow its `references` to the one that does **[check: tsrs has project-reference support in `tsrs_compiler`; see how `tsrs_lint` handles it]** |
+| a `tsconfig.json` (or `jsconfig.json`) is found above `file`, and it includes `file` | load that one. This is the same upward search the editor does, **but it stops at `root`**: a stray config above the repository is never picked up, and `files()` is relative to `root` (decided in TS3 step 2; `tsrs_lint` searches to the filesystem root); `tsrs_lint/src/engine.rs` (`find_tsconfig`) is the code to follow |
+| the nearest tsconfig does **not** include `file` (it has `"files": []` and `"references"`, a "solution" config) | follow its `references` to the one that does; until step 6 is built `open` returns `NotInProject`. **Not optional**: the V-NOC frontend is this layout (`tsconfig.json` with `"files": []` and references to `tsconfig.app.json`), so without step 6 opening a file of it fails **[check: tsrs has project-reference support in `tsrs_compiler`; see how `tsrs_lint` handles it]** |
 | no tsconfig at all (a plain JavaScript folder) | an **inferred project**: `allowJs: true`, `checkJs: false`, `noEmit: true`, module resolution `bundler`, root files = `file` alone; imports pull in the rest. Built with `tsrs_tsoptions::new_parsed_command_line` |
 | `node_modules` is missing (the user did not install) | load anyway. Imports from packages do not resolve; calls into them become `Unresolved`. `Project` remembers this so that `Stats` can say why |
 
@@ -63,13 +67,14 @@ opts.regions = Some(Arc::clone(&loaders));   // loaders: Arc<tsrs_compiler::Prog
 let program: &'static tsrs_compiler::Program = tsrs_compiler::new_program(opts);
 ```
 
-Three options to set on purpose, each with a line in `ENGINE.md` saying why:
+Options set on purpose, each with a line in `ENGINE.md` ("Program options `Sem::open` sets on purpose") saying why and what was measured:
 
 | Option | Value | Why |
 |---|---|---|
 | `checker_regions` | `true` | without it the CLI "leaks its checkers" by design (the comment on the field says so) |
-| `single_threaded` | on | our walk asks one question at a time (rule 11). Loading and parsing may still be parallel **[check what the flag covers]** |
-| the number of checkers (`CompilerOptions::checkers`) | 1 | one checker sees every file; no question of which checker owns a node |
+| `regions` | one `ProgramRegions` per `Sem` | the loaders' memory goes back with the program |
+| the number of checkers (`CompilerOptions::checkers`, set on the parsed config) | 1 | one checker sees every file; no question of which checker owns a node; same answers every time |
+| `single_threaded` | **not set** | it implies one checker, but it also loads files one at a time: about 160 ms against 45 ms to open a 1,549-file program (warm). Parallel loading is kept; a test checks the program's file order is stable |
 
 Type-checking the whole program is **not** needed to resolve calls: the checker computes types on demand for the nodes we ask about. So `open`
 loads and binds, and does not call anything like "get all diagnostics".
@@ -94,7 +99,10 @@ impl Drop for Project {
 
 The rules:
 
-1. **A `Project` owns its program.** Dropping the `Project` frees it. Nothing else may keep a tsrs pointer.
+1. **A `Project` owns its program.** Dropping the `Project` frees it: `Sem::drop` calls `tsrs_compiler::free_unshared_program`, an `unsafe fn`, with
+   the region entered. **The region alone is not enough** (measured in step 2: 60 opens reach 349 MB without the call and stay at 24 MB with it; the
+   `Program` and its processed files are `Box::leak`ed outside any region). So the TypeScript workspace sets `unsafe_code = "deny"` and `sem.rs` has the
+   one `#[allow(unsafe_code)]`, on that `Drop` (`01-monorepo/02-workspaces-and-toolchain.md` §4). Nothing else may keep a tsrs pointer.
 2. **`sem::Func` (and every other handle) is only valid while its `Project` lives.** The public API never returns one: `call_graph` takes
    `&Project` and returns a `Graph`, which is plain owned data.
 3. **Inside the crate, handles carry the project's lifetime**, so the compiler checks rule 2 for us:
@@ -160,8 +168,8 @@ that the walker can run on both. They should be: both come from `tsrs_parser`.
 | 2 | `Sem::open` for the simple case: one `tsconfig.json` above the file | a fixture project of three files loads; `files()` lists them |
 | 3 | the inferred project (no tsconfig) | a plain-JS fixture folder loads |
 | 4 | `is_project_code`, `package_of` | a fixture with a fake `node_modules/pkg` and a `.d.ts` |
-| 5 | `Drop`, the lifetime on handles, the memory loop test | the test of §4.4 |
-| 6 | solution configs and project references | a fixture with `references`. May be deferred to after TS4 if S-TS3 shows it is rare in your target projects |
+| 5 | the lifetime on handles. (`Drop` and the memory loop test were done early, with step 2: `tests/memory.rs`, 100 opens, peak minus round 10 under 30 MB) | `drop(project)` while a handle is alive does not compile (a `compile_fail` doctest) |
+| 6 | solution configs and project references | a fixture with `references`, shaped like the V-NOC frontend (`"files": []`, references to `tsconfig.app.json`). **Before TS4, not after**: it is the common Vite layout |
 | 7 | `environment_inputs` | returns `**/tsconfig*.json`, `**/jsconfig.json`, `**/package.json`, the lock files |
 | 8 | `typescript-cli files <dir> <file>` | prints the loaded files and the config that was chosen: the debugging tool for "why is this call unresolved" |
 
