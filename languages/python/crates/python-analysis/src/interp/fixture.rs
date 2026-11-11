@@ -6,6 +6,7 @@ use crate::interp::{Limits, Mode, Options, Stats, call_graph, call_tree, solve, 
 use crate::sem::Sem;
 use crate::sem::{ProjectDatabase, open, open_project};
 use ruff_db::system::SystemPath;
+use ruff_text_size::TextRange;
 use std::collections::BTreeSet;
 
 pub(super) struct Expect {
@@ -1128,6 +1129,278 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
     }
 }
 
+/// A graph as reviewed text: each context with its digest, and under it every edge with what it rests on. The wire and the tree leave out
+/// what 570ab69 got wrong (a spurious `Unresolved` edge: the tree does not draw one), so this is the snapshot that sees edges, bases, reasons
+/// and the contexts' digests. A digest is shown by its first 8 bytes.
+fn graph_text(g: &analyzer_core::graph::Graph) -> String {
+    use analyzer_core::graph::{ContextId, EdgeTo, StableDef};
+    use std::fmt::Write;
+    let name = |f: &StableDef| g.def(f).map_or_else(|| "?".to_owned(), |d| d.qname.clone());
+    let ctx = |c: &ContextId| {
+        let digest: String = c.digest[..8].iter().map(|b| format!("{b:02x}")).collect();
+        format!("{}#{digest}", name(&c.func))
+    };
+    let mut out = String::new();
+    let entries: Vec<String> = g.entries.iter().map(ctx).collect();
+    writeln!(out, "entries: {}", entries.join(", ")).unwrap();
+    let s = &g.stats;
+    writeln!(
+        out,
+        "stats: walks {}, contexts {}, reuse_hits {}, unresolved {}, cuts {:?}, language {:?}",
+        s.walks, s.contexts, s.reuse_hits, s.unresolved, s.cuts, s.language
+    )
+    .unwrap();
+    for c in &g.contexts {
+        writeln!(out, "{} {:?}", ctx(&c.id), c.status).unwrap();
+        for e in g.edges_from(&c.id) {
+            let to = match &e.to {
+                EdgeTo::Context(to, b) => format!("{} {b:?}", ctx(to)),
+                EdgeTo::Construct { class, init, basis } => format!(
+                    "new {} init {} {basis:?}",
+                    name(class),
+                    init.as_ref().map_or_else(|| "-".to_owned(), ctx)
+                ),
+                EdgeTo::External(x, b) => format!("external {}.{} {b:?}", x.package, x.name),
+                EdgeTo::Unresolved(r) => format!("? {}", r.as_str()),
+                _ => unreachable!(),
+            };
+            writeln!(out, "  @{}-{} -> {to}", e.site.start, e.site.end).unwrap();
+        }
+    }
+    out
+}
+
+/// The graph of one entry of a real project, as `graph_text` writes it, on stdout between `=====BEGIN graph` and `=====END` lines. For
+/// reading what summary mode says about code that is not in the repo (Jarvis, FastAPI); nothing is compared:
+/// `PYTHON_DUMP_PROJECT=<dir> PYTHON_DUMP_FILE=<file in it> PYTHON_DUMP_ENTRY=<entry> cargo test -p python-analysis dump_graph -- --ignored --nocapture`
+#[test]
+#[ignore = "needs a real project: see the comment"]
+fn dump_graph_of_a_real_project() {
+    let var = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("set {k}"));
+    let (project, file, entry) = (
+        var("PYTHON_DUMP_PROJECT"),
+        var("PYTHON_DUMP_FILE"),
+        var("PYTHON_DUMP_ENTRY"),
+    );
+    let db = open_project(SystemPath::new(&project)).unwrap();
+    let (file, _) = open(&db, &SystemPath::new(&project).join(file)).unwrap();
+    let graph = call_graph(&db, file, &entry, &summary()).unwrap();
+    println!("=====BEGIN graph\n{}=====END", graph_text(&graph));
+    if std::env::var("PYTHON_DUMP_UNRESOLVED").is_ok() {
+        dump_unresolved_sites(&db, &project, &graph);
+    }
+    if std::env::var("PYTHON_DUMP_GAP").is_err() {
+        return;
+    }
+    // with `PYTHON_DUMP_GAP=1`: inline mode's tree against summary mode's, and the topmost missing nodes at no `Unresolved` site, each with
+    // the source line and what ty says the receiver is there (the type of `x` in `x.m(...)` and `x.attr`, else of the callee)
+    use analyzer_core::render::{RenderOptions, render};
+    use ruff_python_ast::{AnyNodeRef, Expr, ExprRef, find_node::covering_node};
+    let inline_opts = Options {
+        mode: Mode::Inline,
+        ..summary()
+    };
+    let inline = call_tree(&db, file, &entry, &inline_opts).unwrap().0;
+    let tree = render(&graph, &graph.entries[0], &RenderOptions::default());
+    let mut gap = Gap::default();
+    compare_with_inline(&entry, &inline, &tree, &graph, &mut gap);
+    fn size(n: &analyzer_core::render::Node) -> usize {
+        1 + n.children.iter().map(size).sum::<usize>()
+    }
+    fn inline_size(n: &crate::interp::tree::Node) -> usize {
+        1 + n.children.iter().map(inline_size).sum::<usize>()
+    }
+    println!(
+        "=====BEGIN gap\nnodes: summary {}, inline {}",
+        size(&tree),
+        inline_size(&inline)
+    );
+    println!(
+        "{} nodes missing, {} topmost ({} at an Unresolved site, {} silent), {} extra",
+        gap.missing,
+        gap.highest_missing,
+        gap.at_unresolved,
+        gap.silent.len(),
+        gap.extra
+    );
+    let sem = Sem::new(&db, Options::default().marker);
+    for (rel, range, qname) in &gap.silent {
+        let path = SystemPath::new(&project).join(rel);
+        let (file, program_file) = open(&db, &path).unwrap();
+        let text = ruff_db::source::source_text(&db, file);
+        let line = text.as_str()[..usize::from(range.start())]
+            .matches('\n')
+            .count()
+            + 1;
+        let parsed = ruff_db::parsed::parsed_module(&db, program_file.python_file(&db)).load(&db);
+        let receiver = match covering_node(AnyNodeRef::from(parsed.syntax()), *range).node() {
+            AnyNodeRef::ExprCall(c) => match &*c.func {
+                Expr::Attribute(a) => Some(&*a.value),
+                f => Some(f),
+            },
+            AnyNodeRef::ExprAttribute(a) => Some(&*a.value),
+            _ => None,
+        };
+        // a class by its qualified name and whether it is the project's: `ModelField` of pydantic and of the project are two classes
+        let shown = |t| {
+            crate::sem::Type::display(
+                t,
+                &db,
+                &crate::sem::ProgramEnvironment::from_file(program_file),
+            )
+            .to_string()
+        };
+        let describe = |t| {
+            let class = |d| {
+                let whose = if sem.is_project(d) {
+                    "project"
+                } else {
+                    "library"
+                };
+                format!("{} ({whose})", sem.qname(d))
+            };
+            match sem.shape(t, program_file) {
+                crate::sem::Shape::Instance(d) => class(d),
+                crate::sem::Shape::Union(members) => members
+                    .into_iter()
+                    .map(|m| match sem.shape(m, program_file) {
+                        crate::sem::Shape::Instance(d) => class(d),
+                        _ => shown(m),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" | "),
+                other => {
+                    let kind = match other {
+                        crate::sem::Shape::Unknown => "Unknown",
+                        crate::sem::Shape::Class(_) => "Class",
+                        crate::sem::Shape::SubclassOf(_) => "SubclassOf",
+                        crate::sem::Shape::Alias(_) => "Alias",
+                        crate::sem::Shape::Module => "Module",
+                        crate::sem::Shape::Function(_) => "Function",
+                        crate::sem::Shape::BoundMethod { .. } => "BoundMethod",
+                        _ => "Other",
+                    };
+                    format!("{} [shape {kind}]", shown(t))
+                }
+            }
+        };
+        let ty = receiver.map_or_else(
+            || "?".to_owned(),
+            |e| describe(sem.type_of(&sem.model(program_file), ExprRef::from(e))),
+        );
+        println!("{rel}:{line} {qname} <- receiver: {ty}");
+    }
+    println!("=====END");
+}
+
+/// With `PYTHON_DUMP_UNRESOLVED=1`: every `Unresolved` edge of `graph` with what ty says the callee expression is, so that "ty could have
+/// answered here" is a count and not a guess. One line per edge: `file:line callee-source <- ty: <what ty makes of the callee>`, and a
+/// tally of the answers: a def of the project, a def of a library, a type that names no def, and nothing (`Unknown`).
+fn dump_unresolved_sites(db: &ProjectDatabase, project: &str, graph: &analyzer_core::graph::Graph) {
+    use analyzer_core::graph::EdgeTo;
+    use ruff_python_ast::{AnyNodeRef, Expr, ExprRef, find_node::covering_node};
+    let sem = Sem::new(db, Options::default().marker);
+    let mut tally: std::collections::BTreeMap<String, usize> = Default::default();
+    println!("=====BEGIN unresolved");
+    for e in graph
+        .edges
+        .iter()
+        .filter(|e| matches!(e.to, EdgeTo::Unresolved(_)))
+    {
+        let Some(def) = graph.def(&e.from.func) else {
+            continue;
+        };
+        let start = def.range.start + e.site.start;
+        let end = def.range.start + e.site.end;
+        let range = TextRange::new(start.into(), end.into());
+        let (file, program_file) = open(db, &SystemPath::new(project).join(&def.file)).unwrap();
+        let text = ruff_db::source::source_text(db, file);
+        let line = text.as_str()[..usize::from(range.start())]
+            .matches('\n')
+            .count()
+            + 1;
+        let parsed = ruff_db::parsed::parsed_module(db, program_file.python_file(db)).load(db);
+        let callee: Option<&Expr> =
+            match covering_node(AnyNodeRef::from(parsed.syntax()), range).node() {
+                AnyNodeRef::ExprCall(c) => Some(&*c.func),
+                _ => None,
+            };
+        let (answer, shown) = match callee {
+            None => ("not a call".to_owned(), String::new()),
+            Some(expr) => {
+                let t = sem.type_of(&sem.model(program_file), ExprRef::from(expr));
+                let members = match sem.shape(t, program_file) {
+                    crate::sem::Shape::Union(m) => m,
+                    _ => vec![t],
+                };
+                let kinds: std::collections::BTreeSet<&str> = members
+                    .iter()
+                    .map(|&m| match sem.shape(m, program_file) {
+                        crate::sem::Shape::Unknown => "nothing (Unknown)",
+                        _ => match sem.callee_definition(m, program_file) {
+                            Some(d) if sem.is_project(d) => "a def of the project",
+                            Some(_) => "a def of a library",
+                            None => "a type that names no def",
+                        },
+                    })
+                    .collect();
+                let shown = crate::sem::Type::display(
+                    t,
+                    db,
+                    &crate::sem::ProgramEnvironment::from_file(program_file),
+                )
+                .to_string();
+                (kinds.into_iter().collect::<Vec<_>>().join(" + "), shown)
+            }
+        };
+        *tally.entry(answer.clone()).or_default() += 1;
+        let source = &text.as_str()[usize::from(range.start())..usize::from(range.end())];
+        let source = source
+            .lines()
+            .next()
+            .unwrap_or("")
+            .chars()
+            .take(60)
+            .collect::<String>();
+        println!("{}:{line} {source} <- ty: {answer} [{shown}]", def.file);
+    }
+    for (answer, n) in &tally {
+        println!("TALLY {n:4} {answer}");
+    }
+    println!("=====END");
+}
+
+/// The graph of every `# expect:` entry of every fixture a test runs, in summary mode, equals its snapshot: `tests/snapshots/<fixture>.graph`,
+/// blessed with `ANALYZER_BLESS=1` like the wire's. This is the net under a change to the solver or to the rule that gives an edge its basis:
+/// the diff of a re-bless is every edge, basis, reason and digest the change moved.
+#[test]
+fn the_graph_of_every_fixture_equals_its_snapshot() {
+    use crate::interp::call_graph;
+    let mut by_fixture: Vec<(String, String)> = Vec::new();
+    let mut entries = 0;
+    for (fixture, entry, opts) in every_entry() {
+        let (db, file) = open_fixture(&fixture);
+        let Some(graph) = call_graph(&db, file, &entry, &opts) else {
+            continue;
+        };
+        entries += 1;
+        let text = format!("== {entry}\n{}\n", graph_text(&graph));
+        match by_fixture.last_mut() {
+            Some((name, all)) if *name == fixture => all.push_str(&text),
+            _ => by_fixture.push((fixture, text)),
+        }
+    }
+    assert_eq!(
+        (by_fixture.len(), entries),
+        (35, 129),
+        "an entry was added or lost"
+    );
+    for (fixture, text) in by_fixture {
+        let path = std::path::Path::new("tests/snapshots").join(format!("{fixture}.graph"));
+        analyzer_testkit::expect_file(&path, &text);
+    }
+}
+
 /// Where summary mode misses what inline mode finds, and what the graph says at that place. Inline mode's tree is the oracle (it is what the
 /// `# expect:` blocks of these programs are), and it knows the call site of every node.
 #[derive(Default)]
@@ -1143,6 +1416,8 @@ struct Gap {
     nodes_elsewhere: usize,
     /// the ones that do not, as `entry: path -> node`
     not_at_unresolved: Vec<String>,
+    /// the same nodes with where they are: the file (relative to the project), the call expression's range, the node's name
+    silent: Vec<(String, TextRange, String)>,
     /// nodes summary has and inline does not, counting what is under them: wrong edges, and nothing marks them
     extra: usize,
     extras: Vec<String>,
@@ -1211,6 +1486,13 @@ fn compare_with_inline(
                     gap.nodes_elsewhere += inline_size(child);
                     gap.not_at_unresolved
                         .push(format!("{path} -> {}", child.qname));
+                    if let (Some(range), Some(def)) = (
+                        child.site,
+                        summary.contexts.first().and_then(|c| graph.def(&c.func)),
+                    ) {
+                        gap.silent
+                            .push((def.file.clone(), range, child.qname.clone()));
+                    }
                 }
             }
         }

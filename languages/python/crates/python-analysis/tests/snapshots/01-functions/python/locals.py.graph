@@ -1,0 +1,45 @@
+== alias
+entries: locals.alias#60c383566404bae8
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+locals.a#5fa5e6640ee0c18d Finished
+locals.alias#60c383566404bae8 Finished
+  @27-30 -> locals.a#5fa5e6640ee0c18d Type
+
+== rebinding
+entries: locals.rebinding#791524f74d2ce80d
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+locals.a#5fa5e6640ee0c18d Finished
+locals.b#4dee97d3b4be6ab0 Finished
+locals.rebinding#791524f74d2ce80d Finished
+  @31-34 -> locals.a#5fa5e6640ee0c18d Type
+  @49-52 -> locals.b#4dee97d3b4be6ab0 Type
+
+== chained
+entries: locals.chained#5238161f7f6b3081
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+locals.b#4dee97d3b4be6ab0 Finished
+locals.chained#5238161f7f6b3081 Finished
+  @33-36 -> locals.b#4dee97d3b4be6ab0 Type
+
+== once
+entries: locals.once#343f86126a97ef14
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+locals.once#343f86126a97ef14 Finished
+  @24-30 -> locals.pick#ee3365134cbf7044 Type
+locals.pick#ee3365134cbf7044 Finished
+
+== walrus
+entries: locals.walrus#1e9f38e98c3d696d
+stats: walks 2, contexts 2, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+locals.b#4dee97d3b4be6ab0 Finished
+locals.walrus#1e9f38e98c3d696d Finished
+  @18-28 -> locals.b#4dee97d3b4be6ab0 Type
+  @33-36 -> locals.b#4dee97d3b4be6ab0 Type
+
+== unpack
+entries: locals.unpack#21b24cadc5af8642
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+locals.b#4dee97d3b4be6ab0 Finished
+locals.unpack#21b24cadc5af8642 Finished
+  @34-37 -> locals.b#4dee97d3b4be6ab0 Type
+

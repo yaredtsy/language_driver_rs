@@ -1,0 +1,22 @@
+== main
+entries: varargs.main#221f7a8d1f3fd0f5
+stats: walks 7, contexts 7, reuse_hits 2, unresolved 3, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 3}
+varargs.after_star#c6f5cac4ed0dd7c7 Finished
+  @31-35 -> varargs.b#9798c714bae452d4 Type
+varargs.b#9798c714bae452d4 Finished
+varargs.by_name#4c4ad5abee051156 Finished
+  @24-34 -> ? unknown_callee
+varargs.collect#883bdfcdd8d22da3 Finished
+  @45-48 -> ? unknown_callee
+varargs.main#221f7a8d1f3fd0f5 Finished
+  @16-29 -> varargs.collect#883bdfcdd8d22da3 Type
+  @34-46 -> varargs.by_name#4c4ad5abee051156 Type
+  @70-81 -> varargs.two#491f7179807cdd50 Type
+  @86-95 -> varargs.two#f8ce1d76ea34f022 Type
+  @100-123 -> varargs.two#491f7179807cdd50 Type
+  @128-147 -> varargs.after_star#c6f5cac4ed0dd7c7 Type
+varargs.two#491f7179807cdd50 Finished
+  @19-22 -> ? unknown_callee
+varargs.two#f8ce1d76ea34f022 Finished
+  @19-22 -> varargs.b#9798c714bae452d4 Type
+

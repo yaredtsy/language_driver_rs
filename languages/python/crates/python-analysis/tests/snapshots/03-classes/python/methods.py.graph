@@ -1,0 +1,28 @@
+== main
+entries: methods.main#979944f3663f24a5
+stats: walks 8, contexts 8, reuse_hits 5, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+methods.Greeter.greet#e9360c976c36e02b Finished
+  @29-33 -> methods.on_ok#82adbeef02b9c5a9 Type
+methods.Greeter.greet#f55f9d7c78193901 Finished
+  @29-33 -> methods.on_err#3d0cd4d91377e496 Type
+methods.Greeter.make#169651eefa2e5167 Finished
+  @44-48 -> methods.on_ok#82adbeef02b9c5a9 Type
+  @64-69 -> new methods.Greeter init - Type
+methods.Greeter.twice#3db5abc9660d4bc8 Finished
+  @29-43 -> methods.Greeter.greet#e9360c976c36e02b Path
+  @52-66 -> methods.Greeter.greet#e9360c976c36e02b Path
+methods.Quiet.greet#cb68261d5c3d8dc4 Finished
+methods.main#979944f3663f24a5 Finished
+  @20-29 -> new methods.Greeter init - Type
+  @34-48 -> methods.Greeter.greet#e9360c976c36e02b Path
+  @53-77 -> methods.Greeter.greet#f55f9d7c78193901 Type
+  @122-136 -> methods.Greeter.twice#3db5abc9660d4bc8 Path
+  @141-147 -> new methods.Loud init - Type
+  @141-161 -> methods.Greeter.greet#f55f9d7c78193901 Path
+  @166-173 -> new methods.Quiet init - Type
+  @166-186 -> methods.Quiet.greet#cb68261d5c3d8dc4 Path
+  @207-216 -> methods.Greeter.greet#f55f9d7c78193901 Path
+  @250-263 -> methods.Greeter.make#169651eefa2e5167 Type
+methods.on_err#3d0cd4d91377e496 Finished
+methods.on_ok#82adbeef02b9c5a9 Finished
+

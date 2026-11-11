@@ -1,0 +1,12 @@
+== main
+entries: one_call.main#c1da01b1a0bfb3ae
+stats: walks 3, contexts 3, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+one_call.helper#7398463c68df2c62 Finished
+one_call.main#c1da01b1a0bfb3ae Finished
+  @16-24 -> one_call.helper#7398463c68df2c62 Type
+  @29-48 -> external builtins.print Type
+  @38-45 -> one_call.other#c34ff6c64730d300 Type
+  @53-61 -> external builtins.len Type
+  @83-91 -> one_call.helper#7398463c68df2c62 Type
+one_call.other#c34ff6c64730d300 Finished
+

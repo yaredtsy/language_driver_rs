@@ -1,0 +1,82 @@
+== main
+entries: in_keys.main#e0e8be6ced889574
+stats: walks 7, contexts 7, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+in_keys.Box.run#3d3e202fad000209 Finished
+  @23-45 -> in_keys.JsonHandler.process#201cf445de83e0b0 Path
+in_keys.Box.run#fa527ee471675d68 Finished
+  @23-45 -> in_keys.CsvHandler.process#1ffc2e5f7f896afb Path
+in_keys.CsvHandler.process#1ffc2e5f7f896afb Finished
+in_keys.JsonHandler.process#201cf445de83e0b0 Finished
+in_keys.csv_box#4329d7422b50b100 Finished
+  @23-28 -> new in_keys.Box init - Type
+  @45-57 -> new in_keys.CsvHandler init - Type
+  @62-69 -> in_keys.Box.run#fa527ee471675d68 Path
+in_keys.json_box#0caf0b3433cd6341 Finished
+  @24-29 -> new in_keys.Box init - Type
+  @46-59 -> new in_keys.JsonHandler init - Type
+  @64-71 -> in_keys.Box.run#3d3e202fad000209 Path
+in_keys.main#e0e8be6ced889574 Finished
+  @16-26 -> in_keys.json_box#0caf0b3433cd6341 Type
+  @31-40 -> in_keys.csv_box#4329d7422b50b100 Type
+  @45-55 -> in_keys.json_box#0caf0b3433cd6341 Type
+
+== shared
+entries: in_keys.shared#9e82fd51344bd701
+stats: walks 3, contexts 3, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+in_keys.Box.run#3d3e202fad000209 Finished
+  @23-45 -> in_keys.JsonHandler.process#201cf445de83e0b0 Path
+in_keys.JsonHandler.process#201cf445de83e0b0 Finished
+in_keys.shared#9e82fd51344bd701 Finished
+  @22-27 -> new in_keys.Box init - Type
+  @44-57 -> new in_keys.JsonHandler init - Type
+  @66-71 -> new in_keys.Box init - Type
+  @88-101 -> new in_keys.JsonHandler init - Type
+  @106-113 -> in_keys.Box.run#3d3e202fad000209 Path
+  @118-125 -> in_keys.Box.run#3d3e202fad000209 Path
+
+== passed
+entries: in_keys.passed#09b64dc0254771d0
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+in_keys.Box.run#fa527ee471675d68 Finished
+  @23-45 -> in_keys.CsvHandler.process#1ffc2e5f7f896afb Path
+in_keys.CsvHandler.process#1ffc2e5f7f896afb Finished
+in_keys.passed#09b64dc0254771d0 Finished
+  @22-27 -> new in_keys.Box init - Type
+  @44-56 -> new in_keys.CsvHandler init - Type
+  @61-67 -> in_keys.use#1b61ab04a2516f66 Type
+in_keys.use#1b61ab04a2516f66 Finished
+  @16-23 -> in_keys.Box.run#fa527ee471675d68 Path
+
+== deep
+entries: in_keys.deep#3ae4429bb2ce501e
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+in_keys.Service.run#6eedec97f8e9c1db Finished
+  @23-56 -> ? unknown_callee
+in_keys.deep#3ae4429bb2ce501e Finished
+  @20-28 -> new in_keys.Config init - Type
+  @45-58 -> new in_keys.JsonHandler init - Type
+  @67-72 -> new in_keys.App init - Type
+  @98-107 -> new in_keys.Service init - Type
+  @126-133 -> in_keys.Service.run#6eedec97f8e9c1db Path
+
+== again
+entries: in_keys.again#331f6d83647e801d
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+in_keys.Runner.run#eec7b5bc853bcf5a Finished
+  @23-32 -> in_keys.log#6a6d621d0918afdf Type
+in_keys.again#331f6d83647e801d Finished
+  @22-30 -> new in_keys.Runner init - Type
+  @42-54 -> in_keys.again#331f6d83647e801d Type
+  @105-112 -> in_keys.Runner.run#eec7b5bc853bcf5a Path
+in_keys.log#6a6d621d0918afdf Finished
+
+== again_closure
+entries: in_keys.again_closure#be30bc3ca853e143
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+in_keys.again_closure#be30bc3ca853e143 Finished
+  @30-50 -> in_keys.again_closure#be30bc3ca853e143 Type
+  @102-105 -> in_keys.again_closure.g#e0475db088887449 Path
+in_keys.again_closure.g#e0475db088887449 Finished
+  @17-20 -> in_keys.log#6a6d621d0918afdf Type
+in_keys.log#6a6d621d0918afdf Finished
+

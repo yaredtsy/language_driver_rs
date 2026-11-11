@@ -1,0 +1,23 @@
+== main
+entries: recursion.main#fcf54c5592c2d603
+stats: walks 8, contexts 8, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+recursion.countdown#09ba31f3f99b74a1 Finished
+  @36-52 -> recursion.countdown#09ba31f3f99b74a1 Type
+recursion.countdown#711f20390c4b50a6 Finished
+  @36-52 -> recursion.countdown#09ba31f3f99b74a1 Type
+recursion.f#31d050884b26673e Finished
+  @13-16 -> recursion.f#31d050884b26673e Type
+recursion.g#6c3fa7eb422bcf2d Finished
+  @13-16 -> recursion.h#a192e8f33a8f8bf4 Type
+recursion.h#a192e8f33a8f8bf4 Finished
+  @13-16 -> recursion.g#6c3fa7eb422bcf2d Type
+recursion.leaf#e7ffb865fb6db313 Finished
+recursion.main#fcf54c5592c2d603 Finished
+  @16-19 -> recursion.f#31d050884b26673e Type
+  @24-27 -> recursion.g#6c3fa7eb422bcf2d Type
+  @32-44 -> recursion.countdown#711f20390c4b50a6 Type
+  @49-56 -> recursion.twice#5d9b3607757c1de5 Type
+recursion.twice#5d9b3607757c1de5 Finished
+  @17-23 -> recursion.leaf#e7ffb865fb6db313 Type
+  @28-34 -> recursion.leaf#e7ffb865fb6db313 Type
+

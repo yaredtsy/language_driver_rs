@@ -1,0 +1,25 @@
+== main
+entries: summaries.main#4901c288992b8eb8
+stats: walks 8, contexts 8, reuse_hits 5, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+summaries.a#d36e143f791aa7b0 Finished
+summaries.b#e8cf25875cd7c7c9 Finished
+summaries.chain#00b92243c06e78c5 Finished
+  @25-40 -> summaries.ident#bc00fcabe5a55d26 Type
+  @31-39 -> summaries.ident#bc00fcabe5a55d26 Type
+summaries.ident#92dbf1223f15d61d Finished
+summaries.ident#bc00fcabe5a55d26 Finished
+summaries.main#4901c288992b8eb8 Finished
+  @16-23 -> summaries.pick#208ad927806a2194 Type
+  @16-25 -> summaries.a#d36e143f791aa7b0 Type
+  @16-25 -> summaries.b#e8cf25875cd7c7c9 Type
+  @30-38 -> summaries.chain#00b92243c06e78c5 Type
+  @30-40 -> summaries.a#d36e143f791aa7b0 Type
+  @45-59 -> summaries.ident#92dbf1223f15d61d Type
+  @45-61 -> summaries.a#d36e143f791aa7b0 Type
+  @45-61 -> summaries.b#e8cf25875cd7c7c9 Type
+  @51-58 -> summaries.pick#208ad927806a2194 Type
+  @66-75 -> summaries.nothing#e797f9a08c4776b1 Type
+  @66-77 -> ? unknown_callee
+summaries.nothing#e797f9a08c4776b1 Finished
+summaries.pick#208ad927806a2194 Finished
+

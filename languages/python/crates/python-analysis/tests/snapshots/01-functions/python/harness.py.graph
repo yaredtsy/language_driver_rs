@@ -1,0 +1,5 @@
+== main
+entries: harness.main#5d87c6de7ca08881
+stats: walks 1, contexts 1, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+harness.main#5d87c6de7ca08881 Finished
+

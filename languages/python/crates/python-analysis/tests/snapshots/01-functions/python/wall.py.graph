@@ -1,0 +1,21 @@
+== main
+entries: wall.main#20244e9ac96917a2
+stats: walks 7, contexts 7, reuse_hits 4, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+wall.l1a#5e6aa55136a895b2 Finished
+  @15-20 -> wall.l2a#34be49ca7f0d9cf6 Type
+  @25-30 -> wall.l2b#37e9037d3754ae18 Type
+wall.l1b#6cb526fdb75920bd Finished
+  @15-20 -> wall.l2a#34be49ca7f0d9cf6 Type
+  @25-30 -> wall.l2b#37e9037d3754ae18 Type
+wall.l2a#34be49ca7f0d9cf6 Finished
+  @15-20 -> wall.l3a#5cf84a431a99d232 Type
+  @25-30 -> wall.l3b#66ee1bcf2d3a8a44 Type
+wall.l2b#37e9037d3754ae18 Finished
+  @15-20 -> wall.l3a#5cf84a431a99d232 Type
+  @25-30 -> wall.l3b#66ee1bcf2d3a8a44 Type
+wall.l3a#5cf84a431a99d232 Finished
+wall.l3b#66ee1bcf2d3a8a44 Finished
+wall.main#20244e9ac96917a2 Finished
+  @16-21 -> wall.l1a#5e6aa55136a895b2 Type
+  @26-31 -> wall.l1b#6cb526fdb75920bd Type
+

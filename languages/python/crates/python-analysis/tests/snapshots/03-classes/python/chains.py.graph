@@ -1,0 +1,112 @@
+== chain
+entries: chains.chain#1318eff240e6c49e
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+chains.Service.__init__#a6c68eaa28ca8803 Finished
+chains.Session.__init__#6e278de738e8ec67 Finished
+chains.chain#1318eff240e6c49e Finished
+  @21-52 -> new chains.Session init chains.Session.__init__#6e278de738e8ec67 Type
+  @29-51 -> new chains.Service init chains.Service.__init__#a6c68eaa28ca8803 Type
+  @37-50 -> new chains.LoudHandler init - Type
+  @57-83 -> ? unknown_callee
+
+== write_then_read
+entries: chains.write_then_read#054c86945449a213
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+chains.LoudHandler.handle#c8f27fe890b2ee3d Finished
+chains.Service.__init__#572656fa81e51aef Finished
+chains.Session.__init__#6e278de738e8ec67 Finished
+chains.write_then_read#054c86945449a213 Finished
+  @31-58 -> new chains.Session init chains.Session.__init__#6e278de738e8ec67 Type
+  @39-57 -> new chains.Service init chains.Service.__init__#572656fa81e51aef Type
+  @47-56 -> new chains.Handler init - Type
+  @83-96 -> new chains.LoudHandler init - Type
+  @101-127 -> chains.LoudHandler.handle#c8f27fe890b2ee3d Type
+
+== unknown_mid_chain
+entries: chains.unknown_mid_chain#d4009b55d4f1ebfc
+stats: walks 1, contexts 1, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+chains.unknown_mid_chain#d4009b55d4f1ebfc Finished
+  @34-64 -> ? unknown_callee
+
+== inherited
+entries: chains.inherited#5d28ab87cc0d0897
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+chains.Base.__init__#d21a485e3bd9b84a Finished
+chains.Child.__init__#564b4a0a28b7c03d Finished
+  @31-50 -> chains.Base.__init__#d21a485e3bd9b84a Type
+chains.Child.go#d455774e94ba4b1b Finished
+  @22-37 -> ? unknown_callee
+chains.inherited#5d28ab87cc0d0897 Finished
+  @21-41 -> new chains.Child init chains.Child.__init__#564b4a0a28b7c03d Type
+  @21-46 -> chains.Child.go#d455774e94ba4b1b Path
+  @27-40 -> new chains.LoudHandler init - Type
+
+== annotated
+entries: chains.annotated#61f40c5672d2ae8c
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+chains.Handler.handle#1afb5238b96542fa Finished
+chains.annotated#61f40c5672d2ae8c Finished
+  @31-41 -> chains.Handler.handle#1afb5238b96542fa Type
+
+== Service.call
+entries: chains.Service.call#879b5bd9dd2405a7
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+chains.Handler.handle#1afb5238b96542fa Finished
+chains.Service.call#879b5bd9dd2405a7 Finished
+  @24-45 -> chains.Handler.handle#1afb5238b96542fa Type
+
+== separate
+entries: chains.separate#0fac4e732fd8597c
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+chains.f#22a3fd5e1025eeb2 Finished
+  @29-32 -> new chains.A init - Type
+chains.g#dea5ff7ac508091c Finished
+  @23-31 -> ? unknown_callee
+chains.separate#0fac4e732fd8597c Finished
+  @24-28 -> chains.f#22a3fd5e1025eeb2 Type
+  @95-99 -> chains.g#dea5ff7ac508091c Type
+
+== via_super
+entries: chains.via_super#f0ce04bfb0446a48
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+chains.Maker.build#596e3d7a52ad8189 Finished
+  @41-46 -> ? unknown_callee
+chains.Special.make#bd84ca23efb83a21 Finished
+  @24-39 -> chains.Maker.build#596e3d7a52ad8189 Type
+chains.via_super#f0ce04bfb0446a48 Finished
+  @21-30 -> new chains.Special init - Type
+  @21-37 -> chains.Special.make#bd84ca23efb83a21 Path
+
+== fanout
+entries: chains.fanout#836731de03e86d02
+stats: walks 10, contexts 10, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+chains.Box.__init__#46ed8bf794fad01a Finished
+chains.Box.__init__#4e092dafa7b828a6 Finished
+chains.Box.__init__#60bc1f383d8fc02d Finished
+chains.Box.__init__#6906ef7911602f4c Finished
+chains.Box.__init__#b4af7b1bed11dd62 Finished
+chains.Box.__init__#b7d6915f35eec6b2 Finished
+chains.Box.__init__#c7b9a89c7ea84b16 Finished
+chains.Box.__init__#da92caf4e21d59e7 Finished
+chains.Box.__init__#fe2c4231f6b00a76 Finished
+chains.fanout#836731de03e86d02 Finished
+  @42-51 -> new chains.Box init chains.Box.__init__#fe2c4231f6b00a76 Type
+  @46-50 -> new chains.H9 init - Type
+  @81-90 -> new chains.Box init chains.Box.__init__#b7d6915f35eec6b2 Type
+  @85-89 -> new chains.H8 init - Type
+  @120-129 -> new chains.Box init chains.Box.__init__#60bc1f383d8fc02d Type
+  @124-128 -> new chains.H7 init - Type
+  @159-168 -> new chains.Box init chains.Box.__init__#6906ef7911602f4c Type
+  @163-167 -> new chains.H6 init - Type
+  @198-207 -> new chains.Box init chains.Box.__init__#da92caf4e21d59e7 Type
+  @202-206 -> new chains.H5 init - Type
+  @237-246 -> new chains.Box init chains.Box.__init__#46ed8bf794fad01a Type
+  @241-245 -> new chains.H4 init - Type
+  @276-285 -> new chains.Box init chains.Box.__init__#4e092dafa7b828a6 Type
+  @280-284 -> new chains.H3 init - Type
+  @315-324 -> new chains.Box init chains.Box.__init__#c7b9a89c7ea84b16 Type
+  @319-323 -> new chains.H2 init - Type
+  @347-356 -> new chains.Box init chains.Box.__init__#b4af7b1bed11dd62 Type
+  @351-355 -> new chains.H1 init - Type
+  @361-373 -> ? unknown_callee
+

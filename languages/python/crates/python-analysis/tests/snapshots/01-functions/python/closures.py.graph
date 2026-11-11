@@ -1,0 +1,79 @@
+== same_frame
+entries: closures.same_frame#7baba94a3e41fc6c
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+closures.a#2381aa686e32a75b Finished
+closures.same_frame#7baba94a3e41fc6c Finished
+  @63-70 -> closures.same_frame.inner#e76fa6d6db55efa1 Path
+closures.same_frame.inner#e76fa6d6db55efa1 Finished
+  @21-24 -> closures.a#2381aa686e32a75b Type
+
+== escaping
+entries: closures.escaping#3c76532d8a37b23d
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+closures.b#3bead9ecf1fd506a Finished
+closures.escaping#3c76532d8a37b23d Finished
+  @24-31 -> closures.make#2eb25f2059adfaad Type
+  @36-39 -> closures.make.run#4eb4d7969811407a Path
+closures.make#2eb25f2059adfaad Finished
+closures.make.run#4eb4d7969811407a Finished
+  @19-22 -> closures.b#3bead9ecf1fd506a Type
+
+== caller_has_same_name
+entries: closures.caller_has_same_name#3b3708900cfdd0ae
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+closures.b#3bead9ecf1fd506a Finished
+closures.caller_has_same_name#3b3708900cfdd0ae Finished
+  @81-88 -> closures.make#2eb25f2059adfaad Type
+  @93-96 -> closures.make.run#4eb4d7969811407a Path
+closures.make#2eb25f2059adfaad Finished
+closures.make.run#4eb4d7969811407a Finished
+  @19-22 -> closures.b#3bead9ecf1fd506a Type
+
+== late
+entries: closures.late#8d9d73633591e9d5
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+closures.b#3bead9ecf1fd506a Finished
+closures.late#8d9d73633591e9d5 Finished
+  @68-73 -> closures.late.run#3d403a4d4d32ebd3 Path
+closures.late.run#3d403a4d4d32ebd3 Finished
+  @19-22 -> closures.b#3bead9ecf1fd506a Type
+
+== two_runs
+entries: closures.two_runs#2f71050a84096551
+stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+closures.a#2381aa686e32a75b Finished
+closures.b#3bead9ecf1fd506a Finished
+closures.make#2eb25f2059adfaad Finished
+closures.make#e5f64a9a3cae67c1 Finished
+closures.make.run#4eb4d7969811407a Finished
+  @19-22 -> closures.b#3bead9ecf1fd506a Type
+closures.make.run#59daa72389fd150c Finished
+  @19-22 -> closures.a#2381aa686e32a75b Type
+closures.two_runs#2f71050a84096551 Finished
+  @24-31 -> closures.make#e5f64a9a3cae67c1 Type
+  @40-47 -> closures.make#2eb25f2059adfaad Type
+  @52-55 -> closures.make.run#59daa72389fd150c Path
+  @60-63 -> closures.make.run#4eb4d7969811407a Path
+
+== setup
+entries: closures.setup#38be0da9125d6293
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+closures.a#2381aa686e32a75b Finished
+closures.pick#92e5836b7d567bd7 Finished
+closures.setup#38be0da9125d6293 Finished
+  @32-38 -> closures.pick#92e5836b7d567bd7 Type
+  @177-186 -> closures.setup.handler#ccdb6259e92ac862 Path
+closures.setup.handler#ccdb6259e92ac862 Finished
+  @76-80 -> closures.a#2381aa686e32a75b Type
+
+== entry_closure
+entries: closures.entry_closure#9391b3a9f513ee87
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+closures.a#2381aa686e32a75b Finished
+closures.entry_closure#9391b3a9f513ee87 Finished
+  @29-35 -> closures.pick#92e5836b7d567bd7 Type
+  @165-172 -> closures.entry_closure.inner#efd790ac93d911d4 Path
+closures.entry_closure.inner#efd790ac93d911d4 Finished
+  @21-24 -> closures.a#2381aa686e32a75b Type
+closures.pick#92e5836b7d567bd7 Finished
+

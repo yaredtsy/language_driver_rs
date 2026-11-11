@@ -1,0 +1,25 @@
+== main
+entries: pending.main#115ccc0fb7e1bc1a
+stats: walks 8, contexts 8, reuse_hits 2, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+pending.done#a512a2d54d4671e1 Finished
+pending.grow#904b558d5ad57b1b Finished
+  @38-49 -> pending.grow#904b558d5ad57b1b Type
+pending.grow#d5b3c50dd2a11acf Finished
+  @38-49 -> pending.grow#904b558d5ad57b1b Type
+pending.main#115ccc0fb7e1bc1a Finished
+  @16-23 -> pending.grow#d5b3c50dd2a11acf Type
+  @16-25 -> pending.done#a512a2d54d4671e1 Type
+  @30-37 -> pending.walk#f29b3dc0ee7552c2 Type
+  @42-48 -> pending.rec#b252b060663ac0df Type
+  @42-50 -> ? unknown_callee
+pending.rec#b252b060663ac0df Finished
+  @23-33 -> pending.rec#fe2e2d6271df9de4 Type
+pending.rec#fe2e2d6271df9de4 Finished
+  @23-33 -> pending.rec#fe2e2d6271df9de4 Type
+pending.walk#f29b3dc0ee7552c2 Finished
+  @21-32 -> pending.walk#f38ed1dd8da70218 Type
+  @37-40 -> pending.done#a512a2d54d4671e1 Type
+pending.walk#f38ed1dd8da70218 Finished
+  @21-32 -> pending.walk#f38ed1dd8da70218 Type
+  @37-40 -> pending.done#a512a2d54d4671e1 Type
+

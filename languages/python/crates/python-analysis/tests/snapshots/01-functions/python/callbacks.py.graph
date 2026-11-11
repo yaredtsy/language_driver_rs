@@ -1,0 +1,65 @@
+== main
+entries: callbacks.main#d76b416ed146a938
+stats: walks 8, contexts 8, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+callbacks.fetch#28838763309b8f89 Finished
+callbacks.handle_err#576388d1fccf131f Finished
+  @22-40 -> callbacks.run#e1caa55bf15a8366 Type
+callbacks.handle_ok#7f994467a1fa84d8 Finished
+  @21-38 -> callbacks.run#f1ae651962e4f6a4 Type
+callbacks.main#d76b416ed146a938 Finished
+  @16-27 -> callbacks.handle_ok#7f994467a1fa84d8 Type
+  @32-44 -> callbacks.handle_err#576388d1fccf131f Type
+callbacks.on_err#da34724ba188458e Finished
+callbacks.on_ok#b1d436617e9b154f Finished
+callbacks.run#e1caa55bf15a8366 Finished
+  @23-33 -> callbacks.on_err#da34724ba188458e Type
+  @26-32 -> callbacks.fetch#28838763309b8f89 Type
+callbacks.run#f1ae651962e4f6a4 Finished
+  @23-33 -> callbacks.on_ok#b1d436617e9b154f Type
+  @26-32 -> callbacks.fetch#28838763309b8f89 Type
+
+== two_levels
+entries: callbacks.two_levels#e88fedc06c93485d
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+callbacks.middle#ed4291b8776a0550 Finished
+  @20-24 -> callbacks.on_ok#b1d436617e9b154f Type
+callbacks.on_ok#b1d436617e9b154f Finished
+callbacks.outer#1b6eed42716b1910 Finished
+  @19-29 -> callbacks.middle#ed4291b8776a0550 Type
+callbacks.two_levels#e88fedc06c93485d Finished
+  @22-34 -> callbacks.outer#1b6eed42716b1910 Type
+
+== from_a_factory
+entries: callbacks.from_a_factory#8dd6247ed71989d9
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+callbacks.factory#0a42c798019d2940 Finished
+callbacks.fetch#28838763309b8f89 Finished
+callbacks.from_a_factory#8dd6247ed71989d9 Finished
+  @26-47 -> callbacks.run#f1ae651962e4f6a4 Type
+  @37-46 -> callbacks.factory#0a42c798019d2940 Type
+callbacks.on_ok#b1d436617e9b154f Finished
+callbacks.run#f1ae651962e4f6a4 Finished
+  @23-33 -> callbacks.on_ok#b1d436617e9b154f Type
+  @26-32 -> callbacks.fetch#28838763309b8f89 Type
+
+== uses_decorated
+entries: callbacks.uses_decorated#37c9394edc528ded
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+callbacks.flaky#6107369aafcd39d4 Finished
+  @24-31 -> callbacks.on_ok#b1d436617e9b154f Type
+callbacks.flaky_with#f8b2c08eec998873 Finished
+  @31-35 -> callbacks.on_err#da34724ba188458e Type
+callbacks.on_err#da34724ba188458e Finished
+callbacks.on_ok#b1d436617e9b154f Finished
+callbacks.uses_decorated#37c9394edc528ded Finished
+  @26-33 -> callbacks.flaky#6107369aafcd39d4 Type
+  @38-56 -> callbacks.flaky_with#f8b2c08eec998873 Type
+
+== uses_stdlib
+entries: callbacks.uses_stdlib#3dfb35bd882e2f30
+stats: walks 1, contexts 1, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+callbacks.uses_stdlib#3dfb35bd882e2f30 Finished
+  @27-56 -> external functools.partial Type
+  @61-69 -> ? unknown_callee
+  @137-160 -> external builtins.sorted Type
+

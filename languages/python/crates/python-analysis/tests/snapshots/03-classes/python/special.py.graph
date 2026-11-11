@@ -1,0 +1,41 @@
+== main
+entries: special.main#45cf4468e015cb83
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 4, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 4}
+special.Registry.__init__#63bab7ddc5509f58 Finished
+special.Registry.create#cc5214c8ba215f48 Finished
+  @52-58 -> new special.Registry init special.Registry.__init__#63bab7ddc5509f58 Type
+special.Registry.make#b22582d478919ba4 Finished
+  @40-44 -> special.on_ok#fb0f6cb50ab9ee12 Type
+special.main#45cf4468e015cb83 Finished
+  @16-36 -> special.Registry.make#b22582d478919ba4 Type
+  @73-103 -> special.Registry.create#cc5214c8ba215f48 Type
+  @89-102 -> new special.JsonHandler init - Type
+  @127-144 -> ? unknown_callee
+  @187-195 -> ? unknown_callee
+  @200-213 -> ? unknown_callee
+  @275-293 -> ? unknown_callee
+special.on_ok#fb0f6cb50ab9ee12 Finished
+
+== swap
+entries: special.swap#348fe6a531e46048
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+special.Box.__init__#b682f90e8992af10 Finished
+special.Box.handler#e537fac17b2c38cc Finished
+special.Box.handler#46e056c11a20641f Finished
+special.swap#348fe6a531e46048 Finished
+  @20-38 -> new special.Box init special.Box.__init__#b682f90e8992af10 Type
+  @24-37 -> new special.JsonHandler init - Type
+  @43-52 -> special.Box.handler#46e056c11a20641f Path
+  @55-67 -> new special.CsvHandler init - Type
+  @126-135 -> special.Box.handler#e537fac17b2c38cc Path
+  @126-144 -> ? unknown_callee
+
+== lazy
+entries: special.lazy#8e30c6be79136b78
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+special.Lazy.__init__#6bba01a680747fa4 Finished
+special.lazy#8e30c6be79136b78 Finished
+  @16-35 -> new special.Lazy init special.Lazy.__init__#6bba01a680747fa4 Type
+  @16-51 -> ? unknown_callee
+  @21-34 -> new special.JsonHandler init - Type
+
