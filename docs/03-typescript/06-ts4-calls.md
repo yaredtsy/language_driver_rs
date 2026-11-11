@@ -215,7 +215,7 @@ pub fn call_graph(project: &Project, file: &str, entry: &Entry, opts: &Options, 
 | 1 | `sem::entry`: find a def by (file, qualname, occurrence) through `outline_of` | unit test |
 | 2 | `sem::body_parts` + `walk.rs` for plain calls only; targets all `Unresolved` | `sites.ts`: the right sites, in order |
 | 3 | `sem::callee` with the engine's resolver; `describe`; the bridge by range | `straight-line` and `method-on-class` scenarios pass |
-| 4 | `impl Lang`, `call_graph`, `typescript-cli calls <dir> <file> --entry <qualname> [--graph]` | the CLI prints a tree for a fixture |
+| 4 | `impl Lang`, `call_graph`, `typescript-cli calls <dir> <file> --entry <qualname> [--id <marker>] [--graph]`. A qualname is not unique in a file (D15): when `--entry` matches several defs, the CLI prints every match (kind, line, marker) and asks for `--id`; it never picks the first. With `--id`, the def carrying that marker is the entry | the CLI prints a tree for a fixture; an ambiguous `--entry` prints the list and exits 2 |
 | 5 | `Construct`, `External`, project-code test. Write `scenarios/construct-marked-class/typescript/`: the Python program of that scenario in TypeScript, with an `ID: …` line in the JSDoc of both classes | `constructor`, `external-call` and `construct-marked-class` scenarios; a `new` of a library class is an `External` edge |
 | 6 | the remaining site kinds of §3 | their fixtures |
 | 7 | the policy table, row by row, each with its fixture | the `policy` test, including the "row without fixture" check |

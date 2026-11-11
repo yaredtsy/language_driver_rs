@@ -51,8 +51,13 @@ fn main() -> ExitCode {
         } else {
             ""
         };
+        // a qualname is not unique in a file: the marker is what tells two defs of one name apart
+        let marker = def
+            .marker
+            .as_ref()
+            .map_or_else(String::new, |m| format!("  {label}: {m}"));
         println!(
-            "{}{:?} {}  {}-{}{flag}",
+            "{}{:?} {}  {}-{}{marker}{flag}",
             "  ".repeat(depth),
             def.kind,
             def.qualname,
