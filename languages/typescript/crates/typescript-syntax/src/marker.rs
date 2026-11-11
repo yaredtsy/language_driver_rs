@@ -68,6 +68,14 @@ fn line_breaks(text: &str) -> usize {
     count
 }
 
+/// Can this text be written as a marker and read back the same? It is on one line, not empty, and has no blanks around it (reading
+/// trims them away, so the caller would get back another text than it wrote).
+pub(crate) fn fits_a_line(marker_text: &str) -> bool {
+    !marker_text.is_empty()
+        && marker_text == marker_text.trim()
+        && !marker_text.contains(['\n', '\r'])
+}
+
 /// The marker in a block comment's text, `/** … */`: the first line that, after its leading `*` and spaces, reads `<label>:<spaces><text>`.
 /// The text is returned as written, trimmed. A one-line block (`/** ID: x */`) is read the same way. A marker under a block tag is read too.
 pub(crate) fn read(block: &str, label: &str) -> Option<String> {
@@ -179,11 +187,8 @@ pub(crate) fn plan(
     marker_text: &str,
 ) -> Result<Edit, Skip> {
     let own = own_line(text, start).ok_or(Skip::NotOnOwnLine)?;
-    // the marker goes inside a `/** */` block on one line: it cannot be empty, hold a line break, or close the comment
-    if marker_text.trim().is_empty()
-        || marker_text.contains(['\n', '\r'])
-        || marker_text.contains("*/")
-    {
+    // the marker goes inside a `/** */` block: it must also not close the comment
+    if !fits_a_line(marker_text) || marker_text.contains("*/") {
         return Err(Skip::InvalidText);
     }
     let block = doc_above(text, start, comments);

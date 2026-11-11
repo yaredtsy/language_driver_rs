@@ -48,7 +48,7 @@ pub(crate) fn plan(
     marker_text: &str,
     style: MarkerStyle<'_>,
 ) -> Result<Edit, Skip> {
-    if marker_text.trim().is_empty() || marker_text.contains(['\n', '\r']) {
+    if !marker::fits_a_line(marker_text) {
         return Err(Skip::InvalidText);
     }
     if let Some(existing) = read(p, text, style) {

@@ -416,6 +416,10 @@ fn marker_text_that_would_break_the_comment_is_refused() {
         "two\nlines",
         "carriage\rreturn",
         "closes */ early",
+        // reading trims: these would come back as another text
+        " leading",
+        "trailing ",
+        "\ttab",
     ] {
         assert_eq!(
             mark_as("function f() {}\n", Dialect::Ts, "f", bad),

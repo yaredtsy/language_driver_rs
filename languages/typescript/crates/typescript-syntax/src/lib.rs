@@ -71,7 +71,7 @@ pub enum Skip {
     /// The comment directly above the def is a directive that applies to the next line (`// @ts-ignore`, `// eslint-disable-next-line`, …):
     /// a block put between them would move what it points at.
     DirectiveAbove,
-    /// The marker text is empty, has a line break, or contains `*/`.
+    /// The marker text is empty, starts or ends with a blank (it would not read back the same), has a line break, or contains `*/`.
     InvalidText,
     /// The style asks for a placement this analyzer does not build.
     PlacementNotSupported,

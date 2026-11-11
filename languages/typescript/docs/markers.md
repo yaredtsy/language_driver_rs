@@ -63,7 +63,7 @@ words stay unchanged inside the new block.
 | `AlreadyMarked { existing }` | the def already has a marker (read by the rule above) |
 | `UnsafeDocComment` | the block has no closing line of its own (` * text */`), a line without its `*`, or a tag on its opening line (`/** @param x`). Or a blank line detaches the nearest block above the def **and it carries block tags** (`@param`, `@type`, …): TypeScript still applies a detached block to the def. A new block is **not** stacked on top of it: TypeScript uses only the last block, so the user's own would stop applying |
 | `DirectiveAbove` | the comment directly above the def is a directive that applies to the next line: it starts with `@ts-`, `eslint`, `prettier-ignore`, `istanbul`, `c8 `, `v8 `, `biome-ignore`, `tslint:`, `jshint` or `jscs`. A block put between them would move what it points at |
-| `InvalidText` | the marker text is empty, has a line break, or contains `*/` (it would close the comment) |
+| `InvalidText` | the marker text is empty, starts or ends with a blank (reading trims, so it would not come back the same), has a line break, or contains `*/` (it would close the comment) |
 | `PlacementNotSupported` | the style asks for a placement other than `Docstring` |
 | `UnknownDef` | the text has no def with this qualname and range: the def comes from the outline of another text (an older version of the file). Its offsets are not trusted; outline the text again. `marker` returns `None` for such a def |
 

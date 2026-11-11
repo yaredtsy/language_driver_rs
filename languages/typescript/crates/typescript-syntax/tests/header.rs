@@ -173,7 +173,7 @@ fn only_a_line_comment_is_a_header_and_only_before_code() {
 
 #[test]
 fn the_text_must_fit_on_a_line() {
-    for bad in ["", "  ", "two\nlines"] {
+    for bad in ["", "  ", "two\nlines", " leading", "trailing "] {
         assert_eq!(
             plan_header_marker("f();\n", bad, STYLE),
             Err(Skip::InvalidText),
