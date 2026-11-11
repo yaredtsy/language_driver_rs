@@ -81,7 +81,7 @@ expand(token):
   plan lists that as an open ❌ for Python.)
 - **The token** is `ContextId` (the stable def and the digest) plus a child offset for paging, encoded as text. Because the id is stable, a
   token stays valid across requests as long as the function's file has not changed; after an edit it is answered with `Stale`, and the driver
-  falls back to asking by `{ file, qualname, occurrence }`, as the contract describes.
+  falls back to asking by `{ file, qualname, occurrence }`, as the contract describes. `occurrence` is 0-based (D18); the Python driver's is 1-based, so the driver converts and the contract with the extension states the base.
 - **Paging** is the renderer's `max_children`: a node with more children than that gets `more` with the offset of the next child.
 - **A cut by budget is not `Incomplete`.** It is a frontier (`more`), and what is above it is complete and cacheable. `Incomplete` and
   `Mark::Cut` remain for the cost limits of rule 10 (deadline, stack).

@@ -44,7 +44,7 @@ pylspt's seven steps, with the ones a default resolver does not need crossed out
 
 ```
 1. sem       load, parse, bind                              TS3   (types are computed on demand, per question)
-2. collect   functions and classes                          TS1's outline rule, run on the program's own trees
+2. collect   functions and classes                          TS1's outline rule (`typescript_syntax::outline`) run on the TEXT of each program file: a second parse
 3. markers   the ID comment of each def                     TS2
 4. entry     one context for the requested function         key = ()
 5. solve     core's flat solver: walk each body ONCE        ← TS4
@@ -134,7 +134,7 @@ impl Sem {
 }
 ```
 
-`describe` runs `typescript_syntax::outline_of` once per file (memoized), and looks the declaration up **by its range**. If a declaration the
+`describe` takes the file's outline from `Sem::outline` (made once per file, memoized) and finds the def of a declaration through the def ↔ node map of step 2a, keyed on the **start of the def's name** (`name_range.start`), not on its range: an overload def's range spans the signatures and the implementation, and `const f = () => {}` has the whole statement as its range, so neither matches the one node the checker hands back. If a declaration the
 resolver returns is not in the outline, that is a bug in one of the two rules; a debug assertion catches it in tests, and in release the target
 becomes `Unresolved` and is counted in `Stats.language["decl_not_in_outline"]`. (Rule 6: never fail. Rule 10: always count.)
 
@@ -222,7 +222,7 @@ and for `Sem` itself: not `Sync` (shared `&Sem` into a thread fails); it stays `
 How to write one, which is how the TS3 proofs were made:
 
 1. **Red first.** Write the doctest, run `scripts/check-proofs.sh`, and see it fail for the right reason (the compile_fail "did not fail"), then add the marker or the lifetime and see it pass.
-2. **Mutate once.** Remove the marker, or give the constructor an unbound lifetime (`fn f<'p>(&self) -> H<'p>`), and the proof must fail. A proof that passes under that mutation protects nothing
+2. **Mutate until it fails.** Remove the marker, or give the constructor an unbound lifetime (`fn f<'p>(&self) -> H<'p>`), and the proof must fail. Where one property has several routes, remove them all: since `Sem` is not `Sync`, `&'p Sem` is not `Send`, so every handle that carries `PhantomData<&'p Sem>` is neither `Send` nor `Sync` even without a marker of its own, and the `Func` thread proofs fail only when both `Sem`'s marker and the handle's are gone. Keep every marker anyway: each is a separate guard, and a proof must not depend on the other one staying. A proof that passes under that mutation protects nothing
    (a first version that went through a wrapper function passed it: the wrapper's own signature re-tied the borrow). Use the real `Sem` and the real handle, not a wrapper.
 3. **The twin is the guard on stable.** Stable rustdoc ignores `compile_fail,E0xxx` (checked), so the pinned code is documentation only; the twin differs from the failing example only in
    the ordering or the spawn, so a typo cannot hide behind the failure.
@@ -244,7 +244,7 @@ How to write one, which is how the TS3 proofs were made:
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | `sem::entry`: find a def by (file, qualname, occurrence) through `outline_of` | unit test |
+| 1 | `sem::entry`: find a def by (file, qualname, occurrence). The outline is `typescript_syntax::outline` run on the file's own text (a second parse, in a region of its own; there is no `outline_of` on a tree, see [05](05-ts3-project.md) §5). `occurrence` is 0-based, the number `StableDef::Path::nth` holds (D18). **Done** | unit test |
 | 2 | `sem::body_parts` + `walk.rs` for plain calls only; targets all `Unresolved` | `sites.ts`: the right sites, in order |
 | 3 | `sem::callee` with the engine's resolver; `describe`; the bridge by range | `straight-line` and `method-on-class` scenarios pass |
 | 4 | `impl Lang`, `call_graph`, `typescript-cli calls <dir> <file> --entry <qualname> [--id <marker>] [--graph]`. A qualname is not unique in a file (D15): when `--entry` matches several defs, the CLI prints every match (kind, line, marker) and asks for `--id`; it never picks the first. With `--id`, the def carrying that marker is the entry **The output ends with the breakdown** (the first `calls` output already has it, not a later addition): edges by kind (call, construct, external, unresolved); `unresolved` split by reason, every `Unresolved` carrying exactly one reason counter in `Stats.language` (`function_typed_value`, `decl_not_in_outline`, and one each for `any`/untyped, a computed name, no declaration); the cuts. So "why is this unresolved" is a number and not a read of the code, and step 9's unresolved share comes from the same place | the CLI prints a tree for a fixture; an ambiguous `--entry` prints the list and exits 2; **the reasons sum to `Stats.unresolved`** (checked on every graph the suite builds), and the fixture's breakdown is a snapshot |

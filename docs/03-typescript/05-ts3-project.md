@@ -154,16 +154,14 @@ impl Sem {
 }
 ```
 
-`typescript-analysis` depends on `typescript-syntax`, and uses its outline rule on the **already parsed** file so the two crates cannot
-disagree about what a def is or what it is called:
+`typescript-analysis` depends on `typescript-syntax` and runs its outline rule, the public `typescript_syntax::outline`, on the **text** of each program
+file, so the two crates cannot disagree about what a def is or what it is called. That is a second parse of the file, made in a region of its own and freed
+at once (about 0.4 ms for 2,000 lines, S-TS2), not a walk of the program's own tree.
 
-```rust
-// typescript-syntax: a second entry point for a caller that already has a tree (the PA plan does the same for Python)
-pub fn outline_of(parsed: &sem::Parsed<'_>, style: MarkerStyle<'_>) -> Outline;      // pub, but #[doc(hidden)]: for typescript-analysis only
-```
-
-**[check]** whether `typescript-syntax`'s `Parsed` (made by its own `with_parsed`) and the program's `SourceFile` are the same tsrs type, so
-that the walker can run on both. They should be: both come from `tsrs_parser`.
+The first plan was a second entry point on an already parsed tree, `outline_of(&Parsed)`. It was not built (decided in TS4 step 1): the public function is the
+whole rule, so there is one rule and nothing to keep in step. The `[check]` that went with it (are `typescript-syntax`'s `Parsed` and the program's `SourceFile`
+the same tsrs type?) is moot. What two parses must agree on is that an outline def and a node of the program's tree are the same declaration. TS4 step 2a proves
+that on every fixture, in both directions.
 
 ## 6. Steps
 
