@@ -6,3 +6,4 @@ pub mod outline;
 pub mod render;
 pub mod solve;
 pub mod text;
+pub mod wire;
