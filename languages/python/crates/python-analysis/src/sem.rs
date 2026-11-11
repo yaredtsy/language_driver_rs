@@ -11,8 +11,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use ty_module_resolver::file_to_module;
 
+use ty_project::Db as _;
+pub use ty_project::ProjectDatabase;
 use ty_project::glob::IncludeResult;
-use ty_project::{Db as _, ProjectDatabase};
 use ty_python_core::ProgramFile;
 use ty_python_core::scope::{FileScopeId, NodeWithScopeRef, ScopeKind};
 use ty_python_core::semantic_index;
@@ -625,6 +626,20 @@ impl<'db> Sem<'db> {
             body = next?;
         }
         None
+    }
+
+    /// The definition's file, relative to the project root, with `/`. A file outside the root (library code) keeps its full path.
+    pub fn relative_file(&self, def: Definition<'db>) -> String {
+        let path = def.file(self.db).path(self.db);
+        let root = self.db.project().root(self.db);
+        let shown = match path
+            .as_system_path()
+            .and_then(|p| p.strip_prefix(root).ok())
+        {
+            Some(relative) => relative.to_string(),
+            None => path.to_string(),
+        };
+        shown.replace('\\', "/")
     }
 
     /// Where the definition lives: its file path, then the offset of its `def`.

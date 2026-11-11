@@ -3,6 +3,7 @@ pub mod env;
 pub mod bind;
 pub mod call;
 pub mod canon;
+pub mod core_graph;
 pub mod defer;
 pub mod entry;
 #[cfg(test)]
@@ -167,6 +168,19 @@ pub fn call_graph(
     let (mut s, root) = solve(db, file, entry, opts)?;
     s.stats.contexts = s.contexts.len() as u32;
     Some(graph(&s, &[root]))
+}
+
+/// The context graph of `entry` in core's types: contexts, a table of definitions, one edge per call site and target. The tree and the
+/// wire are views of it.
+pub fn call_core_graph(
+    db: &ProjectDatabase,
+    file: File,
+    entry: &str,
+    opts: &Options,
+) -> Option<analyzer_core::graph::Graph> {
+    let (mut s, root) = solve(db, file, entry, opts)?;
+    s.stats.contexts = s.contexts.len() as u32;
+    Some(core_graph::core_graph(&s, &[root]))
 }
 
 /// The tree v-noc stores: summary mode, rendered with the ID filter and the node budget.

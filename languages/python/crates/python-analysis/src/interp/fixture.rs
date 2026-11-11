@@ -6,7 +6,7 @@ use crate::interp::{
     GraphOut, Limits, Mode, Options, Stats, call_graph, call_tree, solve, to_text,
 };
 use crate::sem::Sem;
-use crate::sem::{open, open_project};
+use crate::sem::{ProjectDatabase, open, open_project};
 use ruff_db::system::SystemPath;
 use std::collections::BTreeSet;
 
@@ -682,4 +682,76 @@ fn merging_joins_siblings_of_one_target_and_is_idempotent() {
         .find(|c| c.target_qname == "ids_and_classes.marked")
         .unwrap();
     assert_eq!(node.target_id, "F/06000000-0002-0000-0000-000000000000");
+}
+
+/// Every `# expect:` entry of every fixture program, with the options the fixture asks for: `(fixture path under tests/fixtures, entry,
+/// options)`. Summary mode, the mode the wire is made in.
+fn every_entry() -> Vec<(String, String, Options)> {
+    let mut out = Vec::new();
+    let mut groups: Vec<_> = std::fs::read_dir("tests/fixtures")
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    groups.sort();
+    for group in groups {
+        let dir = group.join("python");
+        let Ok(files) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut files: Vec<_> = files.map(|e| e.unwrap().path()).collect();
+        files.sort();
+        for path in files
+            .into_iter()
+            .filter(|p| p.extension().is_some_and(|x| x == "py"))
+        {
+            let source = std::fs::read_to_string(&path).unwrap();
+            let blocks = expectations(&source);
+            if blocks.is_empty() {
+                continue;
+            }
+            let name = format!(
+                "{}/python/{}",
+                group.file_name().unwrap().to_str().unwrap(),
+                path.file_name().unwrap().to_str().unwrap()
+            );
+            // a program no test names was never run (`deep_write_capped.py` asks for a limit that does not exist)
+            if !include_str!("fixture.rs").contains(&format!("\"{name}\"")) {
+                continue;
+            }
+            let mut opts = summary();
+            if let Some((limits, ids)) = fixture_limits(&source) {
+                opts.limits = limits;
+                opts.require_ids = ids;
+            }
+            for e in blocks
+                .into_iter()
+                .filter(|e| e.mode.is_none_or(|m| m == Mode::Summary))
+            {
+                out.push((name.clone(), e.entry, opts.clone()));
+            }
+        }
+    }
+    out
+}
+
+fn open_fixture(fixture: &str) -> (ProjectDatabase, ruff_db::files::File) {
+    let path = std::fs::canonicalize(format!("tests/fixtures/{fixture}")).unwrap();
+    let db = open_project(SystemPath::from_std_path(path.parent().unwrap()).unwrap()).unwrap();
+    let (file, _) = open(&db, SystemPath::from_std_path(&path).unwrap()).unwrap();
+    (db, file)
+}
+
+#[test]
+fn the_core_graph_of_every_fixture_keeps_core_s_invariants() {
+    use crate::interp::call_core_graph;
+    let all = every_entry();
+    assert!(all.len() > 40, "found only {} entries", all.len());
+    for (fixture, entry, opts) in all {
+        let (db, file) = open_fixture(&fixture);
+        let Some(graph) = call_core_graph(&db, file, &entry, &opts) else {
+            continue; // an entry some expectation names on purpose to be missing
+        };
+        let bad = analyzer_testkit::graph::violations(&graph);
+        assert!(bad.is_empty(), "{fixture} {entry}:\n  {}", bad.join("\n  "));
+    }
 }
