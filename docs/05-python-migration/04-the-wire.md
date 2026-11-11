@@ -141,6 +141,14 @@ reproduces it, so the two agree on that project.
 
 The comparison found two things that the design had missed, both fixed: the children of a constructed class are anchored to the constructor and not to the class; and renaming `Node` to `Marked` changed **every context digest** (a digest hashes the serialized key). The digest is a context's identity outside the process, so a key's `StableDef` is still hashed as `Node` (`stable::hashed_def`, one unit test pins it), and the *JSON key* in `contexts` is the only place the rename shows (question 3).
 
+**W4 so far (2026-11-11).** The merged wire was compared on all 125 fixture entries before anything was deleted: same content; 23 differ only in order. A merged node keeps the call site of its **first** sibling, which is a different sibling in source order, so the merged comparison leaves the call site out (a unit test pins the rule). Every fixture entry the comparator covered is now pinned by a snapshot (`tests/snapshots/<fixture>.wire`, unmerged and merged), so deleting the comparator drops no guard:
+- **28 programs, 77 entries**, verified in both modes (`check_both`: inline, summary, and the no-reuse run): every snapshot entry matches the program's own hand-written `# expect:` block, in any sibling order.
+- **6 programs, 48 entries**, still inline-only (chains, entries, isolation, special, state, writes): snapshotted under `tests/snapshots/unverified/`, each file headed as a change detector and not a right answer. Against their expectations **26 entries match and 22 do not**: this is the unfinished part 04 of pylspt, recorded as an open item (Q-PY1 in [`07-decisions-and-questions.md`](../07-decisions-and-questions.md)) with the 22 as its fixture list. It matters for the wire: summary mode is the wire's mode, so on class-heavy code the wire can be missing calls, as it was in pylspt.
+- Three programs moved from `check` to `check_both` on the way (keys, construct, methods): they pass every run.
+- Counts, corrected: 42 programs have `# expect:` blocks; 34 are run by a test; **eight were never run, even at the pin** (all in `04-class-summaries`; `util.py` has no block, it is a helper module). `deep_write_capped.py` asks for a limit, `max_path`, that does not exist.
+
+What remains of W4 is the deletion, in two steps (the `call_tree` summary path and the fixture tests that use the old merge first; then `render.rs`, the old `FrameJson`, `call_wire` and the comparator), and regenerating `out/golden/`.
+
 W1 is small and can be done today. It gives back a working, complete wire in this repo before the graph work starts, so nothing later is
 judged against a wire that was already cut.
 
