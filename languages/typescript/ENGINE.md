@@ -420,3 +420,22 @@ own call-hierarchy item and walks the constructor in the class; we do not). A ne
   does not depend on this.
 - The walk is checked on `tests/fixtures/sites/src/sites.ts` (28 defs, lists written from the rules before the run). Not counting the "nested def" rule gives `["f", "g", "a.b"]` for `nested` instead of `["f"]`;
   counting `import()` and `require()` gives two sites for `not_sites`.
+
+### Resolving a site (TS4 step 3)
+
+`tests/fixtures/resolve` (`callers`: 21 sites) is the contract; the expected answer for each site was written from the policy table and the engine's rule before the first run. 18 matched at once.
+The three that did not, and what each showed:
+
+- **An overloaded function.** The engine's call hierarchy names the **first signature** (no body). `find_implementation` looks for the implementation through `symbol.value_declaration()`, which for
+  `function f(a: string): string; function f(a: any): any {}` is the first signature, so it finds nothing and `find_all_initial_declarations` keeps the first of the adjacent signatures. The outline's def
+  is the implementation (TS1), so `sem` maps a bodiless function or method to the declaration of its symbol that has a body, in the same file. Without it: `decl_not_in_outline`.
+- **`counter["bump"]()`.** The hierarchy's resolver finds nothing for an `ElementAccessExpression` callee (`get_symbol_at_location` is `None` there), but `get_resolved_signature_exported(call)` →
+  `declaration()` is the method. So the signature is the second try. (The plan's §4 had it first; for a plain name the hierarchy answers, and the signature adds nothing.)
+- **A union receiver (`w: JsonWriter | CsvWriter`).** The hierarchy gives no declaration (the union property's symbol has no `value_declaration`), and the signature's `declaration()` is the **first member's**
+  method only. Taken as the answer it would be wrong and look right, so `sem` asks each member (`Type::types()`, `get_property_of_type_exported(member, name)`), and the policy table's "one target per member"
+  holds. It is our code, not the engine's answer; a member with no declaration to enter adds `Unknown(union_receiver)`. Not tried: an intersection, a union of a class and `any`, a union method behind a generic.
+
+Other facts: a call through a function type (`cb()`) has `get_type_at_location(callee)` with call signatures and no declaration; a value of type `any` has `TypeFlags::Any` (both are no declaration, told
+apart by the type). A project `.d.ts` is `External` and named by its **relative path** (`src/types.d.ts`), since it has no package; `node_modules` packages are named by `package_of` (`pkg`, `@types/x` as
+`x`), the bundled libraries `typescript:lib`, and the name is the declaration's own (`max`, `map`, `helper`), not the qualified one. One checker handle is taken per `callee` and dropped before it returns
+(one checker, so one handle at a time); that is correct, and it was not timed.
