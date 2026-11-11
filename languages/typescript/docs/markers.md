@@ -87,17 +87,27 @@ into the block and nothing between the directive and the def moves.
 A **`// <label>: <text>` comment at the top of the file**: the first such line among the comments before the first token. Only a line comment
 counts, and only before code.
 
-It is written, in order:
+It is written **as the last line of the file's opening comment**, so that a licence keeps the first line (a licence checker and a test runner's
+docblock both look there):
 
 1. after a `#!` line, if there is one;
-2. after the leading block comments that are not the first def's own JSDoc: a licence block, or a `/** */` followed by a blank line. A block comment
-   with code after it on its line is not skipped;
-3. **before** any `//` comment (`/// <reference path="…" />`, `// @ts-check`), `"use strict"` and every other directive or statement, because those only need to
-   be preceded by comments, and a comment is what we add;
-4. the first def's own JSDoc (by the reading rule above: no blank line on the way, comments between allowed) stays attached to it: the header
-   goes above it, not between them.
+2. after the comments at the top of the file, whatever their style (`/* */`, `/** */`, `//` lines), down to the first blank line or the first
+   token. `// Copyright …` lines followed by a blank line, or glued to an `import`, get the header as their last line;
+3. but it stops **above** each of these, which must stay with what is below them:
+   - a `/// <reference path="…" />` line or a `// @…` pragma (`// @ts-check`, `// @flow`): they only need comments before them, and a comment
+     is what we add;
+   - a directive for the next line (the `DirectiveAbove` list: `// eslint-disable-next-line`, `// @ts-ignore`, …);
+   - **the first def's own JSDoc** (by the reading rule above). A JSDoc above anything that is not a def (an `import`, `"use strict"`) documents
+     nothing, so it is the file's and the header goes below it;
+   - a block comment with code after it on its line;
+4. and it is always above `"use strict"` and every other statement.
 
 An empty file gets `// ID: x`. A file whose last line has no line break gets one first. `AlreadyMarked` and `InvalidText` apply as for defs.
+
+Known and accepted: a plain `//` note glued to the first statement (`// helper` above `function f`) is taken for the opening comment, so the
+header goes between the note and the statement. A licence written as a JSDoc and glued to the first **def** (no blank line) is that def's block
+by every rule, so the header goes above it. The header does not know the dialect; it finds the first def with the `.ts` grammar, which also
+finds it in `.tsx` and `.jsx` files (tested).
 
 ## Not decided here
 

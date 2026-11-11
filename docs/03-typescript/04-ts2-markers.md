@@ -183,13 +183,18 @@ Where it may go in a TypeScript or JavaScript file:
 
 ```
 #!/usr/bin/env node                 1. after a shebang line, if there is one (tsrs_scanner::get_shebang)
-/* Copyright … */                   2. after the leading licence comment block, if there is one
-// FileID: 3RGJ…                    ← here
+/* Copyright … */                   2. after the file's opening comment, if there is one: a licence, in `/* */`, `/** */` or `//` lines,
+// Copyright …                         down to the first blank line. The licence keeps the first line (owner, 2026-11-11)
+// FileID: 3RGJ…                    ← here: the last line of the opening comment
 /// <reference path="…" />          3. BEFORE triple-slash directives and `// @ts-check` pragmas:
 // @ts-check                           they only need to be preceded by comments, and a comment is what we add
+// eslint-disable-next-line            … before a directive for the next line, and before the first def's own JSDoc
 "use strict";                       4. before any directive or code
 import …
 ```
+
+The first version stopped at the first `//` comment and at any JSDoc glued to the first token, so a licence in `//` lines, or a JSDoc licence
+glued to an `import`, got the header above it and lost the first line. The exact rule is `languages/typescript/docs/markers.md`.
 
 Both functions call `analyzer_core::edit::comment_marker::{read, plan}` with the prefix `//`. Python calls the same pair with `#`, Rust with
 `//`. That helper is the one piece of marker code all three languages share today.
@@ -224,7 +229,7 @@ marker_overloads.ts            JSDoc on the first overload signature
 marker_indent_tabs.ts          indentation is copied byte for byte
 marker_crlf.ts                 inserted lines end with \r\n
 one_line_many_defs.js          Skip::NotOnOwnLine
-header_shebang.js  header_license.ts  header_reference.ts  header_use_strict.js
+header_shebang.js  header_license.ts  header_line_licence.ts  header_reference.ts  header_use_strict.js
 ```
 
 ## 7. Steps

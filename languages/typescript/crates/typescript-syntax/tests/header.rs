@@ -77,6 +77,82 @@ fn the_first_defs_own_jsdoc_stays_attached_to_it() {
 }
 
 #[test]
+fn a_licence_keeps_the_first_line_whatever_its_comment_style() {
+    // `//` lines, then a blank line: the header is the last line of the opening comment
+    assert_eq!(
+        mark("// Copyright 2024 Foo.\n// Licensed under MIT.\n\nimport x from \"x\";\n").unwrap(),
+        "// Copyright 2024 Foo.\n// Licensed under MIT.\n// ID: h1\n\nimport x from \"x\";\n"
+    );
+    // glued to the first statement
+    assert_eq!(
+        mark("// Copyright 2024 Foo.\n// Licensed under MIT.\nimport x from \"x\";\n").unwrap(),
+        "// Copyright 2024 Foo.\n// Licensed under MIT.\n// ID: h1\nimport x from \"x\";\n"
+    );
+    assert_eq!(
+        mark("// Copyright 2024 Foo.\nfunction f() {}\n").unwrap(),
+        "// Copyright 2024 Foo.\n// ID: h1\nfunction f() {}\n"
+    );
+    // a JSDoc glued to an `import` documents nothing: it is the file's
+    assert_eq!(
+        mark("/**\n * Copyright (c) Foo.\n */\nimport x from \"x\";\n").unwrap(),
+        "/**\n * Copyright (c) Foo.\n */\n// ID: h1\nimport x from \"x\";\n"
+    );
+    assert_eq!(
+        mark("/** Copyright (c) Foo. */\n\"use strict\";\n").unwrap(),
+        "/** Copyright (c) Foo. */\n// ID: h1\n\"use strict\";\n"
+    );
+    // a docblock that a test runner reads from the first line stays first
+    assert_eq!(
+        mark("/** @jest-environment jsdom */\n\nimport x from \"x\";\n").unwrap(),
+        "/** @jest-environment jsdom */\n// ID: h1\n\nimport x from \"x\";\n"
+    );
+    // after a shebang, the licence comes first and the header after it
+    assert_eq!(
+        mark("#!/usr/bin/env node\n// Copyright 2024 Foo.\n\nmain();\n").unwrap(),
+        "#!/usr/bin/env node\n// Copyright 2024 Foo.\n// ID: h1\n\nmain();\n"
+    );
+    // only the opening comment is passed: a comment after the first blank line is not the licence
+    assert_eq!(
+        mark("// Copyright 2024 Foo.\n\n// about the imports\nimport x from \"x\";\n").unwrap(),
+        "// Copyright 2024 Foo.\n// ID: h1\n\n// about the imports\nimport x from \"x\";\n"
+    );
+}
+
+#[test]
+fn the_header_never_separates_what_belongs_together() {
+    // a pragma after the licence: the header goes between them
+    assert_eq!(
+        mark("// Copyright 2024 Foo.\n// @ts-check\nimport x from \"x\";\n").unwrap(),
+        "// Copyright 2024 Foo.\n// ID: h1\n// @ts-check\nimport x from \"x\";\n"
+    );
+    // a directive for the next line keeps pointing at it
+    assert_eq!(
+        mark("// eslint-disable-next-line no-console\nconsole.log(1);\n").unwrap(),
+        "// ID: h1\n// eslint-disable-next-line no-console\nconsole.log(1);\n"
+    );
+    assert_eq!(
+        mark("// Copyright 2024 Foo.\n/* eslint-disable-next-line */\nconsole.log(1);\n").unwrap(),
+        "// Copyright 2024 Foo.\n// ID: h1\n/* eslint-disable-next-line */\nconsole.log(1);\n"
+    );
+    // the first def's JSDoc, below a licence in `//` lines
+    assert_eq!(
+        mark("// Copyright 2024 Foo.\n/** Doc of f. */\nfunction f() {}\n").unwrap(),
+        "// Copyright 2024 Foo.\n// ID: h1\n/** Doc of f. */\nfunction f() {}\n"
+    );
+    // a def is found in a `.tsx` or `.jsx` file too, though the header is read without knowing the dialect
+    assert_eq!(
+        mark("/** Doc of App. */\nexport const App = () => <div className=\"a\">hi</div>;\n")
+            .unwrap(),
+        "// ID: h1\n/** Doc of App. */\nexport const App = () => <div className=\"a\">hi</div>;\n"
+    );
+    assert_eq!(
+        mark("/** Doc of App. */\nexport default function App() {\n  return <div />;\n}\n")
+            .unwrap(),
+        "// ID: h1\n/** Doc of App. */\nexport default function App() {\n  return <div />;\n}\n"
+    );
+}
+
+#[test]
 fn directives_and_pragmas_come_after_the_header() {
     assert_eq!(
         mark("/// <reference path=\"a.d.ts\" />\n// @ts-check\nimport x from \"x\";\n").unwrap(),
@@ -112,7 +188,7 @@ fn an_empty_file_and_a_file_of_comments() {
         mark("/* only a comment */\n").unwrap(),
         "/* only a comment */\n// ID: h1\n"
     );
-    assert_eq!(mark("// a line\n").unwrap(), "// ID: h1\n// a line\n");
+    assert_eq!(mark("// a line\n").unwrap(), "// a line\n// ID: h1\n");
     assert_eq!(
         mark("#!/usr/bin/env node").unwrap(),
         "#!/usr/bin/env node\n// ID: h1\n"

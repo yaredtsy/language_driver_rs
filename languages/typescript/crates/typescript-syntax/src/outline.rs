@@ -54,6 +54,11 @@ pub(crate) fn has_def(p: &Parsed<'_>, def: &Def) -> bool {
         .any(|d| d.range == def.range && d.qualname == def.qualname)
 }
 
+/// Does a def start at byte `start`?
+pub(crate) fn starts_def(p: &Parsed<'_>, start: u32) -> bool {
+    walk(p).iter().any(|d| d.range.start == start)
+}
+
 /// Does a parse error touch a def? "When unsure, flag more": an empty error range counts as one byte, so an error at a def's first byte is in it.
 fn overlaps(error: Span, def: Span) -> bool {
     error.start < def.end && error.end.max(error.start + 1) > def.start

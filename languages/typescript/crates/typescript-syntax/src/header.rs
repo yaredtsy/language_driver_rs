@@ -1,14 +1,15 @@
 //! The file's own marker: a `// <label>: <text>` comment at the top of the file, in every language (a file has no docstring to put it in).
 //!
-//! Where it goes, in order: after a `#!` line; after the leading block comments that are not the first def's own JSDoc (a licence); before
-//! any `//` comment (`/// <reference …>`, `// @ts-check`), directive or code, because those only need to be preceded by comments, and a comment
-//! is what we add.
+//! Where it goes: after a `#!` line, and as the last line of the file's opening comment (a licence, in `/* */`, `/** */` or `//` lines), so
+//! that the licence keeps its place on the first line. It stays above `/// <reference …>` and `// @…` pragma lines, above a directive
+//! that points at the next line, above the first def's own JSDoc, and above code.
 
 use analyzer_core::edit::{Edit, MarkerStyle, comment_marker};
 use analyzer_core::text::Span;
 
 use crate::Skip;
 use crate::marker;
+use crate::outline;
 use crate::sem::{Above, Comment, CommentKind, Parsed};
 
 /// Where the first line after a `#!` line begins (past a byte-order mark when there is no shebang), and the comments from the top of the file up to
@@ -55,17 +56,22 @@ pub(crate) fn plan(
         return Err(Skip::AlreadyMarked { existing });
     }
     let (mut at, comments) = top(p, text);
-    // the first def's own JSDoc, by the rule a def's marker is read with. The header goes before it, not between them
-    let own_doc = comments.last().and_then(|last| {
-        let first_token = Above {
-            start: p.token_after(last.span.end),
-            comments: comments.clone(),
-            opens_file: true,
-        };
-        marker::doc_above(text, &first_token)
-    });
-    for c in &comments {
-        if c.kind == CommentKind::Line || Some(c.span) == own_doc {
+    let first_token = comments.last().map(|last| p.token_after(last.span.end));
+    // the first def's own JSDoc, by the rule a def's marker is read with. The header goes before it, not between them. A JSDoc above
+    // anything else (an `import`, a `"use strict"`) documents nothing: it is the file's
+    let own_doc = first_token
+        .filter(|&token| outline::starts_def(p, token))
+        .and_then(|token| {
+            let above = Above {
+                start: token,
+                comments: comments.clone(),
+                opens_file: true,
+            };
+            marker::doc_above(text, &above)
+        });
+    for (i, c) in comments.iter().enumerate() {
+        let written = c.span.slice(text).unwrap_or("");
+        if Some(c.span) == own_doc || is_pragma(c, written) || marker::is_directive(written) {
             break;
         }
         // a block comment with code after it on its line: the header goes above that line
@@ -73,6 +79,15 @@ pub(crate) fn plan(
             break;
         };
         at = next_line;
+        // a blank line ends the file's opening comment: the header is its last line
+        let below = comments
+            .get(i + 1)
+            .map(|next| next.span.start)
+            .or(first_token)
+            .unwrap_or(c.span.end);
+        if !marker::adjacent(text, c.span.end, below) {
+            break;
+        }
     }
     let eol = comment_marker::line_ending(text);
     let line = format!("// {}: {marker_text}", style.label);
@@ -82,6 +97,13 @@ pub(crate) fn plan(
         return Ok(Edit::insert(at, format!("{eol}{line}{eol}")));
     }
     Ok(Edit::insert(at, format!("{line}{eol}")))
+}
+
+/// A `//` line the compiler or a tool reads as an instruction for the file: `/// <reference …>`, `// @ts-check`, `// @flow`. The header
+/// stays above these, as the plan says: they only need comments before them, and a comment is what we add.
+fn is_pragma(comment: &Comment, written: &str) -> bool {
+    comment.kind == CommentKind::Line
+        && (written.starts_with("///") || written[2..].trim_start().starts_with('@'))
 }
 
 /// The offset of the line after the one `comment` ends on, when nothing but blanks follows the comment on its line; the end of the text when

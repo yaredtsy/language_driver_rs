@@ -26,7 +26,7 @@ pub(crate) fn own_line(text: &str, start: u32) -> Option<u32> {
 }
 
 /// Only whitespace and at most one line break between `from` and `to`: no blank line separates them.
-fn adjacent(text: &str, from: u32, to: u32) -> bool {
+pub(crate) fn adjacent(text: &str, from: u32, to: u32) -> bool {
     text.get(from as usize..to as usize).is_some_and(|between| {
         between.chars().all(char::is_whitespace) && line_breaks(between) <= 1
     })
@@ -214,7 +214,8 @@ fn starts_with_word(comment: &str, words: &[&str]) -> bool {
     })
 }
 
-fn is_directive(comment: &str) -> bool {
+/// Is this comment a directive that applies to the line or statement below it?
+pub(crate) fn is_directive(comment: &str) -> bool {
     starts_with_word(comment, &COMPILER_DIRECTIVES)
         || starts_with_word(comment, &NEXT_LINE_DIRECTIVES)
 }
