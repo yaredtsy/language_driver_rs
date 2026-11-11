@@ -32,7 +32,7 @@ typescript-analysis  + tsrs_tsoptions   read tsconfig.json
                      + tsrs_vfs         the file system, and the bundled lib.*.d.ts files
                      + tsrs_compiler    Program: the set of files, module resolution
                      + tsrs_checker     types, symbols, resolved signatures      (110,000 lines in one crate)
-                     + tsrs_ls          only for one function: resolve_call_hierarchy_declaration
+                     (not tsrs_ls: its call-hierarchy resolver is private; S-TS3, see §3)
                      (TS5 only) tsrs_project   sessions, unsaved-file overlays, snapshots
 ```
 
@@ -44,12 +44,12 @@ Every item below is `pub` at the pinned commit. The left column is the question 
 
 | We need | tsrs gives | Notes |
 |---|---|---|
-| parse one file | `tsrs_parser::parse_source_file(opts, text, script_kind) -> P<SourceFile>` | error-tolerant: always returns a tree |
+| parse one file | `tsrs_parser::parse_source_file_owned(opts, text.to_string(), script_kind) -> P<SourceFile>`, inside a region | error-tolerant: always returns a tree. Not `parse_source_file`: in a region it leaves a dangling slot in tsrs's global text table (S-TS2, `ENGINE.md`) |
 | which dialect | `tsrs_core::get_script_kind_from_file_name` → `ScriptKind::{JS, JSX, TS, TSX, JSON}` | |
 | syntax errors | `SourceFile::diagnostics()` | ranges + messages |
 | walk the tree | `Node::for_each_child`, `Node::kind()`, `ast::is_function_declaration(node)` and one `is_*` per kind, `node.name()`, `node.parameters()`, `node.members()`, `node.parent()` | generated accessors; `docs/AST.md` is the contract |
-| a node's range | `node.pos()` / `node.end()`, in **UTF-8 byte offsets**; `tsrs_scanner::skip_trivia(text, pos)` to step over leading comments | `pos` includes leading trivia, as in TypeScript |
-| comments above a node | `tsrs_scanner::get_leading_comment_ranges(text, pos)`; JSDoc: `node.jsdoc(file)` | |
+| a node's range | `node.pos()` / `node.end()` return a **`TextPos` enum** (`Synthetic` or `Source(offset)`); `.expect_source(msg)` or `.source_offset()` gives the UTF-8 byte offset. `tsrs_scanner::skip_trivia(text, pos)` steps over leading comments | `pos` includes leading trivia, as in TypeScript |
+| comments above a node | `tsrs_scanner::get_leading_comment_ranges(text, pos)`; JSDoc: `node.jsdoc(file)` | **the range comes from the scanner**: a `JSDoc` node's `end` is exact but its `pos` is the end of the previous node. `node.jsdoc` only says whether one is attached (S-TS4) |
 | shebang | `tsrs_scanner::get_shebang(text)` | for the file header slot |
 | line and UTF-16 column | `tsrs_scanner::get_ecma_line_and_utf16_character_of_position` | we use `analyzer-core`'s `LineIndex` instead, so the driver has one rule for all languages |
 
@@ -63,9 +63,9 @@ Every item below is `pub` at the pinned commit. The left column is the question 
 | load the program | `tsrs_compiler::new_compiler_host(cwd, fs, lib_path, …)` → `ProgramOptions::new(config, host)` → `new_program(options) -> &'static Program` | module resolution, `node_modules`, project references included |
 | the files | `Program::get_source_files()`, `Program::get_source_file(name)` | |
 | a checker | `Program::get_type_checker(&ctx) -> CheckerHandle` | |
-| **what a call refers to** | `tsrs_ls::callhierarchy::resolve_call_hierarchy_declaration(program, node) -> Option<CallHierarchyDeclarations>` | **the default resolver.** Returns the declaration node(s) "Show Call Hierarchy" would show |
-| the same, by hand | `Checker::get_resolved_signature_exported(call)` → `Signature::declaration()`; `Checker::get_symbol_at_location_exported(expr)`; `Checker::skip_alias` / `get_aliased_symbol` | the fallback if we need to differ from the call hierarchy (for example: pick the overload that matched) |
-| free the memory | `tsrs_compiler::free_program`; `tsrs_core::arena::Region` | §5 |
+| ~~what a call refers to~~ | ~~`tsrs_ls::callhierarchy::resolve_call_hierarchy_declaration`~~ | **not usable**: the function is `pub` but its module is private (`mod callhierarchy;`), so only `LanguageService`'s LSP-typed methods reach it (S-TS3) |
+| **what a call refers to** | `Checker::get_resolved_signature_exported(call)` → `Signature::declaration()`; else `Checker::get_symbol_at_location_exported(callee)`, through `get_aliased_symbol` when the symbol is an alias, → `value_declaration()` | **the resolver.** Returns the *matched overload signature*, not the implementation, so `sem` maps it to the implementation itself (S-TS3, `ENGINE.md`) |
+| free the memory | `tsrs_compiler::free_unshared_program`, with the program built **inside an entered `Region`** and `ProgramOptions::regions` set; `tsrs_core::arena::Region` | §5. Without the regions, freeing gives almost nothing back: +28 MB per load (S-TS3) |
 | cancel | `Checker::was_canceled()`; a `tsrs_core::context::Context` is passed to every entry point | [check] how a context is cancelled from outside |
 | later: edits and unsaved files | `tsrs_project::Session`: `did_open_file`, `did_change_file`, `snapshot()`, `get_language_service` | the language server's own project layer |
 
@@ -104,7 +104,7 @@ The answer exists in tsrs: a **region**.
 let region = tsrs_core::arena::Region::new_scratch(64 * 1024);
 {
     let _scope = region.enter();                    // allocations on this thread now go to the region
-    let file = tsrs_parser::parse_source_file(opts, text, kind);
+    let file = tsrs_parser::parse_source_file_owned(opts, text.to_string(), kind);
     let outline = walk(file);                       // build OUR owned data (Strings, Vecs)…
     outline                                         // …and let nothing from tsrs escape the scope
 }
@@ -120,6 +120,8 @@ let region = tsrs_core::arena::Region::new_scratch(64 * 1024);
 
 ### b) Positions are UTF-8 bytes
 
+(Wrapped: `pos()` / `end()` return a `TextPos` enum, with `Synthetic` for nodes the checker makes; `sem.rs` unwraps with `expect_source`.)
+
 Good: the same as ruff and rust-analyzer, so `analyzer_core::text::Span` is a direct copy. TypeScript itself (the JavaScript version) counts in
 UTF-16; tsrs converts at its language-server edge, and so do we, in the driver.
 
@@ -133,7 +135,7 @@ question at a time, in source order.
 `rust-version = "1.99"` sets the repo's toolchain ([`01-monorepo/02`](../01-monorepo/02-workspaces-and-toolchain.md) §3). tsrs's binaries call
 `tsrs_core::allocator::init_mimalloc`; its notes measure large wins from it. A library must not choose the global allocator, so that choice is
 the **driver's** (and `typescript-cli`'s): `ENGINE.md` says "binaries that link `typescript-analysis` should install mimalloc as tsrs's own do".
-**[check]** in TS0 whether anything breaks without it.
+Checked in TS0 (S-TS1): nothing breaks without it; the speed difference was not measured.
 
 ## 6. Risks
 

@@ -139,7 +139,7 @@ pub enum Skip { NotOnOwnLine, SyntaxError, AlreadyMarked { existing: String }, U
 `marker.rs` does the work in two layers:
 
 ```
-sem.rs       the JSDoc comment range directly above a node            (tsrs: node.jsdoc(file), get_leading_comment_ranges)
+sem.rs       the JSDoc comment range directly above a node            (tsrs: get_leading_comment_ranges for the range; node.jsdoc(file) only to know one is attached; ENGINE.md, S-TS4)
 marker.rs    lines of the block · find the label · find the first block-tag line · build the Edit
 ```
 

@@ -100,10 +100,10 @@ Toolchain: needs Rust ≥ 1.99
 
 ## Crates we depend on
 typescript-syntax:    tsrs_parser, tsrs_ast, tsrs_scanner, tsrs_core
-typescript-analysis:  + tsrs_compiler, tsrs_checker, tsrs_tsoptions, tsrs_vfs, tsrs_ls
+typescript-analysis:  + tsrs_compiler, tsrs_checker, tsrs_tsoptions, tsrs_vfs
 
 ## Every engine item we call          ← generated: `grep -h "tsrs_" crates/*/src/sem.rs | sort -u`
-tsrs_parser::parse_source_file
+tsrs_parser::parse_source_file_owned
 tsrs_checker::Checker::get_resolved_signature_exported
 …
 

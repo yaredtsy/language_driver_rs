@@ -56,8 +56,10 @@ Following `tsrs_lint/src/engine.rs`, lines 465–490 at the pinned commit:
 // sem.rs — sketch; names are tsrs's
 let config   = tsrs_tsoptions::get_parsed_command_line_of_config_file(&config_path, None, None, &host, None);   // (config, diagnostics)
 let host     = tsrs_compiler::new_compiler_host(cwd, fs, &tsrs_vfs::bundled::default_lib_path(), None, None, None);
+// all of it inside an entered Region::new_scratch(1 << 20), kept until the program is freed (§4, ENGINE.md S-TS3)
 let mut opts = tsrs_compiler::ProgramOptions::new(config, host);
 opts.checker_regions = true;                 // the checkers' memory can be given back (see §4)
+opts.regions = Some(Arc::clone(&loaders));   // loaders: Arc<tsrs_compiler::ProgramRegions>, one region per loader thread
 let program: &'static tsrs_compiler::Program = tsrs_compiler::new_program(opts);
 ```
 
@@ -84,7 +86,8 @@ pub struct Project {
 
 impl Drop for Project {
     fn drop(&mut self) {
-        // sem's own Drop calls tsrs_compiler::free_program and releases the loader regions
+        // sem's own Drop drops its checker handles, calls tsrs_compiler::free_unshared_program,
+        // then drops the loader regions and the program's region, in that order
     }
 }
 ```
@@ -119,8 +122,10 @@ The rules:
 4. **One test proves it:** open a project, build a graph, drop the project, 200 times; the process's memory at round 20 and round 200 must be
    about equal **[measure the tolerance in TS0]**.
 
-If S-TS3 shows that `free_program` does not return the memory in a long-running process, the fallback is honest and simple: the driver runs
-call-tree work in a **child process per project**, restarted when the project changes. The analyzer's API does not change.
+S-TS3 answered it (`ENGINE.md`): `free_unshared_program` alone returned almost nothing (+28 MB per load, 528 MB after 15 loads); built inside
+an entered region with `ProgramOptions::regions` set, as `tsrs_lint` does, memory was flat at 145–153 MB from load 10 to load 60 (about 40 MB
+stays after the first free). So `Sem` owns a region, and the tolerance for test 4 is "no growth after round 10". The child-process fallback
+(the driver runs call-tree work in a **child process per project**) is not needed; it stays the answer if a later tsrs pin regresses.
 
 ## 5. What `sem` offers after TS3
 

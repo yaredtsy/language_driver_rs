@@ -84,6 +84,10 @@ real build. The folder is deleted when TS0 closes; the answers move to `language
 
 ## 4. What TS0 hands to the next phases
 
+All four spikes were run on 2026-11-11; the answers are in [`../../languages/typescript/ENGINE.md`](../../languages/typescript/ENGINE.md), and the
+claims they disproved are corrected in [`01-what-tsrs-gives.md`](01-what-tsrs-gives.md), TS1–TS4 and [`../01-monorepo/04-engines.md`](../01-monorepo/04-engines.md).
+The questions above are kept as they were asked.
+
 | To | What |
 |---|---|
 | `ENGINE.md` | the pinned `rev`; the exact crate list; build notes; the allocator note |

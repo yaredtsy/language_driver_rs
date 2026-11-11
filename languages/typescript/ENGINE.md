@@ -242,7 +242,8 @@ This is what the plan expected: JavaScript resolves less, and `Unresolved` says 
 ### 6. Not done
 
 - Both spikes report **1 program diagnostic** whose message text printed empty; not chased. It may be a compiler option tsrs does not support: TS3 prints it properly.
-- One checker (`program.get_type_checker`) answered for every file. `tsrs_lint` asks `get_type_checker_for_file(ctx, file)`; TS3 follows the lint.
+- One checker (`program.get_type_checker`) answered for every file, with tsrs's default checker count. `tsrs_lint` asks `get_type_checker_for_file(ctx, file)`.
+  The plan sets the count to 1 (`docs/03-typescript/05-ts3-project.md` §3), which makes both calls the same checker; TS3 checks that setting.
 - Whether a call through a `FunctionType` is `Unresolved` or a distinct edge is a decision for the owner before TS4 (it bends "follow the engine").
 - Not tried: object-literal methods, JSX elements, accessors, tagged templates, decorators as call sites; a class without a constructor; a project with project references; Linux and Windows.
 - The resolve time includes the checker's lazy work for the visited files only, so the cost of the **first** query in a fresh program is in the 57 ms; a second query is cheaper.

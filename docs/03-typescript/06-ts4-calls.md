@@ -95,9 +95,13 @@ pub(crate) enum Callee<'p> {
 pub(crate) fn callee(&self, site: &RawSite<'p>) -> Callee<'p>;
 ```
 
-implemented with `tsrs_ls::callhierarchy::resolve_call_hierarchy_declaration(program, expr)`. That function is "what does this expression refer
-to, as a thing that can be called". It follows imports and aliases, picks the implementation of an overloaded function, and accepts exactly the
-declarations TS1 lists as defs. When there are several declarations, `sem` sorts them by (file, offset) before returning (rule 11).
+implemented with the checker, because `tsrs_ls::callhierarchy::resolve_call_hierarchy_declaration` is in a private module (S-TS3, `ENGINE.md`):
+`Checker::get_resolved_signature_exported(call)` → `Signature::declaration()`, else `get_symbol_at_location_exported(callee)` through
+`get_aliased_symbol` → `value_declaration()`. `sem` then does what the call hierarchy did for us: it maps a matched overload signature to the
+implementation, and accepts only declarations that are function-like **with a body** (the symbol path also returns parameters and variables).
+`FunctionType`, `MethodSignature`, `CallSignature` and `ConstructSignature` answers have no body: on the V-NOC frontend 140 of 437 sites were a
+`FunctionType` (a call through a function-typed value). Whether those are `Unknown` (→ `Unresolved`) or a distinct edge is **open, for the owner**.
+When there are several declarations, `sem` sorts them by (file, offset) before returning (rule 11).
 
 Then `walk.rs` turns each declaration into a core target:
 

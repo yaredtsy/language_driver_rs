@@ -143,7 +143,7 @@ typescript-syntax/src/
 pub(crate) fn with_parsed<R>(text: &str, dialect: Dialect, f: impl FnOnce(&Parsed<'_>) -> R) -> R {
     let region = tsrs_core::arena::Region::new_scratch(CHUNK);
     let _scope = region.enter();
-    let file = tsrs_parser::parse_source_file(opts(dialect), text, kind(dialect));
+    let file = tsrs_parser::parse_source_file_owned(opts(dialect), text.to_string(), kind(dialect));   // not parse_source_file (ENGINE.md, S-TS2)
     f(&Parsed { file, text, _not_send: PhantomData })
     // `region` is dropped here: everything tsrs allocated is gone
 }
