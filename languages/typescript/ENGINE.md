@@ -498,4 +498,32 @@ of a merged symbol, in (file, offset) order.
 
 **The seam** (`key.rs`, `env.rs`, `walk::resolve(site, &env)` with `resolve_from_env` returning `None`) exists as `docs/02-tree-rules/03-the-seam.md` §3 asks; `calls.rs` implements `Lang` and delegates to `walk::body`.
 `def_without_node` is one `Unresolved` edge at the def's first byte and a count, the context `Finished`, and it is tested by a test hook that drops a def's node (nothing in the suite makes the two parses disagree).
-A class reached by a plain call (`super(x)`) is a construction whose `init` is its own constructor; with none of its own, `init` is none (an inherited one is `new`'s, step 5).
+A class reached by `super(x)` or `new` is a construction whose `init` is the constructor that runs (below).
+
+### `new`, constructors and library globals (TS4 step 5)
+
+Pinned in `tests/fixtures/construct/` (the graph of `build` and of `convert`, every edge written from the rules before the run) and in the scenarios `construct-marked-class` and `external-call`
+in TypeScript. A `new` is a site on the class expression (`new a.B(x)` → `a.B`), found by the same `Collector` as a call; the engine resolves it like a call, through the symbol of the class.
+
+- **`init` is the constructor that runs, found up the chain of base classes (`Sem::init_of`)**: the class's own, else the nearest base class's in project code (`Grandchild extends Child extends Parent`,
+  only `Parent` has one: `Parent.constructor`). This was the plan's rule (an inherited constructor is the base class's), written for one level; the code follows the chain. A chain that reaches a base
+  **outside the project** (`extends Error`, a package's class) or a base the checker cannot name as a class (`extends mixin(Base)`) ends with `init: None`, and that is a limit and not an answer, so
+  it is counted: `Stats.language["inherited_constructor_external"]` and `["inherited_constructor_unknown"]`, listed by `Breakdown.notes`. They are not `Unresolved` edges: the class is known and the edge
+  is a construction. The base's constructor is not an edge of its own (there is no site for it), so on a graph `new MyError()` shows no `Error` (open question Q-TS1 in `docs/07`; a core change). In the fixture: `FromPackage` and `MyError` (external),
+  `Mixed` (unknown). **With a constructor of its own it is shown**: `class WithSuper extends Error { constructor() { super(); } }` has an `External` edge `typescript:lib Error` at the `super` site (fixture `WithSuper`, `PackageWithSuper`). The checker's symbol for the `super` keyword is the constructor's *type* (`ErrorConstructor`), which would have been a second name for `Error`: `external_declarations` reads the base from the class's `extends` expression instead, as `init_of` does.
+- **An overloaded constructor is three defs in the outline** (two signatures, the implementation) and the first has no body. `Sem::constructor_of` takes the one with a body. The first version took the
+  first def: the tests caught it (`Overloaded`'s `prepare()` was missing from the tree), the engine's own hierarchy has the same rule for a function (`find_implementation`).
+- **A function reached by `new` is a call** (`new Legacy()`, an old-style constructor function): its body is the constructor, and it is a context like any function. The plan said "a class (or `new` was
+  used) → `Construct`"; the graph's `defs` table describes a *class*, and a function has no class row, so the plan text was changed to match.
+- **A class outside the project is an `External`, never a construction**, as the plan said: `new Map()` → `typescript:lib Map`, `new Boxed(1)` → the package, a class of the repo's own `.d.ts` → that file.
+- **A library global declared as an interface and a `var` has no declaration with a body** (`Map`, `String`, `Date`, `Intl.DateTimeFormat`): the hierarchy gives nothing, and the first version of step 5 would
+  have called every `new Map()` and `String(x)` `no_declaration`. `external_declarations` (the old `external_value_holder`, widened) takes the symbol's declarations when **all** are outside project code
+  and calls them `External`; it applies to a call and to a `new`. *Found on the V-NOC frontend, not in the fixtures first:* `applyOps` had 4 unresolved edges and every one was `String(op.value)`; they
+  are 0 now (21 → 25 external). *Our choice:* a declaration in the project in the same symbol keeps the old answer (a project value holder is D16's).
+- **A class held by a value** (`declare const Ctor: new () => Plain`, a parameter of type `typeof Plain`) is `function_typed_value`, like a callback: the construct signature has no declaration to enter.
+- **A `declare function` or `declare class` of a project file** is a def with no body, a leaf (`pick` in the fixture), as an interface method is.
+- V-NOC `TaskDetailPanel`: 32 call, 0 construct, 88 external, 57 unresolved (84 external before this step). The 4 more are `new` of library classes: before, none of the panel's `new` was a site, and `no_declaration` was 0 both times, so the string-call fix adds nothing here. The 57 are unchanged.
+  Project classes are rare there (two `new`, both at module level, in no def), so the project-class paths are covered by the fixture only.
+- **A project file that augments a library global makes it the project's too.** `declare global { interface String { shout(): string } }` in a project file gives the symbol `String` a project declaration, so
+  `external_declarations` (every declaration outside the project) says nothing and `String(1)` is `no_declaration` again in that project; `Number(…)` and `new Date()` stay `External` (checked on a scratch
+  project, 2026-11-12). Left as it is: the rule is "all declarations outside", and narrowing it to the declarations that have a signature would be the next step if a real project shows it.
