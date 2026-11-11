@@ -23,6 +23,8 @@ pub use tree::{Mark, Node, to_text};
 
 use std::time::Duration;
 
+use analyzer_core::edit::MarkerStyle;
+
 use ruff_db::files::File;
 use summary::Cut;
 use ty_project::ProjectDatabase;
@@ -84,6 +86,8 @@ pub struct Options {
     pub only_marked: bool,
     /// The prefixes of `target_id` on the wire.
     pub wire: WireStyle,
+    /// The label a marker is read under (`ID: …` in a docstring), the same style `python_syntax::outline` takes.
+    pub marker: MarkerStyle<'static>,
 }
 
 #[derive(Clone, Debug)]
@@ -139,6 +143,7 @@ impl Default for Options {
             limits: Limits::default(),
             only_marked: false, // the harness; requests set it
             wire: WireStyle::default(),
+            marker: MarkerStyle::docstring("ID"),
         }
     }
 }
@@ -245,7 +250,7 @@ pub fn solve<'db>(
     entry: &str,
     opts: &Options,
 ) -> Option<(Solver<'db>, ContextId)> {
-    let sem = Sem::new(db);
+    let sem = Sem::new(db, opts.marker);
     let def = sem.entry(file, entry)?;
     let parsed = sem.parsed(def);
     let node = sem.function_node(def, &parsed)?;
@@ -272,7 +277,7 @@ fn inline_tree(
     entry: &str,
     opts: &Options,
 ) -> Option<(Node, Stats)> {
-    let sem = Sem::new(db);
+    let sem = Sem::new(db, opts.marker);
     let def = sem.entry(file, entry)?;
     let parsed = sem.parsed(def);
     let node = sem.function_node(def, &parsed)?;

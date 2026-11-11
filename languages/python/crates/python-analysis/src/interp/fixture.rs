@@ -96,7 +96,7 @@ pub(super) fn relevant_names(fixture: &str, func: &str) -> Vec<String> {
     let root = path.parent().unwrap();
     let db = open_project(SystemPath::from_std_path(root).unwrap()).unwrap();
     let (file, _) = open(&db, SystemPath::from_std_path(&path).unwrap()).unwrap();
-    let sem = Sem::new(&db);
+    let sem = Sem::new(&db, Options::default().marker);
     let def = sem.entry(file, func).unwrap();
     let parsed = sem.parsed(def);
     let node = sem.function_node(def, &parsed).unwrap();
@@ -729,6 +729,23 @@ fn wire_ids_are_bare_when_no_prefix_is_given() {
     let (db, file) = open_fixture("06-wire/python/ids_and_classes.py");
     let wire = frame_of(&db, file, &summary(), false);
     assert_eq!(wire.target_id, "06000000-0003-0000-0000-000000000000");
+}
+
+#[test]
+fn the_marker_label_is_the_callers() {
+    use analyzer_core::edit::MarkerStyle;
+    let (db, file) = open_fixture("06-wire/python/ids_and_classes.py");
+    // the program marks its defs `ID: …`; read under another label it has no markers, so no ids
+    let other = Options {
+        marker: MarkerStyle::docstring("Other"),
+        ..summary()
+    };
+    let wire = frame_of(&db, file, &other, false);
+    let mut got = Vec::new();
+    ids(&wire, &mut got);
+    assert!(got.iter().all(|(_, id)| id.is_empty()), "{got:?}");
+    let default = frame_of(&db, file, &summary(), false);
+    assert_eq!(default.target_id, "06000000-0003-0000-0000-000000000000");
 }
 
 #[test]

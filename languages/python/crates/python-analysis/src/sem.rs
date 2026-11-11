@@ -1,5 +1,5 @@
 use crate::stable::{StableDef, StableType};
-use analyzer_core::edit::{MarkerStyle, Placement};
+use analyzer_core::edit::MarkerStyle;
 use ruff_db::files::{File, system_path_to_file};
 use ruff_db::parsed::{ParsedModuleRef, parsed_module};
 use ruff_db::source::{line_index, source_text};
@@ -23,12 +23,6 @@ use ty_python_semantic::{
     definitions_for_name,
 };
 
-/// The label markers are read under. Threaded from `Options::marker` in the next step; until then it is the one pylspt always used.
-const MARKER: MarkerStyle<'static> = MarkerStyle {
-    label: "ID",
-    placement: Placement::Docstring,
-};
-
 pub use ruff_python_ast::name::Name;
 pub use ty_python_core::definition::{Definition, DefinitionKind};
 pub use ty_python_semantic::types::{Type, TypeDefinition};
@@ -48,6 +42,8 @@ pub struct Sem<'db> {
     pub db: &'db ProjectDatabase,
     /// Per file: a def's start offset to its `nth` among the defs with its qname.
     nth: RefCell<FxHashMap<File, Rc<FxHashMap<TextSize, u16>>>>,
+    /// The label a marker is read under (`ID: …` in a docstring), the caller's.
+    marker: MarkerStyle<'static>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -296,10 +292,11 @@ impl<'db> Sem<'db> {
         out.dedup();
         out
     }
-    pub fn new(db: &'db ProjectDatabase) -> Self {
+    pub fn new(db: &'db ProjectDatabase, marker: MarkerStyle<'static>) -> Self {
         Sem {
             db,
             nth: RefCell::default(),
+            marker,
         }
     }
     pub fn model(&self, file: ProgramFile<'db>) -> SemanticModel<'db> {
@@ -414,7 +411,7 @@ impl<'db> Sem<'db> {
             .as_string_literal_expr()?
             .value
             .to_str();
-        python_syntax::docstring_marker(doc, MARKER)
+        python_syntax::docstring_marker(doc, self.marker)
     }
 
     pub fn is_class(&self, def: Definition<'db>) -> bool {
