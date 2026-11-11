@@ -1,12 +1,15 @@
 //! Identities that mean the same thing in another request, another process, or
 //! after an edit above the function. Plain data: no `'db`.
 
-pub use analyzer_core::graph::StableDef;
+pub(crate) use analyzer_core::graph::StableDef;
 
 /// A `StableDef` as the bytes of a context digest see it. A digest is a hash of a serialized key, and it is the context's identity outside the
 /// process (a cache, a UI selection), so those bytes must not move: a marked identity is still written `Node`, as pylspt wrote it, although
 /// core calls it `Marked`. Used by `serialize_with` on every `StableDef` that goes into a key; nothing else is written this way.
-pub fn hashed_def<S: serde::Serializer>(def: &StableDef, serializer: S) -> Result<S::Ok, S::Error> {
+pub(crate) fn hashed_def<S: serde::Serializer>(
+    def: &StableDef,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
     use serde::Serialize as _;
     #[derive(serde::Serialize)]
     enum Hashed<'a> {
@@ -30,7 +33,7 @@ pub fn hashed_def<S: serde::Serializer>(def: &StableDef, serializer: S) -> Resul
 
 /// A type, by structure. Never a display string.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, serde::Serialize)]
-pub enum StableType {
+pub(crate) enum StableType {
     Instance {
         #[serde(serialize_with = "hashed_def")]
         class: StableDef,

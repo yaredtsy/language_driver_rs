@@ -94,7 +94,7 @@ fn stats(old: &Stats, unresolved: u64) -> CStats {
 }
 
 /// Everything `entries` reach through the final edges, as core's graph.
-pub fn core_graph(s: &Solver<'_>, entries: &[ContextId]) -> Graph {
+pub(crate) fn core_graph(s: &Solver<'_>, entries: &[ContextId]) -> Graph {
     // 1. what the entries reach, in no particular order
     let mut seen: FxHashSet<ContextId> = FxHashSet::default();
     let mut stack: Vec<ContextId> = entries.to_vec();

@@ -12,7 +12,7 @@ use crate::interp::walk::Walk;
 use crate::sem::{Definition, Name, SIGNATURE_KEEPING, Shape, Type};
 
 #[derive(Clone, Default)]
-pub struct EvaluatedArgs<'db> {
+pub(crate) struct EvaluatedArgs<'db> {
     pub positional: SmallVec<[Values<'db>; 4]>,
     pub keywords: SmallVec<[(Name, Values<'db>); 2]>,
     pub has_splat: bool,
@@ -44,7 +44,7 @@ impl<'db> EvaluatedArgs<'db> {
             has_splat: self.has_splat,
         }
     }
-    pub fn has_empty(&self) -> bool {
+    pub(crate) fn has_empty(&self) -> bool {
         self.positional.iter().any(|v| v.is_empty())
             || self.keywords.iter().any(|(_, v)| v.is_empty())
     }
@@ -52,12 +52,12 @@ impl<'db> EvaluatedArgs<'db> {
 
 /// What each parameter holds, one slot per parameter, in `param_names` order.
 #[derive(Clone, Default)]
-pub struct Bound<'db> {
+pub(crate) struct Bound<'db> {
     pub slots: SmallVec<[Values<'db>; 4]>,
 }
 
 /// Parameter names in slot order: positional, keyword-only, `*args`, `**kwargs`.
-pub fn param_names(def: &StmtFunctionDef) -> impl Iterator<Item = &Name> {
+pub(crate) fn param_names(def: &StmtFunctionDef) -> impl Iterator<Item = &Name> {
     let p = &def.parameters;
     p.posonlyargs
         .iter()
@@ -70,7 +70,7 @@ pub fn param_names(def: &StmtFunctionDef) -> impl Iterator<Item = &Name> {
 
 impl<'db> Walk<'db> {
     /// In the caller's frame and env, left to right, each argument once.
-    pub fn eval_arguments(
+    pub(crate) fn eval_arguments(
         &mut self,
         sol: &mut Solver<'db>,
         args: &Arguments,
@@ -99,7 +99,7 @@ impl<'db> Walk<'db> {
     }
     /// One value per parameter, in `param_names` order, defaults filled.
     /// Must run with the callee's frame active.
-    pub fn bind_parameters(
+    pub(crate) fn bind_parameters(
         &mut self,
         sol: &mut Solver<'db>,
         func: Definition<'db>,
@@ -209,7 +209,7 @@ impl<'db> Walk<'db> {
     }
 
     /// The callee's starting env, from the bound slots.
-    pub fn env_from_bound(&self, def: &StmtFunctionDef, bound: &Bound<'db>) -> Env<'db> {
+    pub(crate) fn env_from_bound(&self, def: &StmtFunctionDef, bound: &Bound<'db>) -> Env<'db> {
         let mut env = Env::default();
         for (name, v) in param_names(def).zip(&bound.slots) {
             env.bind(name, v.clone());

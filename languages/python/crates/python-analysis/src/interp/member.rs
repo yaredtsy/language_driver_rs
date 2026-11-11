@@ -13,7 +13,7 @@ use crate::sem::{BoundTo, Name, Shape};
 
 // src/interp/member.rs
 impl<'db> Walk<'db> {
-    pub fn eval_attribute(
+    pub(crate) fn eval_attribute(
         &mut self,
         sol: &mut Solver<'db>,
         attr: &ExprAttribute,
@@ -102,7 +102,7 @@ impl<'db> Walk<'db> {
     }
 
     /// Give every `OPAQUE` instance in `vals` the origin named by `key`.
-    pub fn reorigin(&mut self, vals: Values<'db>, key: OriginKey) -> Values<'db> {
+    pub(crate) fn reorigin(&mut self, vals: Values<'db>, key: OriginKey) -> Values<'db> {
         let origin = self.origins.intern(key);
         vals.into_iter()
             .map(|v| match v {
@@ -168,7 +168,7 @@ impl<'db> Walk<'db> {
     }
 
     /// `a.b = v`: the value goes to every object `a` may be.
-    pub fn bind_attribute(
+    pub(crate) fn bind_attribute(
         &mut self,
         sol: &mut Solver<'db>,
         attr: &ExprAttribute,

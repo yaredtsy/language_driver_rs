@@ -16,14 +16,15 @@ use ruff_python_ast::{ExprCall, ExprRef, StmtFunctionDef};
 use ruff_text_size::{Ranged, TextRange};
 use smallvec::{SmallVec, smallvec};
 
-pub struct InlineRun<'db> {
+pub(crate) struct InlineRun<'db> {
     pub children: Vec<Node>,
     pub returns: Values<'db>,
+    #[allow(dead_code)] // never read: inline mode's prologue used it
     pub act: Option<ActivationId>, // the run, for the prologue
 }
 
 impl<'db> Walk<'db> {
-    pub fn eval_call(
+    pub(crate) fn eval_call(
         &mut self,
         sol: &mut Solver<'db>,
         call: &ExprCall,
@@ -155,7 +156,7 @@ impl<'db> Walk<'db> {
     /// slot its `CallEdge` already holds, and no expression to ask ty about.
     // moved from pylspt unchanged: the plan moves the solver, it does not rewrite it (a rewrite is its own change)
     #[allow(clippy::too_many_arguments)]
-    pub fn call_values(
+    pub(crate) fn call_values(
         &mut self,
         sol: &mut Solver<'db>,
         site: SiteId,

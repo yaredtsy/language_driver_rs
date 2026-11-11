@@ -18,7 +18,7 @@ use ruff_text_size::TextSize;
 use smallvec::smallvec;
 use ty_python_core::ProgramFile;
 
-pub struct Walk<'db> {
+pub(crate) struct Walk<'db> {
     pub frame: Frame<'db>,
     pub activations: IndexVec<ActivationId, Env<'db>>,
     /// Which object is which: where it was built, and in which run.
@@ -40,7 +40,7 @@ pub struct Walk<'db> {
 }
 
 /// The body being walked now.
-pub struct Frame<'db> {
+pub(crate) struct Frame<'db> {
     pub func: Definition<'db>,
     pub file: ProgramFile<'db>,
     pub model: SemanticModel<'db>,
@@ -69,7 +69,7 @@ fn frame_for<'db>(sol: &Solver<'db>, func: Definition<'db>, act: ActivationId) -
 }
 
 impl<'db> Walk<'db> {
-    pub fn new(sol: &Solver<'db>, func: Definition<'db>) -> Self {
+    pub(crate) fn new(sol: &Solver<'db>, func: Definition<'db>) -> Self {
         let mut activations = IndexVec::new();
         let act = activations.push(Env::default());
         let mut origins = Interner::default();
@@ -88,12 +88,12 @@ impl<'db> Walk<'db> {
             generator: false,
         }
     }
-    pub fn new_frame(&mut self, sol: &Solver<'db>, func: Definition<'db>) -> Frame<'db> {
+    pub(crate) fn new_frame(&mut self, sol: &Solver<'db>, func: Definition<'db>) -> Frame<'db> {
         let act = self.activations.push(Env::default());
         frame_for(sol, func, act)
     }
 
-    pub fn walk_stmts(
+    pub(crate) fn walk_stmts(
         &mut self,
         sol: &mut Solver<'db>,
         body: &[Stmt],
@@ -267,7 +267,12 @@ impl<'db> Walk<'db> {
     }
     /// A local of this run, else a free variable read from the run where the
     /// `def` ran (never the caller's), else `None`: ty answers.
-    pub fn lookup(&self, sol: &Solver<'db>, env: &Env<'db>, name: &Name) -> Option<Values<'db>> {
+    pub(crate) fn lookup(
+        &self,
+        sol: &Solver<'db>,
+        env: &Env<'db>,
+        name: &Name,
+    ) -> Option<Values<'db>> {
         if let Some(v) = env.get(name) {
             return Some(v.clone());
         }
@@ -288,7 +293,7 @@ impl<'db> Walk<'db> {
     /// A free variable of the closure `(func, act)`, read exactly as its own
     /// body would: `lookup` from an empty env of `func`'s scope whose
     /// `enclosing` is `act`. Empty if no run has bound it.
-    pub fn lookup_in(
+    pub(crate) fn lookup_in(
         &self,
         sol: &Solver<'db>,
         func: Definition<'db>,
@@ -306,11 +311,16 @@ impl<'db> Walk<'db> {
         };
         self.lookup(sol, &probe, name).unwrap_or_default()
     }
-    pub fn none_value(&mut self, sol: &mut Solver<'db>) -> Values<'db> {
+    pub(crate) fn none_value(&mut self, sol: &mut Solver<'db>) -> Values<'db> {
         let none = sol.sem.none_type(self.frame.file);
         self.lift(sol, none)
     }
-    pub fn eval(&mut self, sol: &mut Solver<'db>, expr: &Expr, env: &mut Env<'db>) -> Values<'db> {
+    pub(crate) fn eval(
+        &mut self,
+        sol: &mut Solver<'db>,
+        expr: &Expr,
+        env: &mut Env<'db>,
+    ) -> Values<'db> {
         match expr {
             Expr::Name(n) => match self.lookup(sol, env, &n.id) {
                 Some(v) => v,
@@ -454,7 +464,7 @@ fn pattern_names(pattern: &Pattern) -> Vec<&Name> {
 }
 
 /// Does `body` yield? Nested `def`, `class` and `lambda` are their own scopes.
-pub fn contains_yield(body: &[Stmt]) -> bool {
+pub(crate) fn contains_yield(body: &[Stmt]) -> bool {
     struct Finder(bool);
     impl<'a> Visitor<'a> for Finder {
         fn visit_stmt(&mut self, s: &'a Stmt) {

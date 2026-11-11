@@ -20,7 +20,7 @@ pub struct ActivationId;
 pub struct ValueId;
 
 /// Per walk. The same value is interned once.
-pub type ValueArena<'db> = Interner<AbstractValue<'db>, ValueId>;
+pub(crate) type ValueArena<'db> = Interner<AbstractValue<'db>, ValueId>;
 
 /// One object, named by where it was built. Walk-local, like `ActivationId`.
 #[newtype_index]
@@ -37,7 +37,7 @@ impl OriginId {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub enum OriginKey {
+pub(crate) enum OriginKey {
     /// An object ty gave us, not built in this walk: `OriginId::OPAQUE`.
     Opaque,
     /// An input object, named by where it sits among the inputs. One per path per run.
@@ -48,13 +48,13 @@ pub enum OriginKey {
 
 /// Where an input object sits: a root, then steps from it.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Path {
+pub(crate) struct Path {
     pub root: Root,
     pub steps: SmallVec<[Step; 2]>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum Root {
+pub(crate) enum Root {
     Param(u8),
     /// Free value `i` of the walked closure itself.
     Free(u8),
@@ -63,7 +63,7 @@ pub enum Root {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub enum Step {
+pub(crate) enum Step {
     Attr(Name),
     /// Free value `n` of the closure at the path so far.
     Free(u8),
@@ -73,7 +73,7 @@ pub enum Step {
 }
 
 impl Path {
-    pub fn root(root: Root) -> Self {
+    pub(crate) fn root(root: Root) -> Self {
         Path {
             root,
             steps: SmallVec::new(),
@@ -84,16 +84,16 @@ impl Path {
         p.steps.push(step);
         p
     }
-    pub fn attr(&self, name: &Name) -> Self {
+    pub(crate) fn attr(&self, name: &Name) -> Self {
         self.then(Step::Attr(name.clone()))
     }
-    pub fn free(&self, i: u8) -> Self {
+    pub(crate) fn free(&self, i: u8) -> Self {
         self.then(Step::Free(i))
     }
-    pub fn default(&self, i: u8) -> Self {
+    pub(crate) fn default(&self, i: u8) -> Self {
         self.then(Step::Default(i))
     }
-    pub fn recv(&self) -> Self {
+    pub(crate) fn recv(&self) -> Self {
         self.then(Step::Recv)
     }
 }
@@ -103,7 +103,7 @@ impl Path {
 pub struct DeferId;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum AbstractValue<'db> {
+pub(crate) enum AbstractValue<'db> {
     Function(Definition<'db>), // a def: something you can walk
     Closure {
         func: Definition<'db>,
@@ -125,9 +125,9 @@ pub enum AbstractValue<'db> {
 }
 
 /// Several possibilities, kept apart. Never collapsed into one ty union.
-pub type Values<'db> = SmallVec<[AbstractValue<'db>; 2]>;
+pub(crate) type Values<'db> = SmallVec<[AbstractValue<'db>; 2]>;
 
-pub fn dedup(vals: &mut Values<'_>) {
+pub(crate) fn dedup(vals: &mut Values<'_>) {
     let mut seen = Vec::with_capacity(vals.len());
     vals.retain(|v| {
         if seen.contains(v) {
@@ -139,7 +139,7 @@ pub fn dedup(vals: &mut Values<'_>) {
     });
 }
 impl<'db> Walk<'db> {
-    pub fn lift(&mut self, sol: &mut Solver<'db>, ty: Type<'db>) -> Values<'db> {
+    pub(crate) fn lift(&mut self, sol: &mut Solver<'db>, ty: Type<'db>) -> Values<'db> {
         match sol.sem.shape(ty, self.frame.file) {
             Shape::Module => smallvec![AbstractValue::Module(ty)],
             Shape::Function(d) => smallvec![AbstractValue::Function(d)],

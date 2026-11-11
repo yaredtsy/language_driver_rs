@@ -1,4 +1,6 @@
 // src/interp/entry.rs
+//! Inline mode is the fixture suite's cross-check and is not reachable from the public API.
+#![allow(dead_code)]
 use crate::interp::bind::EvaluatedArgs;
 use crate::interp::env::Env;
 use crate::interp::solver::Solver;
@@ -8,7 +10,7 @@ use crate::sem::{Definition, EntryKind, Scope};
 
 /// What the entry's walk begins with.
 #[derive(Default)]
-pub struct Start<'db> {
+pub(crate) struct Start<'db> {
     pub receiver: Option<AbstractValue<'db>>,
     pub enclosing: Option<ActivationId>,
 }
@@ -17,7 +19,7 @@ impl<'db> Walk<'db> {
     /// Walk down from the module to `entry`, running what Python would run to get
     /// there. Every node it makes is dropped; its effects stay (in `env`, and in the
     /// runs the entry's free variables are read from).
-    pub fn prologue(
+    pub(crate) fn prologue(
         &mut self,
         sol: &mut Solver<'db>,
         entry: Definition<'db>,

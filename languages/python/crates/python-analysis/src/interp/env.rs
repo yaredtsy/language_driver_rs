@@ -5,7 +5,7 @@ use crate::sem::{BodyScope, Name};
 
 /// What each name holds on the path being walked. Cloning is a pointer copy.
 #[derive(Clone, Default)]
-pub struct Env<'db> {
+pub(crate) struct Env<'db> {
     pub locals: rpds::HashTrieMap<Name, Values<'db>>,
     /// What each object holds on this path: (which object, attribute name).
     pub attrs: rpds::HashTrieMap<(OriginId, Name), Values<'db>>,
@@ -18,21 +18,27 @@ pub struct Env<'db> {
 }
 
 impl<'db> Env<'db> {
-    pub fn flat() -> Self {
+    pub(crate) fn flat() -> Self {
         Env {
             flat: true,
             ..Env::default()
         }
     }
-    pub fn get(&self, name: &Name) -> Option<&Values<'db>> {
+    pub(crate) fn get(&self, name: &Name) -> Option<&Values<'db>> {
         self.locals.get(name)
     }
-    pub fn bind(&mut self, name: &Name, v: Values<'db>) {
+    pub(crate) fn bind(&mut self, name: &Name, v: Values<'db>) {
         self.locals.insert_mut(name.clone(), v);
     }
     /// `strong`: the receiver is exactly one object, so the write replaces.
     /// Otherwise it is added to what the attribute may already hold.
-    pub fn bind_attr(&mut self, origin: OriginId, name: &Name, v: Values<'db>, strong: bool) {
+    pub(crate) fn bind_attr(
+        &mut self,
+        origin: OriginId,
+        name: &Name,
+        v: Values<'db>,
+        strong: bool,
+    ) {
         let key = (origin, name.clone());
         let v = match (strong, self.attrs.get(&key)) {
             (false, Some(old)) => {
@@ -46,7 +52,7 @@ impl<'db> Env<'db> {
         self.attrs.insert_mut(key, v);
     }
     /// One object's attributes, sorted by name. Scans the flat map.
-    pub fn attrs_of(&self, origin: OriginId) -> Vec<(Name, Values<'db>)> {
+    pub(crate) fn attrs_of(&self, origin: OriginId) -> Vec<(Name, Values<'db>)> {
         let mut out: Vec<(Name, Values<'db>)> = self
             .attrs
             .iter()
@@ -57,7 +63,7 @@ impl<'db> Env<'db> {
         out
     }
     /// Union per name. A name missing from an arm was not assigned on that path.
-    pub fn join(arms: Vec<Option<Env<'db>>>) -> Option<Env<'db>> {
+    pub(crate) fn join(arms: Vec<Option<Env<'db>>>) -> Option<Env<'db>> {
         let mut arms = arms.into_iter().flatten();
         let mut out = arms.next()?;
         for arm in arms {

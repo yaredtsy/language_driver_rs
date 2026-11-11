@@ -1,7 +1,10 @@
+//! Inline mode is the fixture suite's cross-check and is not reachable from the public API.
+#![allow(dead_code)]
+
 use ruff_text_size::TextRange;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Node {
+pub(crate) struct Node {
     pub qname: String,
     pub site: Option<TextRange>, // the call expression's range. None for the root
     pub marks: Vec<Mark>,
@@ -10,14 +13,14 @@ pub struct Node {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Mark {
+pub(crate) enum Mark {
     Recursive,
     Cut,
     Incomplete,
 }
 
 impl Node {
-    pub fn root(qname: String) -> Self {
+    pub(crate) fn root(qname: String) -> Self {
         Node {
             qname,
             site: None,
@@ -25,7 +28,7 @@ impl Node {
             children: Vec::new(),
         }
     }
-    pub fn call(qname: String, site: TextRange) -> Self {
+    pub(crate) fn call(qname: String, site: TextRange) -> Self {
         Node {
             qname,
             site: Some(site),
@@ -36,7 +39,7 @@ impl Node {
 }
 
 /// One line per node, two spaces per level, `module.` dropped from names.
-pub fn to_text(root: &Node, module: &str) -> String {
+pub(crate) fn to_text(root: &Node, module: &str) -> String {
     fn go(n: &Node, depth: usize, module: &str, out: &mut String) {
         let short = n
             .qname

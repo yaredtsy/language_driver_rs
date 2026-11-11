@@ -2,7 +2,7 @@ use crate::stable::{StableDef, StableType};
 use analyzer_core::edit::MarkerStyle;
 use ruff_db::files::{File, system_path_to_file};
 use ruff_db::parsed::{ParsedModuleRef, parsed_module};
-use ruff_db::source::{line_index, source_text};
+use ruff_db::source::source_text;
 use ruff_db::system::SystemPath;
 use ruff_python_ast::visitor::{Visitor, walk_stmt};
 use ruff_python_ast::{Alias, AnyNodeRef, ExprName, ExprRef, Stmt, StmtFunctionDef};
@@ -13,7 +13,7 @@ use std::rc::Rc;
 use ty_module_resolver::file_to_module;
 
 use ty_project::Db as _;
-pub use ty_project::ProjectDatabase;
+pub(crate) use ty_project::ProjectDatabase;
 use ty_project::glob::IncludeResult;
 use ty_python_core::ProgramFile;
 use ty_python_core::scope::{FileScopeId, NodeWithScopeRef, ScopeKind};
@@ -24,13 +24,13 @@ use ty_python_semantic::{
     definitions_for_name,
 };
 
-pub use ruff_python_ast::name::Name;
-pub use ty_python_core::definition::{Definition, DefinitionKind};
-pub use ty_python_semantic::types::{Type, TypeDefinition};
-pub use ty_python_semantic::{ProgramEnvironment, SemanticModel};
+pub(crate) use ruff_python_ast::name::Name;
+pub(crate) use ty_python_core::definition::{Definition, DefinitionKind};
+pub(crate) use ty_python_semantic::types::{Type, TypeDefinition};
+pub(crate) use ty_python_semantic::{ProgramEnvironment, SemanticModel};
 
 /// Decorators that keep the wrapped function's signature.
-pub const SIGNATURE_KEEPING: &[&str] = &[
+pub(crate) const SIGNATURE_KEEPING: &[&str] = &[
     "functools.wraps",
     "functools.lru_cache",
     "functools.cache",
@@ -39,7 +39,7 @@ pub const SIGNATURE_KEEPING: &[&str] = &[
     "builtins.property.setter",
 ];
 
-pub struct Sem<'db> {
+pub(crate) struct Sem<'db> {
     pub db: &'db ProjectDatabase,
     /// Per file: a def's start offset to its `nth` among the defs with its qname.
     nth: RefCell<FxHashMap<File, Rc<FxHashMap<TextSize, u16>>>>,
@@ -48,36 +48,38 @@ pub struct Sem<'db> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct BodyScope<'db> {
+pub(crate) struct BodyScope<'db> {
     pub file: ProgramFile<'db>,
     pub scope: FileScopeId,
 }
 /// A class or a function around an entry.
-pub enum Scope<'db> {
+#[allow(dead_code)] // inline mode is the fixture suite's cross-check and is not reachable from the public API
+pub(crate) enum Scope<'db> {
     Class(Definition<'db>),
     Function(Definition<'db>),
 }
 
 /// What a function defined in a class is called on.
-pub enum EntryKind {
+#[allow(dead_code)] // inline mode is the fixture suite's cross-check and is not reachable from the public API
+pub(crate) enum EntryKind {
     Method,
     ClassMethod,
     StaticMethod,
 }
 
 /// A property's project accessors. A library accessor is a stub: not walked.
-pub struct PropertyParts<'db> {
+pub(crate) struct PropertyParts<'db> {
     pub getter: Option<Definition<'db>>,
     pub setter: Option<Definition<'db>>,
 }
 
 /// What a bound method is bound to.
-pub enum BoundTo {
+pub(crate) enum BoundTo {
     Object,
     Class,
     Other,
 }
-pub enum Shape<'db> {
+pub(crate) enum Shape<'db> {
     Function(Definition<'db>), // a `def`, as ty sees it
     Class(Definition<'db>),
     Instance(Definition<'db>), // an object of this class, whichever one
@@ -93,7 +95,7 @@ pub enum Shape<'db> {
     Other,   // keep as `Ty`
 }
 impl<'db> Sem<'db> {
-    pub fn definition_of(
+    pub(crate) fn definition_of(
         &self,
         model: &SemanticModel<'db>,
         d: &StmtFunctionDef,
@@ -101,7 +103,11 @@ impl<'db> Sem<'db> {
         d.definition(model)
     }
     /// The scope of a function's body. [check] the accessor name.
-    pub fn body_scope(&self, def: Definition<'db>, node: &StmtFunctionDef) -> BodyScope<'db> {
+    pub(crate) fn body_scope(
+        &self,
+        def: Definition<'db>,
+        node: &StmtFunctionDef,
+    ) -> BodyScope<'db> {
         let file = def.program_file(self.db);
         let index = semantic_index(self.db, file);
         BodyScope {
@@ -109,12 +115,16 @@ impl<'db> Sem<'db> {
             scope: index.node_scope(NodeWithScopeRef::Function(node)),
         }
     }
-    pub fn class_type(&self, class: Definition<'db>) -> Type<'db> {
+    pub(crate) fn class_type(&self, class: Definition<'db>) -> Type<'db> {
         analyzer_ext::type_of_definition(self.db, class)
     }
     /// `None` when `name` isn't a property on `class`. Asked on the class: on an
     /// instance ty applies the descriptor and the property itself is gone.
-    pub fn property_parts(&self, class: Definition<'db>, name: &str) -> Option<PropertyParts<'db>> {
+    pub(crate) fn property_parts(
+        &self,
+        class: Definition<'db>,
+        name: &str,
+    ) -> Option<PropertyParts<'db>> {
         let file = class.program_file(self.db);
         let Type::PropertyInstance(p) = self.member(self.class_type(class), name, file)? else {
             return None;
@@ -133,13 +143,14 @@ impl<'db> Sem<'db> {
 
     /// An object of the class a type expression names (`Handler` → a `Handler`).
     /// Only a class-ish type; a union is the caller's to split (`shape`).
-    pub fn instance_of(&self, ty: Type<'db>, file: ProgramFile<'db>) -> Option<Type<'db>> {
+    pub(crate) fn instance_of(&self, ty: Type<'db>, file: ProgramFile<'db>) -> Option<Type<'db>> {
         let env = ProgramEnvironment::from_file(file);
         analyzer_ext::instance_of(self.db, &env, ty)
     }
 
     /// The classes and functions around `def`, outermost first, then `def` itself.
-    pub fn scope_chain(&self, def: Definition<'db>) -> Vec<Scope<'db>> {
+    #[allow(dead_code)] // inline mode is the fixture suite's cross-check and is not reachable from the public API
+    pub(crate) fn scope_chain(&self, def: Definition<'db>) -> Vec<Scope<'db>> {
         let file = def.program_file(self.db);
         let index = semantic_index(self.db, file);
         let parsed = self.parsed(def);
@@ -162,7 +173,8 @@ impl<'db> Sem<'db> {
     }
 
     /// A function in `class`, by what ty makes of it on an instance: the same order as `member`.
-    pub fn entry_kind(&self, class: Definition<'db>, func: Definition<'db>) -> EntryKind {
+    #[allow(dead_code)] // inline mode is the fixture suite's cross-check and is not reachable from the public API
+    pub(crate) fn entry_kind(&self, class: Definition<'db>, func: Definition<'db>) -> EntryKind {
         let name = self.function_name(func);
         if self.property_parts(class, &name).is_some() {
             return EntryKind::Method; // a property's getter runs on an object
@@ -181,25 +193,26 @@ impl<'db> Sem<'db> {
         }
     }
 
-    pub fn def_range(&self, def: Definition<'db>) -> TextRange {
+    pub(crate) fn def_range(&self, def: Definition<'db>) -> TextRange {
         def.full_range(self.db, &self.parsed(def)).range()
     }
 
-    pub fn function_name(&self, def: Definition<'db>) -> String {
+    #[allow(dead_code)] // inline mode is the fixture suite's cross-check and is not reachable from the public API
+    pub(crate) fn function_name(&self, def: Definition<'db>) -> String {
         let parsed = self.parsed(def);
         self.function_node(def, &parsed)
             .map_or_else(String::new, |f| f.name.to_string())
     }
 
     /// An instance of the class, for looking up attributes on an object.
-    pub fn instance_type(&self, class: Definition<'db>) -> Type<'db> {
+    pub(crate) fn instance_type(&self, class: Definition<'db>) -> Type<'db> {
         let env = ProgramEnvironment::from_file(class.program_file(self.db));
         analyzer_ext::instance_of(self.db, &env, self.class_type(class)).unwrap_or(Type::unknown())
     }
 
     /// What ty bound a method to, by kind only. Matches the variant of `__self__`,
     /// never compares it with a type built here: `Box[int]` and `Box` must both count.
-    pub fn bound_to(&self, method: Type<'db>) -> BoundTo {
+    pub(crate) fn bound_to(&self, method: Type<'db>) -> BoundTo {
         match analyzer_ext::bound_method_self(self.db, method) {
             // `super().m` is bound to the synthesized `Self` type variable: an object
             Some(Type::NominalInstance(_) | Type::TypeVar(_)) => BoundTo::Object,
@@ -211,7 +224,7 @@ impl<'db> Sem<'db> {
     }
 
     /// `__init__` as found through the MRO, if it is a `def` somewhere.
-    pub fn init_of(&self, class: Definition<'db>) -> Option<Definition<'db>> {
+    pub(crate) fn init_of(&self, class: Definition<'db>) -> Option<Definition<'db>> {
         let file = class.program_file(self.db);
         let t = self.member(self.class_type(class), "__init__", file)?;
         match self.shape(t, file) {
@@ -221,7 +234,11 @@ impl<'db> Sem<'db> {
     }
     /// If `name` is a free variable of `scope`, the enclosing FUNCTION scope
     /// that binds it. `None` for a local, a global or a builtin.
-    pub fn free_variable_scope(&self, scope: BodyScope<'db>, name: &str) -> Option<BodyScope<'db>> {
+    pub(crate) fn free_variable_scope(
+        &self,
+        scope: BodyScope<'db>,
+        name: &str,
+    ) -> Option<BodyScope<'db>> {
         let index = semantic_index(self.db, scope.file);
         let mut ancestors = index.ancestor_scopes(scope.scope);
         ancestors.next(); // the scope itself
@@ -254,7 +271,7 @@ impl<'db> Sem<'db> {
     }
     /// Names `func` (or a function nested in it) reads that are bound in an
     /// enclosing FUNCTION scope outside `func`. Sorted.
-    pub fn free_variables(&self, func: Definition<'db>) -> Vec<Name> {
+    pub(crate) fn free_variables(&self, func: Definition<'db>) -> Vec<Name> {
         let parsed = self.parsed(func);
         let Some(node) = self.function_node(func, &parsed) else {
             return Vec::new();
@@ -293,33 +310,38 @@ impl<'db> Sem<'db> {
         out.dedup();
         out
     }
-    pub fn new(db: &'db ProjectDatabase, marker: MarkerStyle<'static>) -> Self {
+    pub(crate) fn new(db: &'db ProjectDatabase, marker: MarkerStyle<'static>) -> Self {
         Sem {
             db,
             nth: RefCell::default(),
             marker,
         }
     }
-    pub fn model(&self, file: ProgramFile<'db>) -> SemanticModel<'db> {
+    pub(crate) fn model(&self, file: ProgramFile<'db>) -> SemanticModel<'db> {
         SemanticModel::new(self.db, file)
     }
     /// ty's type for an expression of `model`'s file. Unknown if ty has none.
-    pub fn type_of(&self, model: &SemanticModel<'db>, expr: ExprRef<'_>) -> Type<'db> {
+    pub(crate) fn type_of(&self, model: &SemanticModel<'db>, expr: ExprRef<'_>) -> Type<'db> {
         expr.inferred_type(model).unwrap_or(Type::unknown())
     }
-    pub fn member(&self, ty: Type<'db>, name: &str, file: ProgramFile<'db>) -> Option<Type<'db>> {
+    pub(crate) fn member(
+        &self,
+        ty: Type<'db>,
+        name: &str,
+        file: ProgramFile<'db>,
+    ) -> Option<Type<'db>> {
         let env = ProgramEnvironment::from_file(file);
         analyzer_ext::member(self.db, &env, ty, name)
     }
     /// A literal's class (`Literal[3]` is `int`); anything else unchanged.
-    pub fn widen(&self, ty: Type<'db>, file: ProgramFile<'db>) -> Type<'db> {
+    pub(crate) fn widen(&self, ty: Type<'db>, file: ProgramFile<'db>) -> Type<'db> {
         let env = ProgramEnvironment::from_file(file);
         analyzer_ext::widen(self.db, &env, ty)
     }
-    pub fn type_of_import(&self, model: &SemanticModel<'db>, alias: &Alias) -> Type<'db> {
+    pub(crate) fn type_of_import(&self, model: &SemanticModel<'db>, alias: &Alias) -> Type<'db> {
         alias.inferred_type(model).unwrap_or(Type::unknown())
     }
-    pub fn shape(&self, ty: Type<'db>, file: ProgramFile<'db>) -> Shape<'db> {
+    pub(crate) fn shape(&self, ty: Type<'db>, file: ProgramFile<'db>) -> Shape<'db> {
         match ty {
             Type::Union(u) => Shape::Union(u.elements(self.db).to_vec()), // [check] accessor
             Type::Dynamic(_) | Type::Never => Shape::Unknown,
@@ -382,7 +404,7 @@ impl<'db> Sem<'db> {
 
     /// The definition behind a callable type: its function, its class, or the
     /// function of its bound method.
-    pub fn callee_definition(
+    pub(crate) fn callee_definition(
         &self,
         ty: Type<'db>,
         file: ProgramFile<'db>,
@@ -394,7 +416,7 @@ impl<'db> Sem<'db> {
     }
 
     /// The docstring `ID:` of a project `def` or `class`. The one reader `scan` uses.
-    pub fn docstring_id(&self, def: Definition<'db>) -> Option<String> {
+    pub(crate) fn docstring_id(&self, def: Definition<'db>) -> Option<String> {
         if !self.is_project(def) {
             return None;
         }
@@ -415,13 +437,13 @@ impl<'db> Sem<'db> {
         python_syntax::docstring_marker(doc, self.marker)
     }
 
-    pub fn is_class(&self, def: Definition<'db>) -> bool {
+    pub(crate) fn is_class(&self, def: Definition<'db>) -> bool {
         matches!(def.kind(self.db), DefinitionKind::Class(_))
     }
 
     /// A definition's identity outside this request: its docstring `ID:` when it
     /// is project code that has one, else where it is (module, qualified name, nth).
-    pub fn stable_def(&self, def: Definition<'db>) -> StableDef {
+    pub(crate) fn stable_def(&self, def: Definition<'db>) -> StableDef {
         let parsed = self.parsed(def);
         let start = match def.kind(self.db) {
             DefinitionKind::Function(f) => f.node(&parsed).range().start(),
@@ -489,7 +511,7 @@ impl<'db> Sem<'db> {
 
     /// A type's identity by structure, or `None` when it can't be written
     /// one-to-one (then the key must not hold it).
-    pub fn stable_type(&self, ty: Type<'db>, file: ProgramFile<'db>) -> Option<StableType> {
+    pub(crate) fn stable_type(&self, ty: Type<'db>, file: ProgramFile<'db>) -> Option<StableType> {
         let env = ProgramEnvironment::from_file(file);
         match ty {
             Type::NominalInstance(_) => {
@@ -524,27 +546,19 @@ impl<'db> Sem<'db> {
         }
     }
 
-    /// One-based (line, column) of `offset` in the def's file.
-    pub fn line_col(&self, def: Definition<'db>, offset: TextSize) -> (u32, u32) {
-        let file = def.file(self.db);
-        let source = source_text(self.db, file);
-        let lc = line_index(self.db, file).line_column(offset, source.as_str());
-        (lc.line.get() as u32, lc.column.get() as u32)
-    }
-
     /// The name of a module literal type.
-    pub fn module_name(&self, ty: Type<'db>) -> String {
+    pub(crate) fn module_name(&self, ty: Type<'db>) -> String {
         match ty {
             Type::ModuleLiteral(m) => m.module(self.db).name(self.db).to_string(),
             _ => String::new(),
         }
     }
 
-    pub fn none_type(&self, file: ProgramFile<'db>) -> Type<'db> {
+    pub(crate) fn none_type(&self, file: ProgramFile<'db>) -> Type<'db> {
         Type::none(self.db, &ProgramEnvironment::from_file(file))
     }
 
-    pub fn is_project(&self, def: Definition<'db>) -> bool {
+    pub(crate) fn is_project(&self, def: Definition<'db>) -> bool {
         let file = def.file(self.db);
         let Some(path) = file.path(self.db).as_system_path() else {
             return false;
@@ -554,11 +568,11 @@ impl<'db> Sem<'db> {
             IncludeResult::Included { .. }
         )
     }
-    pub fn parsed(&self, def: Definition<'db>) -> ParsedModuleRef {
+    pub(crate) fn parsed(&self, def: Definition<'db>) -> ParsedModuleRef {
         parsed_module(self.db, def.python_file(self.db)).load(self.db)
     }
     /// The `def` statement of a function. `parsed` must be `self.parsed(def)`.
-    pub fn function_node<'m>(
+    pub(crate) fn function_node<'m>(
         &self,
         def: Definition<'db>,
         parsed: &'m ParsedModuleRef,
@@ -570,7 +584,7 @@ impl<'db> Sem<'db> {
     }
 
     /// If `name` refers to `def` statements with decorators, those defs.
-    pub fn decorated_defs(
+    pub(crate) fn decorated_defs(
         &self,
         model: &SemanticModel<'db>,
         name: &ExprName,
@@ -596,7 +610,7 @@ impl<'db> Sem<'db> {
         (!defs.is_empty()).then_some(defs)
     }
 
-    pub fn entry(&self, file: File, dotted: &str) -> Option<Definition<'db>> {
+    pub(crate) fn entry(&self, file: File, dotted: &str) -> Option<Definition<'db>> {
         let program_file = self.db.program_file(file);
         let parsed = parsed_module(self.db, program_file.python_file(self.db)).load(self.db);
         let model = SemanticModel::new(self.db, program_file);
@@ -627,7 +641,7 @@ impl<'db> Sem<'db> {
     }
 
     /// The definition's file, relative to the project root, with `/`. A file outside the root (library code) keeps its full path.
-    pub fn relative_file(&self, def: Definition<'db>) -> String {
+    pub(crate) fn relative_file(&self, def: Definition<'db>) -> String {
         let path = def.file(self.db).path(self.db);
         let root = self.db.project().root(self.db);
         let shown = match path
@@ -642,7 +656,7 @@ impl<'db> Sem<'db> {
 
     /// Where the definition lives: its file path, then the offset of its `def`.
     /// A stable order for nodes that the walk can reach in any order.
-    pub fn def_position(&self, def: Definition<'db>) -> (String, TextSize) {
+    pub(crate) fn def_position(&self, def: Definition<'db>) -> (String, TextSize) {
         let path = def.file(self.db).path(self.db).to_string();
         let parsed = self.parsed(def);
         // A `def` keeps its node's start: call sites are stored relative to it.
@@ -655,14 +669,14 @@ impl<'db> Sem<'db> {
         (path, start)
     }
 
-    pub fn qname(&self, def: Definition<'db>) -> String {
+    pub(crate) fn qname(&self, def: Definition<'db>) -> String {
         let parsed = parsed_module(self.db, def.python_file(self.db)).load(self.db);
         qname::qualified_name(self.db, def, &parsed).unwrap_or_else(|| "<unknown>".into())
     }
 }
 
 /// The text of the project's files, for the wire: a call site is bytes relative to its function, and the wire wants a line and a column.
-pub struct DbSources<'db>(pub &'db ProjectDatabase);
+pub(crate) struct DbSources<'db>(pub &'db ProjectDatabase);
 
 impl crate::wire::Sources for DbSources<'_> {
     fn text(&self, file: &str) -> Option<String> {
@@ -729,20 +743,25 @@ impl Project {
 // Code that calls the engine and used to be a file of its own. Rule 4 (only this file names the engine) puts it here, with its tests:
 // an engine bump then touches this file and nothing else. The paths other files use are re-exported just below.
 
-pub use mro::{UNRESOLVED_BASE, base_classes};
-pub use project::{open, open_project};
-pub use qname::qualified_name;
+#[cfg(test)]
+pub(crate) use project::open;
+pub(crate) use project::open_project;
+#[cfg(test)]
+pub(crate) use qname::qualified_name;
 
 mod project {
+    #[cfg(test)]
     use ruff_db::files::{File, system_path_to_file};
 
     use ruff_db::system::{OsSystem, SystemPath, SystemPathBuf};
 
     use ty_project::{ProjectDatabase, ProjectMetadata};
+    #[cfg(test)]
     use ty_python_core::ProgramFile;
+    #[cfg(test)]
     use ty_python_semantic::Db as _;
 
-    pub fn open_project(dir: &SystemPath) -> anyhow::Result<ProjectDatabase> {
+    pub(crate) fn open_project(dir: &SystemPath) -> anyhow::Result<ProjectDatabase> {
         let system = OsSystem::new(dir);
         let metadata = match ProjectMetadata::discover(dir, &system) {
             Ok(m) => m,
@@ -756,7 +775,8 @@ mod project {
     }
 
     /// Open `path`, returning both handles.
-    pub fn open<'db>(
+    #[cfg(test)]
+    pub(crate) fn open<'db>(
         db: &'db ProjectDatabase,
         path: &SystemPath,
     ) -> anyhow::Result<(File, ProgramFile<'db>)> {
@@ -795,7 +815,7 @@ mod qname {
     /// tracked struct disambiguator outside of a tracked function"`) the second
     /// time the same `(file, file_scope_id)` pair comes up, which it will for any
     /// two sibling definitions sharing an ancestor scope.
-    pub fn qualified_name<'db>(
+    pub(crate) fn qualified_name<'db>(
         db: &'db dyn Db,
         definition: Definition<'db>,
         module: &ParsedModuleRef,
@@ -853,6 +873,7 @@ mod qname {
     }
 }
 
+#[allow(dead_code)] // for `python-cli mro` (planned); its tests are here
 mod mro {
     //! `base_classes`: ty's own C3-linearised MRO, via the `analyzer_ext` fork wrapper —
     //! see `experience/08-classes-and-mro/README.md`.
@@ -889,11 +910,11 @@ mod mro {
 
     /// A base ty's MRO places but cannot tie to a definition — `Any`, `Unknown`,
     /// `Protocol`, `Generic`. See the module doc's DECISION.
-    pub const UNRESOLVED_BASE: &str = "<unresolved-base>";
+    pub(crate) const UNRESOLVED_BASE: &str = "<unresolved-base>";
 
     /// `base_classes` for a class, in ty's C3 order, class itself excluded —
     /// matching the `BaseNode` wire shape: `["pkg.mod.Base", "builtins.object"]`.
-    pub fn base_classes<'db>(db: &'db dyn Db, ty: Type<'db>) -> Vec<String> {
+    pub(crate) fn base_classes<'db>(db: &'db dyn Db, ty: Type<'db>) -> Vec<String> {
         analyzer_ext::class_mro(db, ty)
             .into_iter()
             .map(|definition| {

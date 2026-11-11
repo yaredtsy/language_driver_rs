@@ -44,7 +44,7 @@ struct CanonKey {
 
 impl<'db> Solver<'db> {
     /// A context's identity outside this request: its function, and a 128-bit digest of its key.
-    pub fn stable_id(&self, ctx: ContextId) -> analyzer_core::graph::ContextId {
+    pub(crate) fn stable_id(&self, ctx: ContextId) -> analyzer_core::graph::ContextId {
         let k = &self.contexts[ctx];
         let file = k.func.program_file(self.sem.db); // types are read in the key's file, as `fp_one` did
         let key = CanonKey {

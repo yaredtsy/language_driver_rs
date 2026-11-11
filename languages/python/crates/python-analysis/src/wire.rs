@@ -50,6 +50,7 @@ pub trait Sources {
 
 /// A range in a file, as `[line, column]` pairs, both **1-based**; the column counts characters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct LineSpan {
     pub start: (u32, u32),
     pub end: (u32, u32),

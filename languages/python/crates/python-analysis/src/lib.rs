@@ -9,12 +9,12 @@
 //! render, to_text, Node, Mark, RenderOptions              the tree is drawn from the graph (core's renderer)
 //! ```
 
-pub mod classes;
-pub mod interp;
-pub mod project;
-pub mod sem;
-pub mod stable;
-pub mod wire;
+mod classes;
+mod interp;
+mod project;
+mod sem;
+mod stable;
+mod wire;
 
 pub use analyzer_core::edit::MarkerStyle;
 pub use analyzer_core::graph::{Context, ContextId, Edge, EdgeTo, Graph, StableDef, Stats};

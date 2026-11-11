@@ -23,7 +23,7 @@ pub struct FpId;
 pub struct ContextId;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub enum Fp<'db> {
+pub(crate) enum Fp<'db> {
     Unknown,
     Data(Type<'db>),
     Function(Definition<'db>),
@@ -51,7 +51,7 @@ pub enum Fp<'db> {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Context<'db> {
+pub(crate) struct Context<'db> {
     pub func: Definition<'db>,
     pub args: SmallVec<[FpId; 4]>,
     /// The called closure's own free values. Empty for a plain function.
@@ -62,17 +62,17 @@ pub struct Context<'db> {
 
 /// The closures being fingerprinted, innermost last, compared by `(func, activation)`.
 #[derive(Default)]
-pub struct ClosureStack<'db>(SmallVec<[(Definition<'db>, ActivationId); 2]>);
+pub(crate) struct ClosureStack<'db>(SmallVec<[(Definition<'db>, ActivationId); 2]>);
 
 impl<'db> ClosureStack<'db> {
-    pub fn position(&self, f: Definition<'db>, a: ActivationId) -> Option<u8> {
+    pub(crate) fn position(&self, f: Definition<'db>, a: ActivationId) -> Option<u8> {
         self.0
             .iter()
             .rev()
             .position(|&(g, b)| g == f && b == a)
             .map(|k| k as u8)
     }
-    pub fn with<R>(
+    pub(crate) fn with<R>(
         &mut self,
         f: Definition<'db>,
         a: ActivationId,
@@ -85,7 +85,7 @@ impl<'db> ClosureStack<'db> {
     }
 }
 
-pub struct Interner<K, I: ruff_index::Idx> {
+pub(crate) struct Interner<K, I: ruff_index::Idx> {
     items: IndexVec<I, K>,
     ids: FxHashMap<K, I>,
 }
@@ -100,7 +100,7 @@ impl<K, I: ruff_index::Idx> Default for Interner<K, I> {
 }
 
 impl<K: Clone + Eq + Hash, I: ruff_index::Idx> Interner<K, I> {
-    pub fn intern(&mut self, k: K) -> I {
+    pub(crate) fn intern(&mut self, k: K) -> I {
         if let Some(&id) = self.ids.get(&k) {
             return id;
         }
@@ -108,13 +108,11 @@ impl<K: Clone + Eq + Hash, I: ruff_index::Idx> Interner<K, I> {
         self.ids.insert(k, id);
         id
     }
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.items.len()
     }
-    pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
-    }
-    pub fn iter(&self) -> impl Iterator<Item = (I, &K)> {
+    #[cfg(test)]
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (I, &K)> {
         self.items.iter_enumerated()
     }
 }
@@ -128,7 +126,7 @@ impl<K, I: ruff_index::Idx> std::ops::Index<I> for Interner<K, I> {
 
 impl<'db> Solver<'db> {
     /// `depth`: how many closures these values sit inside. 0 for a parameter slot.
-    pub fn fingerprint(
+    pub(crate) fn fingerprint(
         &mut self,
         w: &Walk<'db>,
         env: &Env<'db>,
@@ -282,7 +280,7 @@ impl<'db> Solver<'db> {
     }
 
     /// `closure`: the activation of the closure being called, when the callee is one.
-    pub fn key(
+    pub(crate) fn key(
         &mut self,
         w: &Walk<'db>,
         func: Definition<'db>,
@@ -424,7 +422,7 @@ impl<'db> Walk<'db> {
     }
 
     /// The starting env of a context's walk. Reads the key and the code. Nothing else.
-    pub fn materialize(
+    pub(crate) fn materialize(
         &mut self,
         sol: &Solver<'db>,
         ctx: ContextId,

@@ -13,7 +13,7 @@ use crate::sem::{Definition, Name, Type};
 use ruff_index::IndexVec;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct FunctionResult<'db> {
+pub(crate) struct FunctionResult<'db> {
     pub calls: Vec<CallEdge<'db>>, // one per call site reached, in evaluation order
     pub returns: SVals<'db>,       // the union of every return
     pub status: Status,
@@ -21,14 +21,14 @@ pub struct FunctionResult<'db> {
 
 /// What a caller must know about how far to trust a summary .
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, serde::Serialize)]
-pub struct Status {
+pub(crate) struct Status {
     pub gaps: Gaps,
     /// A cost limit fired somewhere this summary was computed from.
     pub cut: Option<Cut>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize)]
-pub enum Cut {
+pub(crate) enum Cut {
     Stack,
     Contexts,
     ContextsPerFunc,
@@ -37,7 +37,7 @@ pub enum Cut {
 
 impl<'db> FunctionResult<'db> {
     /// What a call returns when a cost limit stopped it: something, we stopped looking.
-    pub fn cut(cut: Cut) -> Self {
+    pub(crate) fn cut(cut: Cut) -> Self {
         FunctionResult {
             calls: Vec::new(),
             returns: smallvec![SVal::Plain(PlainVal::Unknown)],
@@ -50,24 +50,24 @@ impl<'db> FunctionResult<'db> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, serde::Serialize)]
-pub struct Gaps(u8);
+pub(crate) struct Gaps(u8);
 
 impl Gaps {
     /// The group's fixpoint hit `max_rounds`: later rounds might have added more.
-    pub const CYCLE: Gaps = Gaps(1);
-    pub fn is_empty(self) -> bool {
+    pub(crate) const CYCLE: Gaps = Gaps(1);
+    pub(crate) fn is_empty(self) -> bool {
         self.0 == 0
     }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct CallEdge<'db> {
+pub(crate) struct CallEdge<'db> {
     pub site: SiteId,
     pub targets: SmallVec<[Target<'db>; 2]>, // one per project callee at this site
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Target<'db> {
+pub(crate) enum Target<'db> {
     Call(ContextId),
     /// A new object. `init`: the `__init__` context, if the MRO has a body.
     Construct {
@@ -82,7 +82,7 @@ pub enum Target<'db> {
 
 impl<'db> Target<'db> {
     /// The contexts this target leads to: what the graph walks next.
-    pub fn contexts(&self) -> SmallVec<[ContextId; 1]> {
+    pub(crate) fn contexts(&self) -> SmallVec<[ContextId; 1]> {
         match *self {
             Target::Call(ctx) => smallvec![ctx],
             Target::Construct { init, .. } => init.into_iter().collect(),
@@ -93,7 +93,7 @@ impl<'db> Target<'db> {
 
 /// The call expression's range, relative to the start of the enclosing `def`.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct SiteId {
+pub(crate) struct SiteId {
     pub start: TextSize,
     pub end: TextSize,
 }
@@ -105,7 +105,7 @@ impl serde::Serialize for SiteId {
 }
 
 impl SiteId {
-    pub fn new(range: TextRange, def_start: TextSize) -> Self {
+    pub(crate) fn new(range: TextRange, def_start: TextSize) -> Self {
         SiteId {
             start: range.start() - def_start,
             end: range.end() - def_start,
@@ -113,10 +113,10 @@ impl SiteId {
     }
 }
 
-pub type SVals<'db> = SmallVec<[SVal<'db>; 2]>;
+pub(crate) type SVals<'db> = SmallVec<[SVal<'db>; 2]>;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum SVal<'db> {
+pub(crate) enum SVal<'db> {
     Plain(PlainVal<'db>),
     Closure {
         func: Definition<'db>,
@@ -130,7 +130,7 @@ pub enum SVal<'db> {
 /// Values with no identity. No variant can hold an ActivationId, and later
 /// no OriginId, ValueId or DeferId, so a leak does not compile.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum PlainVal<'db> {
+pub(crate) enum PlainVal<'db> {
     Function(Definition<'db>),
     Class(Definition<'db>),
     Module(Type<'db>),
@@ -140,7 +140,7 @@ pub enum PlainVal<'db> {
 
 impl<'db> Walk<'db> {
     /// The summary so far. Every pending value is replaced by what it resolved to.
-    pub fn finish_round(
+    pub(crate) fn finish_round(
         &self,
         s: &Solver<'db>,
         resolved: &IndexVec<DeferId, Values<'db>>,
@@ -247,7 +247,7 @@ impl<'db> Walk<'db> {
     }
 
     /// The file range of a site recorded relative to this frame's `def`.
-    pub fn site_range(&self, site: SiteId) -> TextRange {
+    pub(crate) fn site_range(&self, site: SiteId) -> TextRange {
         TextRange::new(
             self.frame.def_start + site.start,
             self.frame.def_start + site.end,
@@ -255,7 +255,7 @@ impl<'db> Walk<'db> {
     }
 
     /// The caller's own values for a callee's returns.
-    pub fn resolve(&mut self, returns: &SVals<'db>) -> Values<'db> {
+    pub(crate) fn resolve(&mut self, returns: &SVals<'db>) -> Values<'db> {
         self.resolve_in(returns, &mut Vec::new())
     }
 
@@ -316,7 +316,7 @@ fn plain(v: AbstractValue<'_>) -> PlainVal<'_> {
     }
 }
 
-pub fn same_sval<'db>(x: &SVal<'db>, y: &SVal<'db>) -> bool {
+pub(crate) fn same_sval<'db>(x: &SVal<'db>, y: &SVal<'db>) -> bool {
     match (x, y) {
         (
             SVal::Closure {
@@ -343,7 +343,7 @@ fn same_named<'db>(a: &[(Name, SVals<'db>)], b: &[(Name, SVals<'db>)]) -> bool {
 }
 
 /// As sets: the order of alternatives does not matter.
-pub fn same_svals<'db>(a: &[SVal<'db>], b: &[SVal<'db>]) -> bool {
+pub(crate) fn same_svals<'db>(a: &[SVal<'db>], b: &[SVal<'db>]) -> bool {
     a.iter().all(|x| b.iter().any(|y| same_sval(x, y)))
         && b.iter().all(|y| a.iter().any(|x| same_sval(x, y)))
 }

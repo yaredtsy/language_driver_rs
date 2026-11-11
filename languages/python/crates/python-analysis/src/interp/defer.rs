@@ -11,7 +11,7 @@ use crate::interp::value::{AbstractValue, DeferId, Values, dedup};
 use crate::interp::walk::Walk;
 
 #[derive(Clone)]
-pub struct Deferred<'db> {
+pub(crate) struct Deferred<'db> {
     pub op: DeferredOp<'db>,
     pub before: Env<'db>, // the env at that point: an O(1) clone
 }
@@ -19,7 +19,7 @@ pub struct Deferred<'db> {
 // moved from pylspt unchanged: boxing the large variant changes every construction and match, which is a rewrite
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone)]
-pub enum DeferredOp<'db> {
+pub(crate) enum DeferredOp<'db> {
     /// A call to a context that is still running. Its value is that context's returns.
     Apply { ctx: ContextId },
     /// A call whose callee, or an argument a key would read, is pending.
@@ -36,7 +36,7 @@ pub enum DeferredOp<'db> {
 }
 
 /// Every pending value empty: round 0.
-pub fn no_values<'db>(w: &Walk<'db>) -> IndexVec<DeferId, Values<'db>> {
+pub(crate) fn no_values<'db>(w: &Walk<'db>) -> IndexVec<DeferId, Values<'db>> {
     IndexVec::from_raw(vec![Values::new(); w.deferred.len()])
 }
 
@@ -51,7 +51,7 @@ fn substitute<'db>(vals: &Values<'db>, now: &IndexVec<DeferId, Values<'db>>) -> 
 }
 
 impl<'db> Walk<'db> {
-    pub fn defer(&mut self, op: DeferredOp<'db>, env: &Env<'db>) -> DeferId {
+    pub(crate) fn defer(&mut self, op: DeferredOp<'db>, env: &Env<'db>) -> DeferId {
         self.deferred.push(Deferred {
             op,
             before: env.clone(),
@@ -61,7 +61,7 @@ impl<'db> Walk<'db> {
     /// Each deferred operation once, in order, starting from the last round's
     /// values. An operation may read the results of earlier ones in this same
     /// round. `capped`: the last round allowed, so every result also gets `Unknown`.
-    pub fn replay(
+    pub(crate) fn replay(
         &mut self,
         sol: &mut Solver<'db>,
         capped: bool,

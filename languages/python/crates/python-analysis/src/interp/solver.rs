@@ -5,17 +5,16 @@ use std::time::Instant;
 use rustc_hash::FxHashMap;
 
 use ruff_index::{Idx, IndexVec};
-use ruff_text_size::TextRange;
 
 use crate::interp::defer::{DeferredOp, no_values};
 use crate::interp::key::{Context, ContextId, Fp, FpId, Interner};
-use crate::interp::summary::{Cut, FunctionResult, Gaps, SiteId, Status, same_svals};
+use crate::interp::summary::{Cut, FunctionResult, Gaps, Status, same_svals};
 use crate::interp::walk::{Walk, contains_yield};
 use crate::interp::{Options, Stats};
 use crate::sem::{Definition, Sem};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
-pub enum State {
+pub(crate) enum State {
     #[default]
     New,
     Running {
@@ -29,7 +28,7 @@ pub enum State {
     Cut,       // walked, but a cost limit fired: never reused
 }
 
-pub struct Slot<'db> {
+pub(crate) struct Slot<'db> {
     pub state: State,
     pub result: Option<Arc<FunctionResult<'db>>>,
     /// The latest summary, during the fixpoint.
@@ -78,7 +77,7 @@ impl<'db> Slot<'db> {
 
 /// Union-find over contexts: the head of the group a parked context belongs to.
 #[derive(Default)]
-pub struct Heads {
+pub(crate) struct Heads {
     parent: Vec<ContextId>,
 }
 
@@ -88,7 +87,7 @@ impl Heads {
             self.parent.push(ContextId::new(self.parent.len()));
         }
     }
-    pub fn find(&mut self, ctx: ContextId) -> ContextId {
+    pub(crate) fn find(&mut self, ctx: ContextId) -> ContextId {
         self.grow(ctx);
         let mut root = ctx;
         while self.parent[root.index()] != root {
@@ -113,7 +112,7 @@ impl Heads {
 
 /// A group's fixpoint in progress. Fixpoints nest like calls.
 #[derive(Clone, Copy)]
-pub struct Fixpoint {
+pub(crate) struct Fixpoint {
     pub head: ContextId,
     /// The stack depth the operations are replayed at.
     pub base: usize,
@@ -125,19 +124,20 @@ pub struct Fixpoint {
     pub cut: Option<Cut>,
 }
 
-pub enum Resolved {
+pub(crate) enum Resolved {
     Done,
-    Merged(usize),     // part of a bigger cycle, whose head is at this depth
+    Merged(usize), // part of a bigger cycle, whose head is at this depth
+    #[allow(dead_code)] // the group it joined is found by other means; the id is never read
     Joined(ContextId), // its replay reached an outer group's fixpoint
 }
 
-pub enum Got<'db> {
+pub(crate) enum Got<'db> {
     Ready(Arc<FunctionResult<'db>>),
     Pending, // the context is running: a recursive call, its value found later
 }
 
 /// What outlives one walk: the request's options, interners, slots and counters.
-pub struct Solver<'db> {
+pub(crate) struct Solver<'db> {
     pub sem: Sem<'db>,
     pub opts: Options,
     pub fps: Interner<Fp<'db>, FpId>,
@@ -154,7 +154,7 @@ pub struct Solver<'db> {
 }
 
 impl<'db> Solver<'db> {
-    pub fn new(sem: Sem<'db>, opts: Options) -> Self {
+    pub(crate) fn new(sem: Sem<'db>, opts: Options) -> Self {
         Solver {
             sem,
             opts,
@@ -173,7 +173,7 @@ impl<'db> Solver<'db> {
     }
 
     /// The summary of `ctx`: walked now, or handed out from its slot.
-    pub fn get(&mut self, ctx: ContextId) -> Got<'db> {
+    pub(crate) fn get(&mut self, ctx: ContextId) -> Got<'db> {
         while self.slots.len() < self.contexts.len() {
             self.slots.push(Slot::default());
         }
@@ -505,27 +505,13 @@ impl<'db> Solver<'db> {
     /// Its summary is missing what later rounds would have added.
     /// Is this function part of the view? Project code, and with `only_marked` one
     /// that has a docstring `ID:`.
-    pub fn shown(&self, def: Definition<'db>) -> bool {
+    pub(crate) fn shown(&self, def: Definition<'db>) -> bool {
         self.sem.is_project(def) && (!self.opts.only_marked || self.sem.docstring_id(def).is_some())
-    }
-
-    pub fn is_incomplete(&self, ctx: ContextId) -> bool {
-        // no result: it was cut before it was walked
-        self.slots[ctx]
-            .result
-            .as_ref()
-            .is_none_or(|r| !r.status.gaps.is_empty() || r.status.cut.is_some())
-    }
-
-    /// The file range of a site recorded relative to `func`'s `def`.
-    pub fn site_range(&self, func: Definition<'db>, site: SiteId) -> TextRange {
-        let start = self.sem.def_position(func).1;
-        TextRange::new(start + site.start, start + site.end)
     }
 }
 
 /// Walks the body once. The summary is the solver's to finish: it may need rounds.
-pub fn walk_context<'db>(s: &mut Solver<'db>, ctx: ContextId) -> Walk<'db> {
+pub(crate) fn walk_context<'db>(s: &mut Solver<'db>, ctx: ContextId) -> Walk<'db> {
     let func = s.contexts[ctx].func;
     let parsed = s.sem.parsed(func);
     let node = s

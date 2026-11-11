@@ -1,22 +1,24 @@
-pub mod env;
+pub(crate) mod env;
 
-pub mod bind;
-pub mod call;
-pub mod canon;
-pub mod core_graph;
-pub mod defer;
-pub mod entry;
+pub(crate) mod bind;
+pub(crate) mod call;
+pub(crate) mod canon;
+pub(crate) mod core_graph;
+pub(crate) mod defer;
+pub(crate) mod entry;
 #[cfg(test)]
 mod fixture;
-pub mod key;
-pub mod member;
-pub mod relevant;
-pub mod solver;
-pub mod summary;
-pub mod tree;
-pub mod value;
-pub mod walk;
-pub use tree::{Mark, Node, to_text};
+pub(crate) mod key;
+pub(crate) mod member;
+pub(crate) mod relevant;
+pub(crate) mod solver;
+pub(crate) mod summary;
+pub(crate) mod tree;
+pub(crate) mod value;
+pub(crate) mod walk;
+#[cfg(test)]
+pub(crate) use tree::to_text;
+pub(crate) use tree::{Mark, Node};
 
 use std::time::Duration;
 
@@ -32,7 +34,7 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mode {
+pub(crate) enum Mode {
     /// Follow every call into the callee's body (parts 01 and 03).
     Inline,
     /// One walk per call, started from its key. The caller reads the summary.
@@ -40,7 +42,7 @@ pub enum Mode {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
-pub struct Cuts {
+pub(crate) struct Cuts {
     pub stack: u32,
     pub contexts: u32,
     pub contexts_per_func: u32,
@@ -48,7 +50,7 @@ pub struct Cuts {
 }
 
 impl Cuts {
-    pub fn count(&mut self, cut: Cut) {
+    pub(crate) fn count(&mut self, cut: Cut) {
         match cut {
             Cut::Stack => self.stack += 1,
             Cut::Contexts => self.contexts += 1,
@@ -59,7 +61,7 @@ impl Cuts {
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize)]
-pub struct Stats {
+pub(crate) struct Stats {
     pub walks: u32,                // bodies walked, the entry included
     pub nodes: u32,                // tree nodes produced
     pub contexts: u32,             // distinct keys interned
@@ -72,10 +74,10 @@ pub struct Stats {
     pub types_dropped: u32,        // a type left out of a key: no one-to-one stable form
     pub lifted_subclass_of: u32,   // `lift` reached a `type[X]` (tests: the arm runs)
 }
-pub use crate::wire::WireStyle;
+pub(crate) use crate::wire::WireStyle;
 
 #[derive(Clone, Debug)]
-pub struct Options {
+pub(crate) struct Options {
     pub mode: Mode,
     pub limits: Limits,
     /// Show only functions that carry a marker (and what is under them): the same as core's `RenderOptions::only_marked`.
@@ -124,7 +126,7 @@ impl Default for Limits {
 
 impl Options {
     /// The tree's own options, as the renderer in core takes them: the node budget, the depth, and the ID filter.
-    pub fn render_options(&self) -> analyzer_core::render::RenderOptions {
+    pub(crate) fn render_options(&self) -> analyzer_core::render::RenderOptions {
         let mut render = analyzer_core::render::RenderOptions::default();
         render.max_nodes = self.limits.render_nodes;
         render.max_depth = self.limits.render_depth;
@@ -147,7 +149,8 @@ impl Default for Options {
 
 /// The call tree under `entry`, a function in `file`. `None` when there is no
 /// such function.
-pub fn call_tree(
+#[allow(dead_code)] // inline mode is the fixture suite's cross-check and is not reachable from the public API
+pub(crate) fn call_tree(
     db: &ProjectDatabase,
     file: File,
     entry: &str,
@@ -161,6 +164,7 @@ pub fn call_tree(
 
 /// Summary mode's tree for the harness: the graph, drawn by core's renderer, as this crate's `Node` (names and marks: what the
 /// `# expect:` blocks say). Only the three marks the default options leave on are carried over.
+#[allow(dead_code)] // inline mode is the fixture suite's cross-check and is not reachable from the public API
 fn summary_tree(
     db: &ProjectDatabase,
     file: File,
@@ -202,7 +206,7 @@ fn summary_tree(
 
 /// The context graph of `entry` in core's types: contexts, a table of definitions, one edge per call site and target. The tree and the
 /// wire are views of it.
-pub fn call_graph(
+pub(crate) fn call_graph(
     db: &ProjectDatabase,
     file: File,
     entry: &str,
@@ -214,7 +218,7 @@ pub fn call_graph(
 }
 
 /// The wire of `entry`, a view of its graph: `graph -> render -> Node -> Frame`. `merged` joins siblings with one target and counts them.
-pub fn call_frame(
+pub(crate) fn call_frame(
     db: &ProjectDatabase,
     file: File,
     entry: &str,
@@ -229,7 +233,7 @@ pub fn call_frame(
 }
 
 /// Summary mode, stopped before rendering: the solver, with the entry solved.
-pub fn solve<'db>(
+pub(crate) fn solve<'db>(
     db: &'db ProjectDatabase,
     file: File,
     entry: &str,
@@ -256,6 +260,7 @@ pub fn solve<'db>(
     Some((s, root_ctx))
 }
 
+#[allow(dead_code)] // inline mode is the fixture suite's cross-check and is not reachable from the public API
 fn inline_tree(
     db: &ProjectDatabase,
     file: File,
