@@ -17,3 +17,16 @@ function directiveThenNote() {}
 // @ts-ignore
 
 function separatedByBlank() {}
+
+/* eslint-disable no-console */
+function rangeDisable() {}
+
+// @ts-nocheck
+function filePragma() {}
+
+// deno-lint-ignore no-explicit-any
+function denoLinted() {}
+
+// @ts-expect-error
+// a note the compiler looks past
+function reachedThroughANote() {}

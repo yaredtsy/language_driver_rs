@@ -153,27 +153,76 @@ pub(crate) fn marker_of(
     read(block.slice(text)?, label)
 }
 
-/// Comments that apply to the line below them: a block put between one of these and the def would move what it points at.
-const DIRECTIVES: [&str; 10] = [
-    "@ts-",
-    "eslint",
-    "prettier-ignore",
-    "istanbul",
-    "c8 ",
-    "v8 ",
+/// The compiler's own directives. They apply to the next line that is neither blank nor a `//` comment, so they reach a def through blank
+/// lines and `//` comments, and a block comment in between cuts them off.
+const COMPILER_DIRECTIVES: [&str; 2] = ["@ts-ignore", "@ts-expect-error"];
+
+/// Tool comments that apply to the line or statement directly below them: a block put between one of these and the def would move what
+/// it points at. Comments for a whole file or a range (`eslint-disable`, `@ts-nocheck`, `deno-lint-ignore-file`) are not here: a block
+/// below them changes nothing.
+const NEXT_LINE_DIRECTIVES: [&str; 21] = [
+    "eslint-disable-next-line",
+    "oxlint-disable-next-line",
+    "tslint:disable-next-line",
     "biome-ignore",
-    "tslint:",
-    "jshint",
-    "jscs",
+    "rome-ignore",
+    "deno-lint-ignore",
+    "prettier-ignore",
+    "dprint-ignore",
+    "istanbul ignore next",
+    "istanbul ignore if",
+    "istanbul ignore else",
+    "c8 ignore next",
+    "v8 ignore next",
+    "node:coverage ignore next",
+    "noinspection",
+    "$FlowFixMe",
+    "$FlowExpectedError",
+    "$FlowIgnore",
+    "flowlint-next-line",
+    "cspell:disable-next-line",
+    "nosemgrep",
 ];
 
-fn is_directive(comment: &str) -> bool {
+/// Does the comment's text start with one of `words`, as a whole word? `deno-lint-ignore-file` does not start with the word
+/// `deno-lint-ignore`, and `eslinting` is not `eslint`.
+fn starts_with_word(comment: &str, words: &[&str]) -> bool {
     let body = comment
-        .trim_start_matches("//")
-        .trim_start_matches("/*")
+        .trim_start_matches('/')
+        .trim_start_matches('*')
         .trim_end_matches("*/")
         .trim();
-    DIRECTIVES.iter().any(|d| body.starts_with(d))
+    words.iter().any(|word| {
+        body.strip_prefix(word)
+            .is_some_and(|rest| !rest.starts_with(|c: char| c.is_alphanumeric() || c == '-'))
+    })
+}
+
+fn is_directive(comment: &str) -> bool {
+    starts_with_word(comment, &COMPILER_DIRECTIVES)
+        || starts_with_word(comment, &NEXT_LINE_DIRECTIVES)
+}
+
+/// Does a comment above the def point at the def's first line, so that a new block between them would move its target?
+fn directive_above(text: &str, start: u32, comments: &[Comment]) -> bool {
+    let written = |c: &Comment| c.span.slice(text).unwrap_or("");
+    // a tool's directive applies to the next line: only the comment directly above the def can point at it
+    if let Some(last) = comments.last()
+        && adjacent(text, last.span.end, start)
+        && is_directive(written(last))
+    {
+        return true;
+    }
+    // the compiler's reaches further: up from the def's line, past blank lines and `//` comments
+    for c in comments.iter().rev() {
+        if starts_with_word(written(c), &COMPILER_DIRECTIVES) {
+            return true;
+        }
+        if c.kind != CommentKind::Line {
+            break;
+        }
+    }
+    false
 }
 
 /// The edit that puts `marker_text` on the def starting at `start`, or why not. `errors` are the file's parse errors.
@@ -208,7 +257,13 @@ pub(crate) fn plan(
     }
     let eol = comment_marker::line_ending(text);
     match block {
-        Some(block) => plan_in_block(text, block, label, marker_text),
+        Some(block) => {
+            // a one-line block that is itself a directive (`/** @ts-ignore */`) stops being one when it is rewritten as several lines
+            if block.slice(text).is_some_and(is_directive) {
+                return Err(Skip::DirectiveAbove);
+            }
+            plan_in_block(text, block, label, marker_text)
+        }
         None => {
             // a blank line detached the nearest block, but the engine still applies it to the def. Its words may be the file's; its tags
             // (in a `.js` file, the types) are the def's, and a new block below it would switch them off
@@ -220,10 +275,7 @@ pub(crate) fn plan(
                 return Err(Skip::UnsafeDocComment);
             }
             // a new block goes directly above the def, below any plain comment: unless that comment points at the def
-            if let Some(last) = comments.last()
-                && adjacent(text, last.span.end, start)
-                && last.span.slice(text).is_some_and(is_directive)
-            {
+            if directive_above(text, start, comments) {
                 return Err(Skip::DirectiveAbove);
             }
             let indent = &text[own as usize..start as usize];
@@ -485,6 +537,37 @@ mod tests {
         assert!(!has_block_tag(
             "/**\n * See {@link f}.\n * mail me@example.com\n */"
         ));
+    }
+
+    #[test]
+    fn a_directive_is_a_whole_word_at_the_start_of_a_comment() {
+        for yes in [
+            "// @ts-ignore",
+            "/// @ts-expect-error: the reason",
+            "/* @ts-ignore */",
+            "/** @ts-ignore */",
+            "// eslint-disable-next-line no-console",
+            "/* istanbul ignore next */",
+            "// c8 ignore next 3",
+            "// $FlowFixMe[incompatible-type]",
+            "// deno-lint-ignore no-explicit-any",
+            "// noinspection JSUnusedGlobalSymbols",
+        ] {
+            assert!(is_directive(yes), "{yes}");
+        }
+        for no in [
+            "// @ts-check",
+            "// @ts-nocheck",
+            "/* eslint-disable no-console */",
+            "// eslint-enable",
+            "// eslinting is done in CI",
+            "// deno-lint-ignore-file",
+            "// c8 ignore start",
+            "// see @ts-ignore below",
+            "/**\n * @ts-ignore\n */",
+        ] {
+            assert!(!is_directive(no), "{no}");
+        }
     }
 
     #[test]

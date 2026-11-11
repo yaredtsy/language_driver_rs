@@ -68,8 +68,9 @@ pub enum Skip {
     /// or a blank line separates it from the def and it carries block tags (`@param`, `@type`, …). A new block is not stacked on top of
     /// it: the engine uses only the last block above a def, so the user's own, and its tags, would stop applying.
     UnsafeDocComment,
-    /// The comment directly above the def is a directive that applies to the next line (`// @ts-ignore`, `// eslint-disable-next-line`, …):
-    /// a block put between them would move what it points at.
+    /// A comment above the def is a directive that points at the def's line (`// eslint-disable-next-line` directly above it; `// @ts-ignore`
+    /// also through blank lines and `//` comments), and the def has no JSDoc block to write in: a new block put between them would move
+    /// what the directive points at.
     DirectiveAbove,
     /// The marker text is empty, starts or ends with a blank (it would not read back the same), has a line break, or contains `*/`.
     InvalidText,

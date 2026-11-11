@@ -392,6 +392,11 @@ fn a_directive_above_the_def_is_not_separated_from_it() {
         "// prettier-ignore",
         "// istanbul ignore next",
         "// biome-ignore lint: reason",
+        "// deno-lint-ignore no-explicit-any",
+        "// oxlint-disable-next-line",
+        "// noinspection JSUnusedGlobalSymbols",
+        "/* c8 ignore next */",
+        "// $FlowFixMe[incompatible-type]",
     ] {
         let text = format!("{directive}\nfunction f() {{}}\n");
         assert_eq!(mark(&text, "f"), Err(Skip::DirectiveAbove), "{directive}");
@@ -404,8 +409,54 @@ fn a_directive_above_the_def_is_not_separated_from_it() {
         )
         .is_ok()
     );
-    // a directive separated by a blank line points at nothing of ours
-    assert!(mark("// @ts-ignore\n\nfunction f() {}\n", "f").is_ok());
+    // a linter's directive separated by a blank line points at nothing of ours
+    assert!(mark("// eslint-disable-next-line\n\nfunction f() {}\n", "f").is_ok());
+}
+
+#[test]
+fn the_compilers_directive_reaches_the_def_through_blank_lines_and_line_comments() {
+    // checked with tsc 5.1.6: the error on the def's line stays suppressed in the first three, and comes back when a block comment
+    // stands between
+    for reaches in [
+        "// @ts-ignore\n\nfunction f() {}\n",
+        "// @ts-ignore\n// a note\nfunction f() {}\n",
+        "// @ts-expect-error\n\n// a note\n\nfunction f() {}\n",
+        "/* @ts-ignore */\n// a note\nfunction f() {}\n",
+    ] {
+        assert_eq!(mark(reaches, "f"), Err(Skip::DirectiveAbove), "{reaches:?}");
+    }
+    assert!(mark("// @ts-ignore\n/* a note */\nfunction f() {}\n", "f").is_ok());
+    // with a block to write in, nothing moves: the line goes into the block
+    assert_eq!(
+        mark("/** Docs. */\n// @ts-ignore\nfunction f() {}\n", "f").unwrap(),
+        "/**\n * Docs.\n * ID: m1\n */\n// @ts-ignore\nfunction f() {}\n"
+    );
+    // a one-line block that is the directive would stop being one as several lines
+    assert_eq!(
+        mark("/** @ts-ignore */\nfunction f() {}\n", "f"),
+        Err(Skip::DirectiveAbove)
+    );
+}
+
+#[test]
+fn a_comment_for_the_whole_file_is_a_plain_comment() {
+    for (comment, name) in [
+        (
+            "/* eslint-disable no-console */",
+            "a range, not the next line",
+        ),
+        ("// @ts-nocheck", "a file pragma"),
+        ("// @ts-check", "a file pragma"),
+        ("// deno-lint-ignore-file", "a file directive"),
+        ("// eslinting is done in CI", "a word that starts like one"),
+    ] {
+        let text = format!("{comment}\nfunction f() {{}}\n");
+        assert_eq!(
+            mark(&text, "f").unwrap(),
+            format!("{comment}\n/** ID: m1 */\nfunction f() {{}}\n"),
+            "{name}"
+        );
+    }
 }
 
 #[test]
@@ -486,8 +537,8 @@ fn the_marker_fixtures_plan_and_refuse() {
     assert!(count("NotOnOwnLine") >= 1, "{tally:?}");
     assert_eq!(
         count("DirectiveAbove"),
-        3,
-        "ignored, linted, formatted: {tally:?}"
+        6,
+        "ignored, linted, formatted, separatedByBlank, denoLinted, reachedThroughANote: {tally:?}"
     );
     assert_eq!(
         count("UnsafeDocComment"),

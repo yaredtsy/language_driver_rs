@@ -123,6 +123,7 @@ Where "above the def" is, for defs that are not a statement of their own:
 | a blank line detaches the nearest JSDoc block, and that block has block tags (`@param`, `@type`, …) | `UnsafeDocComment` too (added in the TS2 review). TypeScript applies a detached block to the def all the same, and uses only the last one: a new block below it switched the tags off. A detached block with no tags still gets a new block below it |
 | the def is not one of this text's (no def with its qualname and range: it comes from an older outline) | `UnknownDef` (added in the TS2 review). The edit is placed by the def's offsets, so stale ones are refused, never trusted |
 | the marker text is empty, starts or ends with a blank, has a line break, or contains `*/` | `InvalidText` (added in TS2). Such a text would not read back the same, or would close the comment. For the file header the `*/` case does not apply |
+| the def has no JSDoc block, and a comment above it is a directive that points at the def's line (`// eslint-disable-next-line` directly above; `// @ts-ignore` also through blank lines and `//` comments) | `DirectiveAbove` (added in TS2). A new block between them would move the directive's target. The list is in `languages/typescript/docs/markers.md` |
 
 Generated files and files V-NOC must never touch are the core's decision (V-NOC plan `09/04`), not the analyzer's.
 
