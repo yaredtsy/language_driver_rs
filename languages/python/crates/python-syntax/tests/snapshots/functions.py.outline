@@ -1,0 +1,7 @@
+Function plain [0..25] name [4..9]
+Function fetch [28..64] name [38..43] (url)
+Function decorated [67..103] name [82..91]
+Function many_decorators [106..160] name [133..148]
+Function one_liner [163..183] name [167..176]
+Function with_docstring [186..244] name [190..204]
+Function f_with_return_annotation [247..322] name [251..275] (a, b)

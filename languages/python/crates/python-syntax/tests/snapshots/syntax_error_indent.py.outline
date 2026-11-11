@@ -1,0 +1,6 @@
+Class C [0..101] name [6..7] SYNTAX-ERROR
+  Method C.a [13..101] name [17..18] (self) SYNTAX-ERROR
+    Function C.a.<locals>.b [45..70] name [49..50] (self) SYNTAX-ERROR
+    Function C.a.<locals>.c [76..101] name [80..81] (self)
+syntax error [39..45]: unindent does not match any outer indentation level
+syntax error [102..102]: Expected dedent, found end of file

@@ -1,0 +1,15 @@
+Class Plain [0..21] name [6..11]
+Class WithBase [24..394] name [30..38]
+  Method WithBase.method [67..101] name [71..77] (self)
+  Method WithBase.amethod [107..148] name [117..124] (self)
+  Method WithBase.static [154..198] name [176..182]
+  Method WithBase.build [204..257] name [225..230] (cls)
+  Class WithBase.Inner [263..394] name [269..274]
+    Method WithBase.Inner.deep [284..316] name [288..292] (self)
+    Class WithBase.Inner.Innermost [326..394] name [332..341]
+      Method WithBase.Inner.Innermost.deepest [355..394] name [359..366] (self)
+Class Decorated [397..439] name [414..423]
+Class Property [442..586] name [448..456]
+  Method Property.value [462..519] name [480..485] (self)
+  Method Property.value [525..586] name [547..552] (self, v)
+Class Empty [589..605] name [595..600]

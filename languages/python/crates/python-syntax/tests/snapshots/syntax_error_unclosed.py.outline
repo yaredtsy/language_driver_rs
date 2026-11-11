@@ -1,0 +1,5 @@
+Function ok [0..18] name [4..6]
+Function unclosed [21..55] name [25..33] (a, b) SYNTAX-ERROR
+syntax error [44..50]: Expected an expression
+syntax error [39..40]: Expected `)`, found newline
+syntax error [55..55]: unexpected EOF while parsing

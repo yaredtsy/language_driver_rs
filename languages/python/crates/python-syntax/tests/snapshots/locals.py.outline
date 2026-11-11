@@ -1,0 +1,15 @@
+Function top [0..188] name [4..7]
+  Function top.<locals>.inner [15..69] name [19..24]
+    Function top.<locals>.inner.<locals>.innermost [36..69] name [40..49]
+  Class top.<locals>.Local [75..170] name [81..86]
+    Method top.<locals>.Local.method [96..130] name [100..106] (self)
+    Class top.<locals>.Local.Nested [140..170] name [146..152]
+Class Outer [191..396] name [197..202]
+  Method Outer.method [208..335] name [212..218] (self)
+    Function Outer.method.<locals>.helper [234..264] name [238..244]
+    Class Outer.method.<locals>.InMethod [274..335] name [280..288]
+      Method Outer.method.<locals>.InMethod.m [302..335] name [306..307] (self)
+  Class Outer.Inner [341..396] name [347..352]
+    Method Outer.Inner.method [362..396] name [366..372] (self)
+Function sibling [399..443] name [403..410]
+  Function sibling.<locals>.inner [418..443] name [422..427]

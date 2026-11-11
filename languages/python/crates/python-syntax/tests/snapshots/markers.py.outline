@@ -1,0 +1,14 @@
+Function marked [0..34] name [4..10] marker="abc123"
+Function marked_after_summary [37..129] name [41..61] marker="0Q8V5W4T2F7KX9M3B6D1RZ4H7K"
+Function single_quoted [132..178] name [136..149] marker="single"
+Function no_colon_space [181..221] name [185..199] marker="tight"
+Function last_one_wins [224..284] name [228..241] marker="second"
+Function prose_counts [287..372] name [291..303] marker="nothing-real,"
+Function unmarked [375..416] name [379..387]
+Function no_docstring [419..451] name [423..435]
+Function comment_is_not_a_marker [454..520] name [458..481]
+Function not_the_first_statement [523..599] name [527..550]
+Function other_label [602..647] name [606..617]
+Function empty_value [650..682] name [654..665]
+Class MarkedClass [685..785] name [691..702] marker="class-marker"
+  Method MarkedClass.method [736..785] name [740..746] (self) marker="method-marker"

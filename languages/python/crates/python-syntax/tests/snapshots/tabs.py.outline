@@ -1,0 +1,4 @@
+Function tabs [0..21] name [4..8]
+Class C [24..69] name [30..31]
+  Method C.m [34..69] name [38..39] (self)
+    Function C.m.<locals>.inner [49..69] name [53..58]

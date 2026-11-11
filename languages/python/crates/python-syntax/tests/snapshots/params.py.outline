@@ -1,0 +1,9 @@
+Function none [0..20] name [4..8]
+Function positional [23..58] name [27..37] (a, b, c)
+Function positional_only [61..102] name [65..80] (a, b, c)
+Function keyword_only [105..145] name [109..121] (a, b, c)
+Function varargs [148..189] name [152..159] (a, *args, **kwargs)
+Function bare_star [192..224] name [196..205] (only)
+Function kwargs_only [227..263] name [231..242] (**options)
+Function everything [266..320] name [270..280] (a, b, c, d, *args, **kw)
+Function annotated [323..404] name [327..336] (a, c, *args, **kw)

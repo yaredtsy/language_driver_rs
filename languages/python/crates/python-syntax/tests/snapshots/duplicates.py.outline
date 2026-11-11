@@ -1,0 +1,7 @@
+Function conditional [42..77] name [46..57]
+Function conditional [88..123] name [92..103]
+Function twin [126..164] name [140..144] (a)
+Function twin [165..203] name [179..183] (a)
+Function twin [204..229] name [208..212] (a)
+Function redefined [232..257] name [236..245]
+Function redefined [260..285] name [264..273]

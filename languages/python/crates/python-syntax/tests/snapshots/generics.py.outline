@@ -1,0 +1,3 @@
+Function identity [0..48] name [4..12] (value)
+Class Box [51..114] name [57..60]
+  Method Box.get [69..114] name [73..76] (self, other)

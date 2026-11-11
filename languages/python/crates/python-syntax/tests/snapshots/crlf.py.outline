@@ -1,0 +1,3 @@
+Function crlf [0..25] name [4..8]
+Class C [31..71] name [37..38]
+  Method C.m [45..71] name [49..50] (self)

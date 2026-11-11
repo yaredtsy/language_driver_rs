@@ -1,0 +1,5 @@
+Function before [0..22] name [4..10]
+Function broken [25..46] name [29..35] SYNTAX-ERROR
+Function after [49..70] name [53..58]
+syntax error [36..37]: Expected a parameter or the end of the parameter list
+syntax error [37..38]: Expected `)`, found newline

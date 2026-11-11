@@ -437,7 +437,9 @@ version = "0.0.0"
 dependencies = [
  "analyzer-core",
  "analyzer-testkit",
+ "ruff_python_ast",
  "ruff_python_parser",
+ "ruff_text_size",
 ]
 
 [[package]]

@@ -1,0 +1,10 @@
+Function café [0..21] name [4..9]
+Class 数据 [24..72] name [30..36]
+  Method 数据.方法 [42..72] name [46..52] (self)
+Class Dunders [75..247] name [81..88]
+  Method Dunders.__init__ [94..126] name [98..106] (self)
+  Method Dunders.__repr__ [132..170] name [136..144] (self)
+  Method Dunders._private [176..208] name [180..188] (self)
+  Method Dunders.__mangled [214..247] name [218..227] (self)
+Function f_ [250..264] name [254..256]
+Function _ [265..278] name [269..270]
