@@ -104,3 +104,26 @@ export interface Shape {
 }
 
 export const arrow_def = () => f(g());
+
+export namespace Ns {
+  f();
+  export function in_namespace() {
+    g();
+  }
+}
+
+export function holder() {
+  class Local {
+    [f()]() {}
+  }
+  return Local;
+}
+
+export function satisfying() {
+  (f() satisfies any).m();
+}
+
+export function ambient_in_body() {
+  declare const dropped = f();
+  g();
+}

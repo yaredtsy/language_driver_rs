@@ -1161,6 +1161,16 @@ mod tests {
         expect("expression_names.<locals>.named", &["g"]);
         expect("overloaded", &["f"]);
         expect("arrow_def", &["f", "g"]);
+        // a namespace's body is its own (the code that runs when the namespace is first evaluated); the defs inside it are their own
+        expect("Ns", &["f"]);
+        expect("Ns.in_namespace", &["g"]);
+        // a nested class is a def, but the calls in its computed member names belong to the function around it (as in tsrs)
+        expect("holder", &["f"]);
+        assert_eq!(found.get("holder.<locals>.Local"), None);
+        // the type side of `satisfies` is not walked, the expression is
+        expect("satisfying", &["(f() satisfies any).m", "f"]);
+        // ambient code in a body is a declaration, not a call
+        expect("ambient_in_body", &["g"]);
         // nothing else has a site: an interface method, an ambient `declare`, a leaf
         let listed = [
             "plain",
@@ -1180,6 +1190,11 @@ mod tests {
             "expression_names.<locals>.named",
             "overloaded",
             "arrow_def",
+            "Ns",
+            "Ns.in_namespace",
+            "holder",
+            "satisfying",
+            "ambient_in_body",
         ];
         let others: Vec<_> = found
             .keys()
