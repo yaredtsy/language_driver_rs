@@ -26,3 +26,26 @@ const objectWithNames = {
   123() {},
   [computed + 1]() {},
 };
+
+const quoted = {
+  "load"() {},
+  "class"() {},
+  "a.b"() {},
+  "1st"() {},
+  ""() {},
+  "caf\u00e9"() {},
+  "nested": {
+    deep() {},
+  },
+  "not nested": {
+    deep() {},
+  },
+};
+
+declare module "lodash" {
+  function chunk(): void;
+}
+
+declare module "@scope/pkg" {
+  function scoped(): void;
+}

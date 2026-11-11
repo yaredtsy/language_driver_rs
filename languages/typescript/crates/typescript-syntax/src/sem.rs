@@ -10,7 +10,7 @@ use std::marker::PhantomData;
 
 use analyzer_core::text::Span;
 use tsrs_ast::{Kind, ModifierFlags, Node, NodeFlags, SourceFile, SourceFileParseOptions};
-use tsrs_core::{P, ScriptKind, tspath};
+use tsrs_core::{LanguageVariant, P, ScriptKind, tspath};
 
 use crate::Dialect;
 
@@ -276,6 +276,12 @@ impl Parsed<'_> {
         let pos = n.0.pos().source_offset().unwrap_or(0);
         let start = tsrs_scanner::skip_trivia(self.text, pos).min(end);
         Span::new(start, end)
+    }
+
+    /// Is `text` an identifier as the engine scans one (`foo`, `$x`, `café`)? A reserved word is one too: `class` is a valid member name.
+    /// `my-key`, `1a`, a text with an escape in it and the empty text are not.
+    pub(crate) fn is_identifier(&self, text: &str) -> bool {
+        !text.is_empty() && tsrs_scanner::is_identifier_text(text, LanguageVariant::Standard)
     }
 
     /// The text a span covers; `None` if it is out of bounds or cuts a character.

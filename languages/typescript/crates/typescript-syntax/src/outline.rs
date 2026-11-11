@@ -173,9 +173,20 @@ impl Walker<'_, '_> {
         }
     }
 
-    /// The text of a name token as written: `f`, `#secret`, `"my-key"`, `[Symbol.iterator]`.
+    /// The text of a name token as written: `f`, `#secret`, `"my-key"`, `[Symbol.iterator]`. One exception: a string that is a valid
+    /// identifier loses its quotes, because `"load"() {}` and `load() {}` declare the same member. Any other string keeps them, so
+    /// `"a.b"` cannot be mistaken for a path.
     fn name_text(&self, name: RawNode) -> Option<String> {
-        self.p.slice(self.p.span(name)).map(str::to_owned)
+        let written = self.p.slice(self.p.span(name))?;
+        if self.p.kind(name) == NodeKind::StringLiteral {
+            let inner = written
+                .strip_prefix(['"', '\''])
+                .and_then(|rest| rest.strip_suffix(['"', '\'']));
+            if let Some(inner) = inner.filter(|inner| self.p.is_identifier(inner)) {
+                return Some(inner.to_owned());
+            }
+        }
+        Some(written.to_owned())
     }
 
     /// The name of a declaration and the range to reveal: its name token, or `default` for `export default` without one.
@@ -550,7 +561,7 @@ impl Walker<'_, '_> {
     }
 
     /// `namespace N {}`, `module M {}`, `declare module "x" {}`, `declare global {}`. `namespace A.B {}` is two levels, `A` and `A.B`.
-    /// A string name keeps its quotes, so `"x".f` cannot be mistaken for a path.
+    /// A string name that is not an identifier keeps its quotes (`name_text`), so `"a/b".f` cannot be mistaken for a path.
     fn module(&mut self, n: RawNode) {
         let Some((name, name_range)) = self.name_of(n) else {
             return;

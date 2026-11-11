@@ -79,10 +79,10 @@ property of `f`; `f.<locals>.x` is a local of `f`).
 |---|---|
 | identifier name | as written: `parseOrder` |
 | private name | with the hash: `C.#secret` |
-| string or number literal name: `"my-key"() {}` | the source text, with its quotes: `C."my-key"` |
+| string or number literal name: `"my-key"() {}` | the source text, with its quotes: `C."my-key"`. A string that is a valid identifier loses them (`"load"() {}` is `C.load`: it declares the same member as `load() {}`); also for `declare module "lodash"` (owner, 2026-11-11) |
 | computed name: `[Symbol.iterator]() {}` | the source text in brackets: `C.[Symbol.iterator]` |
 | `export default function () {}` / `export default class {}` | `default` |
-| `export default function f() {}` | `f` (the function has a name) |
+| `export default function f() {}`, `export default class Foo {}` | `f`, `Foo` and `Foo.m` (the export has a name; `default` only when it has none) |
 | getter and setter of one property | both `C.x`; told apart by `occurrence` (and by `params`: a setter has one) |
 | a `static` member | the same as an instance member: `C.m`. A class cannot have a static and an instance member that V-NOC needs to tell apart by name alone; if both exist, `occurrence` does it |
 | a namespace written `namespace A.B {}` | two levels: `A`, `A.B` |
