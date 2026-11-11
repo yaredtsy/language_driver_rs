@@ -28,7 +28,7 @@ use tsrs_core::{
 use tsrs_tsoptions::{ParseConfigHost, ParsedCommandLine};
 use tsrs_vfs::{FS, bundled, cachedvfs, osvfs};
 
-use typescript_syntax::{Def, Dialect, MarkerStyle, Outline, Span};
+use typescript_syntax::{Def, Dialect, MarkerStyle, Outline, Placement, Span};
 
 use crate::OpenError;
 
@@ -82,8 +82,30 @@ pub(crate) struct FileDefs {
     pub(crate) def_of: HashMap<P<Node>, usize>,
 }
 
-/// The files' defs made so far, by file and marker label.
-type FileDefsCache = HashMap<(P<SourceFile>, String), Arc<FileDefs>>;
+/// The defs of one file made so far, one per marker style (a marker is read by its label, so another label is another outline). A file is read in
+/// one or two styles, so a short list compared in place is cheaper than a key that must be built for every lookup.
+struct Cached {
+    label: String,
+    placement: Placement,
+    defs: Arc<FileDefs>,
+}
+
+/// The files' defs made so far, by file.
+type FileDefsCache = HashMap<P<SourceFile>, Vec<Cached>>;
+
+/// A def of an outline, read in place: it holds the outline alive and points into it, so reading its qualname, kind or range copies nothing.
+pub(crate) struct DefRef {
+    defs: Arc<FileDefs>,
+    index: usize,
+}
+
+impl std::ops::Deref for DefRef {
+    type Target = Def;
+
+    fn deref(&self) -> &Def {
+        &self.defs.outline.defs[self.index]
+    }
+}
 
 /// The node kinds `outline_with_nodes` can name: what has a body, a class, or a declaration of a def with no body.
 fn can_be_a_def(kind: Kind) -> bool {
@@ -285,9 +307,11 @@ impl Sem {
         style: MarkerStyle<'_>,
     ) -> Option<Arc<FileDefs>> {
         let dialect = Dialect::from_path(file.node.file_name())?;
-        let key = (file.node, style.label.to_owned());
-        if let Some(found) = self.file_defs.borrow().get(&key) {
-            return Some(Arc::clone(found));
+        if let Some(found) = self.file_defs.borrow().get(&file.node).and_then(|made| {
+            made.iter()
+                .find(|c| c.label == style.label && c.placement == style.placement)
+        }) {
+            return Some(Arc::clone(&found.defs));
         }
         // looking at the tree may allocate in the engine; the program's region is where that belongs
         let _scope = self._region.enter();
@@ -311,7 +335,15 @@ impl Sem {
             nodes,
             def_of,
         });
-        self.file_defs.borrow_mut().insert(key, Arc::clone(&made));
+        self.file_defs
+            .borrow_mut()
+            .entry(file.node)
+            .or_default()
+            .push(Cached {
+                label: style.label.to_owned(),
+                placement: style.placement,
+                defs: Arc::clone(&made),
+            });
         Some(made)
     }
 
@@ -367,11 +399,14 @@ impl Sem {
         not(test),
         expect(dead_code, reason = "TS4 step 3's `describe` is built on it")
     )]
-    pub(crate) fn def(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Def {
+    pub(crate) fn def(&self, func: Func<'_>, style: MarkerStyle<'_>) -> DefRef {
         let defs = self
             .file_defs(func.file, style)
             .expect("a Func is made from an outline, so its file has one");
-        defs.outline.defs[func.def].clone()
+        DefRef {
+            defs,
+            index: func.def,
+        }
     }
 
     /// The file's path relative to the root, with `/`; `None` for a file outside the root, such as the bundled libraries.
@@ -1201,5 +1236,32 @@ mod tests {
             .filter(|q| !listed.contains(&q.as_str()))
             .collect();
         assert!(others.is_empty(), "{others:?}");
+    }
+
+    #[test]
+    fn a_files_defs_are_made_once_per_marker_style() {
+        let sem = entries();
+        let file = sem.file("src/main.ts").unwrap();
+        let first = sem.file_defs(file, STYLE).unwrap();
+        let again = sem.file_defs(file, STYLE).unwrap();
+        assert!(Arc::ptr_eq(&first, &again));
+        // a marker is read by its label, so another label is another outline
+        let other = sem.file_defs(file, MarkerStyle::docstring("REF")).unwrap();
+        assert!(!Arc::ptr_eq(&first, &other));
+        assert!(Arc::ptr_eq(
+            &other,
+            &sem.file_defs(file, MarkerStyle::docstring("REF")).unwrap()
+        ));
+    }
+
+    #[test]
+    fn a_def_is_read_in_place_not_copied() {
+        let sem = entries();
+        let func = sem.entry("src/main.ts", "Box.open", 0, STYLE).unwrap();
+        let def = sem.def(func, STYLE);
+        assert_eq!(def.qualname, "Box.open");
+        // two reads share the one outline
+        let again = sem.def(func, STYLE);
+        assert!(std::ptr::eq(&*def, &*again));
     }
 }
