@@ -580,21 +580,16 @@ fn p05_02_wire_tree() {
 
 #[test]
 fn p05_02_merge_joins_the_calls_of_one_site_and_keeps_the_unmerged_form() {
-    use crate::interp::{call_wire, merge_for_output};
     // `twice` calls `run` twice from one function: two nodes on the wire, one after the merge
-    let path =
-        std::fs::canonicalize("tests/fixtures/02-function-summaries/python/graph.py").unwrap();
-    let db = open_project(SystemPath::from_std_path(path.parent().unwrap()).unwrap()).unwrap();
-    let (file, _) = open(&db, SystemPath::from_std_path(&path).unwrap()).unwrap();
-    let (wire, _) = call_wire(&db, file, "main", &summary()).unwrap();
-    let twice = |t: &crate::interp::FrameJson| {
+    let (db, file) = open_fixture("02-function-summaries/python/graph.py");
+    let twice = |t: &crate::wire::Frame| {
         t.children
             .iter()
             .find(|c| c.target_qname == "graph.twice")
             .unwrap()
             .clone()
     };
-    let before = twice(&wire);
+    let before = twice(&frame_of(&db, file, &summary(), false));
     assert_eq!(before.children.len(), 2);
     assert!(
         before
@@ -602,16 +597,21 @@ fn p05_02_merge_joins_the_calls_of_one_site_and_keeps_the_unmerged_form() {
             .iter()
             .all(|c| c.call_count == 0 && c.call_site.is_some())
     );
-    let after = twice(&merge_for_output(&wire));
+    let after = twice(&frame_of(&db, file, &summary(), true));
     assert_eq!(after.children.len(), 1);
     assert_eq!(after.children[0].call_count, 1);
 }
 
-fn wire_of(fixture: &str, opts: &Options) -> crate::interp::FrameJson {
-    let path = std::fs::canonicalize(format!("tests/fixtures/{fixture}")).unwrap();
-    let db = open_project(SystemPath::from_std_path(path.parent().unwrap()).unwrap()).unwrap();
-    let (file, _) = open(&db, SystemPath::from_std_path(&path).unwrap()).unwrap();
-    crate::interp::call_wire(&db, file, "main", opts).unwrap().0
+/// The wire of `main`, made the way a request makes it.
+fn frame_of(
+    db: &ProjectDatabase,
+    file: ruff_db::files::File,
+    opts: &Options,
+    merged: bool,
+) -> crate::wire::Frame {
+    crate::interp::call_frame(db, file, "main", opts, merged)
+        .unwrap()
+        .0
 }
 
 fn styled() -> Options {
@@ -626,18 +626,16 @@ fn styled() -> Options {
 }
 
 /// `(qname, target_id)` of every node, depth first.
-fn ids(f: &crate::interp::FrameJson, out: &mut Vec<(String, String)>) {
+fn ids(f: &crate::wire::Frame, out: &mut Vec<(String, String)>) {
     out.push((f.target_qname.clone(), f.target_id.clone()));
     f.children.iter().for_each(|c| ids(c, out));
 }
 
 #[test]
 fn wire_ids_use_the_style_by_kind_and_are_empty_without_an_id() {
+    let (db, file) = open_fixture("06-wire/python/ids_and_classes.py");
     let mut got = Vec::new();
-    ids(
-        &wire_of("06-wire/python/ids_and_classes.py", &styled()),
-        &mut got,
-    );
+    ids(&frame_of(&db, file, &styled(), false), &mut got);
     let want = |q: &str, id: &str| (format!("ids_and_classes.{q}"), id.to_owned());
     assert_eq!(
         got,
@@ -655,26 +653,26 @@ fn wire_ids_use_the_style_by_kind_and_are_empty_without_an_id() {
 
 #[test]
 fn wire_ids_are_bare_when_no_prefix_is_given() {
-    let wire = wire_of("06-wire/python/ids_and_classes.py", &summary());
+    let (db, file) = open_fixture("06-wire/python/ids_and_classes.py");
+    let wire = frame_of(&db, file, &summary(), false);
     assert_eq!(wire.target_id, "06000000-0003-0000-0000-000000000000");
 }
 
 #[test]
 fn merging_joins_siblings_of_one_target_and_is_idempotent() {
-    use crate::interp::merge_for_output;
-    let wire = wire_of("06-wire/python/ids_and_classes.py", &styled());
+    let (db, file) = open_fixture("06-wire/python/ids_and_classes.py");
     // `main` calls `unmarked` twice itself: two nodes before the merge, one after, counted
-    let unmarked = |f: &crate::interp::FrameJson| {
+    let unmarked = |f: &crate::wire::Frame| {
         f.children
             .iter()
             .filter(|c| c.target_qname == "ids_and_classes.unmarked")
             .map(|c| c.call_count)
             .collect::<Vec<_>>()
     };
-    assert_eq!(unmarked(&wire), [0, 0]);
-    let merged = merge_for_output(&wire);
+    assert_eq!(unmarked(&frame_of(&db, file, &styled(), false)), [0, 0]);
+    let merged = frame_of(&db, file, &styled(), true);
     assert_eq!(unmarked(&merged), [1]);
-    assert_eq!(merge_for_output(&merged), merged);
+    assert_eq!(crate::wire::merge(merged.clone()), merged);
     // the id travels with the merged node
     let node = merged
         .children
