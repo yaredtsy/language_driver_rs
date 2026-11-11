@@ -65,10 +65,13 @@ pub enum Skip {
     SyntaxError,
     /// The def already carries a marker.
     AlreadyMarked { existing: String },
-    /// The JSDoc block above is not one we can edit safely (no closing line of its own, a line without its `*`, a tag on the opening line),
-    /// or a blank line separates it from the def and it carries block tags (`@param`, `@type`, …). A new block is not stacked on top of
-    /// it: the engine uses only the last block above a def, so the user's own, and its tags, would stop applying.
+    /// The JSDoc block above is not one we can edit safely (no closing line of its own, a line without its `*`, a tag on the opening line).
+    /// A new block is not stacked on top of it: the engine uses only the last block above a def, so the user's own would stop applying.
     UnsafeDocComment,
+    /// The nearest JSDoc block above the def is the file's opening comment (a blank line ends it before the def) and it carries block
+    /// tags (`@param`, `@type`, …). It is the file's, so it is not written into; and a new block below it would switch its tags off for
+    /// the def, to which the engine applies them.
+    FileCommentAbove,
     /// A comment above the def is a directive that points at the def's line (`// eslint-disable-next-line` directly above it; `// @ts-ignore`
     /// also through blank lines and `//` comments), and the def has no JSDoc block to write in: a new block put between them would move
     /// what the directive points at.
@@ -98,6 +101,10 @@ impl std::fmt::Display for Skip {
                 "the doc comment above the definition cannot be edited safely: its closing `*/` is not on a line of its own, a line has no \
                  leading `*`, or a tag is on its first line"
             }
+            Skip::FileCommentAbove => {
+                "the doc comment above the definition is the file's opening comment and carries tags: it is not edited, and a doc comment \
+                 put below it would stop its tags from applying to the definition"
+            }
             Skip::DirectiveAbove => {
                 "a comment above the definition (such as `// @ts-ignore` or `// eslint-disable-next-line`) applies to its first line, and \
                  a doc comment put between them would change what it applies to"
@@ -125,8 +132,7 @@ pub fn marker(text: &str, dialect: Dialect, def: &Def, style: MarkerStyle<'_>) -
             if !outline::has_def(p, def) {
                 return None;
             }
-            let start = def.range.start;
-            marker::marker_of(text, start, &p.comments_before(start), style.label)
+            marker::marker_of(text, &p.above(def.range.start), style.label)
         }),
         _ => None,
     }
@@ -148,7 +154,6 @@ pub fn plan_marker(
         if !outline::has_def(p, def) {
             return Err(Skip::UnknownDef);
         }
-        let start = def.range.start;
         let errors: Vec<Span> = p
             .syntax_errors()
             .into_iter()
@@ -156,8 +161,7 @@ pub fn plan_marker(
             .collect();
         marker::plan(
             text,
-            start,
-            &p.comments_before(start),
+            &p.above(def.range.start),
             def.syntax_error,
             &errors,
             style.label,

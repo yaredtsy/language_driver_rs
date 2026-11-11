@@ -79,6 +79,15 @@ pub(crate) struct Comment {
     pub(crate) kind: CommentKind,
 }
 
+/// What stands above a token (a def's first byte): where the token starts, the comments before it in order, and whether those comments
+/// open the file.
+pub(crate) struct Above {
+    pub(crate) start: u32,
+    pub(crate) comments: Vec<Comment>,
+    /// The token is the file's first: the comments above it begin at the top of the file.
+    pub(crate) opens_file: bool,
+}
+
 /// A file parsed in a region. Lives only inside `with_parsed`.
 pub(crate) struct Parsed<'a> {
     file: P<SourceFile>,
@@ -296,6 +305,15 @@ impl Parsed<'_> {
         match index.get(&start) {
             Some(&from) => self.comments_from(from),
             None => Vec::new(),
+        }
+    }
+
+    /// What stands above the token that starts at byte `start`.
+    pub(crate) fn above(&self, start: u32) -> Above {
+        Above {
+            start,
+            comments: self.comments_before(start),
+            opens_file: self.token_after(0) == start,
         }
     }
 

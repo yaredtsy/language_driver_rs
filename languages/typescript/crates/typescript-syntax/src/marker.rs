@@ -7,7 +7,7 @@ use analyzer_core::edit::{Edit, comment_marker};
 use analyzer_core::text::Span;
 
 use crate::Skip;
-use crate::sem::{Comment, CommentKind};
+use crate::sem::{Above, Comment, CommentKind};
 
 /// The offset of the first byte of the line that `start` is on, past a byte-order mark. `None` when something other than blanks stands
 /// before `start` on that line: the def does not own its line.
@@ -32,21 +32,42 @@ fn adjacent(text: &str, from: u32, to: u32) -> bool {
     })
 }
 
-/// The JSDoc block that documents the def starting at `start`: the nearest `/** */` block above it, reached with **no blank line** on the
-/// way (a blank line detaches it: the comment then belongs to the file). `//` and `/* */` comments between the block and the def do not
-/// detach it: the engine attaches the block through them, and a second block written below them would hide the user's own.
-pub(crate) fn doc_above(text: &str, start: u32, comments: &[Comment]) -> Option<Span> {
-    let mut below = start;
-    for c in comments.iter().rev() {
-        if !adjacent(text, c.span.end, below) {
-            return None;
-        }
-        if c.kind == CommentKind::Jsdoc {
-            return Some(c.span);
-        }
-        below = c.span.start;
+/// The JSDoc block that documents a def: the nearest `/** */` block among the comments above it. Blank lines and `//` or `/* */` comments
+/// between the block and the def do **not** detach it: this is the block TypeScript applies to the def, and the only one it applies (a
+/// second block written below it would hide the first, and switch its tags off).
+///
+/// One block is not the def's: the file's opening comment (`file_comment`). It is the file's, whatever stands below it.
+pub(crate) fn doc_above(text: &str, above: &Above) -> Option<Span> {
+    let nearest = above
+        .comments
+        .iter()
+        .rposition(|c| c.kind == CommentKind::Jsdoc)?;
+    (!in_file_comment(text, above, nearest)).then_some(above.comments[nearest].span)
+}
+
+/// The nearest JSDoc block above a def when it is part of the file's opening comment, and so not the def's.
+fn file_comment(text: &str, above: &Above) -> Option<Span> {
+    let nearest = above
+        .comments
+        .iter()
+        .rposition(|c| c.kind == CommentKind::Jsdoc)?;
+    in_file_comment(text, above, nearest).then_some(above.comments[nearest].span)
+}
+
+/// Is `comments[i]` in the file's opening comment: the comments from the top of the file down to the first blank line, when that blank
+/// line comes before the def? A licence, an overview. When no blank line stands between the top of the file and the def, the comments are
+/// the def's own.
+fn in_file_comment(text: &str, above: &Above, i: usize) -> bool {
+    if !above.opens_file {
+        return false;
     }
-    None
+    let comments = &above.comments;
+    // the first comment with a blank line after it ends the opening comment
+    let end = (0..comments.len()).find(|&k| {
+        let next = comments.get(k + 1).map_or(above.start, |c| c.span.start);
+        !adjacent(text, comments[k].span.end, next)
+    });
+    end.is_some_and(|end| i <= end)
 }
 
 /// How many line breaks `text` has (`\r\n` is one).
@@ -140,16 +161,11 @@ fn split_lines(text: &str) -> Vec<&str> {
     lines
 }
 
-/// The marker on the def starting at `start`, or `None`: the def must own its line, have a JSDoc block above it (`doc_above`), and the
-/// block must carry a `<label>:` line.
-pub(crate) fn marker_of(
-    text: &str,
-    start: u32,
-    comments: &[Comment],
-    label: &str,
-) -> Option<String> {
-    own_line(text, start)?;
-    let block = doc_above(text, start, comments)?;
+/// The marker on a def, or `None`: the def must own its line, have a JSDoc block above it (`doc_above`), and the block must carry a
+/// `<label>:` line.
+pub(crate) fn marker_of(text: &str, above: &Above, label: &str) -> Option<String> {
+    own_line(text, above.start)?;
+    let block = doc_above(text, above)?;
     read(block.slice(text)?, label)
 }
 
@@ -204,17 +220,17 @@ fn is_directive(comment: &str) -> bool {
 }
 
 /// Does a comment above the def point at the def's first line, so that a new block between them would move its target?
-fn directive_above(text: &str, start: u32, comments: &[Comment]) -> bool {
+fn directive_above(text: &str, above: &Above) -> bool {
     let written = |c: &Comment| c.span.slice(text).unwrap_or("");
     // a tool's directive applies to the next line: only the comment directly above the def can point at it
-    if let Some(last) = comments.last()
-        && adjacent(text, last.span.end, start)
+    if let Some(last) = above.comments.last()
+        && adjacent(text, last.span.end, above.start)
         && is_directive(written(last))
     {
         return true;
     }
     // the compiler's reaches further: up from the def's line, past blank lines and `//` comments
-    for c in comments.iter().rev() {
+    for c in above.comments.iter().rev() {
         if starts_with_word(written(c), &COMPILER_DIRECTIVES) {
             return true;
         }
@@ -225,22 +241,22 @@ fn directive_above(text: &str, start: u32, comments: &[Comment]) -> bool {
     false
 }
 
-/// The edit that puts `marker_text` on the def starting at `start`, or why not. `errors` are the file's parse errors.
+/// The edit that puts `marker_text` on the def that `above` is about, or why not. `errors` are the file's parse errors.
 pub(crate) fn plan(
     text: &str,
-    start: u32,
-    comments: &[Comment],
+    above: &Above,
     def_has_error: bool,
     errors: &[Span],
     label: &str,
     marker_text: &str,
 ) -> Result<Edit, Skip> {
+    let start = above.start;
     let own = own_line(text, start).ok_or(Skip::NotOnOwnLine)?;
     // the marker goes inside a `/** */` block: it must also not close the comment
     if !fits_a_line(marker_text) || marker_text.contains("*/") {
         return Err(Skip::InvalidText);
     }
-    let block = doc_above(text, start, comments);
+    let block = doc_above(text, above);
     let touches = |b: Span| {
         errors
             .iter()
@@ -265,17 +281,17 @@ pub(crate) fn plan(
             plan_in_block(text, block, label, marker_text)
         }
         None => {
-            // a blank line detached the nearest block, but the engine still applies it to the def. Its words may be the file's; its tags
-            // (in a `.js` file, the types) are the def's, and a new block below it would switch them off
-            let detached = comments.iter().rev().find(|c| c.kind == CommentKind::Jsdoc);
-            if detached
-                .and_then(|c| c.span.slice(text))
+            // the file's opening comment is not written into (it is a licence, an overview), but the engine applies it to the def all
+            // the same. With block tags neither way is safe: they may be the def's (in a `.js` file, its types), and a new block below
+            // would switch them off
+            if file_comment(text, above)
+                .and_then(|block| block.slice(text))
                 .is_some_and(has_block_tag)
             {
-                return Err(Skip::UnsafeDocComment);
+                return Err(Skip::FileCommentAbove);
             }
             // a new block goes directly above the def, below any plain comment: unless that comment points at the def
-            if directive_above(text, start, comments) {
+            if directive_above(text, above) {
                 return Err(Skip::DirectiveAbove);
             }
             let indent = &text[own as usize..start as usize];
@@ -406,58 +422,114 @@ mod tests {
         text.find("function").unwrap() as u32
     }
 
-    #[test]
-    fn a_block_directly_above_is_the_defs() {
-        let text = "/** doc */\nfunction f() {}\n";
-        assert_eq!(
-            doc_above(text, def_start(text), &[jsdoc(text)]),
-            Some(jsdoc(text).span)
-        );
-        let same_line = "/** doc */ function f() {}\n";
-        assert!(doc_above(same_line, def_start(same_line), &[jsdoc(same_line)]).is_some());
+    fn above(text: &str, comments: &[Comment], opens_file: bool) -> Above {
+        Above {
+            start: def_start(text),
+            comments: comments.to_vec(),
+            opens_file,
+        }
+    }
+
+    fn line(text: &str) -> Comment {
+        let start = text.find("//").unwrap() as u32;
+        let end = text[start as usize..].find('\n').unwrap() as u32 + start;
+        Comment {
+            span: Span::new(start, end),
+            kind: CommentKind::Line,
+        }
     }
 
     #[test]
-    fn a_blank_line_detaches_the_block() {
-        let text = "/** doc */\n\nfunction f() {}\n";
-        assert_eq!(doc_above(text, def_start(text), &[jsdoc(text)]), None);
-        let crlf = "/** doc */\r\n\r\nfunction f() {}\r\n";
-        assert_eq!(doc_above(crlf, def_start(crlf), &[jsdoc(crlf)]), None);
-        let spaces = "/** doc */\n   \nfunction f() {}\n";
-        assert_eq!(
-            doc_above(spaces, def_start(spaces), &[jsdoc(spaces)]),
-            None,
-            "a line of blanks is a blank line"
-        );
+    fn a_block_directly_above_is_the_defs() {
+        for opens_file in [true, false] {
+            let text = "/** doc */\nfunction f() {}\n";
+            assert_eq!(
+                doc_above(text, &above(text, &[jsdoc(text)], opens_file)),
+                Some(jsdoc(text).span)
+            );
+            let same_line = "/** doc */ function f() {}\n";
+            assert!(
+                doc_above(
+                    same_line,
+                    &above(same_line, &[jsdoc(same_line)], opens_file)
+                )
+                .is_some()
+            );
+        }
+    }
+
+    #[test]
+    fn a_blank_line_does_not_detach_the_block() {
+        // further down the file: the engine applies the block to the def, so it is the def's
+        for text in [
+            "/** doc */\n\nfunction f() {}\n",
+            "/** doc */\r\n\r\nfunction f() {}\r\n",
+            "/** doc */\n   \n\n\nfunction f() {}\n",
+        ] {
+            assert_eq!(
+                doc_above(text, &above(text, &[jsdoc(text)], false)),
+                Some(jsdoc(text).span),
+                "{text:?}"
+            );
+        }
     }
 
     #[test]
     fn another_comment_between_does_not_detach_the_block() {
-        let text = "/** doc */\n// note\nfunction f() {}\n";
-        let line = Comment {
-            span: Span::new(11, 18),
-            kind: CommentKind::Line,
-        };
-        assert_eq!(
-            doc_above(text, def_start(text), &[jsdoc(text), line]),
-            Some(jsdoc(text).span)
-        );
-        // a blank line anywhere on the way does
         for text in [
+            "/** doc */\n// note\nfunction f() {}\n",
             "/** doc */\n\n// note\nfunction f() {}\n",
             "/** doc */\n// note\n\nfunction f() {}\n",
         ] {
-            let at = text.find("//").unwrap() as u32;
-            let line = Comment {
-                span: Span::new(at, at + 7),
-                kind: CommentKind::Line,
-            };
+            let comments = [jsdoc(text), line(text)];
             assert_eq!(
-                doc_above(text, def_start(text), &[jsdoc(text), line]),
-                None,
+                doc_above(text, &above(text, &comments, false)),
+                Some(jsdoc(text).span),
                 "{text:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_files_opening_comment_is_not_the_defs() {
+        // at the top of the file, down to the first blank line
+        for text in [
+            "/** About the file. */\n\nfunction f() {}\n",
+            "/** About the file. */\n\n// note\nfunction f() {}\n",
+            "/** About the file. */\n// its second line\n\nfunction f() {}\n",
+        ] {
+            let mut comments = vec![jsdoc(text)];
+            if text.contains("//") {
+                comments.push(line(text));
+            }
+            let at_top = above(text, &comments, true);
+            assert_eq!(doc_above(text, &at_top), None, "{text:?}");
+            assert_eq!(
+                file_comment(text, &at_top),
+                Some(jsdoc(text).span),
+                "{text:?}"
+            );
+            // the same comments further down the file are the def's
+            let further_down = above(text, &comments, false);
+            assert_eq!(file_comment(text, &further_down), None, "{text:?}");
+        }
+        // no blank line between the top of the file and the def: the comments are the def's own
+        let glued = "/** doc */\n// note\nfunction f() {}\n";
+        let comments = [jsdoc(glued), line(glued)];
+        assert_eq!(
+            doc_above(glued, &above(glued, &comments, true)),
+            Some(jsdoc(glued).span)
+        );
+        // a block below the opening comment is the def's
+        let two = "/* licence */\n\n/** doc */\n\nfunction f() {}\n";
+        let licence = Comment {
+            span: Span::new(0, 13),
+            kind: CommentKind::Block,
+        };
+        assert_eq!(
+            doc_above(two, &above(two, &[licence, jsdoc(two)], true)),
+            Some(jsdoc(two).span)
+        );
     }
 
     #[test]
@@ -467,8 +539,8 @@ mod tests {
             span: Span::new(0, 11),
             kind: CommentKind::Block,
         };
-        assert_eq!(doc_above(text, def_start(text), &[plain]), None);
-        assert_eq!(doc_above(text, def_start(text), &[]), None);
+        assert_eq!(doc_above(text, &above(text, &[plain], false)), None);
+        assert_eq!(doc_above(text, &above(text, &[], false)), None);
     }
 
     #[test]

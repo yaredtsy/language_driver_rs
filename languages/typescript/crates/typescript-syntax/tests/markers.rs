@@ -174,42 +174,93 @@ fn a_marker_is_read_through_a_comment_between() {
             existing: "abc".to_owned()
         })
     );
-    // a blank line on the way detaches the block, on either side of the comment
+    // a blank line on the way does not detach the block either, on either side of the comment
     for text in [
-        "/** ID: abc */\n\n// note\nfunction f() {}\n",
-        "/** ID: abc */\n// note\n\nfunction f() {}\n",
+        "const a = 1;\n\n/** ID: abc */\n\n// note\nfunction f() {}\n",
+        "const a = 1;\n\n/** ID: abc */\n// note\n\nfunction f() {}\n",
     ] {
-        assert_eq!(outline(text, Dialect::Ts, STYLE).defs[0].marker, None);
+        assert_eq!(
+            outline(text, Dialect::Ts, STYLE).defs[0].marker.as_deref(),
+            Some("abc"),
+            "{text:?}"
+        );
     }
 }
 
 #[test]
-fn a_detached_block_stays_the_files_and_the_def_gets_its_own() {
+fn a_block_across_a_blank_line_is_the_defs_and_is_written_into() {
+    // checked with tsc 5.1.6: TypeScript applies the block to the def across the blank line, and applies only the last block. So the
+    // marker goes into it: a new block below would switch `@param {number}` off (error TS7006 on `x` in a checked `.js` file)
+    let typed =
+        "import \"x\";\n\n/** @param {number} x */\n\nfunction f(x) { return x.toFixed(); }\n";
+    assert_eq!(
+        mark_as(typed, Dialect::Js, "f", "m1").unwrap(),
+        "import \"x\";\n\n/**\n * ID: m1\n * @param {number} x\n */\n\nfunction f(x) { return x.toFixed(); }\n"
+    );
+    let words = "const a = 1;\n\n/**\n * Doc.\n */\n\n// note\n\nfunction f() {}\n";
+    assert_eq!(
+        mark(words, "f").unwrap(),
+        "const a = 1;\n\n/**\n * Doc.\n * ID: m1\n */\n\n// note\n\nfunction f() {}\n"
+    );
+    // and a block that cannot be edited is refused there too: nothing is stacked below it
+    assert_eq!(
+        mark("const a = 1;\n\n/**\n * Doc. */\n\nfunction f() {}\n", "f"),
+        Err(Skip::UnsafeDocComment)
+    );
+}
+
+#[test]
+fn the_files_opening_comment_stays_the_files_and_the_def_gets_its_own() {
+    // at the top of the file, down to the first blank line: a licence, an overview. It is not written into
     let text = "/**\n * About the file.\n */\n\nfunction f() {}\n";
     assert_eq!(
         mark(text, "f").unwrap(),
         "/**\n * About the file.\n */\n\n/** ID: m1 */\nfunction f() {}\n"
     );
+    // and a marker line in it is not the def's
+    let marked = "/**\n * About the file.\n * ID: the-files\n */\n\nfunction f() {}\n";
+    assert_eq!(outline(marked, Dialect::Ts, STYLE).defs[0].marker, None);
+    assert!(mark(marked, "f").is_ok());
+    // a shebang and other comments in the opening comment change nothing
+    let script = "#!/usr/bin/env node\n// Copyright.\n/** About the file. */\n\nfunction f() {}\n";
+    assert_eq!(
+        mark(script, "f").unwrap(),
+        "#!/usr/bin/env node\n// Copyright.\n/** About the file. */\n\n/** ID: m1 */\nfunction f() {}\n"
+    );
+    // a block below the opening comment is the def's
+    let both = "/* Licence. */\n\n/** Doc. */\n\nfunction f() {}\n";
+    assert_eq!(
+        mark(both, "f").unwrap(),
+        "/* Licence. */\n\n/**\n * Doc.\n * ID: m1\n */\n\nfunction f() {}\n"
+    );
+    // with no blank line between the top of the file and the def, the block is the def's own
+    assert_eq!(
+        mark("/** Doc. */\n// note\nfunction f() {}\n", "f").unwrap(),
+        "/**\n * Doc.\n * ID: m1\n */\n// note\nfunction f() {}\n"
+    );
 }
 
 #[test]
-fn a_detached_block_with_tags_is_refused_and_nothing_is_stacked_on_it() {
-    // TypeScript still applies the block across the blank line. A new block below it would switch `@param {number}` off: in a checked
-    // `.js` file that is error TS7006 on `x`
+fn the_files_opening_comment_with_tags_is_refused() {
+    // neither way is safe. The block is the file's, so it is not written into. But TypeScript applies it to the def, and a new block
+    // below it would switch `@param {number}` off: in a checked `.js` file that is error TS7006 on `x`
     let typed = "/** @param {number} x */\n\nfunction f(x) { return x.toFixed(); }\n";
     assert_eq!(
         mark_as(typed, Dialect::Js, "f", "m1"),
-        Err(Skip::UnsafeDocComment)
+        Err(Skip::FileCommentAbove)
     );
-    let multi = "/**\n * Doc.\n * @returns nothing\n */\n\nfunction f() {}\n";
-    assert_eq!(mark(multi, "f"), Err(Skip::UnsafeDocComment));
+    let multi = "/**\n * About the file.\n * @packageDocumentation\n */\n\nfunction f() {}\n";
+    assert_eq!(mark(multi, "f"), Err(Skip::FileCommentAbove));
     // through a comment too
     assert_eq!(
-        mark("/** @deprecated */\n\n// note\nfunction f() {}\n", "f"),
-        Err(Skip::UnsafeDocComment)
+        mark("/** @license MIT */\n\n// note\nfunction f() {}\n", "f"),
+        Err(Skip::FileCommentAbove)
     );
     // an inline tag is not a block tag
-    assert!(mark("/** See {@link g}. */\n\nfunction f() {}\n", "f").is_ok());
+    assert_eq!(
+        mark("/** See {@link g}. */\n\nfunction f() {}\n", "f").unwrap(),
+        "/** See {@link g}. */\n\n/** ID: m1 */\nfunction f() {}\n"
+    );
 }
 
 #[test]
@@ -512,6 +563,7 @@ fn every_skip_carries_a_reason_a_person_can_read() {
             existing: "abc".to_owned(),
         },
         Skip::UnsafeDocComment,
+        Skip::FileCommentAbove,
         Skip::DirectiveAbove,
         Skip::InvalidText,
         Skip::PlacementNotSupported,
@@ -577,9 +629,6 @@ fn the_marker_fixtures_plan_and_refuse() {
         6,
         "ignored, linted, formatted, separatedByBlank, denoLinted, reachedThroughANote: {tally:?}"
     );
-    assert_eq!(
-        count("UnsafeDocComment"),
-        4,
-        "three blocks that cannot be edited, one detached block with tags: {tally:?}"
-    );
+    assert_eq!(count("UnsafeDocComment"), 3, "{tally:?}");
+    assert_eq!(count("FileCommentAbove"), 1, "{tally:?}");
 }

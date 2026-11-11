@@ -2,4 +2,4 @@ Function markedThroughNote [69..100] name [78..95] marker="through-a-note"
 Function markedThroughDirective [176..221] name [185..207] (x) marker="through-a-directive"
 Function unmarkedThroughDirective [267..305] name [276..300]
 Function trailingLineComment [335..368] name [344..363] marker="same-line"
-Function blankAfterNote [419..447] name [428..442]
+Function noteThenBlankLine [442..473] name [451..468] marker="across-a-note-and-a-blank-line"

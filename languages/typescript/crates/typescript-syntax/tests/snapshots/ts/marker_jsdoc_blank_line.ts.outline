@@ -1,5 +1,6 @@
-Function detached [27..49] name [36..44]
-Function attached [72..94] name [81..89]
-Function twoBlocks [141..164] name [150..159] marker="nearest-wins"
-Function twoBlocksNearestUnmarked [211..249] name [220..244]
-Function detachedWithTags [324..363] name [333..349] (x)
+Function belowTheFileComment [26..59] name [35..54]
+Function attached [82..104] name [91..99]
+Function twoBlocks [151..174] name [160..169] marker="nearest-wins"
+Function twoBlocksNearestUnmarked [221..259] name [230..254]
+Function markedAcrossABlankLine [297..333] name [306..328] marker="across-a-blank-line"
+Function tagsAcrossABlankLine [402..445] name [411..431] (x)

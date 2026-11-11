@@ -1,8 +1,8 @@
 /**
- * ID: detached-1
+ * ID: the-files
  */
 
-function detached() {}
+function belowTheFileComment() {}
 
 /**
  * Attached.
@@ -18,7 +18,13 @@ function twoBlocks() {}
 function twoBlocksNearestUnmarked() {}
 
 /**
- * @param x TypeScript still applies this across the blank line
+ * ID: across-a-blank-line
  */
 
-function detachedWithTags(x: number) {}
+function markedAcrossABlankLine() {}
+
+/**
+ * @param x TypeScript applies this across the blank line
+ */
+
+function tagsAcrossABlankLine(x: number) {}

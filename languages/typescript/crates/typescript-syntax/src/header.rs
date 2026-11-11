@@ -9,7 +9,7 @@ use analyzer_core::text::Span;
 
 use crate::Skip;
 use crate::marker;
-use crate::sem::{Comment, CommentKind, Parsed};
+use crate::sem::{Above, Comment, CommentKind, Parsed};
 
 /// Where the first line after a `#!` line begins (past a byte-order mark when there is no shebang), and the comments from the top of the file up to
 /// the first token.
@@ -56,10 +56,14 @@ pub(crate) fn plan(
     }
     let (mut at, comments) = top(p, text);
     // the first def's own JSDoc, by the rule a def's marker is read with. The header goes before it, not between them
-    let own_doc = comments
-        .last()
-        .map(|last| p.token_after(last.span.end))
-        .and_then(|token| marker::doc_above(text, token, &comments));
+    let own_doc = comments.last().and_then(|last| {
+        let first_token = Above {
+            start: p.token_after(last.span.end),
+            comments: comments.clone(),
+            opens_file: true,
+        };
+        marker::doc_above(text, &first_token)
+    });
     for c in &comments {
         if c.kind == CommentKind::Line || Some(c.span) == own_doc {
             break;

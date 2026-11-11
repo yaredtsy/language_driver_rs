@@ -63,18 +63,22 @@ pub enum Placement {
 
 ```
 1. start at the first byte of the def's `range` (TS1 §4): its first decorator, modifier or keyword
-2. take the nearest JSDoc block (`/** … */`) above it: only whitespace and comments between, and NO blank line
+2. take the nearest JSDoc block (`/** … */`) among the comments above it: blank lines and other comments between do NOT detach it
 3. inside it, the first line that, after its leading `*` and spaces, reads   <label>:<spaces><text>   is the marker
 4. <text> is returned exactly as written, trimmed
 ```
 
-- A blank line between the block and the def detaches it: the comment belongs to the file, not to the def.
+- **A blank line between the block and the def does not detach it** (owner, 2026-11-11: "check with tsc; if it attaches, write into that
+  block"). It does attach: TypeScript applies the nearest block to the def across blank lines and `//` comments, and applies only that one.
+  The first version of this rule said a blank line detaches; a new block was then written below the detached one, which switched the
+  detached block off (its hover text and, in a checked `.js` file, its `@param` types: error TS7006).
+- One block is not the def's: **the file's opening comment**, the comments from the top of the file down to the first blank line, when that
+  blank line comes before the def. It is a licence or an overview. A marker line in it is not read as the first def's, and it is never
+  written into (a licence checker compares it byte for byte).
 - A one-line block (`/** ID: x */`) is read the same way.
 - A plain block comment (`/* ID: x */`) or a line comment (`// ID: x`) is **not** read. Only `/**`.
 - With several JSDoc blocks above a def, only the nearest one counts. That is the one TypeScript itself uses.
-- A `//` or `/* */` comment between the block and the def does **not** detach it. (Changed in the TS2 review: TypeScript attaches the block
-  through comments and uses only the last block, so a new block written below the comment hid the user's own. In a checked `.js` file that
-  switched its `@param` types off.)
+- A `//` or `/* */` comment between the block and the def does not detach it either, for the same reason.
 - A marker line that sits under a block tag (after `@param`, `@returns`) is still **read**. It is only never *written* there (below).
 
 ### Planning
@@ -86,7 +90,7 @@ Where the new line goes depends on what is above the def:
 | a multi-line JSDoc with **no** block tags | insert ` * <label>: <text>` as the last line before ` */` |
 | a multi-line JSDoc **with** block tags (`@param`, `@returns`, …) | insert the line **before the first block-tag line**, so that it ends the description. A line after `@returns` would become part of that tag's text in every tool |
 | a one-line JSDoc (`/** Parses. */`) | rewrite that one comment as three lines: `/**`, ` * Parses.`, ` * <label>: <text>`, ` */` |
-| no JSDoc (nothing, or a plain `/* */` or `//` comment) | insert a new one-line block `/** <label>: <text> */` directly above the def's first line, **below** any plain comment |
+| no JSDoc of its own (nothing, a plain `/* */` or `//` comment, or only the file's opening comment) | insert a new one-line block `/** <label>: <text> */` directly above the def's first line, **below** any plain comment |
 
 In every case the inserted text copies the block's own indentation and ` * ` prefix (or the def's indentation for a new block) and the file's
 line ending.
@@ -120,7 +124,7 @@ Where "above the def" is, for defs that are not a statement of their own:
 | a syntax error overlaps the def or its JSDoc | `SyntaxError` |
 | the def already has a marker | `AlreadyMarked { existing }` |
 | the JSDoc block is malformed (no closing `*/` on its own, mixed prefixes we cannot copy safely) | `UnsafeDocComment`. A new block is **not** stacked on top of it: two JSDoc blocks would hide the user's own |
-| a blank line detaches the nearest JSDoc block, and that block has block tags (`@param`, `@type`, …) | `UnsafeDocComment` too (added in the TS2 review). TypeScript applies a detached block to the def all the same, and uses only the last one: a new block below it switched the tags off. A detached block with no tags still gets a new block below it |
+| the nearest JSDoc block is the file's opening comment, and it has block tags (`@param`, `@type`, `@license`, …) | `FileCommentAbove` (added in the TS2 review). Neither way is safe: the block is the file's, so it is not written into; TypeScript applies it to the def all the same, so a new block below it would switch its tags off. Without tags the def gets a new block below it |
 | the def is not one of this text's (no def with its qualname and range: it comes from an older outline) | `UnknownDef` (added in the TS2 review). The edit is placed by the def's offsets, so stale ones are refused, never trusted |
 | the marker text is empty, starts or ends with a blank, has a line break, or contains `*/` | `InvalidText` (added in TS2). Such a text would not read back the same, or would close the comment. For the file header the `*/` case does not apply |
 | the def has no JSDoc block, and a comment above it is a directive that points at the def's line (`// eslint-disable-next-line` directly above; `// @ts-ignore` also through blank lines and `//` comments) | `DirectiveAbove` (added in TS2). A new block between them would move the directive's target. The list is in `languages/typescript/docs/markers.md` |
@@ -140,8 +144,8 @@ pub fn marker(text: &str, dialect: Dialect, def: &Def, style: MarkerStyle<'_>) -
 pub fn plan_marker(text: &str, dialect: Dialect, def: &Def, marker_text: &str, style: MarkerStyle<'_>) -> Result<Edit, Skip>;
 
 #[non_exhaustive]
-pub enum Skip { NotOnOwnLine, SyntaxError, AlreadyMarked { existing: String }, UnsafeDocComment, DirectiveAbove, InvalidText,
-                PlacementNotSupported, UnknownDef }
+pub enum Skip { NotOnOwnLine, SyntaxError, AlreadyMarked { existing: String }, UnsafeDocComment, FileCommentAbove, DirectiveAbove,
+                InvalidText, PlacementNotSupported, UnknownDef }
 ```
 
 `marker.rs` does the work in two layers:
@@ -210,8 +214,9 @@ marker_jsdoc_tags.ts           @param / @returns present → the line goes befor
 marker_jsdoc_oneline.ts        /** Parses. */ → becomes three lines
 marker_no_jsdoc.ts             a new one-line block
 marker_plain_comment.ts        `/* x */` or `// x` above the def → a new JSDoc goes BELOW it; `/* ID: x */` is not read
-marker_jsdoc_blank_line.ts     a block separated by a blank line is NOT the def's
-marker_comment_between.ts      a block with a `//` or `/* */` comment below it IS the def's; a blank line on the way detaches it
+marker_jsdoc_blank_line.ts     a block separated by a blank line IS the def's; the file's opening comment is not
+marker_comment_between.ts      a block with a `//` or `/* */` comment below it IS the def's, with or without a blank line on the way
+marker_file_comment_tags.ts    the file's opening comment with a block tag → Skip::FileCommentAbove
 marker_under_tag.ts            a hand-written marker after @returns is read
 marker_decorators.ts           the JSDoc sits above the decorators
 marker_const_arrow.ts          JSDoc on the `export const` statement

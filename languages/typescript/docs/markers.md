@@ -25,14 +25,17 @@ export async function parseOrder(raw: string) {
 
 1. Start at the first byte of the def's `range`: its first decorator, modifier or keyword. The def must **own its line**: only blanks (and a
    byte-order mark) before it on that line. Otherwise it has no marker to read.
-2. Take the **nearest `/** … */` block** above it (`/**/` is not one), reached with **no blank line** on the way (a line of blanks is a blank
-   line). `//` and `/* */` comments between the block and the def do not detach it: TypeScript attaches the block through them. A blank line
-   anywhere between the block and the def detaches it (the comment then belongs to the file).
+2. Take the **nearest `/** … */` block** among the comments above it (`/**/` is not one). **Nothing between the block and the def detaches
+   it**: not a blank line, not a `//` or `/* */` comment. This is the block TypeScript applies to the def, and the only one it applies
+   (checked with `tsc` 5.1.6: a `@param {number}` in a block two blank lines and a `//` note above a function still types its parameter).
+   One block is not the def's: **the file's opening comment**, which is the comments from the top of the file (after a `#!` line) down to the
+   first blank line, when that blank line comes before the def. It is a licence or an overview: the file's, whatever stands below it.
 3. In the block, the first line that, after its leading `*` and spaces, reads `<label>:<spaces><text>` is the marker. The text is returned as
    written, trimmed. `IDENT: x` and `see ID: x` are not it. A marker under a block tag (`@returns`) is read.
 
 Only `/**` is read. `/* ID: x */` and `// ID: x` above a def are not markers (`marker_plain_comment.ts`). With two blocks above a def only the
-nearest counts (`marker_jsdoc_blank_line.ts`). A marker in a block is read through the comments below it (`marker_comment_between.ts`).
+nearest counts. A marker is read across a blank line and through the comments below its block (`marker_jsdoc_blank_line.ts`,
+`marker_comment_between.ts`). A marker line in the file's opening comment is not the first def's.
 
 Where "above the def" is: the `export const` statement for `export const f = () => {}`; the member's own first line for a class member or an
 object-literal method; the **first overload signature** for an overloaded function (a marker written above the implementation is not read).
@@ -44,11 +47,14 @@ object-literal method; the **first overload signature** for an overloaded functi
 | a multi-line block with no block tags | ` * <label>: <text>` as the last line before the closing ` */` |
 | a multi-line block with block tags (`@param`, `@returns`, …) | the line **before the first block-tag line**, so that it ends the description. A blank ` *` line before the tags stays above it |
 | a one-line block (`/** Parses. */`) | the comment rewritten as `/**`, ` * Parses.`, ` * <label>: <text>`, ` */`. A block that is only a tag (`/** @type {X} */`) gets the marker first, then the tag. An empty block (`/** */`, `/***/`) gets just the marker |
-| no block (nothing, a plain `/* */`, a `//` comment, or a block **without block tags** detached by a blank line) | a new one-line block `/** <label>: <text> */` directly above the def's first line, **below** any plain comment and **above** decorators |
+| no block of its own (nothing, a plain `/* */`, a `//` comment, or only the file's opening comment) | a new one-line block `/** <label>: <text> */` directly above the def's first line, **below** any plain comment and **above** decorators |
 
-A block with a `//` or `/* */` comment between it and the def is edited like any other block, and the comment stays where it is. A new block is
-never written below it: TypeScript uses only the last block above a def, so the user's own would stop showing, and in a checked `.js` file its
-`@param` types would stop applying.
+A block with a blank line or a comment between it and the def is edited like any other block; what stands between stays where it is. A new block
+is never written below a block that is the def's: TypeScript uses only the last block above a def, so the user's own would stop showing, and in
+a checked `.js` file its `@param` types would stop applying (error TS7006).
+
+The file's opening comment is never written into. The first def below it gets a new block of its own, unless the opening comment carries block
+tags: then neither way is safe, and the answer is `FileCommentAbove`.
 
 The inserted text copies the block's own indentation and ` * ` prefix (or the def's indentation for a new block), and the file's line ending (the
 first one found; `\n` when there is none). A byte-order mark stays first. The one-line case is the only edit that changes existing bytes; the old
@@ -64,13 +70,14 @@ next to the def that was not marked). The sentences are in `src/lib.rs` and one 
 | `NotOnOwnLine` | something other than blanks stands before the def on its first line: `const a = () => 1, b = () => 2;` (the second), `class C { m() {} }` (the method), `/* c */ function f() {}`. Never reformat the user's code to make room |
 | `SyntaxError` | a parse error overlaps the def or the block above it |
 | `AlreadyMarked { existing }` | the def already has a marker (read by the rule above) |
-| `UnsafeDocComment` | the block has no closing line of its own (` * text */`), a line without its `*`, or a tag on its opening line (`/** @param x`). Or a blank line detaches the nearest block above the def **and it carries block tags** (`@param`, `@type`, …): TypeScript still applies a detached block to the def. A new block is **not** stacked on top of it: TypeScript uses only the last block, so the user's own would stop applying |
+| `UnsafeDocComment` | the def's block has no closing line of its own (` * text */`), a line without its `*`, or a tag on its opening line (`/** @param x`). A new block is **not** stacked below it: TypeScript uses only the last block, so the user's own would stop applying |
+| `FileCommentAbove` | the nearest block above the def is the file's opening comment **and it carries block tags** (`@param`, `@type`, `@license`, …). It is the file's, so it is not written into; but TypeScript applies it to the def, and a new block below it would switch its tags off for the def (in a `.js` file they may be its types). A def that has a block of its own below the opening comment is planned as usual |
 | `DirectiveAbove` | the def has no block to write in, and a comment above it is a directive that points at the def's line: a new block between them would move its target. Two kinds. **A tool's**, directly above the def: `eslint-disable-next-line`, `oxlint-disable-next-line`, `tslint:disable-next-line`, `biome-ignore`, `rome-ignore`, `deno-lint-ignore`, `prettier-ignore`, `dprint-ignore`, `istanbul ignore next/if/else`, `c8 ignore next`, `v8 ignore next`, `node:coverage ignore next`, `noinspection`, `$FlowFixMe`, `$FlowExpectedError`, `$FlowIgnore`, `flowlint-next-line`, `cspell:disable-next-line`, `nosemgrep`. **The compiler's**, `@ts-ignore` and `@ts-expect-error`: these reach the def through blank lines and `//` comments (a block comment cuts them off), so they are looked for that far up. Also: a one-line block that is itself a directive (`/** @ts-ignore */`), which would stop being one as several lines |
 | `InvalidText` | the marker text is empty, starts or ends with a blank (reading trims, so it would not come back the same), has a line break, or contains `*/` (it would close the comment) |
 | `PlacementNotSupported` | the style asks for a placement other than `Docstring` |
 | `UnknownDef` | the text has no def with this qualname and range: the def comes from the outline of another text (an older version of the file). Its offsets are not trusted; outline the text again. `marker` returns `None` for such a def |
 
-`DirectiveAbove`, `InvalidText` and `UnknownDef` are not in the plan's first list; they were added for the hazards above. A directive is matched as a whole word at the
+`FileCommentAbove`, `DirectiveAbove`, `InvalidText` and `UnknownDef` are not in the plan's first list; they were added for the hazards above. A directive is matched as a whole word at the
 start of the comment. A comment for a whole file or a range (`/* eslint-disable */`, `// @ts-nocheck`, `// deno-lint-ignore-file`) is a plain comment:
 the block goes below it. So does any comment that is not on the list. When the def has a JSDoc block, a directive never matters: the line goes
 into the block and nothing between the directive and the def moves.

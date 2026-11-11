@@ -16,7 +16,7 @@ function unmarkedThroughDirective() {}
 /** ID: same-line */ // why
 function trailingLineComment() {}
 
-/** ID: too-far */
+/** ID: across-a-note-and-a-blank-line */
 // a note, then a blank line
 
-function blankAfterNote() {}
+function noteThenBlankLine() {}

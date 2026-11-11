@@ -18,12 +18,9 @@ pub(crate) fn outline(text: &str, dialect: Dialect, style: MarkerStyle<'_>) -> O
         for def in &mut defs {
             def.syntax_error = errors.iter().any(|(range, _)| overlaps(*range, def.range));
             def.marker = match style.placement {
-                Placement::Docstring => marker::marker_of(
-                    text,
-                    def.range.start,
-                    &p.comments_before(def.range.start),
-                    style.label,
-                ),
+                Placement::Docstring => {
+                    marker::marker_of(text, &p.above(def.range.start), style.label)
+                }
                 // a placement this analyzer does not build reads nothing
                 _ => None,
             };
