@@ -2,7 +2,8 @@
 
 - Upstream URL: https://github.com/oxc-project/tsrs.git
 - Pinned commit / version: `13a31a4cac36b980db090a91ec12a3c3686de14d` (workspace version 0.24.0, follows TypeScript 7.1.0-beta)
-- Engine crates used: see "Spike S-TS1" below (the crates proven to build); the final list is written when TS1 and TS3 finish
+- Engine crates used: `typescript-syntax`: `tsrs_parser`, `tsrs_ast`, `tsrs_core`, `tsrs_scanner`. `typescript-analysis`: those plus `tsrs_compiler`,
+  `tsrs_tsoptions`, `tsrs_vfs`, `tsrs_checker`. **Not `tsrs_ls`** (see S-TS3: the resolver we wanted is private). Final list confirmed when TS1 and TS3 are built.
 - Patches: none
 - How to bump:
 - Licence notice:
@@ -115,3 +116,118 @@ Answer: **yes**. Fixture: one file with 21 candidate nodes (see the table). tsrs
 - **A new block on an overload implementation** (inserted by hand above `function ov(a: any) {}`): 0 diagnostics, and the implementation now
   carries its own JSDoc while the two overload signatures keep theirs. In `.ts`, `.tsx` and `.js`.
 - The fallback from the plan (walk up from the def's first byte over whitespace) was not needed.
+
+## Spike S-TS3: load a real project and resolve its calls
+
+Projects: the V-NOC frontend (`tsconfig.app.json`: 396 root files, `strict`, bundler resolution, JSX, `paths`; the program has 2,396 source files with
+`node_modules` and the bundled libs) and, for plain JavaScript, `postcss/lib` from its `node_modules` (28 root `.js` files, `allowJs`, CommonJS;
+117 source files). Measured on macOS, release build.
+
+### 1. The resolver the plan relied on is private
+
+`tsrs_ls::callhierarchy` is a **private module** (`mod callhierarchy;` in `tsrs_ls/src/lib.rs`), so `resolve_call_hierarchy_declaration` cannot be
+called from outside; it is reachable only through `LanguageService::provide_*_call_hierarchy`, which returns LSP types. The plan said it was `pub`:
+that was wrong (the function is `pub`, its module is not). So `typescript-analysis` does **not** depend on `tsrs_ls`, and the resolver is the plan's
+"by hand" fallback, which uses only public checker items:
+
+```rust
+let mut checker = program.get_type_checker(&Context::default());   // CheckerHandle, derefs to tsrs_checker::Checker
+let signature = checker.get_resolved_signature_exported(call);    // the matched signature of a CallExpression / NewExpression
+if let Some(decl) = signature.declaration() { /* answer */ }
+else if let Some(mut sym) = checker.get_symbol_at_location_exported(callee) {   // PropertyAccess callees work too
+    if sym.flags().intersects(SymbolFlags::Alias) { sym = checker.get_aliased_symbol(sym); }
+    let decl = sym.value_declaration();
+}
+```
+
+The call-site walk (`collect_call_sites`) is private too; TS4 writes its own, following the list in `tsrs_ls/src/callhierarchy.rs` `CallSiteCollector::collect`:
+`CallExpression`, `NewExpression`, `TaggedTemplateExpression`, `JsxOpeningElement`/`JsxSelfClosingElement`, `Decorator`, `PropertyAccessExpression`/`ElementAccessExpression`
+(accessors), `ClassStaticBlockDeclaration`; it does not descend into ambient nodes, types, other call-hierarchy declarations, or the type side of `as`/`satisfies`.
+The spike only visited `CallExpression` and `NewExpression`.
+
+### 2. Cost
+
+| | V-NOC frontend | postcss (JS) |
+|---|---|---|
+| load program (config + all files + bind) | 160 ms first run, 55-70 ms later runs (OS file cache) | 29 ms |
+| memory after load | 105 MB | 18 MB |
+| call sites resolved | 437 in 5 files (3,339 lines) in **57 ms** (includes the checker's first-use work) | 341 in 3 files in 15 ms |
+| memory after resolving | 114 MB | 22 MB |
+
+Both are far inside "load once per CLI run". Memory was read with `ps`; checker work is lazy, so these are for the files visited only.
+
+### 3. Does freeing the program return the memory? Only inside regions
+
+`free_unshared_program(program)` after use, **without** regions: 15 rounds of load, resolve, free grew RSS from 110 MB to **528 MB** (about 28 MB per round).
+With the pattern `tsrs_lint::engine::run` uses it stays flat: **110 MB at round 1, 148 MB at round 15, 145-153 MB from round 10 to round 60**.
+
+```rust
+let region = Region::new_scratch(1 << 20);                  // one per request, entered for the whole load + resolve + free
+let _scope = region.enter();
+let loaders = Arc::new(tsrs_compiler::ProgramRegions::default());
+// config as in S-TS1; then:
+let mut options = ProgramOptions::new(P::new(config), host);
+options.checker_regions = true;
+options.regions = Some(Arc::clone(&loaders));
+let program = tsrs_compiler::new_program(options);
+// ... resolve with a checker; drop the checker handle ...
+unsafe { tsrs_compiler::free_unshared_program(program) };   // locals then drop: loaders, scope, region
+```
+
+Safety rule for `sem.rs`/`Project` (TS3): checker handles are dropped before the program is freed, and nothing from the program is used after `free`.
+The spike did not try `free_program` (the variant that keeps data shared between program versions: for `Session` in TS5).
+
+### 4. What the engine answers: first draft of the policy table
+
+**V-NOC frontend, 437 sites: 437 resolved, 0 unresolved.** "Resolved" is not "a def", though. By what the declaration is and where it lives:
+
+| Declaration the engine returns | project | `node_modules` | bundled libs | Meaning for us |
+|---|---|---|---|---|
+| `FunctionDeclaration` | 67 | 69 | 1 | a def with a body when in the project |
+| `ArrowFunction` | 11 | 0 | 0 | a def (the arrow assigned to a `const`) |
+| `FunctionType` | 36 | 102 | 2 | a **function-typed value** (React `setState`, store actions, props): the target is a type, not a def |
+| `MethodSignature` | 0 | 17 | 104 | an interface or `lib.d.ts` method: no body |
+| `CallSignature` / `ConstructSignature` | 0 | 12 | 16 | no body |
+
+So only **78 of 437 sites (18%) reach a project function with a body**; 323 are external (`node_modules` 200, bundled 123) and 36 more point at a
+project type (an interface member or function-typed property). The 140 `FunctionType` sites (32%) are the policy decision TS4 must make: the engine
+resolves them, but there is no def to link, so I propose `Unresolved` (calls through a function-typed value), never a guess.
+
+**The hand-written seven cases** (`spikes/s-ts3/cases/a.ts`; all with 0 diagnostics):
+
+| Case | Engine answer | Path |
+|---|---|---|
+| method on an interface `s.area()` | `MethodSignature area` (no body) | signature |
+| overloaded function, call matching overload 1 / 2 | `FunctionDeclaration` of **that overload signature** (line 6 / line 7), not the implementation | signature |
+| imported function | `FunctionDeclaration` in `lib.ts` | signature |
+| function from `node_modules` (`pkg`, `.d.ts`) | `FunctionDeclaration` in `node_modules/pkg/index.d.ts` | signature |
+| class constructor `new K(1)` | `Constructor` node, which has no name | signature |
+| method on an instance `new K(2).m()` | `MethodDeclaration m` | signature |
+| arrow assigned to a `const` | `ArrowFunction` (nameless node; the name is on the `VariableDeclaration`) | signature |
+| callback parameter `cb()` | `FunctionType` of the parameter's annotation | signature |
+| callback argument `useCb(() => {})` | `FunctionDeclaration useCb` (the callee, as expected) | signature |
+| callee of type `any` `anything()` | no signature; the symbol path returns the **`Parameter`** | symbol |
+| `anything.foo.bar()` | nothing | none |
+| lib method `[1].map`, `console.log` | `MethodSignature` in `bundled:///libs/lib.es5.d.ts` / `lib.dom.d.ts` | signature |
+
+Rules these suggest for TS4 (to be confirmed there):
+1. The signature path is the main one. The symbol path adds only noise: it returned `Parameter`, `VariableDeclaration`, `BindingElement` (a `require`d value or an `any` callee).
+   Accept a declaration only if it is function-like **with a body**; everything else is `Unresolved`.
+2. A matched **overload signature must map to its implementation** (the call hierarchy does it with `find_implementation`), because our identity is the implementation's qualname.
+3. `Constructor` maps to its class; a class without an explicit constructor was **not tested**.
+4. An `ArrowFunction` or `FunctionExpression` takes its name from the `VariableDeclaration`/`PropertyAssignment` it initialises, as the outline rule (TS1) does.
+5. External = the declaration's file is under `/node_modules/`, ends in `.d.ts`, or starts with `bundled:///libs/`.
+
+### 5. Plain JavaScript (postcss)
+
+341 sites: **236 resolved, 105 unresolved (31%)**. Unresolved: 19 `require(...)` (this config had no Node types, so `require` is undeclared), 22 `this.*` calls, and the
+rest are calls on values the checker types as `any` (`token[1].slice`, `tokens.pop`, `text.match`). Resolved targets: 110 `MethodDeclaration`, 27 `FunctionDeclaration`,
+10 `Constructor`, 5 `ArrowFunction` in the package, 55 lib `MethodSignature`/`ConstructSignature`, and 22 `Parameter`/`BindingElement`/`VariableDeclaration`
+(non-defs: rule 1 drops them). A package that ships `.d.ts` next to its `.js` resolves **to the `.d.ts`** (`this.sync().warnings` → `result.d.ts`), not to the implementation.
+This is what the plan expected: JavaScript resolves less, and `Unresolved` says so.
+
+### 6. Not done
+
+- Both spikes report **1 program diagnostic** whose message text printed empty; not chased.
+- Not tried: object-literal methods, JSX elements, accessors, tagged templates, decorators as call sites; a class without a constructor; a project with project references; Linux and Windows.
+- The resolve time includes the checker's lazy work for the visited files only, so the cost of the **first** query in a fresh program is in the 57 ms; a second query is cheaper.
