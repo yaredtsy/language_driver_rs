@@ -1,5 +1,6 @@
 //! FAST: outline, markers, header. `sem.rs` is the only file that imports the engine.
 
+mod header;
 mod marker;
 mod outline;
 mod sem;
@@ -86,6 +87,32 @@ pub fn plan_marker(
             style.label,
             marker_text,
         )
+    })
+}
+
+/// The file's own marker, from a `// <label>: <text>` comment at the top of the file (after a shebang, before the first token).
+pub fn header_marker(text: &str, style: MarkerStyle<'_>) -> Option<String> {
+    match style.placement {
+        // a comment is a comment in every dialect: any one reads the top of the file
+        Placement::Docstring => {
+            sem::with_parsed(text, Dialect::Ts, |p| header::read(p, text, style))
+        }
+        _ => None,
+    }
+}
+
+/// The edit that writes the file's marker, or why it cannot be done. It goes after a `#!` line and after a leading licence block, and before
+/// `/// <reference>` lines, `// @ts-check`, a `"use strict"` directive and code.
+pub fn plan_header_marker(
+    text: &str,
+    marker_text: &str,
+    style: MarkerStyle<'_>,
+) -> Result<Edit, Skip> {
+    if !matches!(style.placement, Placement::Docstring) {
+        return Err(Skip::PlacementNotSupported);
+    }
+    sem::with_parsed(text, Dialect::Ts, |p| {
+        header::plan(p, text, marker_text, style)
     })
 }
 

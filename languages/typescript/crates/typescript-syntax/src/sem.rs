@@ -318,6 +318,11 @@ impl Parsed<'_> {
         tsrs_scanner::get_shebang(self.text)
     }
 
+    /// The first byte of the first token at or after `from`: past blanks and comments.
+    pub(crate) fn token_after(&self, from: u32) -> u32 {
+        tsrs_scanner::skip_trivia(self.text, from)
+    }
+
     /// One pass over the tree: for every node that has leading trivia, where its token starts and where the trivia begins. The first
     /// node (the outermost) found for a start wins: a statement, not its first child.
     fn index_trivia(&self) -> HashMap<u32, u32> {
