@@ -27,6 +27,8 @@ use tsrs_core::{
 use tsrs_tsoptions::{ParseConfigHost, ParsedCommandLine};
 use tsrs_vfs::{FS, bundled, cachedvfs, osvfs};
 
+use typescript_syntax::Dialect;
+
 use crate::OpenError;
 
 /// First chunk of the region a program lives in: the 1 MB `tsrs_lint` uses for one program.
@@ -199,12 +201,14 @@ impl Sem {
         Some(relative.strip_prefix('/')?.to_owned())
     }
 
-    /// Code of the project itself: not in `node_modules`, not a declaration file (`.d.ts`, `.d.mts`, `.d.cts`), not a bundled library.
+    /// Code of the project itself: a TypeScript or JavaScript file (`Dialect::from_path`: an imported `.json` is in the program but is not code),
+    /// not in `node_modules`, not a declaration file (`.d.ts`, `.d.mts`, `.d.cts`), not a bundled library.
     pub(crate) fn is_project_code(&self, file: File<'_>) -> bool {
         let name = file.node.file_name();
-        !self
-            .program
-            .is_source_file_default_library(file.node.path())
+        Dialect::from_path(name).is_some()
+            && !self
+                .program
+                .is_source_file_default_library(file.node.path())
             && !tspath::is_declaration_file_name(name)
             && package_in_node_modules(name).is_none()
             && !self.program.is_source_file_from_external_library(file.node)
@@ -549,6 +553,15 @@ mod tests {
             .expect("main.ts imports it, so the program holds it");
         assert!(!sem.is_project_code(types));
         assert_eq!(sem.package_of(types), None);
+    }
+
+    #[test]
+    fn an_imported_json_file_is_held_by_the_program_and_is_not_project_code() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/json-import");
+        let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+        let data = sem.file("src/data.json").expect("main.ts imports it");
+        assert!(!sem.is_project_code(data));
+        assert!(!sem.is_repo_declaration_file(data));
     }
 
     #[test]

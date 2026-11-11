@@ -209,3 +209,10 @@ fn not_in_project_says_which_configs_were_skipped_for_not_parsing() {
     );
     assert!(error.to_string().contains("configs/broken.json"), "{error}");
 }
+
+#[test]
+fn an_imported_json_file_is_in_the_program_but_is_not_project_code() {
+    // the V-NOC frontend imports two JSON fixtures: they were listed as project files, and nothing in them can be analyzed
+    let project = Project::open(&fixture("json-import"), Path::new("src/main.ts")).unwrap();
+    assert_eq!(project.files(), ["src/main.ts"]);
+}
