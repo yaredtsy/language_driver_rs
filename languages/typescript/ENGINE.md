@@ -352,3 +352,20 @@ threads call into one checker), and TS5 when the driver asks for parallelism.
 The proof module is behind the feature `__proof` because a `compile_fail` doctest is a separate crate that can only name public items. With the feature off rustdoc
 finds no proof doctest at all and reports success, hence the script and its count file. Cargo unifies features across a build, so a crate that enables `__proof`
 exposes `Sem` to everything built with it.
+
+### Which config owns a file: solution configs and references (TS3 step 6)
+
+`find_owner` ports `tsrs_lint`'s `find_tsconfig` (`engine.rs`), bounded by the root: the nearest config, then the configs it references (`resolved_project_reference_paths`),
+then the config above, and so on; the first whose file list holds the file wins (`!file_names().is_empty()`, `file_names_by_path` contains it; a `composite` config must also match
+by its own patterns, `possibly_matches_file_name`). `disableSolutionSearching` on the starting config stops the climb. Nothing holds it: `NotInProject` naming the nearest config.
+
+- **The compiler API `tsrs_lint` uses is enough**: no project-reference support had to be written. The `[check]` in the plan (does `tsrs_compiler` support references?) is answered:
+  yes, through the parsed config's references plus `ProgramOptions::use_source_of_project_reference`.
+- **`use_source_of_project_reference = true` for a config program** (as `tsrs_lint` sets it; off for an inferred one). Without it a referenced project's files drop out of the program (the
+  `references` fixture's `packages/lib/src/greet.ts` is gone), because a referenced project is expected to be built and its `.d.ts` output read instead; that output is often not there.
+  With it on, a call from `app` into `lib` should reach `lib`'s source (a def, not an `External`): TS4's fixtures must confirm the resolved target.
+- **Error policy (mine, not tsrs's):** a syntax error in the **nearest** config is a `ConfigError`; one in a config only reached through a reference or a climb is skipped, as `tsrs_lint`
+  does (it may have nothing to do with this file). Skipping can hide a broken referenced config that did own the file; the person then sees `NotInProject`.
+- **Real layout checked** on a Vite project on this machine (`tsconfig.json` with `"files": []` and references to `tsconfig.app.json` and `tsconfig.node.json`):
+  `src/main.tsx` and `src/app.tsx` load the app config's program (`src/vite-env.d.ts` is left out of `files()`: a declaration file), `vite.config.ts` loads the node config's, and `tsconfig.json`
+  itself is `NotInProject`. The fixture `solution` has the same shape. Not checked: the V-NOC frontend itself (its path is not in this repo), a pnpm workspace, `extends` chains.
