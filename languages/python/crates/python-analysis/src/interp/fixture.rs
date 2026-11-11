@@ -848,8 +848,14 @@ fn the_core_graph_of_every_fixture_keeps_core_s_invariants() {
     }
 }
 
-/// What an edge rests on. A method on an object the walk built is `Path`; a class, a def named in the code, a method on an object only ty
-/// typed, and a library function are `Type`. An `Unresolved` edge has a reason, and the counter of that name counts the edges.
+/// What an edge rests on. A method on an object the walk built **in that walk** is `Path`; a class, a def named in the code, a method on an
+/// object only ty typed, a method on an input object of the context (its `self`, an argument rebuilt from the key), and a library function
+/// are `Type`. An `Unresolved` edge has a reason, and the counter of that name counts the edges.
+///
+/// KNOWN LIMIT: an object a caller built and passed down is an input of the callee, so a method called on it there is `Type`, not `Path`
+/// (`Pipeline.run` calling `self.handler.process()` on a handler `outside` wrote; `with_default.inner` calling `x.go()` on a default `A()`
+/// built by `outer`). A key holds an object's class and attributes, not whether the walk of a caller built it. Keeping `Path` through the key
+/// needs that bit in `Fp::Instance`: digests change and contexts split. Decided not now; revisit with part 04 (returned objects).
 #[test]
 fn edges_say_what_they_rest_on() {
     use crate::interp::call_graph;
@@ -881,6 +887,9 @@ fn edges_say_what_they_rest_on() {
             "new state.JsonHandler Type"
         ]
     );
+    // a classmethod entry holds its class in `cls`: `cls()` is a class named by the code, not an unknown callee
+    let (rows, _) = edges("03-classes/python/entries.py", "Reg.create");
+    assert_eq!(rows, ["new entries.Reg Type"]);
     let (rows, _) = edges("03-classes/python/chains.py", "annotated");
     assert_eq!(rows, ["chains.Handler.handle Type"]);
     let (rows, stats) = edges("03-classes/python/chains.py", "unknown_mid_chain");
@@ -1552,19 +1561,19 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
         total.at_unresolved,
         total.extra
     );
-    assert_eq!((entries, failing), (48, 22));
-    assert_eq!(total.missing, 46, "nodes inline finds and summary does not");
-    assert_eq!(total.highest_missing, 37, "the topmost of them");
+    assert_eq!((entries, failing), (48, 21));
+    assert_eq!(total.missing, 44, "nodes inline finds and summary does not");
+    assert_eq!(total.highest_missing, 36, "the topmost of them");
     assert_eq!(
-        total.at_unresolved, 34,
+        total.at_unresolved, 33,
         "topmost missing nodes at a call site the graph marks Unresolved"
     );
     assert_eq!(
         (total.nodes_at_unresolved, total.nodes_elsewhere),
-        (42, 4),
+        (40, 4),
         "of the missing nodes: under an Unresolved call site, and elsewhere"
     );
-    assert_eq!(total.missing, 42 + 4);
+    assert_eq!(total.missing, 40 + 4);
 
     // The claim "every missing node is under an Unresolved call site" is false, and these three are why. Property accessors: summary mode
     // makes the call when it knows the receiver (`Box.handler` in `swap` is back), but not here: `r` comes from a classmethod that

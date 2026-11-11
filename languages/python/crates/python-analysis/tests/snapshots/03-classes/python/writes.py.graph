@@ -4,7 +4,7 @@ stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"anno
 writes.JsonHandler.process#ad17a16458f0bde5 Finished
 writes.Pipeline.__init__#940f8708ce0193fa Finished
 writes.Pipeline.run#e9a21ba1950e8645 Finished
-  @23-45 -> writes.JsonHandler.process#ad17a16458f0bde5 Path
+  @23-45 -> writes.JsonHandler.process#ad17a16458f0bde5 Type
 writes.outside#ab284c6f346e90b8 Finished
   @23-45 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Type
   @32-44 -> new writes.CsvHandler init - Type
@@ -58,7 +58,7 @@ stats: walks 4, contexts 4, reuse_hits 1, unresolved 1, cuts {}, language {"anno
 writes.JsonHandler.process#ad17a16458f0bde5 Finished
 writes.Pipeline.__init__#940f8708ce0193fa Finished
 writes.Pipeline.run#491a9d94fadd74d4 Finished
-  @23-45 -> writes.JsonHandler.process#ad17a16458f0bde5 Path
+  @23-45 -> writes.JsonHandler.process#ad17a16458f0bde5 Type
   @23-45 -> ? unknown_callee
 writes.two_candidates#1344a6e8d804cb8b Finished
   @31-53 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Type

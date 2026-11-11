@@ -247,11 +247,15 @@ pub(crate) fn solve<'db>(
     // Called with no arguments (step 01.11). A walk of the entry's own frame
     // does the binding, exactly as step 02 did.
     let mut w = Walk::new(&s, def);
+    let receiver = s
+        .sem
+        .classmethod_class(def)
+        .map(value::AbstractValue::Class);
     let bound = w.bind_parameters(
         &mut s,
         def,
         node,
-        None,
+        receiver,
         &bind::EvaluatedArgs::default(),
         None,
     );

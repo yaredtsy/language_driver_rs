@@ -193,6 +193,18 @@ impl<'db> Sem<'db> {
         }
     }
 
+    /// The class `def` is a classmethod of: what its first parameter, `cls`, holds when it is the entry. `None` for a method, a static
+    /// method, a function, and a method of a class nested in a function (no way to say which class there).
+    pub(crate) fn classmethod_class(&self, def: Definition<'db>) -> Option<Definition<'db>> {
+        let chain = self.scope_chain(def);
+        match chain.iter().rev().nth(1)? {
+            Scope::Class(c) => {
+                matches!(self.entry_kind(*c, def), EntryKind::ClassMethod).then_some(*c)
+            }
+            Scope::Function(_) => None,
+        }
+    }
+
     pub(crate) fn def_range(&self, def: Definition<'db>) -> TextRange {
         def.full_range(self.db, &self.parsed(def)).range()
     }

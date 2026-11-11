@@ -9,8 +9,8 @@ methods.Greeter.make#169651eefa2e5167 Finished
   @44-48 -> methods.on_ok#82adbeef02b9c5a9 Type
   @64-69 -> new methods.Greeter init - Type
 methods.Greeter.twice#3db5abc9660d4bc8 Finished
-  @29-43 -> methods.Greeter.greet#e9360c976c36e02b Path
-  @52-66 -> methods.Greeter.greet#e9360c976c36e02b Path
+  @29-43 -> methods.Greeter.greet#e9360c976c36e02b Type
+  @52-66 -> methods.Greeter.greet#e9360c976c36e02b Type
 methods.Quiet.greet#cb68261d5c3d8dc4 Finished
 methods.main#979944f3663f24a5 Finished
   @20-29 -> new methods.Greeter init - Type

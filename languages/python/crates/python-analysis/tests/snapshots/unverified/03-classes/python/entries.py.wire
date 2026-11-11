@@ -33,9 +33,13 @@ entries.Job.run
 
 == Reg.create
 entries.Reg.create
+  entries.Reg @86:9
+    entries.log @82:9
 
 == Reg.create (merged)
 entries.Reg.create
+  entries.Reg @86:9
+    entries.log @82:9
 
 == Reg.make
 entries.Reg.make

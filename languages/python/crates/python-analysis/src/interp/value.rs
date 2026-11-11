@@ -46,6 +46,14 @@ pub(crate) enum OriginKey {
     New { site: TextRange, act: ActivationId },
 }
 
+impl OriginKey {
+    /// Was the object built in the walk that holds it? The one thing a `Basis::Path` edge may rest on: an `Entry` object is this
+    /// context's input, rebuilt from the key (its class came from the key, which a caller or ty filled), and an `Opaque` one is ty's.
+    pub(crate) fn is_built_here(&self) -> bool {
+        matches!(self, OriginKey::New { .. })
+    }
+}
+
 /// Where an input object sits: a root, then steps from it.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct Path {

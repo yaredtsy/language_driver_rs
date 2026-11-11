@@ -63,7 +63,7 @@ stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"anno
 isolation.CsvHandler.process#e46adc730ea6551e Finished
 isolation.Pipeline.__init__#ed3c573b9a3ef18d Finished
 isolation.Pipeline.run#bd715d5acbee1770 Finished
-  @29-55 -> isolation.CsvHandler.process#e46adc730ea6551e Path
+  @29-55 -> isolation.CsvHandler.process#e46adc730ea6551e Type
   @29-55 -> ? unknown_callee
 isolation.maybe_opaque#0c5d7adc4c5772ef Finished
   @29-52 -> new isolation.Pipeline init isolation.Pipeline.__init__#ed3c573b9a3ef18d Type

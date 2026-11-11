@@ -500,10 +500,15 @@ impl<'db> Walk<'db> {
         let runs = !args.has_empty();
         let bound = self.bind_for_callee(sol, def, node, receiver, args, enclosing);
         let ctx = sol.key(self, def, &bound, enclosing, env);
-        // Path when the walk itself holds what the call rests on: an object it built (the receiver carries state) or a closure it made.
-        // Everything else, a def found by name or a method on an object ty typed, is the engine's answer.
+        // Path when the walk itself holds what the call rests on: an object it built here or a closure it made. Everything else is the
+        // engine's answer: a def found by name, a method on an object ty typed, and a method on an input object of this context (`self`
+        // of a walked method, an argument), whose class the key gave.
         let basis = match receiver {
-            Some(AbstractValue::Instance { origin, .. }) if origin.holds_state() => Basis::Path,
+            Some(AbstractValue::Instance { origin, .. })
+                if self.origins[origin].is_built_here() =>
+            {
+                Basis::Path
+            }
             _ if enclosing.is_some() => Basis::Path,
             _ => Basis::Type,
         };

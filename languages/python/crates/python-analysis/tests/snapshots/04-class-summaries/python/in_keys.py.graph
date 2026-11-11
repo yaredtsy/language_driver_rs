@@ -2,9 +2,9 @@
 entries: in_keys.main#e0e8be6ced889574
 stats: walks 7, contexts 7, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 in_keys.Box.run#3d3e202fad000209 Finished
-  @23-45 -> in_keys.JsonHandler.process#201cf445de83e0b0 Path
+  @23-45 -> in_keys.JsonHandler.process#201cf445de83e0b0 Type
 in_keys.Box.run#fa527ee471675d68 Finished
-  @23-45 -> in_keys.CsvHandler.process#1ffc2e5f7f896afb Path
+  @23-45 -> in_keys.CsvHandler.process#1ffc2e5f7f896afb Type
 in_keys.CsvHandler.process#1ffc2e5f7f896afb Finished
 in_keys.JsonHandler.process#201cf445de83e0b0 Finished
 in_keys.csv_box#4329d7422b50b100 Finished
@@ -24,7 +24,7 @@ in_keys.main#e0e8be6ced889574 Finished
 entries: in_keys.shared#9e82fd51344bd701
 stats: walks 3, contexts 3, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 in_keys.Box.run#3d3e202fad000209 Finished
-  @23-45 -> in_keys.JsonHandler.process#201cf445de83e0b0 Path
+  @23-45 -> in_keys.JsonHandler.process#201cf445de83e0b0 Type
 in_keys.JsonHandler.process#201cf445de83e0b0 Finished
 in_keys.shared#9e82fd51344bd701 Finished
   @22-27 -> new in_keys.Box init - Type
@@ -38,14 +38,14 @@ in_keys.shared#9e82fd51344bd701 Finished
 entries: in_keys.passed#09b64dc0254771d0
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 in_keys.Box.run#fa527ee471675d68 Finished
-  @23-45 -> in_keys.CsvHandler.process#1ffc2e5f7f896afb Path
+  @23-45 -> in_keys.CsvHandler.process#1ffc2e5f7f896afb Type
 in_keys.CsvHandler.process#1ffc2e5f7f896afb Finished
 in_keys.passed#09b64dc0254771d0 Finished
   @22-27 -> new in_keys.Box init - Type
   @44-56 -> new in_keys.CsvHandler init - Type
   @61-67 -> in_keys.use#1b61ab04a2516f66 Type
 in_keys.use#1b61ab04a2516f66 Finished
-  @16-23 -> in_keys.Box.run#fa527ee471675d68 Path
+  @16-23 -> in_keys.Box.run#fa527ee471675d68 Type
 
 == deep
 entries: in_keys.deep#3ae4429bb2ce501e
