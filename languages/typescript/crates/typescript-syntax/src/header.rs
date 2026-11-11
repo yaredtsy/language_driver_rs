@@ -8,6 +8,7 @@ use analyzer_core::edit::{Edit, MarkerStyle, comment_marker};
 use analyzer_core::text::Span;
 
 use crate::Skip;
+use crate::marker;
 use crate::sem::{Comment, CommentKind, Parsed};
 
 /// Where the first line after a `#!` line begins (past a byte-order mark when there is no shebang), and the comments from the top of the file up to
@@ -54,17 +55,13 @@ pub(crate) fn plan(
         return Err(Skip::AlreadyMarked { existing });
     }
     let (mut at, comments) = top(p, text);
-    let first_token = comments.last().map(|last| p.token_after(last.span.end));
-    for (i, c) in comments.iter().enumerate() {
-        if c.kind == CommentKind::Line {
-            break;
-        }
-        // the first def's own JSDoc: directly above it, no blank line. The header goes before it, not between them
-        let is_last = i + 1 == comments.len();
-        if c.kind == CommentKind::Jsdoc
-            && is_last
-            && first_token.is_some_and(|t| directly_above(text, c.span, t))
-        {
+    // the first def's own JSDoc, by the rule a def's marker is read with. The header goes before it, not between them
+    let own_doc = comments
+        .last()
+        .map(|last| p.token_after(last.span.end))
+        .and_then(|token| marker::doc_above(text, token, &comments));
+    for c in &comments {
+        if c.kind == CommentKind::Line || Some(c.span) == own_doc {
             break;
         }
         // a block comment with code after it on its line: the header goes above that line
@@ -81,16 +78,6 @@ pub(crate) fn plan(
         return Ok(Edit::insert(at, format!("{eol}{line}{eol}")));
     }
     Ok(Edit::insert(at, format!("{line}{eol}")))
-}
-
-/// Only whitespace and at most one line break between a comment and the token.
-fn directly_above(text: &str, comment: Span, token: u32) -> bool {
-    let between = text
-        .get(comment.end as usize..token as usize)
-        .unwrap_or("x");
-    let breaks = between.matches('\n').count() + between.matches('\r').count()
-        - between.matches("\r\n").count();
-    between.chars().all(char::is_whitespace) && breaks <= 1
 }
 
 /// The offset of the line after the one `comment` ends on, when nothing but blanks follows the comment on its line; the end of the text when

@@ -25,14 +25,28 @@ pub(crate) fn own_line(text: &str, start: u32) -> Option<u32> {
         .then_some((line + bom) as u32)
 }
 
-/// The JSDoc block that documents the def starting at `start`: the last comment before it, if it is a `/** */` block with only whitespace
-/// between it and the def and **no blank line** (a blank line detaches it: the comment then belongs to the file). A `//` or `/* */` comment
-/// between the block and the def detaches it too: only the nearest block counts, and it must be the nearest comment.
+/// Only whitespace and at most one line break between `from` and `to`: no blank line separates them.
+fn adjacent(text: &str, from: u32, to: u32) -> bool {
+    text.get(from as usize..to as usize).is_some_and(|between| {
+        between.chars().all(char::is_whitespace) && line_breaks(between) <= 1
+    })
+}
+
+/// The JSDoc block that documents the def starting at `start`: the nearest `/** */` block above it, reached with **no blank line** on the
+/// way (a blank line detaches it: the comment then belongs to the file). `//` and `/* */` comments between the block and the def do not
+/// detach it: the engine attaches the block through them, and a second block written below them would hide the user's own.
 pub(crate) fn doc_above(text: &str, start: u32, comments: &[Comment]) -> Option<Span> {
-    let last = comments.last().filter(|c| c.kind == CommentKind::Jsdoc)?;
-    let between = text.get(last.span.end as usize..start as usize)?;
-    let breaks = line_breaks(between);
-    (between.chars().all(char::is_whitespace) && breaks <= 1).then_some(last.span)
+    let mut below = start;
+    for c in comments.iter().rev() {
+        if !adjacent(text, c.span.end, below) {
+            return None;
+        }
+        if c.kind == CommentKind::Jsdoc {
+            return Some(c.span);
+        }
+        below = c.span.start;
+    }
+    None
 }
 
 /// How many line breaks `text` has (`\r\n` is one).
@@ -178,15 +192,11 @@ pub(crate) fn plan(
         Some(block) => plan_in_block(text, block, label, marker_text),
         None => {
             // a new block goes directly above the def, below any plain comment: unless that comment points at the def
-            if let Some(last) = comments.last() {
-                let between = text
-                    .get(last.span.end as usize..start as usize)
-                    .unwrap_or("");
-                let adjacent =
-                    between.chars().all(char::is_whitespace) && line_breaks(between) <= 1;
-                if adjacent && last.span.slice(text).is_some_and(is_directive) {
-                    return Err(Skip::DirectiveAbove);
-                }
+            if let Some(last) = comments.last()
+                && adjacent(text, last.span.end, start)
+                && last.span.slice(text).is_some_and(is_directive)
+            {
+                return Err(Skip::DirectiveAbove);
             }
             let indent = &text[own as usize..start as usize];
             Ok(Edit::insert(
@@ -342,13 +352,32 @@ mod tests {
     }
 
     #[test]
-    fn another_comment_between_detaches_the_block() {
+    fn another_comment_between_does_not_detach_the_block() {
         let text = "/** doc */\n// note\nfunction f() {}\n";
         let line = Comment {
             span: Span::new(11, 18),
             kind: CommentKind::Line,
         };
-        assert_eq!(doc_above(text, def_start(text), &[jsdoc(text), line]), None);
+        assert_eq!(
+            doc_above(text, def_start(text), &[jsdoc(text), line]),
+            Some(jsdoc(text).span)
+        );
+        // a blank line anywhere on the way does
+        for text in [
+            "/** doc */\n\n// note\nfunction f() {}\n",
+            "/** doc */\n// note\n\nfunction f() {}\n",
+        ] {
+            let at = text.find("//").unwrap() as u32;
+            let line = Comment {
+                span: Span::new(at, at + 7),
+                kind: CommentKind::Line,
+            };
+            assert_eq!(
+                doc_above(text, def_start(text), &[jsdoc(text), line]),
+                None,
+                "{text:?}"
+            );
+        }
     }
 
     #[test]

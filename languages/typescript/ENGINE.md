@@ -125,7 +125,7 @@ Answer: **yes**. Fixture: one file with 21 candidate nodes (see the table). tsrs
 - **Two blocks above one def**: `node.jsdoc()` returns both, in order; the scanner lists both. The nearer one (the last) is the one that
   documents the def, and it is the one our rule uses.
 - **Blank line between the block and the def**: tsrs **still attaches** it. So does a `//` comment between the block and the def. Our rule says a
-  blank line detaches, so TS2 applies its own blank-line check on the text.
+  blank line detaches, so TS2 applies its own blank-line check on the text. A comment between does not detach in our rule either.
 - **Insert a line and reparse**: replacing `/** fn doc */` with a three-line block containing ` * ID: abc` gave 0 diagnostics, and the JSDoc was still
   attached to the function (range `(0, 28)`).
 - **`.tsx` and `.js`** (the same fixture, with the TS-only syntax removed for `.js`): every row above is identical, byte for byte except for the

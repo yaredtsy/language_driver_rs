@@ -63,7 +63,7 @@ pub enum Placement {
 
 ```
 1. start at the first byte of the def's `range` (TS1 §4): its first decorator, modifier or keyword
-2. take the JSDoc block (`/** … */`) directly above it: only whitespace between, and NO blank line
+2. take the nearest JSDoc block (`/** … */`) above it: only whitespace and comments between, and NO blank line
 3. inside it, the first line that, after its leading `*` and spaces, reads   <label>:<spaces><text>   is the marker
 4. <text> is returned exactly as written, trimmed
 ```
@@ -71,7 +71,10 @@ pub enum Placement {
 - A blank line between the block and the def detaches it: the comment belongs to the file, not to the def.
 - A one-line block (`/** ID: x */`) is read the same way.
 - A plain block comment (`/* ID: x */`) or a line comment (`// ID: x`) is **not** read. Only `/**`.
-- With several JSDoc blocks above a def, only the nearest one counts. That is the one TypeScript itself attaches.
+- With several JSDoc blocks above a def, only the nearest one counts. That is the one TypeScript itself uses.
+- A `//` or `/* */` comment between the block and the def does **not** detach it. (Changed in the TS2 review: TypeScript attaches the block
+  through comments and uses only the last block, so a new block written below the comment hid the user's own. In a checked `.js` file that
+  switched its `@param` types off.)
 - A marker line that sits under a block tag (after `@param`, `@returns`) is still **read**. It is only never *written* there (below).
 
 ### Planning
@@ -200,6 +203,7 @@ marker_jsdoc_oneline.ts        /** Parses. */ → becomes three lines
 marker_no_jsdoc.ts             a new one-line block
 marker_plain_comment.ts        `/* x */` or `// x` above the def → a new JSDoc goes BELOW it; `/* ID: x */` is not read
 marker_jsdoc_blank_line.ts     a block separated by a blank line is NOT the def's
+marker_comment_between.ts      a block with a `//` or `/* */` comment below it IS the def's; a blank line on the way detaches it
 marker_under_tag.ts            a hand-written marker after @returns is read
 marker_decorators.ts           the JSDoc sits above the decorators
 marker_const_arrow.ts          JSDoc on the `export const` statement

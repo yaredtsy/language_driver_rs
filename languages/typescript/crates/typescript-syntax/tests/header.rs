@@ -65,6 +65,15 @@ fn the_first_defs_own_jsdoc_stays_attached_to_it() {
         mark("/* Licence. */\n/**\n * Doc of f.\n */\nfunction f() {}\n").unwrap(),
         "/* Licence. */\n// ID: h1\n/**\n * Doc of f.\n */\nfunction f() {}\n"
     );
+    // a comment between the JSDoc and the def does not detach it (the rule a def's marker is read with)
+    assert_eq!(
+        mark("/** Doc of f. */\n// eslint-disable-next-line\nfunction f() {}\n").unwrap(),
+        "// ID: h1\n/** Doc of f. */\n// eslint-disable-next-line\nfunction f() {}\n"
+    );
+    assert_eq!(
+        mark("/** Doc of f. */\n/* a note */\nfunction f() {}\n").unwrap(),
+        "// ID: h1\n/** Doc of f. */\n/* a note */\nfunction f() {}\n"
+    );
 }
 
 #[test]

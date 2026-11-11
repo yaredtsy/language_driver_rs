@@ -135,6 +135,55 @@ fn a_new_block_goes_below_a_plain_comment() {
 }
 
 #[test]
+fn a_comment_between_the_block_and_the_def_does_not_detach_the_block() {
+    // a second block below the note would hide the first: TypeScript uses only the last one
+    assert_eq!(
+        mark(
+            "/**\n * Real docs.\n */\n// TODO: rename\nfunction f() {}\n",
+            "f"
+        )
+        .unwrap(),
+        "/**\n * Real docs.\n * ID: m1\n */\n// TODO: rename\nfunction f() {}\n"
+    );
+    assert_eq!(
+        mark("/** Real docs. */\n/* a note */\nfunction f() {}\n", "f").unwrap(),
+        "/**\n * Real docs.\n * ID: m1\n */\n/* a note */\nfunction f() {}\n"
+    );
+    // a directive stays on the line above the def: the line goes into the block, not between them
+    assert_eq!(
+        mark(
+            "/**\n * Docs.\n */\n// eslint-disable-next-line no-unused-vars\nfunction f(x: any) {}\n",
+            "f"
+        )
+        .unwrap(),
+        "/**\n * Docs.\n * ID: m1\n */\n// eslint-disable-next-line no-unused-vars\nfunction f(x: any) {}\n"
+    );
+    // a comment after the block on its line
+    assert_eq!(
+        mark("/** Docs. */ // why\nfunction f() {}\n", "f").unwrap(),
+        "/**\n * Docs.\n * ID: m1\n */ // why\nfunction f() {}\n"
+    );
+}
+
+#[test]
+fn a_marker_is_read_through_a_comment_between() {
+    let text = "/**\n * Docs.\n * ID: abc\n */\n// @ts-ignore\nfunction f() {}\n";
+    assert_eq!(
+        mark(text, "f"),
+        Err(Skip::AlreadyMarked {
+            existing: "abc".to_owned()
+        })
+    );
+    // a blank line on the way detaches the block, on either side of the comment
+    for text in [
+        "/** ID: abc */\n\n// note\nfunction f() {}\n",
+        "/** ID: abc */\n// note\n\nfunction f() {}\n",
+    ] {
+        assert_eq!(outline(text, Dialect::Ts, STYLE).defs[0].marker, None);
+    }
+}
+
+#[test]
 fn a_detached_block_stays_the_files_and_the_def_gets_its_own() {
     let text = "/**\n * About the file.\n */\n\nfunction f() {}\n";
     assert_eq!(

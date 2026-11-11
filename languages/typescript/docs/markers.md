@@ -25,14 +25,14 @@ export async function parseOrder(raw: string) {
 
 1. Start at the first byte of the def's `range`: its first decorator, modifier or keyword. The def must **own its line**: only blanks (and a
    byte-order mark) before it on that line. Otherwise it has no marker to read.
-2. Take the **last comment** before it. It must be a `/** … */` block (`/**/` is not one), with only whitespace between it and the def and **no
-   blank line** (a line of blanks is a blank line). A `//` or `/* */` comment between the block and the def detaches the block; a blank line
-   detaches it too (the comment then belongs to the file).
+2. Take the **nearest `/** … */` block** above it (`/**/` is not one), reached with **no blank line** on the way (a line of blanks is a blank
+   line). `//` and `/* */` comments between the block and the def do not detach it: TypeScript attaches the block through them. A blank line
+   anywhere between the block and the def detaches it (the comment then belongs to the file).
 3. In the block, the first line that, after its leading `*` and spaces, reads `<label>:<spaces><text>` is the marker. The text is returned as
    written, trimmed. `IDENT: x` and `see ID: x` are not it. A marker under a block tag (`@returns`) is read.
 
 Only `/**` is read. `/* ID: x */` and `// ID: x` above a def are not markers (`marker_plain_comment.ts`). With two blocks above a def only the
-nearest counts (`marker_jsdoc_blank_line.ts`).
+nearest counts (`marker_jsdoc_blank_line.ts`). A marker in a block is read through the comments below it (`marker_comment_between.ts`).
 
 Where "above the def" is: the `export const` statement for `export const f = () => {}`; the member's own first line for a class member or an
 object-literal method; the **first overload signature** for an overloaded function (a marker written above the implementation is not read).
@@ -45,6 +45,10 @@ object-literal method; the **first overload signature** for an overloaded functi
 | a multi-line block with block tags (`@param`, `@returns`, …) | the line **before the first block-tag line**, so that it ends the description. A blank ` *` line before the tags stays above it |
 | a one-line block (`/** Parses. */`) | the comment rewritten as `/**`, ` * Parses.`, ` * <label>: <text>`, ` */`. A block that is only a tag (`/** @type {X} */`) gets the marker first, then the tag. An empty block (`/** */`, `/***/`) gets just the marker |
 | no block (nothing, a plain `/* */`, a `//` comment, or a block detached by a blank line) | a new one-line block `/** <label>: <text> */` directly above the def's first line, **below** any plain comment and **above** decorators |
+
+A block with a `//` or `/* */` comment between it and the def is edited like any other block, and the comment stays where it is. A new block is
+never written below it: TypeScript uses only the last block above a def, so the user's own would stop showing, and in a checked `.js` file its
+`@param` types would stop applying.
 
 The inserted text copies the block's own indentation and ` * ` prefix (or the def's indentation for a new block), and the file's line ending (the
 first one found; `\n` when there is none). A byte-order mark stays first. The one-line case is the only edit that changes existing bytes; the old
@@ -77,7 +81,8 @@ It is written, in order:
    with code after it on its line is not skipped;
 3. **before** any `//` comment (`/// <reference path="…" />`, `// @ts-check`), `"use strict"` and every other directive or statement, because those only need to
    be preceded by comments, and a comment is what we add;
-4. the first def's own JSDoc (directly above it, no blank line) stays attached to it: the header goes above it, not between them.
+4. the first def's own JSDoc (by the reading rule above: no blank line on the way, comments between allowed) stays attached to it: the header
+   goes above it, not between them.
 
 An empty file gets `// ID: x`. A file whose last line has no line break gets one first. `AlreadyMarked` and `InvalidText` apply as for defs.
 
