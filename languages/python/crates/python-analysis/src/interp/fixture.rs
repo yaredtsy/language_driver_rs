@@ -1195,13 +1195,23 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
             "03-classes/python/writes.py two_candidates/writes.Pipeline.run -> writes.CsvHandler.process",
         ]
     );
-    // Wrong edges, with nothing to mark them: ty's static type, the union of every assignment in the class (`Job.h` is A in __init__ and B
-    // in configure) or in the function (`outer`'s h is A, then B), used where the receiver was not tracked along the path.
+    // Edges summary mode has and inline mode does not. All come from ty's static type, the union of every assignment in the class (`Job.h`
+    // is A in __init__ and B in configure) or in the function (`outer`'s h is A, then B), used where the receiver was not tracked along
+    // the path, and all are ordinary unmarked edges.
+    assert_eq!(total.extra, 2);
+    let (excluded, errors): (Vec<&String>, Vec<&String>) = total
+        .extras
+        .iter()
+        .partition(|e| e.ends_with("Job.run -> entries.B.go"));
+    // Reachable, and excluded only by the entry rule: at a method entry "only __init__ is part of the start", but `configure` may have run
+    // before `run`. The rule stays as it is, and this edge is not an error.
     assert_eq!(
-        total.extras,
-        [
-            "03-classes/python/entries.py Job.run -> entries.B.go",
-            "03-classes/python/entries.py outer.inner -> entries.A.go",
-        ]
+        excluded,
+        ["03-classes/python/entries.py Job.run -> entries.B.go"]
+    );
+    // An error: `h` is B whenever `inner` runs, because it can only run after `outer` has finished. A.go is unreachable.
+    assert_eq!(
+        errors,
+        ["03-classes/python/entries.py outer.inner -> entries.A.go"]
     );
 }
