@@ -370,3 +370,16 @@ by its own patterns, `possibly_matches_file_name`). `disableSolutionSearching` o
 - **Real layout checked** on a Vite project on this machine (`tsconfig.json` with `"files": []` and references to `tsconfig.app.json` and `tsconfig.node.json`):
   `src/main.tsx` and `src/app.tsx` load the app config's program (`src/vite-env.d.ts` is left out of `files()`: a declaration file), `vite.config.ts` loads the node config's, and `tsconfig.json`
   itself is `NotInProject`. The fixture `solution` has the same shape. Not checked: the V-NOC frontend itself (its path is not in this repo), a pnpm workspace, `extends` chains.
+
+### What a reload must watch, and what moves across threads (TS3 steps 7–8)
+
+- **`ParsedCommandLine::extended_source_files()` lists the config files an `extends` pulled in**, so `Project::environment_inputs` can name `config/shared.json` exactly. The fixed
+  globs alone would miss it (it is not named `tsconfig*.json`). Every config the owner search read goes in too, a skipped broken one included: fixing it changes the answer.
+  Not covered: a file a config reads in some other way (`tsrs` content mappers), and `package.json` fields other than through the glob (a `types` entry is covered by `package.json`).
+- **A `Project` opened on one thread and dropped on another works** (`tests/threads.rs`: 20 move-and-drop rounds, four projects alive at once, four threads opening at once, 100 rounds
+  of open-on-one drop-on-another with flat memory; the memory test fails, 116 to 282 MB, with the free removed). So the free does not depend on the thread that made the program.
+  `Project` is still `Send + Sync` and the `Sync` part is not pinned: two threads calling into one checker is TS4's question.
+- **A skipped config is reported, not silent** (`OpenError::NotInProject { config, skipped }`). It is not reported when `open` succeeds: a skipped broken config that would also have
+  held the file is invisible then, except through `environment_inputs`. If that matters, `Project` needs a `skipped_configs()`.
+- **Not checked, still:** the V-NOC frontend itself through `Project::open` (it is not on this machine: the only matches for the name are editor tracker folders), a pnpm workspace,
+  and Windows paths in `find_owner` (`relative_to` and the visited set compare engine strings, which are `/`-separated everywhere; the `canonicalize` of the root is not).

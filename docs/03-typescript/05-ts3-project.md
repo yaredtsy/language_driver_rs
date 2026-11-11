@@ -19,9 +19,14 @@ pub struct Project { /* private */ }
 impl Project {
     /// Load the TypeScript / JavaScript project that owns `file`, searching upward from it for a tsconfig.
     pub fn open(root: &Path, file: &Path) -> Result<Project, OpenError>;
-    /// The files of the loaded program, relative to `root`.
+    /// The project's own code under the root, relative to it, sorted: not `node_modules`, not a `.d.ts`, not a bundled lib.
     pub fn files(&self) -> Vec<String>;
-    /// File globs whose change means "load again": tsconfig files, package.json, lock files.
+    /// The repo's own `.d.ts` files in the program, apart from `files()`: editing one changes how calls resolve.
+    pub fn declaration_files(&self) -> Vec<String>;
+    /// The config whose program this is (after following references), or `None` for an inferred project.
+    pub fn config_file(&self) -> Option<&str>;
+    /// What means "load again": globs for config, package and lock files, plus the exact config files that fed this program and no glob covers
+    /// (an `extends` target with any name, a config skipped for a syntax error).
     pub fn environment_inputs(&self) -> Vec<String>;
 }
 
@@ -29,7 +34,7 @@ impl Project {
 pub enum OpenError {
     NoSuchFile,
     ConfigError(String),        // no config found, or it cannot be read (a syntax error in it counts)
-    NotInProject(String),       // the config loaded fine, but its program does not hold `file`; carries the config's path
+    NotInProject { config: String, skipped: Vec<String> }, // no config's program holds `file`; the nearest config, and the configs skipped because they did not parse
 }
 ```
 
@@ -170,7 +175,7 @@ that the walker can run on both. They should be: both come from `tsrs_parser`.
 | 4 | `is_project_code`, `package_of`, **and the proof of the lifetime**. `File<'p>` is the first handle `sem` hands out, so it carries the lifetime (`PhantomData<&'p Sem>`) from the day it exists, and the same step proves it binds | a fixture with a fake `node_modules/pkg` and a `.d.ts`; a `compile_fail` doctest on the real `Sem` and `File` (`typescript_analysis::proof`) where `drop(sem)` with a file alive does not compile, plus a twin that compiles. Done |
 | 5 | (merged into step 4) `Drop` and the memory loop test came early, with step 2 (`tests/memory.rs`). **`Func` in TS4 gets the same lifetime and its own compile-fail twin pair before it is used** | |
 | 6 | solution configs and project references | fixtures `solution` (the Vite layout), `references` (app → lib source), `parent-config`. **Done, before TS4.** Also opened the real Vite project on the machine |
-| 7 | `environment_inputs`, **and a separate listing of the repo's own `.d.ts` files** (not by widening `files()`, which leaves them out: they are not project code). A `.d.ts` changes how calls resolve (an `External` edge where there would be a def), so editing one must trigger a reload, and a cache keyed on `files()` alone would miss it | returns `**/tsconfig*.json`, `**/jsconfig.json`, `**/package.json`, the lock files; a fixture's own `src/types.d.ts` is in the `.d.ts` listing and not in `files()` |
-| 8 | `typescript-cli files <dir> <file>` | prints the loaded files and the config that was chosen: the debugging tool for "why is this call unresolved" |
+| 7 | `environment_inputs`, **and a separate listing of the repo's own `.d.ts` files** (`declaration_files`), not by widening `files()`. **Done.** The globs are `**/tsconfig*.json`, `**/jsconfig.json`, `**/package.json` and the npm, yarn, pnpm and bun lock files; the exact config files that fed the program are added when no glob covers them | fixtures `extends`, `broken-reference`, `with-node-modules` |
+| 8 | `typescript-cli files <dir> <file>` prints the chosen config, the loaded files, the repo's declaration files and the environment inputs: the debugging tool for "why is this call unresolved". **Done.** Exit 1 when the project does not load, 2 for wrong arguments | `typescript-cli/tests/files.rs` runs the binary on the fixtures |
 
 Next: [`06-ts4-calls.md`](06-ts4-calls.md)
