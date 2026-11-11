@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 analyzer-core     = { workspace = true }
 typescript-syntax = { workspace = true }
+tsrs_ast          = { workspace = true }
 tsrs_core         = { workspace = true }
 tsrs_compiler     = { workspace = true }
 tsrs_checker      = { workspace = true }

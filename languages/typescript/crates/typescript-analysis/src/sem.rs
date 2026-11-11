@@ -5,9 +5,11 @@
 //! a region set, and free the program on drop with that region entered. The region alone is not enough: the `Program` and its processed
 //! files are `Box::leak`ed on the heap, outside it (60 opens grew RSS to 349 MB without the free, 24 MB with it: `tests/memory.rs`).
 
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use tsrs_ast::SourceFile;
 use tsrs_compiler::{Program, ProgramOptions, ProgramRegions};
 use tsrs_core::arena::Region;
 use tsrs_core::{
@@ -36,7 +38,16 @@ impl ParseConfigHost for ConfigHost {
     }
 }
 
-pub(crate) struct Sem {
+/// A source file of a `Sem`'s program. tsrs's `P<SourceFile>` is `'static` and the compiler cannot see the program being freed, so this adds a
+/// lifetime: a `File<'p>` can only come from a `&'p Sem` (`PhantomData<&'p Sem>` stores nothing and borrows the `Sem`), and `Sem::drop`'s
+/// `unsafe` rests on that. `tests/` has the proof that `drop(project)` while a file is alive does not compile (`lib.rs`, `E0505`).
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct File<'p> {
+    node: P<SourceFile>,
+    _sem: PhantomData<&'p Sem>,
+}
+
+pub struct Sem {
     root: PathBuf,
     /// The program is freed by `Drop`. A `P<…>` taken from it must not outlive `self`.
     program: &'static Program,
@@ -49,7 +60,7 @@ impl Sem {
     /// Loads the program of the `tsconfig.json` (or `jsconfig.json`) nearest above `file`, looking no further up than `root`; with none, an
     /// inferred project built from `file` alone.
     /// `file` is relative to `root`, or absolute. A program that loads with type errors is not an error.
-    pub(crate) fn open(root: &Path, file: &Path) -> Result<Sem, OpenError> {
+    pub fn open(root: &Path, file: &Path) -> Result<Sem, OpenError> {
         let root = root.canonicalize().map_err(|_| OpenError::NoSuchFile)?;
         let file = root
             .join(file)
@@ -122,24 +133,53 @@ impl Sem {
         Ok(sem)
     }
 
-    /// The program's source files that live under the root, relative to it with `/`, sorted. The bundled libraries and anything outside the
-    /// root are left out.
-    pub(crate) fn files(&self) -> Vec<String> {
+    /// Every file of the program: the project's, `node_modules`, and the bundled libraries. Ask `is_project_code` to tell them apart.
+    pub(crate) fn files(&self) -> impl Iterator<Item = File<'_>> {
+        self.program.get_source_files().iter().map(|&node| File {
+            node,
+            _sem: PhantomData,
+        })
+    }
+
+    /// The file at `relative` (to the root, with `/`; `./` and `..` are folded), if the program holds it.
+    pub fn file(&self, relative: &str) -> Option<File<'_>> {
+        let name = tspath::get_normalized_absolute_path(relative, &to_engine_path(&self.root));
+        let node = self.program.get_source_file(&name)?;
+        Some(File {
+            node,
+            _sem: PhantomData,
+        })
+    }
+
+    /// The file's path relative to the root, with `/`; `None` for a file outside the root, such as the bundled libraries.
+    pub(crate) fn relative_path(&self, file: File<'_>) -> Option<String> {
         let root = to_engine_path(&self.root);
-        let mut files: Vec<String> = self
+        let relative = file.node.file_name().strip_prefix(root.as_str())?;
+        Some(relative.strip_prefix('/')?.to_owned())
+    }
+
+    /// Code of the project itself: not in `node_modules`, not a declaration file (`.d.ts`, `.d.mts`, `.d.cts`), not a bundled library.
+    pub(crate) fn is_project_code(&self, file: File<'_>) -> bool {
+        let name = file.node.file_name();
+        !self
             .program
-            .get_source_files()
-            .iter()
-            .filter_map(|file| {
-                let relative = file
-                    .file_name()
-                    .strip_prefix(root.as_str())?
-                    .strip_prefix('/')?;
-                Some(relative.to_owned())
-            })
-            .collect();
-        files.sort();
-        files
+            .is_source_file_default_library(file.node.path())
+            && !tspath::is_declaration_file_name(name)
+            && package_in_node_modules(name).is_none()
+            && !self.program.is_source_file_from_external_library(file.node)
+    }
+
+    /// The package a file belongs to, for an `External` edge: `"lodash"`, `"@scope/pkg"`, or `"typescript:lib"` for a bundled library. `None` for
+    /// the project's own files, declaration files included. `@types/x` is named `x`, the package it describes.
+    #[cfg_attr(not(test), expect(dead_code, reason = "TS4's External edges call it"))]
+    pub(crate) fn package_of(&self, file: File<'_>) -> Option<String> {
+        if self
+            .program
+            .is_source_file_default_library(file.node.path())
+        {
+            return Some(BUNDLED_LIBS.into());
+        }
+        package_in_node_modules(file.node.file_name())
     }
 }
 
@@ -153,6 +193,30 @@ impl Drop for Sem {
         // first one (`File<'p>`, TS3 step 4) must carry `PhantomData<&'p Sem>`, so the compiler checks that none outlives this drop.
         unsafe { tsrs_compiler::free_unshared_program(self.program) };
     }
+}
+
+/// What `package_of` says for a bundled `lib.*.d.ts` (`typescript:lib`: the engine's own copy of TypeScript's libraries).
+#[cfg_attr(not(test), expect(dead_code, reason = "only `package_of` uses it"))]
+const BUNDLED_LIBS: &str = "typescript:lib";
+
+/// The package a path inside `node_modules` belongs to, from the **last** `node_modules/` in it (pnpm nests them:
+/// `node_modules/.pnpm/a@1/node_modules/a/…` is `a`). `@scope/pkg` keeps its scope; `@types/x` is `x` and `@types/scope__x` is `@scope/x`, the
+/// packages they describe.
+fn package_in_node_modules(path: &str) -> Option<String> {
+    let (_, inside) = path.rsplit_once("/node_modules/")?;
+    let mut parts = inside.split('/');
+    let first = parts.next().filter(|part| !part.is_empty())?;
+    if !first.starts_with('@') {
+        return Some(first.to_owned());
+    }
+    let name = parts.next().filter(|part| !part.is_empty())?;
+    if first == "@types" {
+        return Some(match name.split_once("__") {
+            Some((scope, name)) => format!("@{scope}/{name}"),
+            None => name.to_owned(),
+        });
+    }
+    Some(format!("{first}/{name}"))
 }
 
 /// What `NotInProject` names when there was no config: the program was inferred from the file alone.
@@ -260,5 +324,99 @@ mod tests {
         for _ in 0..30 {
             assert_eq!(names(), first);
         }
+    }
+
+    fn with_node_modules() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/with-node-modules")
+    }
+
+    /// (relative path or bundled, is project code, package) of every file in the program, sorted.
+    fn classified(sem: &Sem) -> Vec<(String, bool, Option<String>)> {
+        let mut all: Vec<_> = sem
+            .files()
+            .map(|file| {
+                (
+                    sem.relative_path(file)
+                        .unwrap_or_else(|| "(outside root)".into()),
+                    sem.is_project_code(file),
+                    sem.package_of(file),
+                )
+            })
+            .collect();
+        all.sort();
+        all
+    }
+
+    #[test]
+    fn project_code_is_told_apart_from_packages_declarations_and_libraries() {
+        let sem = Sem::open(&with_node_modules(), Path::new("src/main.ts")).unwrap();
+        let all = classified(&sem);
+        let under_root: Vec<_> = all
+            .iter()
+            .filter(|(path, ..)| path != "(outside root)")
+            .collect();
+        let row = |path: &str, project: bool, package: Option<&str>| {
+            (path.to_owned(), project, package.map(str::to_owned))
+        };
+        assert_eq!(
+            under_root,
+            [
+                &row(
+                    "node_modules/@scope/other/index.d.ts",
+                    false,
+                    Some("@scope/other")
+                ),
+                &row("node_modules/@types/fake/index.d.ts", false, Some("fake")),
+                &row("node_modules/pkg/index.d.ts", false, Some("pkg")),
+                &row("src/main.ts", true, None),
+                &row("src/types.d.ts", false, None),
+            ]
+        );
+        // everything else is a bundled library: not project code, one package for all of them
+        let libs: Vec<_> = all
+            .iter()
+            .filter(|(path, ..)| path == "(outside root)")
+            .collect();
+        assert!(libs.len() > 50, "{} libraries", libs.len());
+        assert!(
+            libs.iter()
+                .all(|(_, project, package)| !project
+                    && package.as_deref() == Some("typescript:lib"))
+        );
+    }
+
+    #[test]
+    fn a_file_is_found_by_its_relative_path() {
+        let sem = Sem::open(&with_node_modules(), Path::new("src/main.ts")).unwrap();
+        let file = sem.file("./src/../src/main.ts").unwrap();
+        assert_eq!(sem.relative_path(file), Some("src/main.ts".into()));
+        assert!(sem.file("src/gone.ts").is_none());
+    }
+
+    #[test]
+    fn a_package_is_named_from_the_last_node_modules_in_the_path() {
+        let name = |path: &str| package_in_node_modules(path);
+        assert_eq!(
+            name("/r/node_modules/lodash/fp/index.js"),
+            Some("lodash".into())
+        );
+        assert_eq!(
+            name("/r/node_modules/@scope/pkg/a.js"),
+            Some("@scope/pkg".into())
+        );
+        assert_eq!(
+            name("/r/node_modules/@types/node/fs.d.ts"),
+            Some("node".into())
+        );
+        assert_eq!(
+            name("/r/node_modules/@types/babel__core/i.d.ts"),
+            Some("@babel/core".into())
+        );
+        assert_eq!(
+            name("/r/node_modules/.pnpm/react@18/node_modules/react/index.js"),
+            Some("react".into())
+        );
+        assert_eq!(name("/r/src/node_modules_like/a.ts"), None);
+        assert_eq!(name("/r/node_modules/"), None);
     }
 }

@@ -96,3 +96,10 @@ fn type_errors_do_not_stop_a_project_loading() {
     let project = Project::open(&fixture("type-errors"), Path::new("a.ts")).unwrap();
     assert_eq!(project.files(), ["a.ts"]);
 }
+
+#[test]
+fn files_lists_project_code_only() {
+    let project = Project::open(&fixture("with-node-modules"), Path::new("src/main.ts")).unwrap();
+    // `src/types.d.ts` is in the program but is a declaration file; the packages are in `node_modules`
+    assert_eq!(project.files(), ["src/main.ts"]);
+}

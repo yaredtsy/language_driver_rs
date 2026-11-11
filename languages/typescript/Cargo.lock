@@ -745,6 +745,7 @@ dependencies = [
  "analyzer-core",
  "analyzer-testkit",
  "memory-stats",
+ "tsrs_ast",
  "tsrs_checker",
  "tsrs_compiler",
  "tsrs_core",

@@ -20,10 +20,54 @@ impl Project {
         })
     }
 
-    /// The files of the loaded program that live under the root, relative to it, sorted. The bundled libraries are not listed.
+    /// The project's own code that lives under the root, relative to it with `/`, sorted. Left out: `node_modules`, declaration files
+    /// (`.d.ts`), the bundled libraries, and project code outside the root.
     pub fn files(&self) -> Vec<String> {
-        self.sem.files()
+        let mut files: Vec<String> = self
+            .sem
+            .files()
+            .filter(|&file| self.sem.is_project_code(file))
+            .filter_map(|file| self.sem.relative_path(file))
+            .collect();
+        files.sort();
+        files
     }
+}
+
+#[doc(hidden)]
+pub mod proof {
+    //! Not API. The real `Sem` and `File`, public only so a doctest (a separate crate) can name them in the proof that a `File<'p>` cannot
+    //! outlive its `Sem`. `Sem::drop` frees the program with `unsafe`, and its `SAFETY` comment rests on this. A doctest on a wrapper would
+    //! prove only the wrapper's own signature, so it uses the real types.
+    //!
+    //! ```compile_fail,E0505
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let file = sem.file("src/main.ts").unwrap();
+    //! drop(sem);
+    //! let _still_used = file;
+    //! ```
+    //!
+    //! The twin below differs only in the order of its last two lines, and must compile and run: a typo or a renamed function cannot hide
+    //! behind the failure above, because it would break the twin too.
+    //!
+    //! ```
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let file = sem.file("src/main.ts").unwrap();
+    //! let _still_used = file;
+    //! drop(sem);
+    //! ```
+    //!
+    //! The error code is pinned for the reader: stable rustdoc ignores it (checked: pinning `E0499` still passes), and `RUSTC_BOOTSTRAP=1
+    //! RUSTDOCFLAGS=-Zunstable-options cargo test --doc` enforces it (`E0505`, "cannot move out of `sem` because it is borrowed").
+    pub use crate::sem::{File, Sem};
 }
 
 /// Why a project did not load.
