@@ -174,6 +174,11 @@ impl Parsed<'_> {
         n.0.initializer().map(RawNode)
     }
 
+    /// The expression of an `export default …` / `export = …`.
+    pub(crate) fn expression(&self, n: RawNode) -> Option<RawNode> {
+        n.0.expression().map(RawNode)
+    }
+
     pub(crate) fn body(&self, n: RawNode) -> Option<RawNode> {
         n.0.body().map(RawNode)
     }

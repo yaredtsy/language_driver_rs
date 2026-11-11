@@ -108,6 +108,15 @@ impl Walker<'_, '_> {
             NodeKind::ClassDeclaration | NodeKind::ClassExpression => self.class(n),
             NodeKind::FunctionExpression => self.function_expression(n),
             NodeKind::VariableStatement => self.variable_statement(n),
+            NodeKind::ObjectLiteral => self.object_literal(n, None),
+            NodeKind::ExportAssignment => match self.p.expression(n) {
+                // `export default { load() {} }`: the literal is named like a default function
+                Some(e) if self.p.kind(e) == NodeKind::ObjectLiteral => {
+                    self.object_literal(e, Some("default".to_owned()));
+                }
+                Some(e) => self.visit(e),
+                None => {}
+            },
             _ if self.p.kind(n) == NodeKind::Other && !self.p.statements(n).is_empty() => {
                 // a block, a case clause: the block adds nothing to a name
                 self.statements(&self.p.statements(n));
@@ -379,6 +388,10 @@ impl Walker<'_, '_> {
                 {
                     self.named_expression(init, nm, false, range);
                 }
+                (Some(init), _) if self.p.kind(init) == NodeKind::ObjectLiteral => {
+                    let name = name.and_then(|nm| self.name_text(nm));
+                    self.object_literal(init, name);
+                }
                 (Some(init), _) => self.visit(init),
                 (None, _) => {}
             }
@@ -400,7 +413,45 @@ impl Walker<'_, '_> {
                 let range = self.p.span(n);
                 self.named_expression(init, nm, true, range);
             }
+            _ if self.p.kind(init) == NodeKind::ObjectLiteral => {
+                let name = self.p.name(n).and_then(|nm| self.name_text(nm));
+                self.object_literal(init, name);
+            }
             _ => self.visit(init),
+        }
+    }
+
+    /// The methods and accessors of an object literal are defs (the engine resolves calls to them). The literal is named by the variable
+    /// or property that holds it, so `api.load`; an anonymous one adds nothing. A property holding an arrow or function is not a def, for now.
+    fn object_literal(&mut self, n: RawNode, name: Option<String>) {
+        if let Some(name) = &name {
+            self.enter_container(name);
+        }
+        for m in self.p.members(n) {
+            match self.p.kind(m) {
+                NodeKind::MethodDeclaration => {
+                    self.method_group(&[m]);
+                }
+                NodeKind::GetAccessor | NodeKind::SetAccessor => self.accessor(m),
+                NodeKind::PropertyAssignment => self.property_assignment(m),
+                _ => self.visit(m),
+            }
+        }
+        if name.is_some() {
+            self.leave();
+        }
+    }
+
+    /// `key: value` in an object literal: a nested literal is named by the key; anything else is searched for named expressions.
+    fn property_assignment(&mut self, n: RawNode) {
+        let Some(init) = self.p.initializer(n) else {
+            return;
+        };
+        if self.p.kind(init) == NodeKind::ObjectLiteral {
+            let name = self.p.name(n).and_then(|nm| self.name_text(nm));
+            self.object_literal(init, name);
+        } else {
+            self.visit(init);
         }
     }
 }

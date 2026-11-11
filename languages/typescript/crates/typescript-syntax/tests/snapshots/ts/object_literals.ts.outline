@@ -1,0 +1,15 @@
+Method api.load [16..25] name [16..20]
+Method api.save [29..53] name [35..39] (x)
+Method api.size [57..87] name [61..65]
+Method api.size [91..113] name [95..99] (v)
+Method api.nested.deep [186..195] name [186..190]
+Method api.nested.deeper.deepest [217..229] name [217..224]
+Method api."quoted-key" [245..262] name [245..257]
+Method api.[computedKey] [266..284] name [266..279]
+Method default.fromDefault [322..338] name [322..333]
+Method anonymousMethod [363..383] name [363..378]
+Function build [390..441] name [399..404]
+  Method build.<locals>.made [424..433] name [424..428]
+Method mutable.stillADef [461..475] name [461..470]
+Class Holder [481..537] name [487..493]
+  Method Holder.config.read [520..529] name [520..524]
