@@ -92,7 +92,7 @@ impl Sem {
         let (program, config_name) = {
             let _scope = region.enter();
             let (config_name, mut config) = match find_owner(&root, &file, &config_host)? {
-                Owner::Config(name, config) => (Some(name), config),
+                Owner::Config(name, config) => (Some(name), *config),
                 Owner::NoneHolds(name) => {
                     return Err(OpenError::NotInProject(relative_to(&root, &name)));
                 }
@@ -308,7 +308,7 @@ fn find_config(root: &Path, dir: &Path) -> Option<PathBuf> {
 /// What the search for the config that owns a file found.
 enum Owner {
     /// The config whose program holds the file, as engine path and parsed.
-    Config(String, ParsedCommandLine),
+    Config(String, Box<ParsedCommandLine>),
     /// There are configs above the file but none of them, nor any they reference, holds it. The nearest one's engine path.
     NoneHolds(String),
     /// No config above the file, up to the root.
@@ -359,7 +359,7 @@ fn find_owner(root: &Path, file: &Path, host: &ConfigHost) -> Result<Owner, Open
                     || config.possibly_matches_file_name(&file_name))
                 && config.file_names_by_path().contains_key(&file_path);
             if holds {
-                return Ok(Owner::Config(name, config));
+                return Ok(Owner::Config(name, Box::new(config)));
             }
             queue.extend(config.resolved_project_reference_paths().iter().cloned());
         }
