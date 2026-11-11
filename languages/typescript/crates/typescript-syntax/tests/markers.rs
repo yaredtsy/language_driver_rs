@@ -503,6 +503,43 @@ fn a_marker_on_a_method_of_an_object_literal_and_a_class_property() {
     );
 }
 
+#[test]
+fn every_skip_carries_a_reason_a_person_can_read() {
+    let all = [
+        Skip::NotOnOwnLine,
+        Skip::SyntaxError,
+        Skip::AlreadyMarked {
+            existing: "abc".to_owned(),
+        },
+        Skip::UnsafeDocComment,
+        Skip::DirectiveAbove,
+        Skip::InvalidText,
+        Skip::PlacementNotSupported,
+        Skip::UnknownDef,
+    ];
+    let reasons: Vec<String> = all.iter().map(|skip| skip.to_string()).collect();
+    for (skip, reason) in all.iter().zip(&reasons) {
+        assert!(reason.len() > 20, "{skip:?}: {reason:?}");
+        assert!(
+            reason.starts_with(|c: char| c.is_lowercase()) && !reason.ends_with('.'),
+            "{skip:?}: a clause that fits after \"not marked: \": {reason:?}"
+        );
+        assert!(!reason.contains('\n'), "{skip:?}: one line");
+        assert_eq!(
+            reasons.iter().filter(|r| *r == reason).count(),
+            1,
+            "{skip:?}: its own reason"
+        );
+    }
+    assert_eq!(
+        reasons[2], "the definition already has a marker: abc",
+        "the existing marker is shown"
+    );
+    // a reason is what the planner returns, so it can be shown as it comes
+    let skip = mark("/* c */ function f() {}\n", "f").unwrap_err();
+    assert!(skip.to_string().contains("line of its own"));
+}
+
 /// The marker fixtures must actually exercise planning and the refusals, or the round trip proves little.
 #[test]
 fn the_marker_fixtures_plan_and_refuse() {

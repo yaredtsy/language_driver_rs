@@ -158,6 +158,9 @@ Rust's `/** … */` doc comments have the same shape, so by the rule of two this
 `outline` takes the style too, so that it knows which label to read: `outline(text, dialect, style)`. Decide this signature in TS1 even though
 `Def::marker` stays `None` until TS2; changing a public signature after the first tag is a breaking change.
 
+`Skip` implements `Display`: `skip.to_string()` is the reason as one sentence, for the driver to pass on and the extension to show (owner,
+2026-11-11: "each Skip must carry a reason the extension can show"). The driver may still match on the variant to word it differently.
+
 > **🦀 Rust note: `Result<Edit, Skip>` instead of `Option<Edit>`.** `Option` would say "no edit" without saying why, and the driver contract
 > requires a reason a person can read (`skipped` entries). An enum of reasons is better than a `String`: the driver can turn each variant into its
 > own message, and a test can match on the variant without comparing text.

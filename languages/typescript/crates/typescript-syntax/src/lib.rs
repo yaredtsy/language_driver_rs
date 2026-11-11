@@ -53,7 +53,8 @@ pub fn outline(text: &str, dialect: Dialect, style: MarkerStyle<'_>) -> Outline 
     outline::outline(text, dialect, style)
 }
 
-/// Why a marker was not planned. The driver turns each variant into a message a person can read.
+/// Why a marker was not planned. Match on the variant to act on it; `to_string()` gives the reason as a sentence a person can read, for
+/// an editor to show next to the def.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Skip {
@@ -80,6 +81,42 @@ pub enum Skip {
     /// Its offsets are not trusted: outline the text again.
     UnknownDef,
 }
+
+impl std::fmt::Display for Skip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let reason = match self {
+            Skip::NotOnOwnLine => {
+                "the definition does not start on a line of its own, and code is never reformatted to make room"
+            }
+            Skip::SyntaxError => {
+                "a syntax error overlaps the definition or the doc comment above it"
+            }
+            Skip::AlreadyMarked { existing } => {
+                return write!(f, "the definition already has a marker: {existing}");
+            }
+            Skip::UnsafeDocComment => {
+                "the doc comment above the definition cannot be edited safely: its closing `*/` is not on a line of its own, a line has no \
+                 leading `*`, or a tag is on its first line"
+            }
+            Skip::DirectiveAbove => {
+                "a comment above the definition (such as `// @ts-ignore` or `// eslint-disable-next-line`) applies to its first line, and \
+                 a doc comment put between them would change what it applies to"
+            }
+            Skip::InvalidText => {
+                "the marker text is empty, starts or ends with a space, has a line break, or contains `*/`"
+            }
+            Skip::PlacementNotSupported => {
+                "this marker placement is not supported for TypeScript and JavaScript"
+            }
+            Skip::UnknownDef => {
+                "the definition was not found in this text: the file changed since it was outlined"
+            }
+        };
+        f.write_str(reason)
+    }
+}
+
+impl std::error::Error for Skip {}
 
 /// The marker written on this def, if any. `outline` already fills `Def::marker` with it. `None` too when `def` is not a def of this text.
 pub fn marker(text: &str, dialect: Dialect, def: &Def, style: MarkerStyle<'_>) -> Option<String> {

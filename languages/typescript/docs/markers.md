@@ -56,6 +56,9 @@ words stay unchanged inside the new block.
 
 ### When nothing is written (`Skip`)
 
+Every `Skip` carries its reason: match on the variant to act on it, and call `to_string()` for a sentence a person can read (an editor shows it
+next to the def that was not marked). The sentences are in `src/lib.rs` and one test checks that every variant has its own.
+
 | Reason | When |
 |---|---|
 | `NotOnOwnLine` | something other than blanks stands before the def on its first line: `const a = () => 1, b = () => 2;` (the second), `class C { m() {} }` (the method), `/* c */ function f() {}`. Never reformat the user's code to make room |
