@@ -76,6 +76,9 @@ pub enum Cut {
     MaxContexts,
     MaxDepth,
     MaxNodes,
+    /// A fixpoint over a group of recursive functions stopped at its round limit: a precision limit, not a cost one. The summary may
+    /// have been refined further. Rule 10 asks for it to be marked and counted like any other.
+    MaxRounds,
 }
 
 impl Cut {
@@ -86,6 +89,7 @@ impl Cut {
             Cut::MaxContexts => "max_contexts",
             Cut::MaxDepth => "max_depth",
             Cut::MaxNodes => "max_nodes",
+            Cut::MaxRounds => "max_rounds",
         }
     }
 }
@@ -376,6 +380,30 @@ pub(crate) mod tests {
         assert_eq!(
             (forward.defs[0].file.as_str(), forward.defs[0].range.start),
             ("a.py", 10)
+        );
+    }
+
+    #[test]
+    fn every_cut_has_its_own_stable_name() {
+        let all = [
+            Cut::Cancelled,
+            Cut::Deadline,
+            Cut::MaxContexts,
+            Cut::MaxDepth,
+            Cut::MaxNodes,
+            Cut::MaxRounds,
+        ];
+        let names: Vec<&str> = all.iter().map(|c| c.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "cancelled",
+                "deadline",
+                "max_contexts",
+                "max_depth",
+                "max_nodes",
+                "max_rounds"
+            ]
         );
     }
 

@@ -290,3 +290,16 @@ So the plan (`docs/03-typescript/05-ts3-project.md` §4) was right that `Drop` f
   filesystem root; ours must not pick up a stray config outside the repository, and `files()` is relative to the root.
 - A program loaded from a tsconfig that does not include the file has no source file for it. `open` says so (`ConfigError`) rather than answering for a
   file the program does not hold. A solution config (`"files": []` plus `references`) is TS3 step 6.
+
+### Program options `Sem::open` sets on purpose
+
+| Option | Value | Why, and what was measured (2026-11-11) |
+|---|---|---|
+| `checkers` (`CompilerOptions`, set on the parsed config) | `Some(1)` | one checker sees every file, so no question of which checker owns a node, and the same project answers the same way every time. Checked by `sem::tests::the_program_has_one_checker` (`program.options().checkers`); `CheckerPoolImpl::new` reads it |
+| `checker_regions` | `true` | the checkers' memory goes back with the program (S-TS3) |
+| `regions` | one `ProgramRegions` per `Sem` | the loaders' memory goes back with the program (S-TS3) |
+| `single_threaded` | **not set** | it implies one checker, but it also makes the file loader sequential (`fileloader.rs`). On `~/…/portfolio` (a Next.js app, 1,549 files with `node_modules`), warm: **about 45 ms to open by default, about 160 ms with `single_threaded`**. Parallel loading is kept; `sem::tests::the_program_lists_its_files_in_the_same_order_every_time` opens the fixture 31 times and checks the program's file order never changes |
+
+The plan (`docs/03-typescript/05-ts3-project.md` §3) listed `single_threaded` and `checkers = 1` as two options and left "what the flag covers" as a
+`[check]`: it covers file loading and the checker pool, and `checkers = 1` is the part we need. Cold opens vary a lot (the same program: 126 to 444 ms
+on a first run), so quote warm numbers.
