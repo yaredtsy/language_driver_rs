@@ -186,6 +186,33 @@ pub mod proof {
     //! })();
     //! ```
     //!
+    //! A `Sem` may move to another thread (a `Project` is opened on one and dropped on another: `tests/threads.rs`) but is not shared by
+    //! reference: asking it questions runs the checker, and one checker answers one question at a time.
+    //!
+    //! ```compile_fail,E0277
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! std::thread::scope(|scope| {
+    //!     scope.spawn(|| {
+    //!         let _asked = sem.file("src/main.ts");
+    //!     });
+    //! });
+    //! ```
+    //!
+    //! ```
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! (|| {
+    //!     let _asked = sem.file("src/main.ts");
+    //! })();
+    //! ```
+    //!
     //! The error code is pinned for the reader: stable rustdoc ignores it (checked: pinning `E0499` still passes), and `RUSTC_BOOTSTRAP=1
     //! RUSTDOCFLAGS=-Zunstable-options cargo test --doc` enforces it (`E0505`, "cannot move out of `sem` because it is borrowed").
     pub use crate::sem::{File, Sem};

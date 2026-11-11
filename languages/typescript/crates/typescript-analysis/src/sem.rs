@@ -13,6 +13,7 @@
     )
 )]
 
+use std::cell::Cell;
 use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -69,6 +70,9 @@ pub struct Sem {
     config_files: Vec<String>,
     /// The config whose program this is (relative to the root), or `None` for an inferred project.
     config_file: Option<String>,
+    /// `Cell` is `Send` but not `Sync`, so neither is a `Sem` shared by reference: one checker answers one question at a time, and nothing
+    /// here makes concurrent questions safe (`proof` pins this). Moving a `Sem` to another thread stays allowed.
+    _not_shared: PhantomData<Cell<()>>,
     // Fields drop in this order, after `Drop::drop` has freed the program: the loaders' regions, then the program's own.
     _loaders: Arc<ProgramRegions>,
     _region: Region,
@@ -151,6 +155,7 @@ impl Sem {
             program,
             config_files,
             config_file,
+            _not_shared: PhantomData,
             _loaders: loaders,
             _region: region,
         };
