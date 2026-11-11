@@ -18,14 +18,6 @@ use crate::interp::summary::{Cut, Target};
 use crate::sem::Definition;
 use crate::stable::StableDef;
 
-fn id(s: &Solver<'_>, c: ContextId) -> Id {
-    let stable = s.stable_id(c);
-    Id {
-        func: stable.func,
-        digest: stable.digest,
-    }
-}
-
 fn def_info(s: &Solver<'_>, def: Definition<'_>) -> DefInfo {
     let range = s.sem.def_range(def);
     let kind = if s.sem.is_class(def) {
@@ -122,7 +114,7 @@ pub fn core_graph(s: &Solver<'_>, entries: &[ContextId]) -> Graph {
         }
     }
     // 2. each reached context's identity, once (a lookup table: never iterated for output)
-    let ids: FxHashMap<ContextId, Id> = reached.iter().map(|&c| (c, id(s, c))).collect();
+    let ids: FxHashMap<ContextId, Id> = reached.iter().map(|&c| (c, s.stable_id(c))).collect();
     // 3. the rows; `Graph::new` sorts them and keeps one per definition
     let (mut defs, mut contexts, mut edges) = (Vec::new(), Vec::new(), Vec::new());
     let mut unresolved = 0u64;

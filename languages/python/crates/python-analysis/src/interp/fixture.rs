@@ -2,9 +2,7 @@
 use crate::interp::bind::param_names;
 use crate::interp::relevant::relevant_params;
 use crate::interp::summary::{PlainVal, SVal};
-use crate::interp::{
-    GraphOut, Limits, Mode, Options, Stats, call_graph, call_tree, solve, to_text,
-};
+use crate::interp::{Limits, Mode, Options, Stats, call_graph, call_tree, solve, to_text};
 use crate::sem::Sem;
 use crate::sem::{ProjectDatabase, open, open_project};
 use ruff_db::system::SystemPath;
@@ -116,7 +114,7 @@ pub(super) fn stats_for(fixture: &str, entry: &str, opts: &Options) -> Stats {
 }
 
 /// The context graph of one entry in `fixture`, in summary mode.
-pub(super) fn graph_for(fixture: &str, entry: &str) -> GraphOut {
+pub(super) fn graph_for(fixture: &str, entry: &str) -> analyzer_core::graph::Graph {
     let path = std::fs::canonicalize(format!("tests/fixtures/{fixture}")).unwrap();
     let root = path.parent().unwrap();
     let db = open_project(SystemPath::from_std_path(root).unwrap()).unwrap();
@@ -627,17 +625,17 @@ fn p05_01_graph() {
 
 #[test]
 fn p05_01_stable_ids_ignore_discovery_order() {
-    use crate::interp::StableContextId;
+    use analyzer_core::graph::ContextId;
     use std::collections::BTreeMap;
     // main calls read_a then read_b; main2 calls them in the other order,
     // so their ContextIds differ. Their stable ids must not.
     check_both("05-output/python/stable_ids.py");
-    let ids = |entry: &str| -> BTreeMap<String, StableContextId> {
-        graph_for("05-output/python/stable_ids.py", entry)
-            .contexts
-            .into_iter()
-            .filter(|c| c.qname != format!("stable_ids.{entry}")) // the entries themselves differ
-            .map(|c| (c.qname, c.id))
+    let ids = |entry: &str| -> BTreeMap<String, ContextId> {
+        let g = graph_for("05-output/python/stable_ids.py", entry);
+        g.contexts
+            .iter()
+            .map(|c| (g.def(&c.id.func).unwrap().qname.clone(), c.id.clone()))
+            .filter(|(qname, _)| *qname != format!("stable_ids.{entry}")) // the entries themselves differ
             .collect()
     };
     let (one, two) = (ids("main"), ids("main2"));
@@ -831,12 +829,12 @@ fn open_fixture(fixture: &str) -> (ProjectDatabase, ruff_db::files::File) {
 
 #[test]
 fn the_core_graph_of_every_fixture_keeps_core_s_invariants() {
-    use crate::interp::call_core_graph;
+    use crate::interp::call_graph;
     let all = every_entry();
     assert!(all.len() > 40, "found only {} entries", all.len());
     for (fixture, entry, opts) in all {
         let (db, file) = open_fixture(&fixture);
-        let Some(graph) = call_core_graph(&db, file, &entry, &opts) else {
+        let Some(graph) = call_graph(&db, file, &entry, &opts) else {
             continue; // an entry some expectation names on purpose to be missing
         };
         let bad = analyzer_testkit::graph::violations(&graph);

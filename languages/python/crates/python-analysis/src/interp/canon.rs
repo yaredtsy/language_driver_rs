@@ -4,13 +4,6 @@ use crate::interp::solver::Solver;
 use crate::stable::{StableDef, StableType};
 use ty_python_core::ProgramFile;
 
-/// A context's identity outside this request: its function, and a 128-bit digest of its key.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, serde::Serialize)]
-pub struct StableContextId {
-    pub func: StableDef,
-    pub digest: [u8; 16], // 128-bit hash of the canonical key
-}
-
 /// A key written out with nothing request-local in it.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 enum Canon {
@@ -50,7 +43,8 @@ struct CanonKey {
 }
 
 impl<'db> Solver<'db> {
-    pub fn stable_id(&self, ctx: ContextId) -> StableContextId {
+    /// A context's identity outside this request: its function, and a 128-bit digest of its key.
+    pub fn stable_id(&self, ctx: ContextId) -> analyzer_core::graph::ContextId {
         let k = &self.contexts[ctx];
         let file = k.func.program_file(self.sem.db); // types are read in the key's file, as `fp_one` did
         let key = CanonKey {
@@ -61,7 +55,7 @@ impl<'db> Solver<'db> {
         };
         // Bytes we wrote, never `#[derive(Hash)]`: std makes no promise to keep it stable.
         let bytes = serde_json::to_vec(&key).expect("a canonical key always serializes");
-        StableContextId {
+        analyzer_core::graph::ContextId {
             func: key.func,
             digest: xxhash_rust::xxh3::xxh3_128(&bytes).to_le_bytes(),
         }

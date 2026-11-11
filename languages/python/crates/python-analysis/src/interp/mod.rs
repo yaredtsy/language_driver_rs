@@ -8,7 +8,6 @@ pub mod defer;
 pub mod entry;
 #[cfg(test)]
 mod fixture;
-pub mod graph;
 pub mod key;
 pub mod member;
 pub mod relevant;
@@ -17,8 +16,6 @@ pub mod summary;
 pub mod tree;
 pub mod value;
 pub mod walk;
-pub use canon::StableContextId;
-pub use graph::{ContextOut, EdgeOut, EdgeTo, GraphOut, Span};
 pub use tree::{Mark, Node, to_text};
 
 use std::time::Duration;
@@ -30,7 +27,7 @@ use summary::Cut;
 use ty_project::ProjectDatabase;
 
 use crate::{
-    interp::{graph::graph, key::ContextId, solver::Solver, walk::Walk},
+    interp::{key::ContextId, solver::Solver, walk::Walk},
     sem::Sem,
 };
 
@@ -203,21 +200,9 @@ fn summary_tree(
     Some((tree, s.stats))
 }
 
-/// The context graph of `entry`: what the server's `resolve_calls` returns as `graph`.
-pub fn call_graph(
-    db: &ProjectDatabase,
-    file: File,
-    entry: &str,
-    opts: &Options,
-) -> Option<GraphOut> {
-    let (mut s, root) = solve(db, file, entry, opts)?;
-    s.stats.contexts = s.contexts.len() as u32;
-    Some(graph(&s, &[root]))
-}
-
 /// The context graph of `entry` in core's types: contexts, a table of definitions, one edge per call site and target. The tree and the
 /// wire are views of it.
-pub fn call_core_graph(
+pub fn call_graph(
     db: &ProjectDatabase,
     file: File,
     entry: &str,
@@ -236,7 +221,7 @@ pub fn call_frame(
     opts: &Options,
     merged: bool,
 ) -> Option<(crate::wire::Frame, analyzer_core::graph::Stats)> {
-    let graph = call_core_graph(db, file, entry, opts)?;
+    let graph = call_graph(db, file, entry, opts)?;
     let root = graph.entries.first()?.clone();
     let wire_opts = crate::wire::WireOptions::new(opts.wire.clone(), merged, opts.render_options());
     let frame = crate::wire::wire(&graph, &root, &crate::sem::DbSources(db), &wire_opts);
