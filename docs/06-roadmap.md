@@ -111,6 +111,14 @@ Sizes, relative: B0 is M. PY2 is M (the PA plan calls it "the real work"). PY5 i
 TS2 is S. TS3 is M. TS4 is L. TS5 is M. Rust as a whole is about TS1–TS4 at two thirds the size. **[measure]**: replace these with real numbers
 after TS1 and PY2. TS0 is done (2026-11-11) and was S. Its spikes measured the engine, not our work, so they do not size TS1–TS4.
 
+PY1 and PY2 are built (2026-11-11). PY1: the vendored ruff and the engine pin; proven locally by `git diff` of the copy commit against the
+rename commit (only the patch), `cargo build -p python-syntax` on 1.99.1 (52 s, cold), and `cargo tree -p python-syntax` listing no `salsa`,
+`ruff_db` or `ty_*`. PY1's CI proof (the Python row green on three operating systems) was not seen from the session that built it; confirm it
+before PY3 tags. PY2: `python-syntax` (outline, markers, header), its rule in `languages/python/docs/qualnames.md`, 22 fixtures and the three
+testkit tests; `cargo test -p python-syntax` passes (33 unit tests, 4 integration tests). PY2 was M by its own measure: six commits, and
+the new work was the fixtures and the rule, not the code, which is mostly pylspt's `defs.rs`, `edit.rs` and the driver's `outline.rs` and
+`file_id.rs` moved behind `sem.rs`. PY3 is next, and tagging it freezes the qualname rule.
+
 ## 5. What V-NOC gets at each tag
 
 | Tag | V-NOC can |
