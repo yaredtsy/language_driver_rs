@@ -140,7 +140,7 @@ Unchanged (PA5): `main.rs` (201), `nodes.rs` (30), `scan.rs` minus one function 
 
 | Thing | Goes to | Note |
 |---|---|---|
-| `vendor/ruff/` | `languages/python/vendor/ruff/` | copied with `git archive playground-final vendor \| tar -x` (the 171 quoted paths); trimmed of unused test fixtures if [measure] says it is worth it; patch renamed |
+| `vendor/ruff/` | `languages/python/vendor/ruff/` | copied with `git archive 670ae79a15 vendor \| tar -x` (the 171 quoted paths); trimmed of unused test fixtures if [measure] says it is worth it; patch renamed |
 | `Cargo.toml` | `languages/python/Cargo.toml` | the workspace root; keeps the two comments about salsa and `zstd`; adds `exclude = ["vendor"]` and the `analyzer-core` path dependency |
 | `Cargo.lock` | `languages/python/Cargo.lock` | start from this exact file (PA plan's Rust note: then the only thing that changed is your code) |
 | `rust-toolchain.toml` | not moved | the repo root has one |

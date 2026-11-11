@@ -77,7 +77,7 @@ The goal of B0 is a repo where "add a language" is a known, small job, and where
 |---|---|---|
 | any language's phase 1 (outline) | B0 steps 1, 2, 5, 7, 8 | the types, the testkit, the template, CI |
 | any language's call graph | B0 steps 3, 4, 6 | the graph, the solver, the scenarios |
-| PY1 | PY0 | the frozen baseline |
+| PY1 | PY0 | the pinned commit of pylspt |
 | PY4 (vnoc switches) | `python-v0.1.0` | |
 | **TS4** | B0; **ideally PY6** | PY6 runs the shared renderer against 41 real fixtures. Without it, TypeScript is the renderer's first real user, and a renderer bug looks like a TypeScript bug. Not a hard block: B0's hand-written tests cover the rules |
 | TS5 steps 1–2 (budget, cancel in core) | B0 step 4 | they are core work; can be done any time after B0 |

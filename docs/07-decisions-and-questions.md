@@ -32,6 +32,7 @@ The rows that change **what users see or commit** are in §4 as questions.
 | D11 | Q-M4 an organization, public (the owner name is filled in when it is created; until then every URL is a `TODO-owner` placeholder) · Q-PA3 no old web-driver parity, `merge_for_output` is dropped · Q-PA5 keep `ast` as `python-cli ast` (it is about 90 lines) | 2026-11-11, recommendations accepted |
 | D12 | Draft rows M1–M18 are accepted as written | 2026-11-11 |
 | D13 | **The graph has a table of definitions** (`Graph::defs`, one `DefInfo` per function or class it mentions); a `Context` is only an analysis (`id`, `status`). Replaces the class context the core solver invented. Changes the type of M10 ([02/04](02-tree-rules/04-the-defs-table.md)) | 2026-11-11 |
+| D14 | **pylspt is not frozen**: it stays a playground for experiments. The Python migration reads pylspt at commit `670ae79a15`, by hash, never from the working tree ([05/03](05-python-migration/03-steps.md) PY0). Archiving it (PY8) is decided when PY8 comes | 2026-11-11 |
 
 ## 2. Draft rows
 

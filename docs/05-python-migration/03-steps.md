@@ -15,7 +15,7 @@ run. `vnoc` keeps its old pin on pylspt until PY4 changes it on purpose.
 ## 1. The order
 
 ```
-PY0  freeze pylspt ─────────────────────────────────────────────┐ baseline: test count + golden output
+PY0  pin pylspt at 670ae79a15 (no freeze, D14) ─────────────────┐ baseline: test count + golden output
 B0   the repo skeleton + analyzer-core (born from pylspt's types)│      ← shared with every language; see 06-roadmap.md
 PY1  languages/python skeleton + vendored ruff + CI row          │
 PY2  python-syntax ──────────► PY3  tag python-v0.1.0            │
@@ -38,7 +38,7 @@ renderer against 41 real cases ([`../06-roadmap.md`](../06-roadmap.md) §3).
 
 | Step | Repo | What | Proof |
 |---|---|---|---|
-| **PY0** | pylspt | commit or delete `run-jarvis.sh` / `cli-wire.json`; `cargo test` and note the count; save the golden output in **both** forms (`calls` and `calls --graph`); tag `playground-final` | `git status` is clean; you have a number and two files |
+| **PY0** | pylspt | **not a freeze (D14): pylspt stays a live playground.** The source of the migration is the commit **`670ae79a15`**, always read by its hash: `git -C ../pylspt archive 670ae79a15 <path> \| tar -x`, never the working tree. The baseline (the test count, and the golden output in **both** forms, `calls` and `calls --graph`) is taken from a worktree of that commit (`git -C ../pylspt worktree add <dir> 670ae79a15`), when PY5 first needs it | nothing copied into this repo differs from `git show 670ae79a15:<path>`; the baseline is one number and two files, kept outside git |
 | **B0** | new | the repo skeleton and `analyzer-core` ([`../06-roadmap.md`](../06-roadmap.md) §2). The core's types are moved out of pylspt here ([`02-what-moves-where.md`](02-what-moves-where.md) §2) | `cd core && cargo test`; `cargo tree` shows no engine |
 | **PY1** | new | `languages/python/`: `Cargo.toml` (workspace, `exclude = ["vendor"]`), the old `Cargo.lock`, the vendored ruff (one commit: the copy; next commit: the patch rename + `ENGINE.md`), an empty `python-syntax` that depends on `ruff_python_parser` and `analyzer-core` | the Python CI row is green on three operating systems, on toolchain 1.99.1; `git diff <copy commit> <patch commit> -- languages/python/vendor` shows only the patch |
 | **PY2** | new | `python-syntax`: `sem`, `outline`, `ids`, `edit`, `header`; the facade; fixtures; the three testkit tests | `cargo test -p python-syntax` passes **and** `cargo tree -p python-syntax` lists no `salsa`, `ruff_db` or `ty_*` |
@@ -120,6 +120,6 @@ The PA plan's list (`03-move/03` §4) holds. What the monorepo and the core add:
 | the core renderer and the old one differ | PY6's test | §3 above. This is expected work, not an accident |
 | byte `Site`s versus the old line/column `Span` | the golden graph differs in every edge | expected: compare after converting the golden file's spans with a throwaway script, or compare the **tree** form (which has no spans) and spot-check ten edges by hand |
 | the rule "only `sem.rs` imports the engine" does not fit `interp/` | `scripts/check-all.sh --static` fails for Python | pylspt's values and keys hold ty handles (`Definition<'db>`, `Type<'db>`) throughout `interp/`. Do **not** refactor the solver to hide them: that is a rewrite, and the PA plan promises a move. Python gets a written exception in the check: `interp/` may *name* engine types that `sem` re-exports (`use crate::sem::{Definition, Type}`), and may not call engine *functions*. That is already how pylspt is written ("`sem/` is the only code that imports the vendored ty crates") |
-| both repos change while the move is under way | a fix lands in pylspt after the tag | the freeze in PY0 |
+| both repos change while the move is under way | pylspt keeps changing (D14): an experiment, or a fix | everything is read from the hash of PY0, so an experiment cannot leak in. A fix you want is made in this repo; a pylspt commit is brought over only on purpose, as a change of its own that names the new hash |
 
 Next: [`../06-roadmap.md`](../06-roadmap.md)
