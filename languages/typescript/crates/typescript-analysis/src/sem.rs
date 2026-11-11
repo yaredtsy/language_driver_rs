@@ -65,6 +65,8 @@ pub struct Sem {
     /// Every config file that fed this program: the ones the owner search read (a broken one too) and the ones they extend. Relative to the root
     /// where they are under it, else as the engine spells them. Sorted.
     config_files: Vec<String>,
+    /// The config whose program this is (relative to the root), or `None` for an inferred project.
+    config_file: Option<String>,
     // Fields drop in this order, after `Drop::drop` has freed the program: the loaders' regions, then the program's own.
     _loaders: Arc<ProgramRegions>,
     _region: Region,
@@ -137,10 +139,12 @@ impl Sem {
             .iter()
             .map(|name| relative_to(&root, name))
             .collect();
+        let config_file = config_name.as_ref().map(|name| relative_to(&root, name));
         let sem = Sem {
             root,
             program,
             config_files,
+            config_file,
             _loaders: loaders,
             _region: region,
         };
@@ -197,6 +201,11 @@ impl Sem {
             && !tspath::is_declaration_file_name(name)
             && package_in_node_modules(name).is_none()
             && !self.program.is_source_file_from_external_library(file.node)
+    }
+
+    /// The config whose program this is, relative to the root; `None` for an inferred project.
+    pub(crate) fn config_file(&self) -> Option<&str> {
+        self.config_file.as_deref()
     }
 
     /// The config files that fed this program (see the field). What `environment_inputs` adds to its fixed globs.

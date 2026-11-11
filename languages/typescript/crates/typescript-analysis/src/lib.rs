@@ -63,6 +63,12 @@ impl Project {
         files
     }
 
+    /// The config this program was built from, relative to the root (the one that holds the file, after following references and climbing),
+    /// or `None` for an inferred project.
+    pub fn config_file(&self) -> Option<&str> {
+        self.sem.config_file()
+    }
+
     /// What, if it changes, means "load this project again": globs for the config, package and lock files, then the exact config files that fed
     /// this program and no glob covers (an `extends` target such as `config/shared.json`, or a config skipped for a syntax error). Relative to the
     /// root. The repo's own `.d.ts` files are not here: they are [`Project::declaration_files`].

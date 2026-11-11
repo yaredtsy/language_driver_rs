@@ -1,9 +1,17 @@
-//! `typescript-cli outline <file>`: print the defs of one file, to try the analyzer by hand.
+//! `typescript-cli`: try the analyzer by hand.
+//!
+//! - `outline <file> [--label <label>]`: the defs of one file.
+//! - `files <dir> <file>`: which config owns `file` under `dir`, and what the loaded program holds. The tool for "why is this call unresolved":
+//!   the answer is often that the file is not in the program the config describes.
 
+use std::path::Path;
 use std::process::ExitCode;
 
 use analyzer_core::text::{Encoding, LineIndex};
+use typescript_analysis::Project;
 use typescript_syntax::{Dialect, MarkerStyle, outline};
+
+const USAGE: &str = "usage: typescript-cli outline <file> [--label <label>]\n       typescript-cli files <dir> <file>";
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -15,14 +23,48 @@ fn main() -> ExitCode {
         }
         _ => "ID".to_owned(),
     };
-    let [command, path] = args.as_slice() else {
-        eprintln!("usage: typescript-cli outline <file> [--label <label>]");
-        return ExitCode::from(2);
-    };
-    if command != "outline" {
-        eprintln!("unknown command {command:?}; usage: typescript-cli outline <file>");
-        return ExitCode::from(2);
+    match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["outline", path] => print_outline(path, &label),
+        ["files", dir, file] => print_files(Path::new(dir), Path::new(file)),
+        _ => {
+            eprintln!("{USAGE}");
+            ExitCode::from(2)
+        }
     }
+}
+
+/// The config that was chosen, then the program: project files, the repo's declaration files, and what a reload watches.
+fn print_files(dir: &Path, file: &Path) -> ExitCode {
+    let project = match Project::open(dir, file) {
+        Ok(project) => project,
+        Err(e) => {
+            eprintln!("{}: {e}", file.display());
+            return ExitCode::from(1);
+        }
+    };
+    println!(
+        "config: {}",
+        project.config_file().unwrap_or("(inferred project)")
+    );
+    for (title, lines) in [
+        ("files", project.files()),
+        ("declaration files", project.declaration_files()),
+        ("environment inputs", project.environment_inputs()),
+    ] {
+        println!("{title} ({}):", lines.len());
+        for line in lines {
+            println!("  {line}");
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+fn print_outline(path: &str, label: &str) -> ExitCode {
     let Some(dialect) = Dialect::from_path(path) else {
         eprintln!("{path}: not a .ts .tsx .js .jsx .mts .cts .mjs .cjs file");
         return ExitCode::from(2);
@@ -43,7 +85,7 @@ fn main() -> ExitCode {
         )
     };
     // the label is a parameter of the analyzer; the command line gives it (default "ID")
-    let result = outline(&text, dialect, MarkerStyle::docstring(&label));
+    let result = outline(&text, dialect, MarkerStyle::docstring(label));
     for def in &result.defs {
         let depth = std::iter::successors(def.parent, |&p| result.defs[p].parent).count();
         let flag = if def.syntax_error {
