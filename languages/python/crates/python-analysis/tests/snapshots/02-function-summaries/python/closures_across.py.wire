@@ -1,0 +1,99 @@
+== passed_along
+closures_across.passed_along
+  closures_across.call_it @29:5
+    closures_across.make.run @21:5
+      closures_across.a @15:9
+  closures_across.make @29:13
+
+== passed_along (merged)
+closures_across.passed_along
+  closures_across.call_it @29:5
+    closures_across.make.run @21:5
+      closures_across.a @15:9
+  closures_across.make @29:13
+
+== two_makers
+closures_across.two_makers
+  closures_across.call_it @33:5
+    closures_across.make.run @21:5
+      closures_across.a @15:9
+  closures_across.make @33:13
+  closures_across.call_it @34:5
+    closures_across.make.run @21:5
+      closures_across.b @15:9
+  closures_across.make @34:13
+
+== two_makers (merged)
+closures_across.two_makers
+  closures_across.call_it x2 @33:5
+    closures_across.make.run x2 @21:5
+      closures_across.a @15:9
+      closures_across.b @15:9
+  closures_across.make x2 @33:13
+
+== two_levels
+closures_across.two_levels
+  closures_across.wrap @38:5
+    closures_across.make @25:12
+  closures_across.make.run @38:5
+    closures_across.b @15:9
+
+== two_levels (merged)
+closures_across.two_levels
+  closures_across.wrap @38:5
+    closures_across.make @25:12
+  closures_across.make.run @38:5
+    closures_across.b @15:9
+
+== outer
+closures_across.outer
+  closures_across.outer.walk @45:5
+    closures_across.outer.walk [recursive] @43:9
+
+== outer (merged)
+closures_across.outer
+  closures_across.outer.walk @45:5
+    closures_across.outer.walk [recursive] @43:9
+
+== chained
+closures_across.chained
+  closures_across.chain @61:5
+    closures_across.chain [recursive] @50:13
+  closures_across.chain.g @61:5
+    closures_across.a @55:9
+    closures_across.chain.g [recursive] @55:9
+
+== chained (merged)
+closures_across.chained
+  closures_across.chain @61:5
+    closures_across.chain [recursive] @50:13
+  closures_across.chain.g @61:5
+    closures_across.a @55:9
+    closures_across.chain.g [recursive] @55:9
+
+== use_walker
+closures_across.use_walker
+  closures_across.make_walker @72:5
+  closures_across.make_walker.walk @72:5
+    closures_across.make_walker.walk [recursive] @66:9
+
+== use_walker (merged)
+closures_across.use_walker
+  closures_across.make_walker @72:5
+  closures_across.make_walker.walk @72:5
+    closures_across.make_walker.walk [recursive] @66:9
+
+== use_default
+closures_across.use_default
+  closures_across.with_default @84:5
+  closures_across.with_default.walk @84:5
+    closures_across.a @77:9
+    closures_across.with_default.walk [recursive] @78:9
+
+== use_default (merged)
+closures_across.use_default
+  closures_across.with_default @84:5
+  closures_across.with_default.walk @84:5
+    closures_across.a @77:9
+    closures_across.with_default.walk [recursive] @78:9
+

@@ -1,0 +1,57 @@
+== direct
+imports.direct
+  util.helper @17:5
+
+== direct (merged)
+imports.direct
+  util.helper @17:5
+
+== via_module
+imports.via_module
+  util.helper @21:5
+
+== via_module (merged)
+imports.via_module
+  util.helper @21:5
+
+== via_alias
+imports.via_alias
+  util.helper @25:5
+  util.helper @26:5
+
+== via_alias (merged)
+imports.via_alias
+  util.helper x2 @25:5
+
+== deep
+imports.deep
+  pkg.sub.mod.work @30:5
+
+== deep (merged)
+imports.deep
+  pkg.sub.mod.work @30:5
+
+== from_package
+imports.from_package
+  pkg.sub.mod.work @34:5
+
+== from_package (merged)
+imports.from_package
+  pkg.sub.mod.work @34:5
+
+== module_in_a_local
+imports.module_in_a_local
+  util.helper @39:5
+
+== module_in_a_local (merged)
+imports.module_in_a_local
+  util.helper @39:5
+
+== local_import
+imports.local_import
+  util.other @46:5
+
+== local_import (merged)
+imports.local_import
+  util.other @46:5
+

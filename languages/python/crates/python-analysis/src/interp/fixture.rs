@@ -975,3 +975,65 @@ fn golden_wire_of_a_real_project() {
         assert!(a == b, "{golden}: differs beyond sibling order");
     }
 }
+
+/// A wire as reviewed text: one line per node, two spaces per level: the name, `[marks]`, the id when there is one, `xN` for a merged
+/// node (N calls joined), and where the call is as `@line:column`. No digests: the golden of a real project pins those.
+fn wire_text(frame: &crate::wire::Frame) -> String {
+    let mut out = String::new();
+    let mut stack = vec![(frame, 0usize)];
+    while let Some((f, depth)) = stack.pop() {
+        out.push_str(&"  ".repeat(depth));
+        out.push_str(&f.target_qname);
+        for m in &f.marks {
+            out.push_str(&format!(" [{m}]"));
+        }
+        if !f.target_id.is_empty() {
+            out.push_str(&format!(" id={}", f.target_id));
+        }
+        if f.call_count > 0 {
+            out.push_str(&format!(" x{}", f.call_count + 1));
+        }
+        if let Some(site) = f.call_site {
+            out.push_str(&format!(" @{}:{}", site.start.0, site.start.1));
+        }
+        out.push('\n');
+        stack.extend(f.children.iter().rev().map(|c| (c, depth + 1)));
+    }
+    out
+}
+
+/// The wire of every `# expect:` entry of every fixture a test runs, unmerged and merged, equals its reviewed snapshot. One file per
+/// program, `tests/snapshots/<fixture>.wire`; `ANALYZER_BLESS=1` rewrites them, and the diff is what you review.
+#[test]
+fn the_wire_of_every_fixture_equals_its_reviewed_snapshot() {
+    use crate::interp::call_frame;
+    let mut by_fixture: Vec<(String, String)> = Vec::new();
+    // A program the suite only checks in inline mode (`check`, "until part 04") is one summary mode cannot answer completely yet, and the wire
+    // is made in summary mode: a snapshot of it would bless an answer nothing verified. Those nine are left out, and say so here.
+    let this_file = include_str!("fixture.rs");
+    for (fixture, entry, opts) in every_entry() {
+        if this_file.contains(&format!("check(\"{fixture}\")")) {
+            continue;
+        }
+        let (db, file) = open_fixture(&fixture);
+        let Some((plain, _)) = call_frame(&db, file, &entry, &opts, false) else {
+            continue;
+        };
+        let (merged, _) = call_frame(&db, file, &entry, &opts, true).unwrap();
+        let text = format!(
+            "== {entry}\n{}\n== {entry} (merged)\n{}\n",
+            wire_text(&plain),
+            wire_text(&merged)
+        );
+        match by_fixture.last_mut() {
+            Some((name, all)) if *name == fixture => all.push_str(&text),
+            _ => by_fixture.push((fixture, text)),
+        }
+    }
+    // 25 programs are verified in both modes; 34 are run at all; 43 have `# expect:` blocks (nine were never run, even at the pin)
+    assert_eq!(by_fixture.len(), 25, "a program was added or lost");
+    for (fixture, text) in by_fixture {
+        let path = std::path::Path::new("tests/snapshots").join(format!("{fixture}.wire"));
+        analyzer_testkit::expect_file(&path, &text);
+    }
+}

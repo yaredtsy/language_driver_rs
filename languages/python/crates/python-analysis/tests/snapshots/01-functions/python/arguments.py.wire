@@ -1,0 +1,66 @@
+== main
+arguments.main
+  arguments.run @60:5
+    arguments.on_ok @20:5
+  arguments.run @61:5
+    arguments.on_err @20:5
+  arguments.run_kw @62:5
+    arguments.on_ok @24:5
+  arguments.run_default @63:5
+    arguments.fallback @28:5
+  arguments.run_default @64:5
+    arguments.on_ok @28:5
+  arguments.outer @65:5
+    arguments.middle @32:5
+      arguments.inner @36:5
+        arguments.on_err @40:5
+  arguments.missing @66:5
+  arguments.with_module @67:5
+    util.helper @48:5
+  arguments.shadow @68:5
+    arguments.leak @52:5
+
+== main (merged)
+arguments.main
+  arguments.run x2 @60:5
+    arguments.on_ok @20:5
+    arguments.on_err @20:5
+  arguments.run_kw @62:5
+    arguments.on_ok @24:5
+  arguments.run_default x2 @63:5
+    arguments.fallback @28:5
+    arguments.on_ok @28:5
+  arguments.outer @65:5
+    arguments.middle @32:5
+      arguments.inner @36:5
+        arguments.on_err @40:5
+  arguments.missing @66:5
+  arguments.with_module @67:5
+    util.helper @48:5
+  arguments.shadow @68:5
+    arguments.leak @52:5
+
+== both
+arguments.both
+  arguments.read_ok @80:5
+    arguments.run @72:5
+      arguments.on_ok @20:5
+  arguments.read_err @81:5
+    arguments.run @76:5
+      arguments.on_err @20:5
+
+== both (merged)
+arguments.both
+  arguments.read_ok @80:5
+    arguments.run @72:5
+      arguments.on_ok @20:5
+  arguments.read_err @81:5
+    arguments.run @76:5
+      arguments.on_err @20:5
+
+== entry
+arguments.entry
+
+== entry (merged)
+arguments.entry
+

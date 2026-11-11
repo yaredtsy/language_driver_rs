@@ -1,0 +1,25 @@
+== main
+summaries.main
+  summaries.pick @32:5
+  summaries.a @32:5
+  summaries.b @32:5
+  summaries.chain @33:5
+    summaries.ident @24:12
+    summaries.ident @24:18
+  summaries.a @33:5
+  summaries.ident @34:5
+  summaries.a @34:5
+  summaries.b @34:5
+  summaries.pick @34:11
+  summaries.nothing @35:5
+
+== main (merged)
+summaries.main
+  summaries.pick x2 @32:5
+  summaries.a x3 @32:5
+  summaries.b x2 @32:5
+  summaries.chain @33:5
+    summaries.ident x2 @24:12
+  summaries.ident @34:5
+  summaries.nothing @35:5
+

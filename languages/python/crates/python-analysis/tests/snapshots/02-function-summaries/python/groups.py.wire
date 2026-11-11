@@ -1,0 +1,131 @@
+== main
+groups.main
+  groups.f @63:5
+    groups.g @19:12
+      groups.f [recursive] @24:16
+  groups.done @63:5
+  groups.b @64:5
+    groups.c @36:12
+      groups.a @40:12
+        groups.b [recursive] @31:16
+  groups.done @64:5
+  groups.parse_expr @65:5
+    groups.parse_atom @45:12
+      groups.parse_expr [recursive] @51:16
+    groups.combine @46:12
+      groups.parse_expr [recursive] @57:9
+  groups.num @65:5
+  groups.binop @65:5
+
+== main (merged)
+groups.main
+  groups.f @63:5
+    groups.g @19:12
+      groups.f [recursive] @24:16
+  groups.done x2 @63:5
+  groups.b @64:5
+    groups.c @36:12
+      groups.a @40:12
+        groups.b [recursive] @31:16
+  groups.parse_expr @65:5
+    groups.parse_atom @45:12
+      groups.parse_expr [recursive] @51:16
+    groups.combine @46:12
+      groups.parse_expr [recursive] @57:9
+  groups.num @65:5
+  groups.binop @65:5
+
+== ping_entry
+groups.ping_entry
+  groups.ping @80:5
+    groups.pong @70:9
+      groups.ping [recursive] @76:12
+    groups.done @71:5
+
+== ping_entry (merged)
+groups.ping_entry
+  groups.ping @80:5
+    groups.pong @70:9
+      groups.ping [recursive] @76:12
+    groups.done @71:5
+
+== merge_entry
+groups.merge_entry
+  groups.outer @100:5
+    groups.x @85:12
+      groups.y @90:16
+        groups.x [recursive] @95:9
+        groups.outer [recursive] @96:12
+
+== merge_entry (merged)
+groups.merge_entry
+  groups.outer @100:5
+    groups.x @85:12
+      groups.y @90:16
+        groups.x [recursive] @95:9
+        groups.outer [recursive] @96:12
+
+== nested_entry
+groups.nested_entry
+  groups.nested_expr @142:5
+    groups.nested_atom @122:12
+      groups.nested_expr [recursive] @128:16
+    groups.nested_combine @123:12
+      groups.walk_list @134:9
+        groups.walk_list [recursive] @107:16
+      groups.walk_back @135:9
+        groups.walk_back [recursive] @114:13
+        groups.nested_expr [recursive] @115:13
+        groups.num @116:9
+        groups.binop @116:9
+      groups.nested_expr [recursive] @136:9
+  groups.num @142:5
+  groups.binop @142:5
+
+== nested_entry (merged)
+groups.nested_entry
+  groups.nested_expr @142:5
+    groups.nested_atom @122:12
+      groups.nested_expr [recursive] @128:16
+    groups.nested_combine @123:12
+      groups.walk_list @134:9
+        groups.walk_list [recursive] @107:16
+      groups.walk_back @135:9
+        groups.walk_back [recursive] @114:13
+        groups.nested_expr [recursive] @115:13
+        groups.num @116:9
+        groups.binop @116:9
+      groups.nested_expr [recursive] @136:9
+  groups.num @142:5
+  groups.binop @142:5
+
+== up_entry
+groups.up_entry
+  groups.up_expr @179:5
+    groups.up_atom @149:12
+      groups.up_expr [recursive] @155:16
+    groups.up_combine @150:12
+      groups.helper @161:9
+        groups.helper2 @168:16
+          groups.up_expr [recursive] @173:9
+          groups.num @174:5
+          groups.binop @174:5
+          groups.helper [recursive] @175:12
+  groups.num @179:5
+  groups.binop @179:5
+
+== up_entry (merged)
+groups.up_entry
+  groups.up_expr @179:5
+    groups.up_atom @149:12
+      groups.up_expr [recursive] @155:16
+    groups.up_combine @150:12
+      groups.helper @161:9
+        groups.helper2 @168:16
+          groups.up_expr [recursive] @173:9
+          groups.num @174:5
+          groups.binop @174:5
+          groups.helper [recursive] @175:12
+  groups.num @179:5
+  groups.binop @179:5
+

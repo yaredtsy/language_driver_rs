@@ -1,0 +1,51 @@
+== alias
+locals.alias
+  locals.a @20:5
+
+== alias (merged)
+locals.alias
+  locals.a @20:5
+
+== rebinding
+locals.rebinding
+  locals.a @25:5
+  locals.b @27:5
+
+== rebinding (merged)
+locals.rebinding
+  locals.a @25:5
+  locals.b @27:5
+
+== chained
+locals.chained
+  locals.b @32:5
+
+== chained (merged)
+locals.chained
+  locals.b @32:5
+
+== once
+locals.once
+  locals.pick @36:13
+
+== once (merged)
+locals.once
+  locals.pick @36:13
+
+== walrus
+locals.walrus
+  locals.b @40:5
+  locals.b @41:5
+
+== walrus (merged)
+locals.walrus
+  locals.b x2 @40:5
+
+== unpack
+locals.unpack
+  locals.b @46:5
+
+== unpack (merged)
+locals.unpack
+  locals.b @46:5
+

@@ -1,0 +1,34 @@
+== main
+wall.main
+  wall.l1a @34:5
+    wall.l2a @24:5
+      wall.l3a @14:5
+      wall.l3b @15:5
+    wall.l2b @25:5
+      wall.l3a @19:5
+      wall.l3b @20:5
+  wall.l1b @35:5
+    wall.l2a @29:5
+      wall.l3a @14:5
+      wall.l3b @15:5
+    wall.l2b @30:5
+      wall.l3a @19:5
+      wall.l3b @20:5
+
+== main (merged)
+wall.main
+  wall.l1a @34:5
+    wall.l2a @24:5
+      wall.l3a @14:5
+      wall.l3b @15:5
+    wall.l2b @25:5
+      wall.l3a @19:5
+      wall.l3b @20:5
+  wall.l1b @35:5
+    wall.l2a @29:5
+      wall.l3a @14:5
+      wall.l3b @15:5
+    wall.l2b @30:5
+      wall.l3a @19:5
+      wall.l3b @20:5
+

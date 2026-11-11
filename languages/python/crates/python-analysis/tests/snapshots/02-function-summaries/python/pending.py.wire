@@ -1,0 +1,22 @@
+== main
+pending.main
+  pending.grow @27:5
+    pending.grow [recursive] @12:16
+  pending.done @27:5
+  pending.walk @28:5
+    pending.walk [recursive] @17:9
+    pending.done @18:5
+  pending.rec @29:5
+    pending.rec [recursive] @23:12
+
+== main (merged)
+pending.main
+  pending.grow @27:5
+    pending.grow [recursive] @12:16
+  pending.done @27:5
+  pending.walk @28:5
+    pending.walk [recursive] @17:9
+    pending.done @18:5
+  pending.rec @29:5
+    pending.rec [recursive] @23:12
+

@@ -1,0 +1,68 @@
+== main
+callbacks.main
+  callbacks.handle_ok @33:5
+    callbacks.run @25:5
+      callbacks.on_ok @21:5
+      callbacks.fetch @21:8
+  callbacks.handle_err @34:5
+    callbacks.run @29:5
+      callbacks.on_err @21:5
+      callbacks.fetch @21:8
+
+== main (merged)
+callbacks.main
+  callbacks.handle_ok @33:5
+    callbacks.run @25:5
+      callbacks.on_ok @21:5
+      callbacks.fetch @21:8
+  callbacks.handle_err @34:5
+    callbacks.run @29:5
+      callbacks.on_err @21:5
+      callbacks.fetch @21:8
+
+== two_levels
+callbacks.two_levels
+  callbacks.outer @46:5
+    callbacks.middle @38:5
+      callbacks.on_ok @42:5
+
+== two_levels (merged)
+callbacks.two_levels
+  callbacks.outer @46:5
+    callbacks.middle @38:5
+      callbacks.on_ok @42:5
+
+== from_a_factory
+callbacks.from_a_factory
+  callbacks.run @54:5
+    callbacks.on_ok @21:5
+    callbacks.fetch @21:8
+  callbacks.factory @54:16
+
+== from_a_factory (merged)
+callbacks.from_a_factory
+  callbacks.run @54:5
+    callbacks.on_ok @21:5
+    callbacks.fetch @21:8
+  callbacks.factory @54:16
+
+== uses_decorated
+callbacks.uses_decorated
+  callbacks.flaky @75:5
+    callbacks.on_ok @66:5
+  callbacks.flaky_with @76:5
+    callbacks.on_err @71:5
+
+== uses_decorated (merged)
+callbacks.uses_decorated
+  callbacks.flaky @75:5
+    callbacks.on_ok @66:5
+  callbacks.flaky_with @76:5
+    callbacks.on_err @71:5
+
+== uses_stdlib
+callbacks.uses_stdlib
+
+== uses_stdlib (merged)
+callbacks.uses_stdlib
+

@@ -1,0 +1,107 @@
+== main
+in_keys.main
+  in_keys.json_box @35:5
+    in_keys.Box @23:9
+    in_keys.JsonHandler @24:17
+    in_keys.Box.run @25:5
+      in_keys.JsonHandler.process @19:9
+  in_keys.csv_box @36:5
+    in_keys.Box @29:9
+    in_keys.CsvHandler @30:17
+    in_keys.Box.run @31:5
+      in_keys.CsvHandler.process @19:9
+  in_keys.json_box @37:5
+    in_keys.Box @23:9
+    in_keys.JsonHandler @24:17
+    in_keys.Box.run @25:5
+      in_keys.JsonHandler.process @19:9
+
+== main (merged)
+in_keys.main
+  in_keys.json_box x2 @35:5
+    in_keys.Box x2 @23:9
+    in_keys.JsonHandler x2 @24:17
+    in_keys.Box.run x2 @25:5
+      in_keys.JsonHandler.process x2 @19:9
+  in_keys.csv_box @36:5
+    in_keys.Box @29:9
+    in_keys.CsvHandler @30:17
+    in_keys.Box.run @31:5
+      in_keys.CsvHandler.process @19:9
+
+== shared
+in_keys.shared
+  in_keys.Box @41:9
+  in_keys.JsonHandler @42:17
+  in_keys.Box @43:9
+  in_keys.JsonHandler @44:17
+  in_keys.Box.run @45:5
+    in_keys.JsonHandler.process @19:9
+  in_keys.Box.run @46:5
+    in_keys.JsonHandler.process @19:9
+
+== shared (merged)
+in_keys.shared
+  in_keys.Box x2 @41:9
+  in_keys.JsonHandler x2 @42:17
+  in_keys.Box.run x2 @45:5
+    in_keys.JsonHandler.process x2 @19:9
+
+== passed
+in_keys.passed
+  in_keys.Box @54:9
+  in_keys.CsvHandler @55:17
+  in_keys.use @56:5
+    in_keys.Box.run @50:5
+      in_keys.CsvHandler.process @19:9
+
+== passed (merged)
+in_keys.passed
+  in_keys.Box @54:9
+  in_keys.CsvHandler @55:17
+  in_keys.use @56:5
+    in_keys.Box.run @50:5
+      in_keys.CsvHandler.process @19:9
+
+== deep
+in_keys.deep
+  in_keys.Config @73:9
+  in_keys.JsonHandler @74:17
+  in_keys.App @75:9
+  in_keys.Service @77:9
+  in_keys.Service.run @79:5
+
+== deep (merged)
+in_keys.deep
+  in_keys.Config @73:9
+  in_keys.JsonHandler @74:17
+  in_keys.App @75:9
+  in_keys.Service @77:9
+  in_keys.Service.run @79:5
+
+== again
+in_keys.again
+  in_keys.Runner @92:9
+  in_keys.again [recursive] @93:12
+  in_keys.Runner.run @94:5
+    in_keys.log @88:9
+
+== again (merged)
+in_keys.again
+  in_keys.Runner @92:9
+  in_keys.again [recursive] @93:12
+  in_keys.Runner.run @94:5
+    in_keys.log @88:9
+
+== again_closure
+in_keys.again_closure
+  in_keys.again_closure [recursive] @99:9
+  in_keys.again_closure.g @104:5
+    in_keys.log @102:9
+
+== again_closure (merged)
+in_keys.again_closure
+  in_keys.again_closure [recursive] @99:9
+  in_keys.again_closure.g @104:5
+    in_keys.log @102:9
+

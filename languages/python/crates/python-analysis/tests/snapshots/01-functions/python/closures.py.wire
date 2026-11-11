@@ -1,0 +1,84 @@
+== same_frame
+closures.same_frame
+  closures.same_frame.inner @24:5
+    closures.a @22:9
+
+== same_frame (merged)
+closures.same_frame
+  closures.same_frame.inner @24:5
+    closures.a @22:9
+
+== escaping
+closures.escaping
+  closures.make @35:9
+  closures.make.run @36:5
+    closures.b @29:9
+
+== escaping (merged)
+closures.escaping
+  closures.make @35:9
+  closures.make.run @36:5
+    closures.b @29:9
+
+== caller_has_same_name
+closures.caller_has_same_name
+  closures.make @41:9
+  closures.make.run @42:5
+    closures.b @29:9
+
+== caller_has_same_name (merged)
+closures.caller_has_same_name
+  closures.make @41:9
+  closures.make.run @42:5
+    closures.b @29:9
+
+== late
+closures.late
+  closures.late.run @52:5
+    closures.b @49:9
+
+== late (merged)
+closures.late
+  closures.late.run @52:5
+    closures.b @49:9
+
+== two_runs
+closures.two_runs
+  closures.make @56:9
+  closures.make @57:9
+  closures.make.run @58:5
+    closures.a @29:9
+  closures.make.run @59:5
+    closures.b @29:9
+
+== two_runs (merged)
+closures.two_runs
+  closures.make x2 @56:9
+  closures.make.run x2 @58:5
+    closures.a @29:9
+    closures.b @29:9
+
+== setup
+closures.setup
+  closures.pick @63:20
+  closures.setup.handler @66:5
+    closures.a @64:9
+
+== setup (merged)
+closures.setup
+  closures.pick @63:20
+  closures.setup.handler @66:5
+    closures.a @64:9
+
+== entry_closure
+closures.entry_closure
+  closures.pick @70:9
+  closures.entry_closure.inner @75:5
+    closures.a @73:9
+
+== entry_closure (merged)
+closures.entry_closure
+  closures.pick @70:9
+  closures.entry_closure.inner @75:5
+    closures.a @73:9
+

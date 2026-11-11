@@ -1,0 +1,36 @@
+== main
+follow.main
+  follow.top @22:5
+    follow.middle @17:5
+      follow.leaf @13:5
+    follow.leaf @18:5
+  follow.middle @23:5
+    follow.leaf @13:5
+
+== main (merged)
+follow.main
+  follow.top @22:5
+    follow.middle @17:5
+      follow.leaf @13:5
+    follow.leaf @18:5
+  follow.middle @23:5
+    follow.leaf @13:5
+
+== across_files
+follow.across_files
+  util.chain @27:5
+    util.helper @14:5
+
+== across_files (merged)
+follow.across_files
+  util.chain @27:5
+    util.helper @14:5
+
+== no_caller_scope
+follow.no_caller_scope
+  follow.reads_x @32:5
+
+== no_caller_scope (merged)
+follow.no_caller_scope
+  follow.reads_x @32:5
+

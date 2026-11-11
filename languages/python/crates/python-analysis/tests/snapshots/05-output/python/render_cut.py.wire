@@ -1,0 +1,10 @@
+== main
+render_cut.main [cut]
+  render_cut.a @20:5
+  render_cut.b @21:5
+
+== main (merged)
+render_cut.main [cut]
+  render_cut.a @20:5
+  render_cut.b @21:5
+

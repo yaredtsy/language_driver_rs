@@ -1,0 +1,24 @@
+== main
+cuts.main [incomplete]
+  cuts.a [incomplete] @33:5
+    cuts.b [incomplete] @29:5
+      cuts.top @25:5
+        cuts.mid @21:12
+          cuts.leaf @17:12
+  cuts.top @34:5
+    cuts.mid @21:12
+      cuts.leaf @17:12
+  cuts.handler @34:5
+
+== main (merged)
+cuts.main [incomplete]
+  cuts.a [incomplete] @33:5
+    cuts.b [incomplete] @29:5
+      cuts.top @25:5
+        cuts.mid @21:12
+          cuts.leaf @17:12
+  cuts.top @34:5
+    cuts.mid @21:12
+      cuts.leaf @17:12
+  cuts.handler @34:5
+

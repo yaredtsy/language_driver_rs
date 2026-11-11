@@ -1,0 +1,25 @@
+== main
+recursion.main
+  recursion.f @32:5
+    recursion.f [recursive] @6:5
+  recursion.g @33:5
+    recursion.h @10:5
+      recursion.g [recursive] @14:5
+  recursion.countdown @34:5
+    recursion.countdown [recursive] @19:9
+  recursion.twice @35:5
+    recursion.leaf @27:5
+    recursion.leaf @28:5
+
+== main (merged)
+recursion.main
+  recursion.f @32:5
+    recursion.f [recursive] @6:5
+  recursion.g @33:5
+    recursion.h @10:5
+      recursion.g [recursive] @14:5
+  recursion.countdown @34:5
+    recursion.countdown [recursive] @19:9
+  recursion.twice @35:5
+    recursion.leaf x2 @27:5
+

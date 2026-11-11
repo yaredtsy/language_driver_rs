@@ -1,0 +1,28 @@
+== main
+stable_ids.main
+  stable_ids.read_a @18:5
+    stable_ids.done @10:5
+  stable_ids.read_b @19:5
+    stable_ids.done @14:5
+
+== main (merged)
+stable_ids.main
+  stable_ids.read_a @18:5
+    stable_ids.done @10:5
+  stable_ids.read_b @19:5
+    stable_ids.done @14:5
+
+== main2
+stable_ids.main2
+  stable_ids.read_b @23:5
+    stable_ids.done @14:5
+  stable_ids.read_a @24:5
+    stable_ids.done @10:5
+
+== main2 (merged)
+stable_ids.main2
+  stable_ids.read_b @23:5
+    stable_ids.done @14:5
+  stable_ids.read_a @24:5
+    stable_ids.done @10:5
+

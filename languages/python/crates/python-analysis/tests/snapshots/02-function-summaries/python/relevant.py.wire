@@ -1,0 +1,26 @@
+== main
+relevant.main
+  relevant.log_event @32:5
+    relevant.note @19:5
+  relevant.log_event @33:5
+    relevant.note @19:5
+  relevant.forward @34:5
+    relevant.on_ok @24:5
+  relevant.forward @35:5
+    relevant.on_err @24:5
+  relevant.keep @36:5
+  relevant.on_ok @36:5
+  relevant.keep @37:5
+  relevant.on_err @37:5
+
+== main (merged)
+relevant.main
+  relevant.log_event x2 @32:5
+    relevant.note x2 @19:5
+  relevant.forward x2 @34:5
+    relevant.on_ok @24:5
+    relevant.on_err @24:5
+  relevant.keep x2 @36:5
+  relevant.on_ok @36:5
+  relevant.on_err @37:5
+

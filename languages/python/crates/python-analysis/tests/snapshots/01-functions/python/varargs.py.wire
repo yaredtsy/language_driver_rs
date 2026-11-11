@@ -1,0 +1,20 @@
+== main
+varargs.main
+  varargs.collect @31:5
+  varargs.by_name @32:5
+  varargs.two @34:5
+  varargs.two @35:5
+    varargs.b @23:5
+  varargs.two @36:5
+  varargs.after_star @37:5
+    varargs.b @27:5
+
+== main (merged)
+varargs.main
+  varargs.collect @31:5
+  varargs.by_name @32:5
+  varargs.two x3 @34:5
+    varargs.b @23:5
+  varargs.after_star @37:5
+    varargs.b @27:5
+

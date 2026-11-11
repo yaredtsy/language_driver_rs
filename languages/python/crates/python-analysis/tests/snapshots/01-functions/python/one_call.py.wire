@@ -1,0 +1,11 @@
+== main
+one_call.main
+  one_call.helper @17:5
+  one_call.other @18:14
+  one_call.helper @21:9
+
+== main (merged)
+one_call.main
+  one_call.helper x2 @17:5
+  one_call.other @18:14
+

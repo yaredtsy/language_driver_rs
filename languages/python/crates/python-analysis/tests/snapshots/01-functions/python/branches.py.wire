@@ -1,0 +1,71 @@
+== never_none
+branches.never_none
+
+== never_none (merged)
+branches.never_none
+
+== both_arms
+branches.both_arms
+  branches.a @35:5
+  branches.b @35:5
+
+== both_arms (merged)
+branches.both_arms
+  branches.a @35:5
+  branches.b @35:5
+
+== skipped
+branches.skipped
+  branches.a @42:5
+  branches.b @42:5
+
+== skipped (merged)
+branches.skipped
+  branches.a @42:5
+  branches.b @42:5
+
+== elif_chain
+branches.elif_chain
+  branches.a @52:5
+  branches.b @52:5
+  branches.c @52:5
+
+== elif_chain (merged)
+branches.elif_chain
+  branches.a @52:5
+  branches.b @52:5
+  branches.c @52:5
+
+== loop
+branches.loop
+  branches.a @58:9
+  branches.a @60:5
+  branches.b @60:5
+
+== loop (merged)
+branches.loop
+  branches.a x2 @58:9
+  branches.b @60:5
+
+== while_loop
+branches.while_loop
+  branches.a @67:5
+  branches.b @67:5
+
+== while_loop (merged)
+branches.while_loop
+  branches.a @67:5
+  branches.b @67:5
+
+== try_except
+branches.try_except
+  branches.risky @74:9
+  branches.a @76:9
+  branches.b @76:9
+
+== try_except (merged)
+branches.try_except
+  branches.risky @74:9
+  branches.a @76:9
+  branches.b @76:9
+
