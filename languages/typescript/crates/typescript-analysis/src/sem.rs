@@ -19,7 +19,7 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tsrs_ast::SourceFile;
+use tsrs_ast::{Kind, Node, SourceFile};
 use tsrs_compiler::{Program, ProgramOptions, ProgramRegions};
 use tsrs_core::arena::Region;
 use tsrs_core::{
@@ -28,7 +28,7 @@ use tsrs_core::{
 use tsrs_tsoptions::{ParseConfigHost, ParsedCommandLine};
 use tsrs_vfs::{FS, bundled, cachedvfs, osvfs};
 
-use typescript_syntax::{Def, Dialect, MarkerStyle, Outline};
+use typescript_syntax::{Def, Dialect, MarkerStyle, Outline, Span};
 
 use crate::OpenError;
 
@@ -61,8 +61,73 @@ pub struct File<'p> {
     _one_thread: PhantomData<*const ()>,
 }
 
-/// The outlines made so far, by file and marker label.
-type Outlines = HashMap<(P<SourceFile>, String), Arc<Outline>>;
+/// One file's outline, and for each def the node of the **program's** tree it names. The outline is made from the file's text by
+/// `typescript_syntax::outline_with_nodes`, which also says where each def's node is (a byte span); the node is the one in the program's tree with that
+/// span and a kind that can be a def's node. The same text parses to the same spans, so the two trees agree, and the rule for what a def is is written
+/// once, in `typescript-syntax`. `tests` proves the map is one to one on every fixture of the outline suite.
+pub(crate) struct FileDefs {
+    pub(crate) outline: Outline,
+    /// The node of each def, in the order of `outline.defs`. `None` when no node, or more than one, has the span: a bug in one of the two parses,
+    /// which `describe` turns into an `Unresolved` edge and a count (rule 8).
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "TS4 step 2b walks bodies from it")
+    )]
+    pub(crate) nodes: Vec<Option<P<Node>>>,
+    /// The def a node is, for the nodes in `nodes`: the way back, and how the walk knows a nested node is a def of its own.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "TS4 step 2b stops the walk at a def with it")
+    )]
+    pub(crate) def_of: HashMap<P<Node>, usize>,
+}
+
+/// The files' defs made so far, by file and marker label.
+type FileDefsCache = HashMap<(P<SourceFile>, String), Arc<FileDefs>>;
+
+/// The node kinds `outline_with_nodes` can name: what has a body, a class, or a declaration of a def with no body.
+fn can_be_a_def(kind: Kind) -> bool {
+    matches!(
+        kind,
+        Kind::FunctionDeclaration
+            | Kind::FunctionExpression
+            | Kind::ArrowFunction
+            | Kind::ClassDeclaration
+            | Kind::ClassExpression
+            | Kind::MethodDeclaration
+            | Kind::Constructor
+            | Kind::GetAccessor
+            | Kind::SetAccessor
+            | Kind::InterfaceDeclaration
+            | Kind::MethodSignature
+            | Kind::EnumDeclaration
+            | Kind::TypeAliasDeclaration
+            | Kind::ModuleDeclaration
+    )
+}
+
+/// The nodes of `file` that can be a def's node and whose span is one of `wanted`, by span. The span is the node's own bytes, from its first token
+/// to its end (tsrs's `pos` includes the trivia before it, so the start is moved past it), as `typescript-syntax` measures it.
+fn nodes_by_span(file: P<SourceFile>, wanted: &HashSet<Span>) -> HashMap<Span, Vec<P<Node>>> {
+    let text = file.text();
+    let mut found: HashMap<Span, Vec<P<Node>>> = HashMap::new();
+    let mut pending = vec![file.as_node()];
+    while let Some(node) = pending.pop() {
+        if can_be_a_def(node.kind()) {
+            let end = node.end().source_offset().unwrap_or(0);
+            let pos = node.pos().source_offset().unwrap_or(0);
+            let span = Span::new(tsrs_scanner::skip_trivia(text, pos).min(end), end);
+            if wanted.contains(&span) {
+                found.entry(span).or_default().push(node);
+            }
+        }
+        node.for_each_child(&mut |child| {
+            pending.push(child);
+            false
+        });
+    }
+    found
+}
 
 /// A def of one file's outline (`typescript_syntax::outline`, the rule TS1 froze): a `File` and the index of the def in that file's outline. It holds no
 /// tsrs pointer of its own, only the `File`, so it is valid for the `Sem`'s life and no longer, stays on one thread, and is not shared, exactly as `File`
@@ -86,7 +151,7 @@ pub struct Sem {
     /// here makes concurrent questions safe (`proof` pins this). Moving a `Sem` to another thread stays allowed.
     _not_shared: PhantomData<Cell<()>>,
     /// One outline per (file, marker label), made on first use. A `Sem` is not `Sync`, so a `RefCell` is enough.
-    outlines: RefCell<Outlines>,
+    file_defs: RefCell<FileDefsCache>,
     // Fields drop in this order, after `Drop::drop` has freed the program: the loaders' regions, then the program's own.
     _loaders: Arc<ProgramRegions>,
     _region: Region,
@@ -170,7 +235,7 @@ impl Sem {
             config_files,
             config_file,
             _not_shared: PhantomData,
-            outlines: RefCell::new(HashMap::new()),
+            file_defs: RefCell::new(HashMap::new()),
             _loaders: loaders,
             _region: region,
         };
@@ -214,20 +279,41 @@ impl Sem {
         })
     }
 
-    /// The outline of a TypeScript or JavaScript file, as `typescript_syntax::outline` makes it from the file's own text; made once per
-    /// (file, label). `None` for a file that is not code (an imported `.json`).
-    #[cfg_attr(
-        not(any(test, feature = "__proof")),
-        expect(dead_code, reason = "TS4 step 2 walks from it")
-    )]
-    pub(crate) fn outline(&self, file: File<'_>, style: MarkerStyle<'_>) -> Option<Arc<Outline>> {
+    /// The defs of a TypeScript or JavaScript file: its outline and each def's node in the program's tree (see `FileDefs`). Made once per (file,
+    /// label). `None` for a file that is not code (an imported `.json`).
+    pub(crate) fn file_defs(
+        &self,
+        file: File<'_>,
+        style: MarkerStyle<'_>,
+    ) -> Option<Arc<FileDefs>> {
         let dialect = Dialect::from_path(file.node.file_name())?;
         let key = (file.node, style.label.to_owned());
-        if let Some(found) = self.outlines.borrow().get(&key) {
+        if let Some(found) = self.file_defs.borrow().get(&key) {
             return Some(Arc::clone(found));
         }
-        let made = Arc::new(typescript_syntax::outline(file.node.text(), dialect, style));
-        self.outlines.borrow_mut().insert(key, Arc::clone(&made));
+        // looking at the tree may allocate in the engine; the program's region is where that belongs
+        let _scope = self._region.enter();
+        let (outline, spans) =
+            typescript_syntax::outline_with_nodes(file.node.text(), dialect, style);
+        let by_span = nodes_by_span(file.node, &spans.iter().copied().collect());
+        let nodes: Vec<Option<P<Node>>> = spans
+            .iter()
+            .map(|span| match by_span.get(span).map(Vec::as_slice) {
+                Some([only]) => Some(*only),
+                _ => None,
+            })
+            .collect();
+        let def_of = nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| Some((((*node)?), index)))
+            .collect();
+        let made = Arc::new(FileDefs {
+            outline,
+            nodes,
+            def_of,
+        });
+        self.file_defs.borrow_mut().insert(key, Arc::clone(&made));
         Some(made)
     }
 
@@ -245,8 +331,9 @@ impl Sem {
         style: MarkerStyle<'_>,
     ) -> Option<Func<'_>> {
         let file = self.file(file)?;
-        let outline = self.outline(file, style)?;
-        let (def, _) = outline
+        let defs = self.file_defs(file, style)?;
+        let (def, _) = defs
+            .outline
             .defs
             .iter()
             .enumerate()
@@ -261,10 +348,10 @@ impl Sem {
         expect(dead_code, reason = "TS4 step 3's `describe` is built on it")
     )]
     pub(crate) fn def(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Def {
-        let outline = self
-            .outline(func.file, style)
+        let defs = self
+            .file_defs(func.file, style)
             .expect("a Func is made from an outline, so its file has one");
-        outline.defs[func.def].clone()
+        defs.outline.defs[func.def].clone()
     }
 
     /// The file's path relative to the root, with `/`; `None` for a file outside the root, such as the bundled libraries.
@@ -730,5 +817,89 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/json-import");
         let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
         assert!(sem.entry("src/data.json", "items", 0, STYLE).is_none());
+    }
+
+    /// Every file of every fixture the TS1 outline suite has (it covers every kind of def), opened as a project of its own: the root is the
+    /// dialect's folder, which has no config above it, so each file is an inferred project.
+    fn outline_fixtures() -> Vec<(String, PathBuf, PathBuf)> {
+        let base =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../typescript-syntax/tests/fixtures");
+        let mut found = Vec::new();
+        for dialect in ["ts", "tsx", "js", "jsx"] {
+            let root = base.join(dialect);
+            let mut names: Vec<_> = std::fs::read_dir(&root)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            names.sort();
+            for name in names {
+                found.push((
+                    format!("{dialect}/{}", name.to_string_lossy()),
+                    root.clone(),
+                    PathBuf::from(name),
+                ));
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn every_def_of_every_fixture_maps_to_exactly_one_program_node_and_back() {
+        let mut checked_files = 0;
+        let mut checked_defs = 0;
+        let mut problems = Vec::new();
+        for (label, root, file) in outline_fixtures() {
+            let sem = Sem::open(&root, &file)
+                .unwrap_or_else(|error| panic!("{label} does not open: {error}"));
+            for held in sem.files() {
+                // the files of the fixture folder (not the bundled libraries): a file the entry imports is checked too
+                let Some(relative) = sem.relative_path(held) else {
+                    continue;
+                };
+                let Some(defs) = sem.file_defs(held, STYLE) else {
+                    continue;
+                };
+                checked_files += 1;
+                let mut seen = HashSet::new();
+                for (index, def) in defs.outline.defs.iter().enumerate() {
+                    checked_defs += 1;
+                    let Some(node) = defs.nodes[index] else {
+                        problems.push(format!(
+                            "{label} {relative}: `{}` has no node",
+                            def.qualname
+                        ));
+                        continue;
+                    };
+                    if !seen.insert(node) {
+                        problems.push(format!(
+                            "{label} {relative}: `{}` shares its node",
+                            def.qualname
+                        ));
+                    }
+                    if defs.def_of.get(&node) != Some(&index) {
+                        problems.push(format!(
+                            "{label} {relative}: `{}` does not map back",
+                            def.qualname
+                        ));
+                    }
+                }
+                if defs.def_of.len() != defs.outline.defs.len() {
+                    problems.push(format!(
+                        "{label} {relative}: {} nodes for {} defs",
+                        defs.def_of.len(),
+                        defs.outline.defs.len()
+                    ));
+                }
+            }
+        }
+        assert!(
+            problems.is_empty(),
+            "{} problems:\n{}",
+            problems.len(),
+            problems.join("\n")
+        );
+        // not a vacuous pass: every fixture file was checked, and they hold a good many defs
+        assert_eq!(checked_files, outline_fixtures().len());
+        assert!(checked_defs > 250, "{checked_defs} defs");
     }
 }
