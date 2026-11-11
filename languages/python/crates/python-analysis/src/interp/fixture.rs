@@ -1255,30 +1255,37 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
     assert_eq!(total.missing, 46, "nodes inline finds and summary does not");
     assert_eq!(total.highest_missing, 37, "the topmost of them");
     assert_eq!(
-        total.at_unresolved, 32,
+        total.at_unresolved, 34,
         "topmost missing nodes at a call site the graph marks Unresolved"
     );
     assert_eq!(
         (total.nodes_at_unresolved, total.nodes_elsewhere),
-        (40, 6),
+        (42, 4),
         "of the missing nodes: under an Unresolved call site, and elsewhere"
     );
-    assert_eq!(total.missing, 40 + 6);
+    assert_eq!(total.missing, 42 + 4);
 
-    // The claim "every missing node is under an Unresolved call site" is false, and these five are why. Weak writes: the site is resolved
-    // to the OTHER handler, so an alternative is dropped and nothing marks it. Property accessors: summary mode makes the call when it
-    // knows the receiver (`Box.handler` in `swap` is back), but not here: `r` comes from a classmethod that returns an object, which
-    // summary mode cannot follow (step 2 of part 04), so the getter has no receiver to run on and there is no edge. `either`: inline
-    // lists one Pipeline.run per object, summary joins them (rule 7), so it is not lost information. A fix removes lines from this list;
-    // a regression adds one.
+    // The claim "every missing node is under an Unresolved call site" is false, and these three are why. Property accessors: summary mode
+    // makes the call when it knows the receiver (`Box.handler` in `swap` is back), but not here: `r` comes from a classmethod that
+    // returns an object, which summary mode cannot follow (step 2 of part 04), so the getter has no receiver to run on and there is no
+    // edge. `either`: inline lists one Pipeline.run per object, summary joins them (rule 7), so it is not lost information. A fix removes
+    // lines from this list; a regression adds one.
+    //
+    // Weak writes used to be on it (`maybe_opaque`, `two_candidates`): a write that may be on one of several objects, onto an attribute
+    // this path holds nothing for, kept only the written handler and dropped the other with no mark. `bind_attr` now joins `Unknown`, so
+    // the read is an Unresolved site next to the written handler. That marks the alternative, it does not find it: both programs still
+    // miss a node, and constructor effects (part 04, step 3) are what find it.
+    //
+    // KNOWN LIMIT, unmarked: `Env::join` (`union_into`) treats a name one arm never assigned as nothing, not as `Unknown`. A write on one
+    // branch of an `if` onto an object whose attribute the other branch's path holds nothing for is joined without a mark. Marking it
+    // would add an Unresolved edge to every read of an attribute a branch happens to write, so it is left until constructor effects make
+    // an absent attribute the exception.
     assert_eq!(
         total.not_at_unresolved,
         [
-            "03-classes/python/isolation.py maybe_opaque/isolation.Pipeline.run -> isolation.JsonHandler.process",
             "03-classes/python/special.py main -> special.Registry.active",
             "03-classes/python/special.py main -> special.Registry.get_h",
             "03-classes/python/state.py either -> state.Pipeline.run",
-            "03-classes/python/writes.py two_candidates/writes.Pipeline.run -> writes.CsvHandler.process",
         ]
     );
     // Edges summary mode has and inline mode does not. All come from ty's static type, the union of every assignment in the class (`Job.h`

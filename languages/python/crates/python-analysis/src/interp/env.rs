@@ -1,6 +1,6 @@
 // src/interp/env.rs
+use crate::interp::value::{AbstractValue, Values, dedup};
 use crate::interp::value::{ActivationId, OriginId};
-use crate::interp::value::{Values, dedup};
 use crate::sem::{BodyScope, Name};
 
 /// What each name holds on the path being walked. Cloning is a pointer copy.
@@ -31,7 +31,8 @@ impl<'db> Env<'db> {
         self.locals.insert_mut(name.clone(), v);
     }
     /// `strong`: the receiver is exactly one object, so the write replaces.
-    /// Otherwise it is added to what the attribute may already hold.
+    /// Otherwise it is added to what the attribute may already hold, and when this path holds nothing for it, to `Unknown`: the object
+    /// may keep a value this path does not know, and the read must not look as if the write were the only one.
     pub(crate) fn bind_attr(
         &mut self,
         origin: OriginId,
@@ -44,6 +45,12 @@ impl<'db> Env<'db> {
             (false, Some(old)) => {
                 let mut m = old.clone();
                 m.extend(v);
+                dedup(&mut m);
+                m
+            }
+            (false, None) => {
+                let mut m = v;
+                m.push(AbstractValue::Unknown);
                 dedup(&mut m);
                 m
             }
