@@ -19,7 +19,7 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tsrs_ast::{Kind, Node, SourceFile};
+use tsrs_ast::{self as ast, Kind, Node, NodeFlags, SourceFile};
 use tsrs_compiler::{Program, ProgramOptions, ProgramRegions};
 use tsrs_core::arena::Region;
 use tsrs_core::{
@@ -114,9 +114,7 @@ fn nodes_by_span(file: P<SourceFile>, wanted: &HashSet<Span>) -> HashMap<Span, V
     let mut pending = vec![file.as_node()];
     while let Some(node) = pending.pop() {
         if can_be_a_def(node.kind()) {
-            let end = node.end().source_offset().unwrap_or(0);
-            let pos = node.pos().source_offset().unwrap_or(0);
-            let span = Span::new(tsrs_scanner::skip_trivia(text, pos).min(end), end);
+            let span = own_span(text, node);
             if wanted.contains(&span) {
                 found.entry(span).or_default().push(node);
             }
@@ -342,6 +340,28 @@ impl Sem {
         Some(Func { file, def })
     }
 
+    /// The plain calls in the body of `func`: the callee expression of each, as an absolute byte span in the file, in source order (by where the
+    /// callee starts, then where it ends). Walks the **program's** tree from the def's node, through `FileDefs`. `None` for a def with no node (see
+    /// `FileDefs::nodes`).
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "walk.rs turns these into the solver's sites")
+    )]
+    pub(crate) fn call_sites(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Vec<Span>> {
+        let defs = self.file_defs(func.file, style)?;
+        let node = defs.nodes[func.def]?;
+        let _scope = self._region.enter();
+        let mut collector = Collector {
+            text: func.file.node.text(),
+            def_of: &defs.def_of,
+            own: node,
+            sites: Vec::new(),
+        };
+        collector.body_of(node);
+        collector.sites.sort();
+        Some(collector.sites)
+    }
+
     /// What the outline says the def is (qualname, kind, range, marker).
     #[cfg_attr(
         not(test),
@@ -438,6 +458,169 @@ fn package_in_node_modules(path: &str) -> Option<String> {
         });
     }
     Some(format!("{first}/{name}"))
+}
+
+/// The node's own bytes: from its first token to its end. tsrs's `pos` includes the trivia before the node, so the start is moved past it. This is how
+/// `typescript-syntax` measures a node too (`Parsed::span`), which is what lets a span from there find a node here.
+fn own_span(text: &str, node: P<Node>) -> Span {
+    let end = node.end().source_offset().unwrap_or(0);
+    let pos = node.pos().source_offset().unwrap_or(0);
+    Span::new(tsrs_scanner::skip_trivia(text, pos).min(end), end)
+}
+
+/// The plain calls in one def's body, as the callee expression's span of each. It follows `tsrs_ls`'s `CallSiteCollector` (`callhierarchy.rs`, `collect`),
+/// the same node kinds and the same places where it does not descend, with the plan's differences: it stops at any nested node that is a def of the
+/// **outline** (`def_of`), not at what tsrs's call hierarchy calls a declaration, so an anonymous function is part of the def around it and a named one is
+/// not; and a class's static block and property initializers are the class's own body. Only plain calls are sites so far (`f(x)`, `a.b(x)`, `a?.b(x)`,
+/// `super(x)`): `new`, a tagged template, a decorator, a JSX element and an accessor are TS4 steps 5 and 6.
+struct Collector<'a> {
+    text: &'a str,
+    def_of: &'a HashMap<P<Node>, usize>,
+    /// The def being walked: it is in `def_of` too, and must not stop its own walk.
+    own: P<Node>,
+    sites: Vec<Span>,
+}
+
+impl Collector<'_> {
+    fn collect(&mut self, node: Option<P<Node>>) {
+        let Some(node) = node else {
+            return;
+        };
+        // ambient code is a declaration, not a body
+        if node.flags().intersects(NodeFlags::Ambient) {
+            return;
+        }
+        // a nested def's calls are its own. As in tsrs, a nested class still owns the calls in its computed member names.
+        if node != self.own && self.def_of.contains_key(&node) {
+            if ast::is_class_like(node) {
+                for &member in node.members() {
+                    if let Some(name) = member.name()
+                        && ast::is_computed_property_name(name)
+                    {
+                        self.collect(name.expression());
+                    }
+                }
+            }
+            return;
+        }
+        match node.kind() {
+            // cannot contain a callable node
+            Kind::Identifier
+            | Kind::ImportEqualsDeclaration
+            | Kind::ImportDeclaration
+            | Kind::ExportDeclaration
+            | Kind::InterfaceDeclaration
+            | Kind::TypeAliasDeclaration => return,
+            // not the type side of an assertion
+            Kind::TypeAssertionExpression | Kind::AsExpression | Kind::SatisfiesExpression => {
+                self.collect(node.expression());
+                return;
+            }
+            // not the type of a variable or parameter
+            Kind::VariableDeclaration | Kind::Parameter => {
+                self.collect(node.name());
+                self.collect(node.initializer());
+                return;
+            }
+            Kind::CallExpression => {
+                if is_plain_call(node)
+                    && let Some(callee) = node.expression()
+                {
+                    self.sites.push(own_span(self.text, callee));
+                }
+                // not the type arguments
+                self.collect(node.expression());
+                for &argument in node.arguments() {
+                    self.collect(Some(argument));
+                }
+                return;
+            }
+            Kind::NewExpression => {
+                self.collect(node.expression());
+                for &argument in node.arguments() {
+                    self.collect(Some(argument));
+                }
+                return;
+            }
+            _ => {}
+        }
+        if ast::is_part_of_type_node(node) {
+            return;
+        }
+        node.for_each_child(&mut |child| {
+            self.collect(Some(child));
+            false
+        });
+    }
+
+    /// What a def's walk starts from: the parts of the node that are its body (`tsrs_ls`'s `collect_call_sites`, with the plan's class rule).
+    fn body_of(&mut self, node: P<Node>) {
+        match node.kind() {
+            Kind::FunctionDeclaration
+            | Kind::FunctionExpression
+            | Kind::ArrowFunction
+            | Kind::MethodDeclaration
+            | Kind::GetAccessor
+            | Kind::SetAccessor
+            | Kind::Constructor => {
+                for &parameter in node.parameters() {
+                    self.collect(Some(parameter));
+                }
+                self.collect(node.body());
+            }
+            Kind::ClassDeclaration | Kind::ClassExpression => {
+                if let Some(modifiers) = node.modifiers() {
+                    for &modifier in modifiers.nodes() {
+                        self.collect(Some(modifier));
+                    }
+                }
+                if let Some(heritage) = ast::get_class_extends_heritage_element(node) {
+                    self.collect(heritage.expression());
+                }
+                for &member in node.members() {
+                    if ast::can_have_modifiers(member)
+                        && let Some(modifiers) = member.modifiers()
+                    {
+                        for &modifier in modifiers.nodes() {
+                            self.collect(Some(modifier));
+                        }
+                    }
+                    match member.kind() {
+                        Kind::PropertyDeclaration => self.collect(member.initializer()),
+                        Kind::ClassStaticBlockDeclaration => {
+                            self.collect(Some(member.as_class_static_block_declaration().body));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Kind::ModuleDeclaration => {
+                if let Some(body) = node.body()
+                    && ast::is_module_block(body)
+                {
+                    for &statement in body.statements() {
+                        self.collect(Some(statement));
+                    }
+                }
+            }
+            // an interface, a method signature, an enum, a type alias: nothing to walk
+            _ => {}
+        }
+    }
+}
+
+/// `f(x)`, `a.b(x)`, `a?.b(x)`, `super(x)`. Not `import("./m")` and not `require("./m")`: that is loading a module, not calling into a function.
+fn is_plain_call(call: P<Node>) -> bool {
+    let Some(callee) = call.expression() else {
+        return false;
+    };
+    if callee.kind() == Kind::ImportKeyword {
+        return false;
+    }
+    let is_require = callee.kind() == Kind::Identifier
+        && callee.text() == "require"
+        && matches!(call.arguments(), [argument] if ast::is_string_literal_like(*argument));
+    !is_require
 }
 
 /// What `NotInProject` names when there was no config: the program was inferred from the file alone.
@@ -901,5 +1084,107 @@ mod tests {
         // not a vacuous pass: every fixture file was checked, and they hold a good many defs
         assert_eq!(checked_files, outline_fixtures().len());
         assert!(checked_defs > 250, "{checked_defs} defs");
+    }
+
+    fn sites_project() -> Sem {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sites");
+        Sem::open(&root, Path::new("src/sites.ts")).unwrap()
+    }
+
+    /// The callee text of every site of every def of `src/sites.ts` that has one, by qualname.
+    fn sites_by_def(sem: &Sem) -> std::collections::BTreeMap<String, Vec<String>> {
+        let file = sem.file("src/sites.ts").unwrap();
+        let text = file.node.text();
+        let defs = sem.file_defs(file, STYLE).unwrap();
+        let mut by_def = std::collections::BTreeMap::new();
+        for (index, def) in defs.outline.defs.iter().enumerate() {
+            let func = Func { file, def: index };
+            let sites = sem
+                .call_sites(func, STYLE)
+                .expect("every def of this file has a node");
+            let texts: Vec<String> = sites
+                .iter()
+                .map(|span| span.slice(text).unwrap().to_owned())
+                .collect();
+            if !texts.is_empty() {
+                by_def.insert(def.qualname.clone(), texts);
+            }
+        }
+        by_def
+    }
+
+    #[test]
+    fn a_body_s_plain_calls_are_its_sites_in_source_order() {
+        let found = sites_by_def(&sites_project());
+        let expect = |qualname: &str, sites: &[&str]| {
+            assert_eq!(
+                found
+                    .get(qualname)
+                    .map(|v| v.iter().map(String::as_str).collect::<Vec<_>>()),
+                Some(sites.to_vec()),
+                "{qualname}"
+            );
+        };
+        // the callee expression is the site: not the arguments, not the type arguments
+        expect(
+            "plain",
+            &["f", "a.b", "a?.b", "obj.x.y", "a[\"key\"]", "(g)"],
+        );
+        // by where the callee starts, then where it ends; an argument's call follows its callee's
+        expect(
+            "ordering",
+            &["f", "g", "f", "f()", "g", "a.b", "a.b(f()).c", "f"],
+        );
+        expect(
+            "wrappers",
+            &["(f() as any).m", "f", "f", "f()!.n", "f", "g"],
+        );
+        // a parameter's default value and a destructuring default are part of the body
+        expect("defaults", &["f", "g"]);
+        // an anonymous function is part of the def around it
+        expect("callbacks", &["xs.map", "g", "xs.forEach", "f", "f"]);
+        // a named nested function and a const arrow are defs of their own
+        expect("nested", &["f"]);
+        expect("nested.<locals>.inner", &["g"]);
+        expect("nested.<locals>.arrow", &["a.b"]);
+        // `new`, a tagged template, `import()`, `require()` and a property read are not plain calls (steps 5 and 6, or never)
+        assert_eq!(found.get("not_sites"), None);
+        // a class: `extends`, a property initializer, a static property, a static block and a decorator are its body; its methods are not
+        expect("Widget", &["mixin", "f", "g", "a.init", "dec"]);
+        expect("Widget.method", &["f"]);
+        expect("Widget.value", &["g"]);
+        expect("Widget.constructor", &["super", "f"]);
+        assert_eq!(found.get("Widget.decorated"), None);
+        // an object-literal method is a def; a named function expression is a def; overloads have one body
+        expect("table.load", &["f"]);
+        expect("expression_names", &["[1, 2].map"]);
+        expect("expression_names.<locals>.named", &["g"]);
+        expect("overloaded", &["f"]);
+        expect("arrow_def", &["f", "g"]);
+        // nothing else has a site: an interface method, an ambient `declare`, a leaf
+        let listed = [
+            "plain",
+            "ordering",
+            "wrappers",
+            "defaults",
+            "callbacks",
+            "nested",
+            "nested.<locals>.inner",
+            "nested.<locals>.arrow",
+            "Widget",
+            "Widget.method",
+            "Widget.value",
+            "Widget.constructor",
+            "table.load",
+            "expression_names",
+            "expression_names.<locals>.named",
+            "overloaded",
+            "arrow_def",
+        ];
+        let others: Vec<_> = found
+            .keys()
+            .filter(|q| !listed.contains(&q.as_str()))
+            .collect();
+        assert!(others.is_empty(), "{others:?}");
     }
 }

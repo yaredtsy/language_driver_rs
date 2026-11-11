@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "strict": false, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "noEmit": true, "experimentalDecorators": true },
+  "include": ["src"]
+}
