@@ -45,7 +45,7 @@ Rust privacy is why there is one: ty's most useful functions are `pub(crate)`, s
 
 It was `types/vnoc.rs` in pylspt. The rename is the second PY1 commit, so `git diff <copy commit> <rename commit> -- languages/python/vendor` is
 the patch and nothing else. The compiler catches a wrapper whose signature broke after a bump; only a test catches one whose behaviour
-changed, so PY5 adds `crates/python-analysis/tests/ext_wrappers.rs`: one test per wrapper.
+changed, so PY5 adds one test per wrapper. They are in `crates/python-analysis/src/sem.rs` (`attrs_tests`), not in a file of `tests/`: the repo's rule 4 says only `sem.rs` names the engine, and these tests must. Where each is: `class_mro` (the `mro` tests), `member` and `instance_of` (`member_*`), `widen`, `type_of_definition`, `bound_method_self`, `type_args` and `callable_parts` (one test each, on `tests/fixtures/classes/wrappers.py`). `callable_definition` is tested only for its `None` cases: its positive case, a callable ty made from a function such as `property(f)`, is exercised only by the fixture programs, so a changed answer there would show in the 41 tests and not in a direct one. A bump re-runs all of them first.
 
 ## Pins that must match, and two traps
 

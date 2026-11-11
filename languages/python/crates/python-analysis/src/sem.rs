@@ -1176,5 +1176,178 @@ mod attrs_tests {
                 loud_handle.display(db, &env).to_string(),
             );
         }
+
+        // ---- the other six wrappers: one direct test each. The compiler catches a changed signature after a bump, only a test catches a
+        // changed answer, and these answers decide call targets.
+
+        /// What to find in `wrappers.py`.
+        enum Want<'w> {
+            /// the first use of this name
+            Name(&'w str),
+            /// the first number literal
+            Number,
+        }
+
+        struct Finder<'a, 'db, 'w> {
+            model: &'a SemanticModel<'db>,
+            want: Want<'w>,
+            found: Option<ty_python_semantic::types::Type<'db>>,
+        }
+
+        impl<'a, 'db, 'w> SourceOrderVisitor<'a> for Finder<'_, 'db, 'w> {
+            fn enter_node(&mut self, node: AnyNodeRef<'a>) -> TraversalSignal {
+                if self.found.is_none() {
+                    self.found = match (&self.want, node) {
+                        (Want::Name(name), AnyNodeRef::ExprName(n)) if n.id.as_str() == *name => {
+                            n.inferred_type(self.model)
+                        }
+                        (Want::Number, AnyNodeRef::ExprNumberLiteral(n)) => {
+                            n.inferred_type(self.model)
+                        }
+                        _ => None,
+                    };
+                }
+                TraversalSignal::Traverse
+            }
+        }
+
+        fn open_wrappers() -> (
+            &'static ProjectDatabase,
+            ProgramFile<'static>,
+            &'static ParsedModuleRef,
+        ) {
+            let dir = std::fs::canonicalize("tests/fixtures/classes").unwrap();
+            let dir = SystemPath::from_std_path(&dir).unwrap();
+            let db: &'static ProjectDatabase = Box::leak(Box::new(open_project(dir).unwrap()));
+            let file = std::fs::canonicalize("tests/fixtures/classes/wrappers.py").unwrap();
+            let (_file, program_file) =
+                open(db, SystemPath::from_std_path(&file).unwrap()).unwrap();
+            let parsed: &'static ParsedModuleRef = Box::leak(Box::new(
+                parsed_module(db, program_file.python_file(db)).load(db),
+            ));
+            (db, program_file, parsed)
+        }
+
+        fn type_of<'db>(
+            db: &'db ProjectDatabase,
+            program_file: ProgramFile<'db>,
+            parsed: &'db ParsedModuleRef,
+            want: Want<'_>,
+        ) -> ty_python_semantic::types::Type<'db> {
+            let model = SemanticModel::new(db, program_file);
+            let mut finder = Finder {
+                model: &model,
+                want,
+                found: None,
+            };
+            walk_body(&mut finder, &parsed.syntax().body);
+            finder.found.expect("the fixture has what is asked for")
+        }
+
+        fn shown<'db>(
+            db: &'db ProjectDatabase,
+            program_file: ProgramFile<'db>,
+            ty: ty_python_semantic::types::Type<'db>,
+        ) -> String {
+            let env = ProgramEnvironment::from_program(program_file.program(db));
+            ty.display(db, &env).to_string()
+        }
+
+        /// `Literal[3]` is `int`; a type that is not a literal comes back as it was.
+        #[test]
+        fn widen_gives_a_literals_class_and_leaves_the_rest() {
+            let (db, pf, parsed) = open_wrappers();
+            let env = ProgramEnvironment::from_program(pf.program(db));
+            let three = type_of(db, pf, parsed, Want::Number);
+            assert_eq!(shown(db, pf, three), "Literal[3]");
+            assert_eq!(shown(db, pf, analyzer_ext::widen(db, &env, three)), "int");
+            let n = type_of(db, pf, parsed, Want::Name("n"));
+            assert_eq!(analyzer_ext::widen(db, &env, n), n);
+        }
+
+        /// A `class` statement binds the class's own type, the same one the class statement infers.
+        #[test]
+        fn type_of_definition_is_a_classs_own_type() {
+            let (db, pf, parsed) = open_wrappers();
+            let model = SemanticModel::new(db, pf);
+            let mut collector = ClassCollector {
+                classes: Vec::new(),
+            };
+            walk_body(&mut collector, &parsed.syntax().body);
+            let class = collector.classes[0];
+            assert_eq!(class.name.as_str(), "Box");
+            let definition = class.definition(&model);
+            let bound = analyzer_ext::type_of_definition(db, definition);
+            assert_eq!(Some(bound), class.inferred_type(&model));
+        }
+
+        /// A bound method is bound to its receiver; anything else is not a bound method.
+        #[test]
+        fn bound_method_self_is_the_receiver_and_only_for_a_bound_method() {
+            let (db, program_file, parsed) = open_attributes();
+            let env = ProgramEnvironment::from_program(program_file.program(db));
+            let classes = classes_by_name(db, program_file, parsed);
+            let handler = classes
+                .iter()
+                .find(|(n, _)| n.ends_with(".Handler"))
+                .unwrap()
+                .1;
+            let instance = analyzer_ext::instance_of(db, &env, handler).unwrap();
+            let handle = analyzer_ext::member(db, &env, instance, "handle").unwrap();
+            assert_eq!(analyzer_ext::bound_method_self(db, handle), Some(instance));
+            assert_eq!(analyzer_ext::bound_method_self(db, instance), None);
+        }
+
+        /// The type arguments of an instance, in order; none for a class that has none; `None` for what is not a nominal instance.
+        #[test]
+        fn type_args_are_the_instances_in_order() {
+            let (db, pf, parsed) = open_wrappers();
+            let env = ProgramEnvironment::from_program(pf.program(db));
+            let b = type_of(db, pf, parsed, Want::Name("b"));
+            let args =
+                analyzer_ext::type_args(db, &env, b).expect("Box[int] is a nominal instance");
+            assert_eq!(
+                args.iter().map(|t| shown(db, pf, *t)).collect::<Vec<_>>(),
+                ["int"]
+            );
+            let n = type_of(db, pf, parsed, Want::Name("n"));
+            assert_eq!(analyzer_ext::type_args(db, &env, n), Some(Vec::new()));
+            let cb = type_of(db, pf, parsed, Want::Name("cb"));
+            assert_eq!(analyzer_ext::type_args(db, &env, cb), None);
+        }
+
+        /// One signature, as (positional parameter types, return type); `...` has no parameter list; a non-callable has no parts.
+        #[test]
+        fn callable_parts_are_one_signature() {
+            let (db, pf, parsed) = open_wrappers();
+            let cb = type_of(db, pf, parsed, Want::Name("cb"));
+            let (params, ret) = analyzer_ext::callable_parts(db, cb).expect("Callable[[int], str]");
+            let params = params.expect("it has a parameter list");
+            assert_eq!(
+                params.iter().map(|t| shown(db, pf, *t)).collect::<Vec<_>>(),
+                ["int"]
+            );
+            assert_eq!(shown(db, pf, ret), "str");
+
+            let any_cb = type_of(db, pf, parsed, Want::Name("any_cb"));
+            let (params, ret) =
+                analyzer_ext::callable_parts(db, any_cb).expect("Callable[..., str]");
+            assert!(params.is_none(), "`...` has no parameter list");
+            assert_eq!(shown(db, pf, ret), "str");
+
+            let n = type_of(db, pf, parsed, Want::Name("n"));
+            assert!(analyzer_ext::callable_parts(db, n).is_none());
+        }
+
+        /// A `Callable` annotation was not made from a function, and an int is not callable: no definition. (The positive case, a
+        /// callable ty made from a function such as `property(f)`, is only exercised indirectly, by the fixture programs.)
+        #[test]
+        fn callable_definition_is_none_without_a_function_behind_it() {
+            let (db, pf, parsed) = open_wrappers();
+            let cb = type_of(db, pf, parsed, Want::Name("cb"));
+            assert!(analyzer_ext::callable_definition(db, cb).is_none());
+            let n = type_of(db, pf, parsed, Want::Name("n"));
+            assert!(analyzer_ext::callable_definition(db, n).is_none());
+        }
     }
 }
