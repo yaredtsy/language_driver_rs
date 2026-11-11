@@ -8,14 +8,16 @@ import fallback, {
   CsvWriter,
   generic,
   JsonWriter,
+  makeHandler,
   overloaded,
   plain,
   reexported,
+  second,
 } from "./lib";
 import type { Reader, Writer } from "./lib";
 import * as lib from "./lib";
 import { plain as renamed } from "./lib";
-import { helper } from "pkg";
+import { helper, toolbox, useThing } from "pkg";
 import { declared } from "./types";
 
 declare const anyValue: any;
@@ -65,4 +67,20 @@ type Result = { kind: "idle"; mutate: () => void } | { kind: "busy"; mutate: () 
 export function optional_callbacks(cb: (() => void) | undefined, result: Result) {
   cb?.();
   result.mutate();
+}
+
+export function value_holders({ onSave }: { onSave: () => void }) {
+  let later = () => {};
+  later();
+  onSave();
+}
+
+export function no_symbol(flag: boolean) {
+  makeHandler()();
+  (flag ? plain : second)();
+}
+
+export function external_value_holders() {
+  useThing();
+  toolbox.run();
 }

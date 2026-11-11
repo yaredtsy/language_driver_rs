@@ -185,3 +185,48 @@ fn an_unresolved_reason_is_a_plain_string_that_survives_the_graph() {
     // `Reason` is the key of the counter, owned, so a graph read back from disk could hold it
     assert_eq!(Reason::new("computed_name").as_str(), "computed_name");
 }
+
+#[test]
+fn a_constructor_reached_by_super_is_the_init_of_the_construction() {
+    let graph = graph_of(&fixture("resolve"), "src/lib.ts", "Derived2.constructor");
+    let constructs: Vec<_> = graph
+        .edges
+        .iter()
+        .filter_map(|edge| match &edge.to {
+            EdgeTo::Construct { class, init, .. } => Some((class.clone(), init.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(constructs.len(), 1);
+    let (class, init) = &constructs[0];
+    assert!(
+        matches!(class, StableDef::Path { qname, .. } if qname == "Base2"),
+        "{class:?}"
+    );
+    // the base class's own constructor is entered: `init: None` would read as "no constructor"
+    let init = init.as_ref().expect("Base2 has a constructor");
+    assert!(
+        matches!(&init.func, StableDef::Path { qname, .. } if qname == "Base2.constructor"),
+        "{init:?}"
+    );
+}
+
+#[test]
+fn a_class_with_no_constructor_of_its_own_is_a_construction_with_no_init() {
+    // `super()` of a class that declares none: its init is not "none because we did not look", it is none because there is none to enter
+    // (an inherited one is step 5's)
+    let graph = graph_of(
+        &fixture("resolve"),
+        "src/lib.ts",
+        "FromNoConstructor.constructor",
+    );
+    let inits: Vec<_> = graph
+        .edges
+        .iter()
+        .filter_map(|edge| match &edge.to {
+            EdgeTo::Construct { init, .. } => Some(init.is_none()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(inits, [true]);
+}

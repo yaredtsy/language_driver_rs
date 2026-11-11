@@ -1,6 +1,8 @@
 //! SLOW: project loading, call sites, call graph. `sem.rs` is the only file that imports the checker.
 
 mod calls;
+mod env;
+mod key;
 mod sem;
 mod walk;
 

@@ -1,15 +1,95 @@
-//! One body, read once: the sites of a def, in the solver's terms. `sem` reads the tree (it is the only file that touches tsrs nodes) and hands back
-//! plain spans; this file puts them where the core wants them. Targets come with `Lang` (TS4 steps 3 and 4): until then every site is only a site.
+//! One body, read once, in the solver's terms. `sem` reads the tree (it is the only file that touches tsrs nodes) and hands back plain data; this file
+//! puts it where the core wants it: the sites of a def relative to its start, and for each site the targets, through `resolve(site, &env)` in the final
+//! form it has on the first day (`docs/02-tree-rules/03-the-seam.md` §3).
 
-use analyzer_core::graph::Site;
+use analyzer_core::graph::{External, Reason, Site};
+use analyzer_core::outline::DefKind;
+use analyzer_core::solve::{Cancel, SiteCalls, Summary, Target};
 use typescript_syntax::MarkerStyle;
 
-use crate::sem::{Func, Sem};
+use crate::calls::TypeScript;
+use crate::env::Env;
+use crate::sem::{Func, Resolved, Sem};
+
+/// The reason of an `Unresolved` edge, and the key of its counter in `Stats.language`, for a def whose node is missing from the program's tree: a bug
+/// in one of the two parses, which must show on the graph and not as a body with no calls.
+const DEF_WITHOUT_NODE: &str = "def_without_node";
+
+/// Read `f`'s body once: its sites, each with its targets. The solver does the recursion.
+pub(crate) fn body<'p>(
+    lang: &TypeScript<'p>,
+    f: Func<'p>,
+    env: &Env,
+    cancel: &Cancel,
+) -> Summary<TypeScript<'p>> {
+    let Some(sites) = sites(lang.sem, f, lang.style) else {
+        // Not an empty body: one edge at the def's first byte, so the def shows on the graph and the count is what the edges say (rule 8). The
+        // context stays `Finished`: `Status::Incomplete` is for a cost limit (rule 10), and this is a bug in a rule, not a cost.
+        return Summary::complete(vec![SiteCalls::new(
+            Site::at(0),
+            vec![Target::Unresolved(Reason::new(DEF_WITHOUT_NODE))],
+        )]);
+    };
+    let mut found = Vec::with_capacity(sites.len());
+    for (index, site) in sites.into_iter().enumerate() {
+        if cancel.is_cancelled() {
+            return Summary::cut(found);
+        }
+        found.push(SiteCalls::new(site, resolve(lang, f, index, env)));
+    }
+    Summary::complete(found)
+}
+
+/// What the site at `site_index` of `f` can reach. In its final form already: ask what was tracked on this path first, and the engine's resolver
+/// otherwise. Nothing is tracked yet, so this is the engine's answer.
+fn resolve<'p>(
+    lang: &TypeScript<'p>,
+    f: Func<'p>,
+    site_index: usize,
+    env: &Env,
+) -> Vec<Target<TypeScript<'p>>> {
+    resolve_from_env(lang, f, site_index, env).unwrap_or_else(|| {
+        lang.sem
+            .callee(f, site_index, lang.style)
+            .into_iter()
+            .map(|resolved| target(lang.sem, lang.style, resolved))
+            .collect()
+    })
+}
+
+/// What a tracked value says the site calls, if anything is tracked. Nothing is yet: context sensitivity starts by making this return `Some`.
+fn resolve_from_env<'p>(
+    _lang: &TypeScript<'p>,
+    _f: Func<'p>,
+    _site_index: usize,
+    _env: &Env,
+) -> Option<Vec<Target<TypeScript<'p>>>> {
+    None
+}
+
+/// What the engine said one declaration of a site is, in the solver's terms.
+fn target<'p>(
+    sem: &'p Sem,
+    style: MarkerStyle<'_>,
+    resolved: Resolved<'p>,
+) -> Target<TypeScript<'p>> {
+    match resolved {
+        // A class reached by a call (`super(x)` names the base class) has nothing to walk as a body: it is a construction, and its `init` is its own
+        // constructor when it declares one. An inherited constructor is the base class's: that needs `new`'s resolution (step 5).
+        Resolved::Def(def) if sem.def(def, style).kind == DefKind::Class => Target::Construct {
+            class: def,
+            init: sem.constructor_of(def, style).map(|init| (init, ())),
+        },
+        Resolved::Def(def) => Target::Call(def, ()),
+        Resolved::External { package, name } => Target::External(External { package, name }),
+        Resolved::Unknown(why) => Target::Unresolved(Reason::new(why.counter())),
+    }
+}
 
 /// The sites of `func`'s body in source order, each a byte range **relative to the start of the def** (`Def::range.start`), so an edit above the
 /// def does not move them. `None` for a def with no node in the program's tree (`FileDefs::nodes`: a bug in one of the two parses): the caller says so
 /// on the graph and counts it (`def_without_node`) instead of reporting a body with no calls.
-pub(crate) fn sites(sem: &Sem, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Vec<Site>> {
+fn sites(sem: &Sem, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Vec<Site>> {
     let spans = sem.call_sites(func, style)?;
     let start = sem.def(func, style).range.start;
     Some(

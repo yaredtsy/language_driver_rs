@@ -34,6 +34,10 @@ export function overloaded(x: any): any {
   return x;
 }
 
+export function second(): number {
+  return 2;
+}
+
 export function generic<T>(x: T): T {
   return x;
 }
@@ -72,6 +76,28 @@ export class Greeter {
   }
   run(): number {
     return this.helper();
+  }
+}
+
+export function makeHandler(): () => void {
+  return () => {};
+}
+
+export class Base2 {
+  constructor(public x: number) {}
+}
+
+export class Derived2 extends Base2 {
+  constructor() {
+    super(1);
+  }
+}
+
+export class NoConstructor {}
+
+export class FromNoConstructor extends NoConstructor {
+  constructor() {
+    super();
   }
 }
 

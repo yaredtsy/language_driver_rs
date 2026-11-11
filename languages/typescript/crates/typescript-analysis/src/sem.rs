@@ -366,6 +366,37 @@ impl Sem {
         )
     }
 
+    /// A test hook: forget the program's node for one def, as if the two parses had disagreed about it. This is how `def_without_node` runs; nothing in
+    /// the suite can make the real parses disagree.
+    #[cfg(test)]
+    pub(crate) fn forget_node_of(&self, func: Func<'_>, style: MarkerStyle<'_>) {
+        let defs = self
+            .file_defs(func.file, style)
+            .expect("a Func has an outline");
+        let mut nodes = defs.nodes.clone();
+        nodes[func.def] = None;
+        let def_of = nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| Some(((*node)?, index)))
+            .collect();
+        let replaced = Arc::new(FileDefs {
+            outline: defs.outline.clone(),
+            nodes,
+            def_of,
+        });
+        for cached in self
+            .file_defs
+            .borrow_mut()
+            .get_mut(&func.file.node)
+            .expect("cached just now")
+        {
+            if cached.label == style.label && cached.placement == style.placement {
+                cached.defs = Arc::clone(&replaced);
+            }
+        }
+    }
+
     /// The `occurrence`th def (0-based, in source order: the number `StableDef::Path::nth` holds) with this `qualname` in the file at `file`
     /// (relative to the root). A qualname is not unique in a file (overloads, a getter and a setter), so the caller says which.
     pub fn entry(
@@ -414,6 +445,25 @@ impl Sem {
         let made = Arc::new(collector.sites);
         self.call_nodes.borrow_mut().insert(node, Arc::clone(&made));
         Some(made)
+    }
+
+    /// The class's own `constructor`, a def of the same file whose parent is the class: what `init` of a construction is. `None` when the class
+    /// declares none (an inherited constructor is the base class's, which needs the engine and belongs to `new`, step 5), or when `class` is not a class.
+    pub(crate) fn constructor_of<'p>(
+        &'p self,
+        class: Func<'p>,
+        style: MarkerStyle<'_>,
+    ) -> Option<Func<'p>> {
+        let defs = self.file_defs(class.file, style)?;
+        let index = defs
+            .outline
+            .defs
+            .iter()
+            .position(|def| def.parent == Some(class.def) && def.name == "constructor")?;
+        Some(Func {
+            file: class.file,
+            def: index,
+        })
     }
 
     /// What the outline says the def is (qualname, kind, range, marker).
@@ -876,7 +926,7 @@ fn without_verbatim_prefix(path: &str) -> String {
 mod resolve {
     use analyzer_core::graph::{DefInfo, StableDef};
     use tsrs_ast::{Symbol, SymbolFlags};
-    use tsrs_checker::{Checker, Type, TypeFlags};
+    use tsrs_checker::{Checker, TypeFlags};
     use tsrs_compiler::Context;
 
     use super::*;
@@ -956,10 +1006,18 @@ mod resolve {
                 declarations = members;
                 unresolved_members = !all_resolved;
             }
-            if declarations.is_empty() {
+            if declarations.is_empty()
+                && is_named_callee(callee)
+                && !is_union_callee(&mut checker, callee)
+            {
+                // Only for a name, and not for a union of callables: the signature names one declaration, which is the answer when the callee is the
+                // named thing and would pass for the whole answer when it is `(flag ? f : g)` (the checker reduces two alike function types to one)
                 declarations = declarations_of_signature(&mut checker, call.call);
             }
             if declarations.is_empty() {
+                if let Some(external) = self.external_value_holder(&mut checker, callee) {
+                    return external;
+                }
                 return vec![Resolved::Unknown(why_unknown(&mut checker, callee))];
             }
             let mut found: Vec<Resolved<'_>> = Vec::new();
@@ -974,6 +1032,57 @@ mod resolve {
                 found.push(Resolved::Unknown(Why::UnionReceiver));
             }
             found
+        }
+
+        /// A callee declared as a holder of a value (`export declare const useThing: () => number`, a property of function type in a package) **outside**
+        /// project code is a named call into that package, as a function declaration there would be: an `External`, not one of D16's function-typed
+        /// values, which are the ones declared in the project. `None` when it is not a value holder, or any declaration is the project's.
+        fn external_value_holder(
+            &self,
+            checker: &mut Checker,
+            callee: P<Node>,
+        ) -> Option<Vec<Resolved<'_>>> {
+            let mut symbol = checker.get_symbol_at_location_exported(callee)?;
+            if symbol.flags().intersects(SymbolFlags::Alias) {
+                symbol = checker.get_aliased_symbol(symbol);
+            }
+            let declarations = symbol.declarations().to_vec();
+            if declarations.is_empty()
+                || !declarations
+                    .iter()
+                    .all(|declaration| is_value_holder_declaration(*declaration))
+            {
+                return None;
+            }
+            let mut found: Vec<Resolved<'_>> = Vec::new();
+            for declaration in declarations {
+                let file = File {
+                    node: ast::get_source_file_of_node(declaration)?,
+                    _sem: PhantomData,
+                    _one_thread: PhantomData,
+                };
+                if self.is_project_code(file) {
+                    return None;
+                }
+                let mut resolved = self.classify(checker, declaration, MarkerStyle::docstring(""));
+                // a property of an anonymous type (`declare const toolbox: { run: () => void }`) has no class or interface around it to qualify
+                // its name: the receiver does (`toolbox.run`)
+                if let Resolved::External { name, .. } = &mut resolved
+                    && ast::is_property_access_expression(callee)
+                    && !name.contains('.')
+                    && let Some(receiver) = callee.expression()
+                    && let Some(receiver_symbol) = checker.get_symbol_at_location_exported(receiver)
+                {
+                    *name = format!(
+                        "{}.{name}",
+                        checker.symbol_to_string_exported(receiver_symbol)
+                    );
+                }
+                if !found.contains(&resolved) {
+                    found.push(resolved);
+                }
+            }
+            Some(found)
         }
 
         /// A declaration the engine found, as a def of project code, an external, or a bug to count.
@@ -1105,50 +1214,76 @@ mod resolve {
         if ast::is_element_access_expression(callee) {
             return Why::ComputedName;
         }
-        let ty = checker.get_type_at_location(callee);
-        if ty.flags().intersects(TypeFlags::Any) {
-            Why::AnyOrUntyped
-        } else if is_callable_type(checker, ty) {
-            // a callback parameter, a prop, a store action, whether optional or one of a union's members' (what a react-query mutation is): a value that holds
-            // a function. This comes before the union check: `result.mutate()` on a union of results is a function-typed value, not a union problem
-            Why::FunctionTypedValue
-        } else if ast::is_property_access_expression(callee)
-            && callee.expression().is_some_and(|receiver| {
-                checker
-                    .get_type_at_location(receiver)
-                    .flags()
-                    .intersects(TypeFlags::Union)
-            })
+        if checker
+            .get_type_at_location(callee)
+            .flags()
+            .intersects(TypeFlags::Any)
         {
-            Why::UnionReceiver
+            Why::AnyOrUntyped
+        } else if is_value_holder(checker, callee) {
+            Why::FunctionTypedValue
         } else {
             Why::NoDeclaration
         }
     }
 
-    /// Whether the type can be called: it has call or construct signatures, or it is a union whose members other than `undefined` and `null` all do
-    /// (`(() => void) | undefined`, an optional callback: the call is guarded, the value is still a function).
-    fn is_callable_type(checker: &mut Checker, ty: P<Type>) -> bool {
-        if checker.type_has_call_or_construct_signatures_exported(ty) {
-            return true;
-        }
-        if !ty.flags().intersects(TypeFlags::Union) {
+    /// Whether the callee names something that was **declared as a holder of a value**: a parameter, a property, a variable or a destructured binding
+    /// (through an import alias too). That is what D16 means by a function-typed value, and it is the evidence behind the count: a callee with no
+    /// symbol (`makeHandler()()`, `(a ? f : g)()`) or a symbol that is not one of these is `no_declaration`, so a function the resolver failed to
+    /// enter cannot be counted as a D16 case just because every call that type-checks has a callable callee.
+    fn is_value_holder(checker: &mut Checker, callee: P<Node>) -> bool {
+        let Some(mut symbol) = checker.get_symbol_at_location_exported(callee) else {
             return false;
+        };
+        if symbol.flags().intersects(SymbolFlags::Alias) {
+            symbol = checker.get_aliased_symbol(symbol);
         }
-        let members: Vec<P<Type>> = ty
-            .types()
-            .iter()
-            .copied()
-            .filter(|member| {
-                !member
-                    .flags()
-                    .intersects(TypeFlags::Undefined | TypeFlags::Null)
-            })
-            .collect();
-        !members.is_empty()
-            && members
-                .into_iter()
-                .all(|member| checker.type_has_call_or_construct_signatures_exported(member))
+        let declarations = symbol.declarations();
+        !declarations.is_empty()
+            && declarations
+                .iter()
+                .all(|declaration| is_value_holder_declaration(*declaration))
+    }
+
+    /// A declaration that holds a value, whatever the value is: a parameter, a property, a variable, a destructured binding.
+    fn is_value_holder_declaration(declaration: P<Node>) -> bool {
+        matches!(
+            declaration.kind(),
+            Kind::Parameter
+                | Kind::PropertySignature
+                | Kind::PropertyDeclaration
+                | Kind::VariableDeclaration
+                | Kind::BindingElement
+                | Kind::PropertyAssignment
+                | Kind::ShorthandPropertyAssignment
+        )
+    }
+
+    /// A callee that is a name: an identifier, a property access or an element access. For these the checker's resolved signature is the signature of
+    /// the named function or method; for any other expression (a conditional, a `||`, a call's result) it is the signature of whichever type the
+    /// expression reduced to.
+    fn is_named_callee(callee: P<Node>) -> bool {
+        matches!(
+            callee.kind(),
+            Kind::Identifier | Kind::PropertyAccessExpression | Kind::ElementAccessExpression
+        )
+    }
+
+    /// Whether the callee's type is a union of more than one type once `undefined` and `null` are set aside: `(flag ? f : g)`. The checker's resolved
+    /// signature names one declaration for such a call, which would pass for the whole answer.
+    fn is_union_callee(checker: &mut Checker, callee: P<Node>) -> bool {
+        let ty = checker.get_type_at_location(callee);
+        ty.flags().intersects(TypeFlags::Union)
+            && ty
+                .types()
+                .iter()
+                .filter(|member| {
+                    !member
+                        .flags()
+                        .intersects(TypeFlags::Undefined | TypeFlags::Null)
+                })
+                .count()
+                > 1
     }
 
     // ---- the port of `tsrs_ls`'s `callhierarchy.rs`. Names and shapes follow the original so an engine bump can be checked line by line.
@@ -2057,6 +2192,53 @@ mod tests {
         assert_eq!(
             resolved_sites(&sem, "src/main.ts", "optional_callbacks"),
             [unknown("cb"), unknown("result.mutate")]
+        );
+    }
+
+    #[test]
+    fn sem_contract_function_typed_value_is_a_value_that_is_declared_as_one() {
+        let sem = Sem::open(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/resolve"),
+            Path::new("src/main.ts"),
+        )
+        .unwrap();
+        let one = |site: &str, target: &str| (site.to_owned(), vec![target.to_owned()]);
+        // a `let` that holds an arrow (only `const` names a def) and a destructured binding are value holders: D16
+        assert_eq!(
+            resolved_sites(&sem, "src/main.ts", "value_holders"),
+            [
+                one("later", "unknown function_typed_value"),
+                one("onSave", "unknown function_typed_value")
+            ]
+        );
+        // a callee that is not a name has no symbol, so it is not a value holder and nobody declared it: the engine has nothing to say, and the
+        // count of `function_typed_value` does not swallow it
+        assert_eq!(
+            resolved_sites(&sem, "src/main.ts", "no_symbol"),
+            [
+                one("makeHandler", "src/lib.ts makeHandler"),
+                one("makeHandler()", "unknown no_declaration"),
+                one("(flag ? plain : second)", "unknown no_declaration"),
+            ]
+        );
+    }
+
+    #[test]
+    fn sem_contract_an_external_that_is_declared_as_a_value_is_an_external() {
+        let sem = Sem::open(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/resolve"),
+            Path::new("src/main.ts"),
+        )
+        .unwrap();
+        let one = |site: &str, target: &str| (site.to_owned(), vec![target.to_owned()]);
+        // `export declare const useThing: () => number` and a property of function type in a package are named calls into the package, as a function
+        // declaration would be; they are not D16's function-typed values, which are the ones declared in the project
+        assert_eq!(
+            resolved_sites(&sem, "src/main.ts", "external_value_holders"),
+            [
+                one("useThing", "external pkg useThing"),
+                one("toolbox.run", "external pkg toolbox.run")
+            ]
         );
     }
 

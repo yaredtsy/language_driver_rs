@@ -7,17 +7,14 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use analyzer_core::edit::MarkerStyle;
-use analyzer_core::graph::{Basis, DefInfo, EdgeTo, External, Graph, Reason, Site};
-use analyzer_core::outline::DefKind;
-use analyzer_core::solve::{Cancel, Lang, Limits, SiteCalls, Solver, Summary, Target};
+use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Graph};
+use analyzer_core::solve::{Cancel, Lang, Limits, Solver, Summary};
 
 use crate::Project;
-use crate::sem::{Func, Resolved, Sem};
+use crate::env::Env;
+use crate::key::Key;
+use crate::sem::{Func, Sem};
 use crate::walk;
-
-/// The key of `Stats.language` and of an `Unresolved` edge's reason for a def whose node is missing from the program's tree: a bug in one of the
-/// two parses, which must show on the graph and not as a body with no calls.
-const DEF_WITHOUT_NODE: &str = "def_without_node";
 
 /// A def of one file, as the outline names it: its qualname and which of the same-named defs it is (0-based, in source order).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,34 +42,16 @@ impl Options {
 }
 
 /// The language the solver walks: one program, read through `Sem`.
-struct TypeScript<'p> {
-    sem: &'p Sem,
-    style: MarkerStyle<'p>,
-}
-
-impl<'p> TypeScript<'p> {
-    /// What the engine said one declaration of a site is, in the solver's terms.
-    fn target(&self, resolved: Resolved<'p>) -> Target<Self> {
-        match resolved {
-            // A class called without `new` has nothing to walk as a body: it is a construction, with no `init` until `new` is built (step 5).
-            Resolved::Def(def) if self.sem.def(def, self.style).kind == DefKind::Class => {
-                Target::Construct {
-                    class: def,
-                    init: None,
-                }
-            }
-            Resolved::Def(def) => Target::Call(def, ()),
-            Resolved::External { package, name } => Target::External(External { package, name }),
-            Resolved::Unknown(why) => Target::Unresolved(Reason::new(why.counter())),
-        }
-    }
+pub(crate) struct TypeScript<'p> {
+    pub(crate) sem: &'p Sem,
+    pub(crate) style: MarkerStyle<'p>,
 }
 
 impl<'p> Lang for TypeScript<'p> {
     /// The engine answers with the type checker.
     const BASIS: Basis = Basis::Type;
     type Func = Func<'p>;
-    type Key = ();
+    type Key = Key;
 
     fn describe(&self, f: Self::Func) -> DefInfo {
         self.sem.describe(f, self.style)
@@ -83,27 +62,7 @@ impl<'p> Lang for TypeScript<'p> {
     }
 
     fn walk(&mut self, f: Self::Func, _key: &Self::Key, cancel: &Cancel) -> Summary<Self> {
-        let Some(sites) = walk::sites(self.sem, f, self.style) else {
-            // not an empty body: one edge at the def's first byte, so the def is marked and the count is what the edges say (rule 8)
-            return Summary::complete(vec![SiteCalls::new(
-                Site::at(0),
-                vec![Target::Unresolved(Reason::new(DEF_WITHOUT_NODE))],
-            )]);
-        };
-        let mut found = Vec::with_capacity(sites.len());
-        for (index, site) in sites.into_iter().enumerate() {
-            if cancel.is_cancelled() {
-                return Summary::cut(found);
-            }
-            let targets = self
-                .sem
-                .callee(f, index, self.style)
-                .into_iter()
-                .map(|resolved| self.target(resolved))
-                .collect();
-            found.push(SiteCalls::new(site, targets));
-        }
-        Summary::complete(found)
+        walk::body(self, f, &Env, cancel)
     }
 }
 
@@ -215,5 +174,59 @@ impl fmt::Display for Breakdown {
                 .collect();
             writeln!(f, "  cuts: {}", cuts.join(", "))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use analyzer_core::graph::{Reason, Site, Status};
+    use analyzer_core::outline::DefKind;
+    use analyzer_testkit::graph::check_invariants;
+
+    use super::*;
+
+    const STYLE: MarkerStyle<'static> = MarkerStyle {
+        label: "ID",
+        placement: analyzer_core::edit::Placement::Docstring,
+    };
+
+    #[test]
+    fn a_def_with_no_node_is_one_unresolved_edge_and_a_count_not_an_empty_body() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/resolve");
+        let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
+        let func = project
+            .sem
+            .entry("src/main.ts", "callers", 0, STYLE)
+            .unwrap();
+        // as if the outline and the program's tree had disagreed about this def
+        project.sem.forget_node_of(func, STYLE);
+        let entry = Entry {
+            qualname: "callers",
+            occurrence: 0,
+        };
+        let graph = call_graph(
+            &project,
+            "src/main.ts",
+            &entry,
+            &Options::new(STYLE),
+            &Cancel::new(),
+        )
+        .unwrap();
+        check_invariants(&graph);
+        assert_eq!(graph.edges.len(), 1);
+        assert_eq!(
+            graph.edges[0].to,
+            EdgeTo::Unresolved(Reason::new("def_without_node"))
+        );
+        assert_eq!(graph.edges[0].site, Site::at(0));
+        assert_eq!(graph.stats.unresolved, 1);
+        assert_eq!(graph.stats.language.get("def_without_node"), Some(&1));
+        assert_eq!(breakdown(&graph).reasons.len(), 1);
+        // The def is on the graph as the def it is, not as an empty one. Its context is `Finished`: `Incomplete` is for a cost limit (rule 10),
+        // and this is a bug in a rule.
+        assert_eq!(graph.defs[0].kind, DefKind::Function);
+        assert_eq!(graph.contexts[0].status, Status::Finished);
     }
 }
