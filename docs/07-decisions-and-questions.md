@@ -106,16 +106,22 @@ I read source; I built and ran nothing.
 - A crate outside the repo depending on a nested-workspace crate by `git` + `rev` (B0 step 9).
 - That `clippy.toml` and `rustfmt.toml` at the repo root are picked up by every nested workspace.
 
-**About tsrs** (all are TS0 spikes)
+**About tsrs** (all are TS0 spikes; run on 2026-11-11, answers in [`languages/typescript/ENGINE.md`](../languages/typescript/ENGINE.md))
 
-- That its crates build as git dependencies outside their own workspace, on three operating systems, and what they cost in time and size.
-- That a `Region` returns memory in a long-running loop, and which constructor is the right one.
-- That `free_program` with `checker_regions` returns a program's memory.
-- What `resolve_call_hierarchy_declaration` returns for each row of the policy table. The table in [03/06](03-typescript/06-ts4-calls.md) §5 is
-  my reading of the code, not observed output.
-- How a `Context` is cancelled from outside; whether `tsrs_project::Session` can be driven without the LSP server.
-- Where tsrs attaches the JSDoc for each kind of def, and how to get its byte range (S-TS4).
-- Whether it runs correctly without mimalloc as the global allocator.
+- ✅ That its crates build as git dependencies outside their own workspace, and what they cost: yes; 20 s / 2.1 MB parser-only, 1 m 33 s /
+  16.5 MB with the checker. **Still open: Linux and Windows** (macOS only so far).
+- ✅ That a `Region` returns memory in a long-running loop, and which constructor: yes, flat over 1,200,000 parses, with `new_scratch` and
+  `parse_source_file_owned` (not `parse_source_file`).
+- ✅ That freeing returns a program's memory: only when the program is built inside an entered region with `ProgramOptions::regions` set
+  (flat over 60 loads); `free_unshared_program` alone leaks about 28 MB per load. `free_program` (for `Session`) not tried.
+- ✅ / ❌ What `resolve_call_hierarchy_declaration` returns: **it cannot be called** (private module). The checker-based resolver was observed
+  instead, on seven hand-written cases and two real projects; the first observed policy table is in `ENGINE.md` S-TS3. The table in
+  [03/06](03-typescript/06-ts4-calls.md) §5 is still my reading of the code until TS4 replaces it. **Open for the owner:** calls through a
+  `FunctionType` (32% of sites on the V-NOC frontend).
+- How a `Context` is cancelled from outside; whether `tsrs_project::Session` can be driven without the LSP server. (TS5; not a TS0 spike.)
+- ✅ Where tsrs attaches the JSDoc for each kind of def, and how to get its byte range: answered for 10 kinds in `.ts`, `.tsx`, `.js`; the
+  range comes from the scanner, not the `JSDoc` node.
+- ✅ Whether it runs correctly without mimalloc: yes; the speed difference was not measured.
 
 **About rust-analyzer** (RS0 spikes)
 
@@ -131,6 +137,7 @@ I read source; I built and ran nothing.
 - pylspt's test count and the golden output: PY0 produces them.
 - Everything the PA plan lists in its own "things I did not check".
 
-**Sizes.** Every S / M / L in these files is a guess. TS0 and PY2 give the first real numbers; update [06](06-roadmap.md) §4 then.
+**Sizes.** Every S / M / L in these files is a guess. TS0 was S, as guessed (one working session). The spikes measure the engine, not our
+work, so TS1–TS4 stay guesses until TS1 is built; update [06](06-roadmap.md) §4 then.
 
 Back to: [`README.md`](README.md)

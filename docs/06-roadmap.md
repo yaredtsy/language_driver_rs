@@ -109,7 +109,7 @@ user. You chose Python first (D10). What I would not do is start TS4 before eith
 
 Sizes, relative: B0 is M. PY2 is M (the PA plan calls it "the real work"). PY5 is M–L, mostly moving files. PY6 is S–M. TS0 is S. TS1 is M.
 TS2 is S. TS3 is M. TS4 is L. TS5 is M. Rust as a whole is about TS1–TS4 at two thirds the size. **[measure]**: replace these with real numbers
-after TS0 and PY2.
+after TS1 and PY2. TS0 is done (2026-11-11) and was S. Its spikes measured the engine, not our work, so they do not size TS1–TS4.
 
 ## 5. What V-NOC gets at each tag
 
