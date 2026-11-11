@@ -1,6 +1,6 @@
 use crate::stable::{StableDef, StableType};
 use analyzer_core::edit::{MarkerStyle, Placement};
-use ruff_db::files::File;
+use ruff_db::files::{File, system_path_to_file};
 use ruff_db::parsed::{ParsedModuleRef, parsed_module};
 use ruff_db::source::{line_index, source_text};
 use ruff_python_ast::visitor::{Visitor, walk_stmt};
@@ -660,6 +660,17 @@ impl<'db> Sem<'db> {
     pub fn qname(&self, def: Definition<'db>) -> String {
         let parsed = parsed_module(self.db, def.python_file(self.db)).load(self.db);
         qname::qualified_name(self.db, def, &parsed).unwrap_or_else(|| "<unknown>".into())
+    }
+}
+
+/// The text of the project's files, for the wire: a call site is bytes relative to its function, and the wire wants a line and a column.
+pub struct DbSources<'db>(pub &'db ProjectDatabase);
+
+impl crate::wire::Sources for DbSources<'_> {
+    fn text(&self, file: &str) -> Option<String> {
+        let path = self.0.project().root(self.0).join(file);
+        let file = system_path_to_file(self.0, &path).ok()?;
+        Some(source_text(self.0, file).as_str().to_owned())
     }
 }
 

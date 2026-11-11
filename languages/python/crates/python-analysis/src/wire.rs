@@ -176,7 +176,9 @@ pub fn wire(graph: &Graph, entry: &ContextId, sources: &dyn Sources, opts: &Wire
     ) -> Open<'n> {
         Open {
             frame: head(graph, node, caller, style, positions),
-            func: &node.func,
+            // The calls under this node were made in the function its contexts are of: for a call that is the node's own function, for a
+            // construction it is the constructor, not the class.
+            func: node.contexts.first().map_or(&node.func, |c| &c.func),
             kids: node.children.iter(),
         }
     }

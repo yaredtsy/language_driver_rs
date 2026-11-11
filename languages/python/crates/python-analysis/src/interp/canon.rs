@@ -16,22 +16,25 @@ pub struct StableContextId {
 enum Canon {
     Unknown,
     Data(StableType),
-    Function(StableDef),
-    Class(StableDef),
+    Function(#[serde(serialize_with = "crate::stable::hashed_def")] StableDef),
+    Class(#[serde(serialize_with = "crate::stable::hashed_def")] StableDef),
     Module(String),
     Union(Vec<Canon>), // sorted by Canon, deduplicated
     Closure {
+        #[serde(serialize_with = "crate::stable::hashed_def")]
         func: StableDef,
         free: Vec<(String, Canon)>,
         defaults: Vec<(String, Canon)>,
     },
     Back(u8),
     Instance {
+        #[serde(serialize_with = "crate::stable::hashed_def")]
         class: StableDef,
         attrs: Vec<(String, Canon)>,
     },
-    Opaque(StableDef),
+    Opaque(#[serde(serialize_with = "crate::stable::hashed_def")] StableDef),
     Bound {
+        #[serde(serialize_with = "crate::stable::hashed_def")]
         func: StableDef,
         recv: Box<Canon>,
     },
@@ -39,6 +42,7 @@ enum Canon {
 
 #[derive(serde::Serialize)]
 struct CanonKey {
+    #[serde(serialize_with = "crate::stable::hashed_def")]
     func: StableDef,
     args: Vec<Canon>,
     free: Vec<(String, Canon)>,

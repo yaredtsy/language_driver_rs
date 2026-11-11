@@ -124,6 +124,17 @@ impl Default for Limits {
     }
 }
 
+impl Options {
+    /// The tree's own options, as the renderer in core takes them: the node budget, the depth, and the ID filter.
+    pub fn render_options(&self) -> analyzer_core::render::RenderOptions {
+        let mut render = analyzer_core::render::RenderOptions::default();
+        render.max_nodes = self.limits.render_nodes;
+        render.max_depth = self.limits.render_depth;
+        render.only_marked = self.require_ids;
+        render
+    }
+}
+
 impl Default for Options {
     fn default() -> Self {
         Options {
@@ -175,6 +186,21 @@ pub fn call_core_graph(
     let (mut s, root) = solve(db, file, entry, opts)?;
     s.stats.contexts = s.contexts.len() as u32;
     Some(core_graph::core_graph(&s, &[root]))
+}
+
+/// The wire of `entry`, a view of its graph: `graph -> render -> Node -> Frame`. `merged` joins siblings with one target and counts them.
+pub fn call_frame(
+    db: &ProjectDatabase,
+    file: File,
+    entry: &str,
+    opts: &Options,
+    merged: bool,
+) -> Option<(crate::wire::Frame, analyzer_core::graph::Stats)> {
+    let graph = call_core_graph(db, file, entry, opts)?;
+    let root = graph.entries.first()?.clone();
+    let wire_opts = crate::wire::WireOptions::new(opts.wire.clone(), merged, opts.render_options());
+    let frame = crate::wire::wire(&graph, &root, &crate::sem::DbSources(db), &wire_opts);
+    Some((frame, graph.stats.clone()))
 }
 
 /// The tree v-noc stores: summary mode, rendered with the ID filter and the node budget.

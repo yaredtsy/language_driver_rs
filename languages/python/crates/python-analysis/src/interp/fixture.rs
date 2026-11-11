@@ -755,3 +755,193 @@ fn the_core_graph_of_every_fixture_keeps_core_s_invariants() {
         assert!(bad.is_empty(), "{fixture} {entry}:\n  {}", bad.join("\n  "));
     }
 }
+
+/// A node as one line, for comparing two renderers: what it is and where it is, with contexts and marks sorted (their order is not part of
+/// the answer). `sorted`: the children too, in the order of their text, which compares the content and leaves the order out.
+fn line(
+    qname: &str,
+    id: &str,
+    count: u32,
+    site: String,
+    mut marks: Vec<String>,
+    mut ctxs: Vec<String>,
+) -> String {
+    marks.sort();
+    ctxs.sort();
+    format!("{qname} id={id:?} count={count} site={site} marks={marks:?} contexts={ctxs:?}")
+}
+
+fn describe_old(f: &crate::interp::FrameJson, sorted: bool) -> String {
+    let marks = f
+        .marks
+        .iter()
+        .map(|m| format!("{m:?}").to_lowercase())
+        .collect();
+    let ctxs = f
+        .contexts
+        .iter()
+        .map(|c| format!("{:?}{:?}", c.func, c.digest))
+        .collect();
+    let site = format!("{:?}", f.call_site.map(|s| (s.start, s.end)));
+    let mut kids: Vec<String> = f.children.iter().map(|c| describe_old(c, sorted)).collect();
+    if sorted {
+        kids.sort();
+    }
+    let own = line(
+        &f.target_qname,
+        &f.target_id,
+        f.call_count,
+        site,
+        marks,
+        ctxs,
+    );
+    kids.iter().fold(own, |acc, k| {
+        format!("{acc}\n{}", k.replace('\n', "\n  ").replacen("", "  ", 1))
+    })
+}
+
+fn describe_new(f: &crate::wire::Frame, sorted: bool) -> String {
+    let ctxs = f
+        .contexts
+        .iter()
+        .map(|c| format!("{:?}{:?}", c.func, c.digest))
+        .collect();
+    let site = format!("{:?}", f.call_site.map(|s| (s.start, s.end)));
+    let mut kids: Vec<String> = f.children.iter().map(|c| describe_new(c, sorted)).collect();
+    if sorted {
+        kids.sort();
+    }
+    let own = line(
+        &f.target_qname,
+        &f.target_id,
+        f.call_count,
+        site,
+        f.marks.clone(),
+        ctxs,
+    );
+    kids.iter().fold(own, |acc, k| {
+        format!("{acc}\n{}", k.replace('\n', "\n  ").replacen("", "  ", 1))
+    })
+}
+
+/// The wire from the core graph has the content of the old renderer's wire on every fixture: the same nodes, ids, counts, call sites, marks
+/// and contexts. What it does not have yet is the same ORDER of siblings: the old renderer lists a call in the order it is evaluated
+/// (`on_ok(fetch())` gives `fetch` first), core's renderer in source order (`on_ok` first). See `docs/05-python-migration/04-the-wire.md`.
+/// The count of entries that differ only in order is printed, and the test asks for the content.
+#[test]
+fn the_wire_from_the_core_graph_has_the_old_renderers_content_on_every_fixture() {
+    use crate::interp::{WireStyle, call_frame, call_wire};
+    let all = every_entry();
+    let (mut content_differs, mut order_differs) = (String::new(), 0);
+    for (fixture, entry, mut opts) in all.clone() {
+        opts.wire = WireStyle {
+            function_prefix: "F/".into(),
+            class_prefix: "C/".into(),
+        };
+        let (db, file) = open_fixture(&fixture);
+        let (Some((old, _)), Some((new, _))) = (
+            call_wire(&db, file, &entry, &opts),
+            call_frame(&db, file, &entry, &opts, false),
+        ) else {
+            continue;
+        };
+        if describe_old(&old, true) != describe_new(&new, true) {
+            content_differs += &format!(
+                "--- {fixture} {entry}\nold:\n{}\nnew:\n{}\n",
+                describe_old(&old, true),
+                describe_new(&new, true)
+            );
+        } else if describe_old(&old, false) != describe_new(&new, false) {
+            order_differs += 1;
+        }
+    }
+    println!(
+        "{} entries: {order_differs} differ only in the order of siblings",
+        all.len()
+    );
+    assert!(
+        content_differs.is_empty(),
+        "content differs:\n{content_differs}"
+    );
+}
+
+/// The golden wire of a real project, taken from pylspt at the pin (D14). Not run by default: it needs a project that is not in the repo and
+/// the files in `out/golden/`, and the prefixes are V-NOC's, which no crate may spell. Run it by hand:
+///
+/// `PYTHON_GOLDEN_PROJECT=<dir> PYTHON_GOLDEN_FILE=<file in it> PYTHON_GOLDEN_ENTRY=<entry> PYTHON_GOLDEN_DIR=<out/golden>
+///  PYTHON_GOLDEN_PREFIXES=<function prefix>,<class prefix> cargo test -p python-analysis golden -- --ignored --nocapture`
+#[test]
+#[ignore = "needs a real project and out/golden/: see the comment"]
+fn golden_wire_of_a_real_project() {
+    use crate::interp::{WireStyle, call_frame};
+    use serde_json::Value;
+    let var = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("set {k}"));
+    let (project, file, entry, dir, prefixes) = (
+        var("PYTHON_GOLDEN_PROJECT"),
+        var("PYTHON_GOLDEN_FILE"),
+        var("PYTHON_GOLDEN_ENTRY"),
+        var("PYTHON_GOLDEN_DIR"),
+        var("PYTHON_GOLDEN_PREFIXES"),
+    );
+    let (function_prefix, class_prefix) = prefixes.split_once(',').expect("two prefixes");
+    let db = open_project(SystemPath::new(&project)).unwrap();
+    let (file, _) = open(&db, &SystemPath::new(&project).join(file)).unwrap();
+
+    // the one rename of the plan: the key of a marked identity is `Marked`, not `Node`
+    fn renamed(v: Value) -> Value {
+        match v {
+            Value::Object(m) => Value::Object(
+                m.into_iter()
+                    .map(|(k, v)| {
+                        (
+                            if k == "Node" { "Marked".to_owned() } else { k },
+                            renamed(v),
+                        )
+                    })
+                    .collect(),
+            ),
+            Value::Array(a) => Value::Array(a.into_iter().map(renamed).collect()),
+            other => other,
+        }
+    }
+    // children in any order, contexts and marks sorted: what is left is the content
+    fn canon(v: &mut Value) {
+        if let Some(kids) = v.get_mut("children").and_then(Value::as_array_mut) {
+            kids.iter_mut().for_each(canon);
+            kids.sort_by_key(|k| k.to_string());
+        }
+        if let Some(c) = v.get_mut("contexts").and_then(Value::as_array_mut) {
+            c.sort_by_key(|k| k.to_string());
+        }
+    }
+    fn nodes(v: &Value) -> usize {
+        1 + v["children"]
+            .as_array()
+            .map_or(0, |k| k.iter().map(nodes).sum())
+    }
+
+    for (merged, golden) in [(false, "wire.json"), (true, "wire-merged.json")] {
+        let mut opts = summary();
+        opts.wire = WireStyle {
+            function_prefix: function_prefix.into(),
+            class_prefix: class_prefix.into(),
+        };
+        let (new, _) = call_frame(&db, file, &entry, &opts, merged).unwrap();
+        let new = serde_json::to_value(&new).unwrap();
+        let old = renamed(
+            serde_json::from_str(&std::fs::read_to_string(format!("{dir}/{golden}")).unwrap())
+                .unwrap(),
+        );
+        let exact = new == old;
+        let (mut a, mut b) = (old.clone(), new.clone());
+        canon(&mut a);
+        canon(&mut b);
+        println!(
+            "{golden}: {} nodes golden, {} nodes new | identical: {exact} | identical in any sibling order: {}",
+            nodes(&old),
+            nodes(&new),
+            a == b
+        );
+        assert!(a == b, "{golden}: differs beyond sibling order");
+    }
+}
