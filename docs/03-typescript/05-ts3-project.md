@@ -167,8 +167,8 @@ that the walker can run on both. They should be: both come from `tsrs_parser`.
 | 1 | add the heavy tsrs crates to the workspace at the same `rev`; `typescript-analysis` skeleton with `sem.rs` | it builds; `typescript-syntax` still does not pull them in |
 | 2 | `Sem::open` for the simple case: one `tsconfig.json` above the file | a fixture project of three files loads; `files()` lists them |
 | 3 | the inferred project (no tsconfig) | a plain-JS fixture folder loads |
-| 4 | `is_project_code`, `package_of` | a fixture with a fake `node_modules/pkg` and a `.d.ts` |
-| 5 | the lifetime on handles. (`Drop` and the memory loop test were done early, with step 2: `tests/memory.rs`, 100 opens, peak minus round 10 under 30 MB) | `drop(project)` while a handle is alive does not compile (a `compile_fail` doctest) |
+| 4 | `is_project_code`, `package_of`. **`File<'p>` is the first handle `sem` hands out, so it carries the lifetime (`PhantomData<&'p Sem>`) from the day it exists**, not as a later retrofit | a fixture with a fake `node_modules/pkg` and a `.d.ts` |
+| 5 | prove the lifetime on handles (the lifetime itself lands with the first handle, step 4; `Func` in TS4 gets it too). `Drop` and the memory loop test were done early, with step 2: `tests/memory.rs`. **Must be green before TS4 adds `Func`**: `Sem::drop`'s `unsafe` rests on "no handle outlives the `Sem`", and only this makes the compiler check it | `drop(project)` while a handle is alive does not compile (a `compile_fail` doctest) |
 | 6 | solution configs and project references | a fixture with `references`, shaped like the V-NOC frontend (`"files": []`, references to `tsconfig.app.json`). **Before TS4, not after**: it is the common Vite layout |
 | 7 | `environment_inputs` | returns `**/tsconfig*.json`, `**/jsconfig.json`, `**/package.json`, the lock files |
 | 8 | `typescript-cli files <dir> <file>` | prints the loaded files and the config that was chosen: the debugging tool for "why is this call unresolved" |

@@ -149,7 +149,8 @@ impl Drop for Sem {
     fn drop(&mut self) {
         let _scope = self._region.enter();
         // SAFETY: `open` made this program and shared nothing of it with another (no `update_program`); `Sem` holds no checker handle and
-        // hands none out, and nothing reads `self.program` after this.
+        // hands none out, and nothing reads `self.program` after this. "Hands none out" is true only while `Sem` has no handle type: the
+        // first one (`File<'p>`, TS3 step 4) must carry `PhantomData<&'p Sem>`, so the compiler checks that none outlives this drop.
         unsafe { tsrs_compiler::free_unshared_program(self.program) };
     }
 }
