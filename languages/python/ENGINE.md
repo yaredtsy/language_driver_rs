@@ -63,13 +63,18 @@ When `python-analysis` starts depending on the engine (PY5), its entries in `[wo
 
 `Cargo.lock` started as pylspt's, at `670ae79a15`, so that the only thing that changed is our code. Cargo drops the entries nothing depends on yet:
 pylspt's has 287 packages, this one has 90 (the parser's closure plus our five crates). Every one of the 90 third-party packages has the version pylspt's lock
-has. **At PY5**, when `python-analysis` adds the ty crates, run
+has.
 
-```sh
-git -C ../pylspt show 670ae79a15:Cargo.lock > /tmp/pylspt.lock   # read by hash
-```
+**At PY5, in this order**, so that no version is chosen again:
 
-and compare the packages of the two locks: any third-party package whose version differs from pylspt's is a drift to explain, not to accept.
+1. Put pylspt's lock back first: `git -C ../pylspt show 670ae79a15:Cargo.lock > Cargo.lock` (read by hash, never the working tree).
+2. Add the ty dependencies to `[workspace.dependencies]` and build. Cargo keeps every locked version that still satisfies the requirements, and only
+   adds our own crates and drops what is unused.
+3. Compare the packages of the new lock with pylspt's: any third-party package whose version differs is a drift to explain, not to accept. The
+   comparison should come out empty.
+
+If the order is reversed (add the dependencies to the 90-package lock), Cargo has no pins for the ~197 dropped packages and takes the newest compatible
+version of each, so drift becomes the expected result.
 
 ## Toolchain
 
