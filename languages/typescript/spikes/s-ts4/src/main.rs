@@ -59,8 +59,12 @@ function lc() {}
 function none() {}
 "#;
 
+fn file_name() -> String {
+    format!("/spike/a.{}", std::env::args().nth(1).unwrap_or_else(|| "ts".into()))
+}
+
 fn parse(text: &'static str) -> P<SourceFile> {
-    let name = "/spike/a.ts";
+    let name = &file_name();
     let opts = SourceFileParseOptions {
         file_name: name.to_string(),
         path: tspath::to_path(name, "/spike", true),
@@ -103,19 +107,58 @@ fn walk(file: P<SourceFile>, text: &'static str, node: P<Node>) {
     });
 }
 
+fn fixture() -> &'static str {
+    if file_name().ends_with(".js") {
+        let js = SRC
+            .replace(": string", "")
+            .replace(": number", "")
+            .replace(": any", "")
+            .replace("): void;\n/**", ");\n/**")
+            .replace("interface I {\n  /** interface method doc */\n  im(): void;\n}\n", "")
+            .replace("@dec\nclass D", "class D");
+        Box::leak(js.into_boxed_str())
+    } else {
+        SRC
+    }
+}
+
 fn main() {
-    let text: &'static str = SRC;
+    let text: &'static str = fixture();
     let file = parse(text);
     println!("diagnostics: {}", file.diagnostics().len());
     walk(file, text, file.as_node());
 
     // insert " * ID: abc" into the JSDoc of `plain`, parse again
     let edited: &'static str = Box::leak(
-        SRC.replacen("/** fn doc */", "/**\n * fn doc\n * ID: abc\n */", 1).into_boxed_str(),
+        text.replacen("/** fn doc */", "/**\n * fn doc\n * ID: abc\n */", 1).into_boxed_str(),
     );
     let file2 = parse(edited);
     println!("--- after inserting an ID line into `plain`: diagnostics {}", file2.diagnostics().len());
     for s in file2.statements().nodes().iter().take(1) {
         report(file2, edited, *s);
     }
+    overload_insert(text);
 }
+
+fn overload_insert(text: &'static str) {
+    let needle = "function ov(a: any) {}";
+    let needle = if text.contains(needle) { needle } else { "function ov(a) {}" };
+    let Some(at) = text.find(needle) else { return };
+    let edited: &'static str = Box::leak(
+        format!("{}/**\n * ID: xyz\n */\n{}", &text[..at], &text[at..]).into_boxed_str(),
+    );
+    let file = parse(edited);
+    println!("--- after inserting a new block on the overload implementation: diagnostics {}", file.diagnostics().len());
+    fn find(file: P<SourceFile>, text: &'static str, node: P<Node>) {
+        if tsrs_ast::is_function_declaration(node) && node.name().is_some_and(|n| n.text() == "ov") {
+            report(file, text, node);
+        }
+        node.for_each_child(&mut |c| {
+            find(file, text, c);
+            false
+        });
+    }
+    find(file, edited, file.as_node());
+}
+
+// (the overload-implementation insertion is in `overload_insert` below)

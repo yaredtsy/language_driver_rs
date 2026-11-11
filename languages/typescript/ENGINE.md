@@ -102,4 +102,8 @@ Answer: **yes**. Fixture: one file with 21 candidate nodes (see the table). tsrs
   blank line detaches, so TS2 applies its own blank-line check on the text.
 - **Insert a line and reparse**: replacing `/** fn doc */` with a three-line block containing ` * ID: abc` gave 0 diagnostics, and the JSDoc was still
   attached to the function (range `(0, 28)`).
+- **`.tsx` and `.js`** (the same fixture, with the TS-only syntax removed for `.js`): every row above is identical, byte for byte except for the
+  offset shift from the removed annotations. In a `.js` file tsrs does not attach JSDoc differently, so the same rule serves all three.
+- **A new block on an overload implementation** (inserted by hand above `function ov(a: any) {}`): 0 diagnostics, and the implementation now
+  carries its own JSDoc while the two overload signatures keep theirs. In `.ts`, `.tsx` and `.js`.
 - The fallback from the plan (walk up from the def's first byte over whitespace) was not needed.
