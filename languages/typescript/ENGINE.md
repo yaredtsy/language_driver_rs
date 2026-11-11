@@ -1,5 +1,8 @@
 # Engine: typescript
 
+The TS0 spikes below were run on 2026-11-11 and their code deleted when TS0 closed; it is in git history at commit `147da9d`
+(`languages/typescript/spikes/`).
+
 - Upstream URL: https://github.com/oxc-project/tsrs.git
 - Pinned commit / version: `13a31a4cac36b980db090a91ec12a3c3686de14d` (workspace version 0.24.0, follows TypeScript 7.1.0-beta)
 - Engine crates used: `typescript-syntax`: `tsrs_parser`, `tsrs_ast`, `tsrs_core`, `tsrs_scanner`. `typescript-analysis`: those plus `tsrs_compiler`,
@@ -206,7 +209,7 @@ So 78 sites reach a project def; 323 are external (`node_modules` 200, bundled 1
 project type (an interface member or function-typed property). The 140 `FunctionType` sites (32%) are the policy decision TS4 must make: the engine
 resolves them, but there is no def to link, so I propose `Unresolved` (calls through a function-typed value), never a guess.
 
-**The hand-written seven cases** (`spikes/s-ts3/cases/a.ts`; all with 0 diagnostics):
+**The hand-written seven cases** (`spikes/s-ts3/cases/a.ts`, deleted at TS0 close: `git show 147da9d:languages/typescript/spikes/s-ts3/cases/a.ts`; 0 diagnostics):
 
 | Case | Engine answer | Path |
 |---|---|---|

@@ -1,2 +1,0 @@
-{ "compilerOptions": { "allowJs": true, "checkJs": false, "noEmit": true, "module": "commonjs", "moduleResolution": "node10", "target": "es2022" },
-  "include": ["node_modules/postcss/lib/*.js"] }
