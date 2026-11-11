@@ -1022,3 +1022,186 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
         analyzer_testkit::expect_file(&path, &text);
     }
 }
+
+/// Where summary mode misses what inline mode finds, and what the graph says at that place. Inline mode's tree is the oracle (it is what the
+/// `# expect:` blocks of these programs are), and it knows the call site of every node.
+#[derive(Default)]
+struct Gap {
+    /// nodes inline finds and summary does not, counting everything under a missing node
+    missing: usize,
+    /// the topmost missing nodes: the ones whose own call is not in the summary tree
+    highest_missing: usize,
+    /// of those, how many sit at a call site that is an `Unresolved` edge in the summary graph
+    at_unresolved: usize,
+    /// the missing nodes (a topmost one and what is under it) split by where the topmost one sits
+    nodes_at_unresolved: usize,
+    nodes_elsewhere: usize,
+    /// the ones that do not, as `entry: path -> node`
+    not_at_unresolved: Vec<String>,
+    /// nodes summary has and inline does not, counting what is under them: wrong edges, and nothing marks them
+    extra: usize,
+    extras: Vec<String>,
+}
+
+fn compare_with_inline(
+    path: &str,
+    inline: &crate::interp::tree::Node,
+    summary: &analyzer_core::render::Node,
+    graph: &analyzer_core::graph::Graph,
+    gap: &mut Gap,
+) {
+    use analyzer_core::graph::{EdgeTo, Site};
+    fn inline_size(n: &crate::interp::tree::Node) -> usize {
+        1 + n.children.iter().map(inline_size).sum::<usize>()
+    }
+    fn summary_size(n: &analyzer_core::render::Node) -> usize {
+        1 + n.children.iter().map(summary_size).sum::<usize>()
+    }
+    // the call sites under this node were made in the function its contexts are of
+    let def_start = summary
+        .contexts
+        .first()
+        .and_then(|c| graph.def(&c.func))
+        .map(|d| d.range.start);
+    let mut taken = vec![false; summary.children.len()];
+    for child in &inline.children {
+        let found = summary
+            .children
+            .iter()
+            .enumerate()
+            .position(|(k, s)| !taken[k] && s.qname == child.qname);
+        match found {
+            Some(k) => {
+                taken[k] = true;
+                compare_with_inline(
+                    &format!("{path}/{}", child.qname),
+                    child,
+                    &summary.children[k],
+                    graph,
+                    gap,
+                );
+            }
+            None => {
+                gap.missing += inline_size(child);
+                gap.highest_missing += 1;
+                let site = (|| {
+                    let range = child.site?;
+                    let start = def_start?;
+                    Some(Site::new(
+                        u32::from(range.start()).checked_sub(start)?,
+                        u32::from(range.end()).checked_sub(start)?,
+                    ))
+                })();
+                let unresolved = site.is_some_and(|site| {
+                    graph.edges.iter().any(|e| {
+                        summary.contexts.contains(&e.from)
+                            && e.site == site
+                            && e.to == EdgeTo::Unresolved
+                    })
+                });
+                if unresolved {
+                    gap.at_unresolved += 1;
+                    gap.nodes_at_unresolved += inline_size(child);
+                } else {
+                    gap.nodes_elsewhere += inline_size(child);
+                    gap.not_at_unresolved
+                        .push(format!("{path} -> {}", child.qname));
+                }
+            }
+        }
+    }
+    for (k, s) in summary.children.iter().enumerate() {
+        if !taken[k] {
+            gap.extra += summary_size(s);
+            gap.extras.push(format!("{path} -> {}", s.qname));
+        }
+    }
+}
+
+/// The six programs summary mode cannot answer completely (class summaries, part 04 of pylspt: steps 2 to 8 are not built). For every
+/// entry of them, against inline mode: what is missing, whether each topmost missing node sits at a call site that the summary graph marks
+/// `Unresolved`, and what summary mode has that inline mode does not. The numbers are pinned: a fix moves them, and the diff is the review.
+#[test]
+fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there() {
+    use crate::interp::call_graph;
+    use analyzer_core::render::{RenderOptions, render};
+    let this_file = include_str!("fixture.rs");
+    let (mut entries, mut failing, mut total) = (0, 0, Gap::default());
+    for (fixture, entry, opts) in every_entry() {
+        if !this_file.contains(&format!("check(\"{fixture}\")")) {
+            continue; // verified in both modes: the snapshots are its guard
+        }
+        entries += 1;
+        let (db, file) = open_fixture(&fixture);
+        let inline_opts = Options {
+            mode: Mode::Inline,
+            ..opts.clone()
+        };
+        let inline = call_tree(&db, file, &entry, &inline_opts).unwrap().0;
+        let graph = call_graph(&db, file, &entry, &opts).unwrap();
+        let summary = render(&graph, &graph.entries[0], &RenderOptions::default());
+        let mut gap = Gap::default();
+        compare_with_inline(&entry, &inline, &summary, &graph, &mut gap);
+        failing += usize::from(gap.missing > 0 || gap.extra > 0);
+        total.missing += gap.missing;
+        total.highest_missing += gap.highest_missing;
+        total.at_unresolved += gap.at_unresolved;
+        total.nodes_at_unresolved += gap.nodes_at_unresolved;
+        total.nodes_elsewhere += gap.nodes_elsewhere;
+        total.extra += gap.extra;
+        for line in gap.not_at_unresolved {
+            total.not_at_unresolved.push(format!("{fixture} {line}"));
+        }
+        for line in gap.extras {
+            total.extras.push(format!("{fixture} {line}"));
+        }
+    }
+    println!(
+        "{entries} entries, {failing} fail: {} nodes missing ({} under an Unresolved call site, {} elsewhere), {} topmost, {} of those at an Unresolved call site; {} extra",
+        total.missing,
+        total.nodes_at_unresolved,
+        total.nodes_elsewhere,
+        total.highest_missing,
+        total.at_unresolved,
+        total.extra
+    );
+    assert_eq!((entries, failing), (48, 22));
+    assert_eq!(total.missing, 48, "nodes inline finds and summary does not");
+    assert_eq!(total.highest_missing, 39, "the topmost of them");
+    assert_eq!(
+        total.at_unresolved, 32,
+        "topmost missing nodes at a call site the graph marks Unresolved"
+    );
+    assert_eq!(
+        (total.nodes_at_unresolved, total.nodes_elsewhere),
+        (40, 8),
+        "of the missing nodes: under an Unresolved call site, and elsewhere"
+    );
+    assert_eq!(total.missing, 40 + 8);
+
+    // The claim "every missing node is under an Unresolved call site" is false, and these seven are why. Weak writes: the site is resolved
+    // to the OTHER handler, so an alternative is dropped and nothing marks it. Property accessors: summary mode does not model them, so
+    // there is no edge at all. `either`: inline lists one Pipeline.run per object, summary joins them (rule 7), so it is not lost
+    // information. A fix removes lines from this list; a regression adds one.
+    assert_eq!(
+        total.not_at_unresolved,
+        [
+            "03-classes/python/isolation.py maybe_opaque/isolation.Pipeline.run -> isolation.JsonHandler.process",
+            "03-classes/python/special.py main -> special.Registry.active",
+            "03-classes/python/special.py main -> special.Registry.get_h",
+            "03-classes/python/special.py swap -> special.Box.handler",
+            "03-classes/python/special.py swap -> special.Box.handler",
+            "03-classes/python/state.py either -> state.Pipeline.run",
+            "03-classes/python/writes.py two_candidates/writes.Pipeline.run -> writes.CsvHandler.process",
+        ]
+    );
+    // Wrong edges, with nothing to mark them: ty's static type, the union of every assignment in the class (`Job.h` is A in __init__ and B
+    // in configure) or in the function (`outer`'s h is A, then B), used where the receiver was not tracked along the path.
+    assert_eq!(
+        total.extras,
+        [
+            "03-classes/python/entries.py Job.run -> entries.B.go",
+            "03-classes/python/entries.py outer.inner -> entries.A.go",
+        ]
+    );
+}
