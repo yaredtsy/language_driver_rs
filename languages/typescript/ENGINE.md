@@ -413,7 +413,7 @@ of `as` / `satisfies` / `<T>x`, the type of a variable or parameter, a call's ty
 expression, decorators (also those on its members), property initializers and static blocks are the class's body, and its methods, accessors and constructor are defs of their own (tsrs makes a static block its
 own call-hierarchy item and walks the constructor in the class; we do not). A nested class still owns the calls in its computed member names, as in tsrs.
 
-- **Only plain calls are sites so far**: `f(x)`, `a.b(x)`, `a?.b(x)`, `(g)(x)`, `a["k"](x)`, `f()(x)`, `super(x)`. Not `import("./m")` (an `ImportKeyword` callee), not `require("./m")` (an identifier `require` with
+- **Only plain calls are sites so far**: `f(x)`, `a.b(x)`, `a?.b(x)`, `(g)(x)`, `a["k"]()`, `f()(x)`, `super(x)`. Not `import("./m")` (an `ImportKeyword` callee), not `require("./m")` (an identifier `require` with
   one string argument), and, until steps 5 and 6: `new`, a tagged template, a decorator's own site, a JSX element, a property read that is an accessor.
 - **The site is the callee expression**, from its first token to its end, relative to the def's start (`Def::range.start`). `f()(g())` has the sites `f`, `f()` and `g`; sites are sorted by where the callee
   starts, then where it ends, so an argument's call comes after its callee's. That is source order of the resolved expression, not evaluation order; the order of siblings in the wire is the open question W3 Q4 and
