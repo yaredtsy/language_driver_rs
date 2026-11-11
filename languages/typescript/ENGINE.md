@@ -114,7 +114,7 @@ Answer: **yes**. Fixture: one file with 21 candidate nodes (see the table). tsrs
 | `export const f = () => {}` | the **`VariableStatement`**, not the `VariableDeclaration` | the declarator has no JSDoc |
 | object-literal method `om() {}` | `MethodDeclaration` | |
 | object-literal `pf: function () {}` | `PropertyAssignment` | |
-| overloaded function | **each overload signature** (a `FunctionDeclaration`) has its own block; the implementation has none | the def's marker goes on the implementation: it has no JSDoc, so TS2 must insert one |
+| overloaded function | **each overload signature** (a `FunctionDeclaration`) has its own block; the implementation has none | the def's marker goes on the **first overload signature**: the def's `range` starts there (`docs/03-typescript/04-ts2-markers.md` §3). A marker above the implementation is not read |
 | interface method | `MethodSignature` | |
 
 - **Range**: `jsdoc.end()` is the exact end of the comment, but **`jsdoc.pos()` is not the start of the comment**: it is the end of the
