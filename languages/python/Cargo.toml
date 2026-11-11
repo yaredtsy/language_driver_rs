@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+exclude = ["vendor"]
 
 [workspace.package]
 edition = "2024"
@@ -11,8 +12,11 @@ publish = false
 analyzer-core    = { path = "../../core/analyzer-core" }
 analyzer-testkit = { path = "../../core/analyzer-testkit" }
 
-# the engine: ONE rev, written once (ENGINE.md records why this one)
-# TODO engine pin
+# --- ruff/ty, all from ONE local checkout at vendor/ruff (ENGINE.md records the pin) ---
+# vendor/ruff/Cargo.toml is ruff's own, UNCHANGED: every `workspace = true` line in vendor/ruff/crates/* resolves
+# against it, not against this file. This file is not that root (hence `exclude = ["vendor"]` above); it only
+# depends on ruff/ty's crates by path.
+ruff_python_parser = { path = "vendor/ruff/crates/ruff_python_parser" }
 
 python-syntax   = { path = "crates/python-syntax" }
 python-analysis = { path = "crates/python-analysis" }
