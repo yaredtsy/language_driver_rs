@@ -2,3 +2,4 @@ Function detached [27..49] name [36..44]
 Function attached [72..94] name [81..89]
 Function twoBlocks [141..164] name [150..159] marker="nearest-wins"
 Function twoBlocksNearestUnmarked [211..249] name [220..244]
+Function detachedWithTags [324..363] name [333..349] (x)

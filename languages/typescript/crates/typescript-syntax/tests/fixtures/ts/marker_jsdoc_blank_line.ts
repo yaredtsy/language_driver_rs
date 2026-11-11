@@ -16,3 +16,9 @@ function twoBlocks() {}
 /** ID: farther */
 /** Nearer, no marker. */
 function twoBlocksNearestUnmarked() {}
+
+/**
+ * @param x TypeScript still applies this across the blank line
+ */
+
+function detachedWithTags(x: number) {}

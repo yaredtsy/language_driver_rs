@@ -89,6 +89,20 @@ pub(crate) fn read(block: &str, label: &str) -> Option<String> {
     })
 }
 
+/// Does a block comment's text carry a block tag: a line that, after its leading `*` and spaces, starts with `@`? An inline `{@link …}` is
+/// not one.
+fn has_block_tag(block: &str) -> bool {
+    split_lines(block).iter().enumerate().any(|(i, line)| {
+        let s = line.trim();
+        let s = if i == 0 {
+            s.strip_prefix("/**").unwrap_or(s)
+        } else {
+            s.strip_prefix('*').unwrap_or(s)
+        };
+        s.trim_start().starts_with('@')
+    })
+}
+
 /// The lines of a text, without their breaks (`\n`, `\r\n` or a lone `\r`). Always at least one line.
 fn split_lines(text: &str) -> Vec<&str> {
     let mut lines = Vec::new();
@@ -118,8 +132,8 @@ fn split_lines(text: &str) -> Vec<&str> {
     lines
 }
 
-/// The marker on the def starting at `start`, or `None`: the def must own its line, have a JSDoc block directly above it, and the block
-/// must carry a `<label>:` line.
+/// The marker on the def starting at `start`, or `None`: the def must own its line, have a JSDoc block above it (`doc_above`), and the
+/// block must carry a `<label>:` line.
 pub(crate) fn marker_of(
     text: &str,
     start: u32,
@@ -191,6 +205,15 @@ pub(crate) fn plan(
     match block {
         Some(block) => plan_in_block(text, block, label, marker_text),
         None => {
+            // a blank line detached the nearest block, but the engine still applies it to the def. Its words may be the file's; its tags
+            // (in a `.js` file, the types) are the def's, and a new block below it would switch them off
+            let detached = comments.iter().rev().find(|c| c.kind == CommentKind::Jsdoc);
+            if detached
+                .and_then(|c| c.span.slice(text))
+                .is_some_and(has_block_tag)
+            {
+                return Err(Skip::UnsafeDocComment);
+            }
             // a new block goes directly above the def, below any plain comment: unless that comment points at the def
             if let Some(last) = comments.last()
                 && adjacent(text, last.span.end, start)
@@ -446,6 +469,17 @@ mod tests {
             Some("k"),
             "the label is the caller's"
         );
+    }
+
+    #[test]
+    fn a_block_tag_starts_a_line() {
+        assert!(has_block_tag("/** @type {number} */"));
+        assert!(has_block_tag("/**\n * Doc.\n * @param x a value\n */"));
+        assert!(has_block_tag("/**\n @returns x\n*/"), "no star");
+        assert!(!has_block_tag("/** Doc. */"));
+        assert!(!has_block_tag(
+            "/**\n * See {@link f}.\n * mail me@example.com\n */"
+        ));
     }
 
     #[test]

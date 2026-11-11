@@ -64,8 +64,9 @@ pub enum Skip {
     SyntaxError,
     /// The def already carries a marker.
     AlreadyMarked { existing: String },
-    /// The JSDoc block above is not one we can edit safely (no closing line of its own, a line without its `*`, a tag on the opening line).
-    /// A new block is not stacked on top of it: two blocks would hide the user's own.
+    /// The JSDoc block above is not one we can edit safely (no closing line of its own, a line without its `*`, a tag on the opening line),
+    /// or a blank line separates it from the def and it carries block tags (`@param`, `@type`, …). A new block is not stacked on top of
+    /// it: the engine uses only the last block above a def, so the user's own, and its tags, would stop applying.
     UnsafeDocComment,
     /// The comment directly above the def is a directive that applies to the next line (`// @ts-ignore`, `// eslint-disable-next-line`, …):
     /// a block put between them would move what it points at.

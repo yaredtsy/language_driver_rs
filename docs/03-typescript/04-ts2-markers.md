@@ -120,6 +120,7 @@ Where "above the def" is, for defs that are not a statement of their own:
 | a syntax error overlaps the def or its JSDoc | `SyntaxError` |
 | the def already has a marker | `AlreadyMarked { existing }` |
 | the JSDoc block is malformed (no closing `*/` on its own, mixed prefixes we cannot copy safely) | `UnsafeDocComment`. A new block is **not** stacked on top of it: two JSDoc blocks would hide the user's own |
+| a blank line detaches the nearest JSDoc block, and that block has block tags (`@param`, `@type`, …) | `UnsafeDocComment` too (added in the TS2 review). TypeScript applies a detached block to the def all the same, and uses only the last one: a new block below it switched the tags off. A detached block with no tags still gets a new block below it |
 
 Generated files and files V-NOC must never touch are the core's decision (V-NOC plan `09/04`), not the analyzer's.
 

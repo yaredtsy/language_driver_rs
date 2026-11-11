@@ -44,7 +44,7 @@ object-literal method; the **first overload signature** for an overloaded functi
 | a multi-line block with no block tags | ` * <label>: <text>` as the last line before the closing ` */` |
 | a multi-line block with block tags (`@param`, `@returns`, …) | the line **before the first block-tag line**, so that it ends the description. A blank ` *` line before the tags stays above it |
 | a one-line block (`/** Parses. */`) | the comment rewritten as `/**`, ` * Parses.`, ` * <label>: <text>`, ` */`. A block that is only a tag (`/** @type {X} */`) gets the marker first, then the tag. An empty block (`/** */`, `/***/`) gets just the marker |
-| no block (nothing, a plain `/* */`, a `//` comment, or a block detached by a blank line) | a new one-line block `/** <label>: <text> */` directly above the def's first line, **below** any plain comment and **above** decorators |
+| no block (nothing, a plain `/* */`, a `//` comment, or a block **without block tags** detached by a blank line) | a new one-line block `/** <label>: <text> */` directly above the def's first line, **below** any plain comment and **above** decorators |
 
 A block with a `//` or `/* */` comment between it and the def is edited like any other block, and the comment stays where it is. A new block is
 never written below it: TypeScript uses only the last block above a def, so the user's own would stop showing, and in a checked `.js` file its
@@ -61,7 +61,7 @@ words stay unchanged inside the new block.
 | `NotOnOwnLine` | something other than blanks stands before the def on its first line: `const a = () => 1, b = () => 2;` (the second), `class C { m() {} }` (the method), `/* c */ function f() {}`. Never reformat the user's code to make room |
 | `SyntaxError` | a parse error overlaps the def or the block above it |
 | `AlreadyMarked { existing }` | the def already has a marker (read by the rule above) |
-| `UnsafeDocComment` | the block has no closing line of its own (` * text */`), a line without its `*`, or a tag on its opening line (`/** @param x`). A new block is **not** stacked on top of it: two blocks would hide the user's own |
+| `UnsafeDocComment` | the block has no closing line of its own (` * text */`), a line without its `*`, or a tag on its opening line (`/** @param x`). Or a blank line detaches the nearest block above the def **and it carries block tags** (`@param`, `@type`, …): TypeScript still applies a detached block to the def. A new block is **not** stacked on top of it: TypeScript uses only the last block, so the user's own would stop applying |
 | `DirectiveAbove` | the comment directly above the def is a directive that applies to the next line: it starts with `@ts-`, `eslint`, `prettier-ignore`, `istanbul`, `c8 `, `v8 `, `biome-ignore`, `tslint:`, `jshint` or `jscs`. A block put between them would move what it points at |
 | `InvalidText` | the marker text is empty, has a line break, or contains `*/` (it would close the comment) |
 | `PlacementNotSupported` | the style asks for a placement other than `Docstring` |

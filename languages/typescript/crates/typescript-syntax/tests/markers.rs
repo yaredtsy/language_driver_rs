@@ -193,6 +193,26 @@ fn a_detached_block_stays_the_files_and_the_def_gets_its_own() {
 }
 
 #[test]
+fn a_detached_block_with_tags_is_refused_and_nothing_is_stacked_on_it() {
+    // TypeScript still applies the block across the blank line. A new block below it would switch `@param {number}` off: in a checked
+    // `.js` file that is error TS7006 on `x`
+    let typed = "/** @param {number} x */\n\nfunction f(x) { return x.toFixed(); }\n";
+    assert_eq!(
+        mark_as(typed, Dialect::Js, "f", "m1"),
+        Err(Skip::UnsafeDocComment)
+    );
+    let multi = "/**\n * Doc.\n * @returns nothing\n */\n\nfunction f() {}\n";
+    assert_eq!(mark(multi, "f"), Err(Skip::UnsafeDocComment));
+    // through a comment too
+    assert_eq!(
+        mark("/** @deprecated */\n\n// note\nfunction f() {}\n", "f"),
+        Err(Skip::UnsafeDocComment)
+    );
+    // an inline tag is not a block tag
+    assert!(mark("/** See {@link g}. */\n\nfunction f() {}\n", "f").is_ok());
+}
+
+#[test]
 fn the_block_goes_above_the_decorators() {
     let text = "@sealed\n@tag(\"x\")\nexport class C {}\n";
     assert_eq!(
@@ -438,5 +458,9 @@ fn the_marker_fixtures_plan_and_refuse() {
         3,
         "ignored, linted, formatted: {tally:?}"
     );
-    assert_eq!(count("UnsafeDocComment"), 3, "{tally:?}");
+    assert_eq!(
+        count("UnsafeDocComment"),
+        4,
+        "three blocks that cannot be edited, one detached block with tags: {tally:?}"
+    );
 }
