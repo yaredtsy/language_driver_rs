@@ -5,8 +5,15 @@
 - Engine crates used: `typescript-syntax`: `tsrs_parser`, `tsrs_ast`, `tsrs_core`, `tsrs_scanner`. `typescript-analysis`: those plus `tsrs_compiler`,
   `tsrs_tsoptions`, `tsrs_vfs`, `tsrs_checker`. **Not `tsrs_ls`** (see S-TS3: the resolver we wanted is private). Final list confirmed when TS1 and TS3 are built.
 - Patches: none
-- How to bump:
-- Licence notice:
+- How to bump: an engine bump is a change of its own (only the pin, the lockfile, `sem.rs` and this file).
+  1. Change the `rev` once, in `[workspace.dependencies]` of `languages/typescript/Cargo.toml` (every `tsrs_*` line shares it).
+  2. Build: cargo re-resolves the git source on its own when the `rev` changes, and every `tsrs_*` package comes from that one source. Commit the new `Cargo.lock`.
+  3. `cargo test`, then `cargo test -p typescript-syntax` alone: the fast crate must still not compile the checker.
+  4. Re-check every item this file names (the calls in the spike sections, later the "items we call" list) against the new source; fix `sem.rs` only.
+  5. Write the new commit, its workspace version and the TypeScript version it follows (`[workspace.metadata.typescript]` in tsrs's `Cargo.toml`) here.
+- Licence notice: tsrs is Apache-2.0, Copyright 2026 Max Schwenk and the tsrs contributors. It is a derivative work of TypeScript,
+  Copyright (c) Microsoft Corporation, Apache-2.0, and the binary embeds TypeScript's `lib.*.d.ts` files. A binary that links
+  `typescript-analysis` ships tsrs's `NOTICE` (which carries TypeScript's third-party notices) and `LICENSE` unchanged.
 
 ## Spike S-TS1: does it build as a dependency?
 
@@ -36,7 +43,8 @@ let host = tsrs_compiler::new_compiler_host(&cwd, fs, &bundled::default_lib_path
 let program = tsrs_compiler::new_program(ProgramOptions::new(P::new(config), host));
 ```
 
-Parsing one file: `tsrs_parser::parse_source_file(SourceFileParseOptions { file_name, path: tspath::to_path(..), external_module_indicator_options: Default::default() }, text, get_script_kind_from_file_name(name))`.
+Parsing one file: `tsrs_parser::parse_source_file_owned(SourceFileParseOptions { file_name, path: tspath::to_path(..), external_module_indicator_options: Default::default() }, text.to_string(), get_script_kind_from_file_name(name))`,
+inside a region (S-TS2). This spike used `parse_source_file`, which is wrong for a long-running process: see S-TS2.
 
 ## Spike S-TS2: can a long-running process parse without growing?
 
@@ -46,7 +54,7 @@ leave the region.
 
 | Mode | Round 1,000 | Round 10,000 | Parse time |
 |---|---|---|---|
-| in a region (10,000 rounds) | 4.5 MB | 4.9 MB (+16 KB per 1,000 rounds, flat to the eye) | 0.36 ms for 2,000 lines |
+| in a region, **first version with `parse_source_file`** (10,000 rounds) | 4.5 MB | 4.9 MB (+16 KB per 1,000 rounds: the text table, see below) | 0.36 ms for 2,000 lines |
 | in a region, 5,000 lines (1,000 rounds) | 5.6 MB | not run | 0.98 ms |
 | **no region** (3,000 rounds) | 264 MB | 388 MB at round 3,000 | 0.40 ms |
 
@@ -54,9 +62,11 @@ leave the region.
   so a real file will cost more; TS3 measures real ones.
 - Without a region memory grows to hundreds of MB in a few thousand parses: that is the bug the rule protects against. (RSS stopped growing
   after round 2,000 in that run; macOS may compress or reclaim pages. The first 1,000 rounds alone cost 260 MB.)
-- Constructor: `Region::new_scratch(64 * 1024)`. I also ran `Region::new(64 * 1024)`: no measurable difference (see the long run below), so
-  `new_scratch` stays, as the docs suggest for temporary data whose results do not escape. The region is dropped at the end of each round;
-  nothing from tsrs leaves the scope except owned `String`s.
+- Constructor: `Region::new_scratch(64 * 1024)`, entered with `enter()`. tsrs's doc on `new_scratch`: an **unregistered** region (its chunks are not
+  in the global registry, so creating or freeing it takes no global lock); "a request that owns all cached data may use `enter` directly", and
+  `enter_scratch` is for "temporary data whose escaping caches must survive the region". A parse request owns everything it makes, so `enter` fits.
+  `Region::new` (a registered region) gave no measurable difference (see the long run below). `enter_scratch` was not tried. The region is dropped
+  at the end of each round; nothing from tsrs leaves the scope except owned `String`s.
 - **Use `parse_source_file_owned`, not `parse_source_file`, inside a region.** tsrs keeps a global table of file texts with 1,048,576
   slots; every parse takes one and slots are never reused. `parse_source_file_owned` clears the slot when the region is freed (so the table
   does not point into freed memory). The first version of this spike used `parse_source_file`, and its "+16 KB per 1,000 rounds" drift was
@@ -174,12 +184,15 @@ let program = tsrs_compiler::new_program(options);
 unsafe { tsrs_compiler::free_unshared_program(program) };   // locals then drop: loaders, scope, region
 ```
 
+After the first free about 40 MB stays (110 MB after round 1, a plateau near 150 MB from round 10): stable, not growing, but not everything comes back.
+
 Safety rule for `sem.rs`/`Project` (TS3): checker handles are dropped before the program is freed, and nothing from the program is used after `free`.
 The spike did not try `free_program` (the variant that keeps data shared between program versions: for `Session` in TS5).
 
 ### 4. What the engine answers: first draft of the policy table
 
-**V-NOC frontend, 437 sites: 437 resolved, 0 unresolved.** "Resolved" is not "a def", though. By what the declaration is and where it lives:
+**V-NOC frontend, 437 sites: only 78 (18%) reach a project function with a body.** The engine returned *some* declaration for all 437
+(none came back empty), but most are not defs. By what the declaration is and where it lives:
 
 | Declaration the engine returns | project | `node_modules` | bundled libs | Meaning for us |
 |---|---|---|---|---|
@@ -189,7 +202,7 @@ The spike did not try `free_program` (the variant that keeps data shared between
 | `MethodSignature` | 0 | 17 | 104 | an interface or `lib.d.ts` method: no body |
 | `CallSignature` / `ConstructSignature` | 0 | 12 | 16 | no body |
 
-So only **78 of 437 sites (18%) reach a project function with a body**; 323 are external (`node_modules` 200, bundled 123) and 36 more point at a
+So 78 sites reach a project def; 323 are external (`node_modules` 200, bundled 123) and 36 more point at a
 project type (an interface member or function-typed property). The 140 `FunctionType` sites (32%) are the policy decision TS4 must make: the engine
 resolves them, but there is no def to link, so I propose `Unresolved` (calls through a function-typed value), never a guess.
 
@@ -228,6 +241,8 @@ This is what the plan expected: JavaScript resolves less, and `Unresolved` says 
 
 ### 6. Not done
 
-- Both spikes report **1 program diagnostic** whose message text printed empty; not chased.
+- Both spikes report **1 program diagnostic** whose message text printed empty; not chased. It may be a compiler option tsrs does not support: TS3 prints it properly.
+- One checker (`program.get_type_checker`) answered for every file. `tsrs_lint` asks `get_type_checker_for_file(ctx, file)`; TS3 follows the lint.
+- Whether a call through a `FunctionType` is `Unresolved` or a distinct edge is a decision for the owner before TS4 (it bends "follow the engine").
 - Not tried: object-literal methods, JSX elements, accessors, tagged templates, decorators as call sites; a class without a constructor; a project with project references; Linux and Windows.
 - The resolve time includes the checker's lazy work for the visited files only, so the cost of the **first** query in a fresh program is in the 57 ms; a second query is cheaper.
