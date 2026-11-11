@@ -53,10 +53,18 @@ leave the region.
   so a real file will cost more; TS3 measures real ones.
 - Without a region memory grows to hundreds of MB in a few thousand parses: that is the bug the rule protects against. (RSS stopped growing
   after round 2,000 in that run; macOS may compress or reclaim pages. The first 1,000 rounds alone cost 260 MB.)
-- Constructor used: `Region::new_scratch(64 * 1024)`, as the docs suggest for temporary data whose results do not escape. The region was
-  dropped at the end of each round; nothing from tsrs left the scope except owned `String`s.
-- The small drift (+16 KB per 1,000 rounds) is probably the fixed-capacity source-text slot table (`parse_source_file_owned` says slots are never
-  reused); not chased. TS1 should keep a memory test that parses in a loop and checks the growth stays small.
+- Constructor: `Region::new_scratch(64 * 1024)`. I also ran `Region::new(64 * 1024)`: no measurable difference (see the long run below), so
+  `new_scratch` stays, as the docs suggest for temporary data whose results do not escape. The region is dropped at the end of each round;
+  nothing from tsrs leaves the scope except owned `String`s.
+- **Use `parse_source_file_owned`, not `parse_source_file`, inside a region.** tsrs keeps a global table of file texts with 1,048,576
+  slots; every parse takes one and slots are never reused. `parse_source_file_owned` clears the slot when the region is freed (so the table
+  does not point into freed memory). The first version of this spike used `parse_source_file`, and its "+16 KB per 1,000 rounds" drift was
+  that table (16 bytes per slot).
+- **Long run: 1,200,000 parses** (past the table's 1,048,576 slots), each in a fresh region, `parse_source_file_owned`, 2,000-line file:
+  memory 5.1 MB at round 100,000, 5.0 MB at 1,000,000, 4.5 MB at 1,200,000: flat, no drift. Same for `Region::new`: 5.1 → 5.2 → 4.5 MB.
+  Parse time per stretch of 100,000 rounds stayed 360–420 µs, with one exception: the last stretch of the `new_scratch` run took about 505 µs
+  per parse, and the same stretch of the `Region::new` run took 372 µs, so it is noise, not an effect of the full table. The table-full path
+  (identifiers store their own text) is therefore exercised and costs nothing visible here.
 - Memory was read with `ps -o rss=` every 1,000 rounds. A portable crate (`memory-stats`) is for TS3.
 
 The pattern to copy into `sem.rs`:
@@ -64,7 +72,7 @@ The pattern to copy into `sem.rs`:
 ```rust
 let region = tsrs_core::arena::Region::new_scratch(64 * 1024);
 let _scope = region.enter();
-let file = tsrs_parser::parse_source_file(opts, text, kind);
+let file = tsrs_parser::parse_source_file_owned(opts, text.to_string(), kind);
 let mut names = Vec::new();
 collect(file.as_node(), &mut names);   // owned data only
 names                                  // `_scope`, then `region`, drop here

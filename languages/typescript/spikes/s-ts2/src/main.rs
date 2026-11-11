@@ -36,7 +36,11 @@ fn parse_and_walk(text: &str, name: &str) -> Vec<String> {
         external_module_indicator_options: Default::default(),
     };
     let kind = tsrs_core::get_script_kind_from_file_name(name);
-    let file = tsrs_parser::parse_source_file(opts, text, kind);
+    let file = if std::env::var_os("S_TS2_BORROWED").is_some() {
+        tsrs_parser::parse_source_file(opts, text, kind)
+    } else {
+        tsrs_parser::parse_source_file_owned(opts, text.to_string(), kind)
+    };
     let mut names = Vec::new();
     collect(file.as_node(), &mut names);
     names
@@ -46,6 +50,7 @@ fn main() {
     let mode = std::env::args().nth(1).unwrap_or_else(|| "region".into());
     let rounds: usize = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(10_000);
     let lines: usize = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(2_000);
+    let every: usize = std::env::args().nth(4).and_then(|s| s.parse().ok()).unwrap_or(1_000);
     let text = source(lines);
     println!("mode={mode} rounds={rounds} lines={lines} bytes={}", text.len());
     println!("round 0: rss {} KB", rss_kb());
@@ -58,10 +63,15 @@ fn main() {
                 let _scope = region.enter();
                 parse_and_walk(&text, "/spike/a.ts")
             }
+            "region-new" => {
+                let region = tsrs_core::arena::Region::new(64 * 1024);
+                let _scope = region.enter();
+                parse_and_walk(&text, "/spike/a.ts")
+            }
             _ => parse_and_walk(&text, "/spike/a.ts"),
         };
         count = names.len();
-        if round % 1000 == 0 {
+        if round % every == 0 {
             println!("round {round}: rss {} KB, avg {:?}/parse", rss_kb(), start.elapsed() / round as u32);
         }
     }
