@@ -13,7 +13,7 @@
     )
 )]
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -62,6 +62,9 @@ pub struct Sem {
     root: PathBuf,
     /// The program is freed by `Drop`. A `P<…>` taken from it must not outlive `self`.
     program: &'static Program,
+    /// Every config file that fed this program: the ones the owner search read (a broken one too) and the ones they extend. Relative to the root
+    /// where they are under it, else as the engine spells them. Sorted.
+    config_files: Vec<String>,
     // Fields drop in this order, after `Drop::drop` has freed the program: the loaders' regions, then the program's own.
     _loaders: Arc<ProgramRegions>,
     _region: Region,
@@ -89,9 +92,11 @@ impl Sem {
 
         let region = Region::new_scratch(CHUNK);
         let loaders = Arc::new(ProgramRegions::default());
+        let mut config_inputs = BTreeSet::new();
         let (program, config_name) = {
             let _scope = region.enter();
-            let (config_name, mut config) = match find_owner(&root, &file, &config_host)? {
+            let owner = find_owner(&root, &file, &config_host, &mut config_inputs)?;
+            let (config_name, mut config) = match owner {
                 Owner::Config(name, config) => (Some(name), *config),
                 Owner::NoneHolds(name) => {
                     return Err(OpenError::NotInProject(relative_to(&root, &name)));
@@ -128,9 +133,14 @@ impl Sem {
             (program, config_name)
         };
 
+        let config_files = config_inputs
+            .iter()
+            .map(|name| relative_to(&root, name))
+            .collect();
         let sem = Sem {
             root,
             program,
+            config_files,
             _loaders: loaders,
             _region: region,
         };
@@ -189,9 +199,21 @@ impl Sem {
             && !self.program.is_source_file_from_external_library(file.node)
     }
 
+    /// The config files that fed this program (see the field). What `environment_inputs` adds to its fixed globs.
+    pub(crate) fn config_files(&self) -> &[String] {
+        &self.config_files
+    }
+
+    /// A declaration file of the repo itself: under the root, not in `node_modules`, not a bundled library. Not project code (nothing in it is
+    /// analyzed), but editing one changes how calls resolve, so a cache must know about it.
+    pub(crate) fn is_repo_declaration_file(&self, file: File<'_>) -> bool {
+        tspath::is_declaration_file_name(file.node.file_name())
+            && self.package_of(file).is_none()
+            && self.relative_path(file).is_some()
+    }
+
     /// The package a file belongs to, for an `External` edge: `"lodash"`, `"@scope/pkg"`, or `"typescript:lib"` for a bundled library. `None` for
     /// the project's own files, declaration files included. `@types/x` is named `x`, the package it describes.
-    #[cfg_attr(not(test), expect(dead_code, reason = "TS4's External edges call it"))]
     pub(crate) fn package_of(&self, file: File<'_>) -> Option<String> {
         if self
             .program
@@ -216,7 +238,6 @@ impl Drop for Sem {
 }
 
 /// What `package_of` says for a bundled `lib.*.d.ts` (`typescript:lib`: the engine's own copy of TypeScript's libraries).
-#[cfg_attr(not(test), expect(dead_code, reason = "only `package_of` uses it"))]
 const BUNDLED_LIBS: &str = "typescript:lib";
 
 /// The package a path inside `node_modules` belongs to, from the **last** `node_modules/` in it (pnpm nests them:
@@ -319,9 +340,16 @@ enum Owner {
 /// references (a solution config has `"files": []` and only references: the Vite layout), then the config above that, and so on; the first whose
 /// file list holds the file. A `composite` config must hold it by its own patterns. `disableSolutionSearching` stops the climb.
 ///
+/// Every config it reads goes into `inputs` (see `Sem::config_files`).
+///
 /// A syntax error in the **nearest** config is the person's to fix (`ConfigError`). One in a config only reached by a reference or a climb is
 /// skipped, as `tsrs_lint` does: it may have nothing to do with this file.
-fn find_owner(root: &Path, file: &Path, host: &ConfigHost) -> Result<Owner, OpenError> {
+fn find_owner(
+    root: &Path,
+    file: &Path,
+    host: &ConfigHost,
+    inputs: &mut BTreeSet<String>,
+) -> Result<Owner, OpenError> {
     let Some(nearest) = file.parent().and_then(|dir| find_config(root, dir)) else {
         return Ok(Owner::NoConfig);
     };
@@ -342,11 +370,14 @@ fn find_owner(root: &Path, file: &Path, host: &ConfigHost) -> Result<Owner, Open
             if !visited.insert(name.clone()) {
                 continue;
             }
+            // read, so a change to it can change the answer; a broken one too, because fixing it would
+            inputs.insert(name.clone());
             let config = match load_config(Path::new(&name), host) {
                 Ok(config) => config,
                 Err(error) if name == nearest => return Err(error),
                 Err(_) => continue,
             };
+            inputs.extend(config.extended_source_files());
             if name == config_name {
                 disable_solution_searching = config
                     .compiler_options()

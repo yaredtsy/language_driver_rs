@@ -134,3 +134,50 @@ fn a_config_above_holds_a_file_the_nearest_config_leaves_out() {
     let outside = Project::open(&root, Path::new("sub/other.ts")).unwrap();
     assert_eq!(outside.files(), ["sub/only/in.ts", "sub/other.ts"]);
 }
+
+const GLOBS: [&str; 9] = [
+    "**/tsconfig*.json",
+    "**/jsconfig.json",
+    "**/package.json",
+    "**/package-lock.json",
+    "**/npm-shrinkwrap.json",
+    "**/yarn.lock",
+    "**/pnpm-lock.yaml",
+    "**/bun.lock",
+    "**/bun.lockb",
+];
+
+#[test]
+fn environment_inputs_are_the_config_and_package_files_and_the_lock_files() {
+    let project = Project::open(&fixture("three-files"), Path::new("src/main.ts")).unwrap();
+    // the config that was used (`tsconfig.json`) is already matched by a glob, so it is not listed twice
+    assert_eq!(project.environment_inputs(), GLOBS);
+}
+
+#[test]
+fn an_extended_config_with_any_name_is_an_input_too() {
+    let project = Project::open(&fixture("extends"), Path::new("src/main.ts")).unwrap();
+    let mut expected: Vec<String> = GLOBS.iter().map(|glob| (*glob).to_owned()).collect();
+    // `config/shared.json` is not named like a tsconfig, so no glob covers it: editing it changes the program
+    expected.push("config/shared.json".into());
+    assert_eq!(project.environment_inputs(), expected);
+}
+
+#[test]
+fn a_config_skipped_for_a_syntax_error_is_an_input_so_fixing_it_reloads() {
+    let project = Project::open(&fixture("broken-reference"), Path::new("src/main.ts")).unwrap();
+    assert!(
+        project
+            .environment_inputs()
+            .contains(&"configs/broken.json".to_owned())
+    );
+}
+
+#[test]
+fn the_repos_own_declaration_files_are_listed_apart_from_files() {
+    let project = Project::open(&fixture("with-node-modules"), Path::new("src/main.ts")).unwrap();
+    assert_eq!(project.declaration_files(), ["src/types.d.ts"]);
+    // not `node_modules` packages, not the bundled libraries, and not in `files()`
+    let none = Project::open(&fixture("three-files"), Path::new("src/main.ts")).unwrap();
+    assert!(none.declaration_files().is_empty());
+}

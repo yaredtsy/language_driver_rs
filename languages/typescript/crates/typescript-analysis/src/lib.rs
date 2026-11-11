@@ -5,6 +5,36 @@ mod sem;
 use std::fmt;
 use std::path::Path;
 
+/// Config, package and lock files whose change means "load again". The last two are bun's text and binary lock files.
+const ENVIRONMENT_GLOBS: [&str; 9] = [
+    "**/tsconfig*.json",
+    "**/jsconfig.json",
+    "**/package.json",
+    "**/package-lock.json",
+    "**/npm-shrinkwrap.json",
+    "**/yarn.lock",
+    "**/pnpm-lock.yaml",
+    "**/bun.lock",
+    "**/bun.lockb",
+];
+
+/// Whether `ENVIRONMENT_GLOBS` already covers the file at `path`. Only the file name matters: every glob starts with `**/`.
+fn matches_a_glob(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    (name.starts_with("tsconfig") && name.ends_with(".json"))
+        || [
+            "jsconfig.json",
+            "package.json",
+            "package-lock.json",
+            "npm-shrinkwrap.json",
+            "yarn.lock",
+            "pnpm-lock.yaml",
+            "bun.lock",
+            "bun.lockb",
+        ]
+        .contains(&name)
+}
+
 /// A loaded TypeScript / JavaScript program. Dropping it frees the program.
 pub struct Project {
     sem: sem::Sem,
@@ -27,6 +57,37 @@ impl Project {
             .sem
             .files()
             .filter(|&file| self.sem.is_project_code(file))
+            .filter_map(|file| self.sem.relative_path(file))
+            .collect();
+        files.sort();
+        files
+    }
+
+    /// What, if it changes, means "load this project again": globs for the config, package and lock files, then the exact config files that fed
+    /// this program and no glob covers (an `extends` target such as `config/shared.json`, or a config skipped for a syntax error). Relative to the
+    /// root. The repo's own `.d.ts` files are not here: they are [`Project::declaration_files`].
+    pub fn environment_inputs(&self) -> Vec<String> {
+        let mut inputs: Vec<String> = ENVIRONMENT_GLOBS
+            .iter()
+            .map(|glob| (*glob).to_owned())
+            .collect();
+        inputs.extend(
+            self.sem
+                .config_files()
+                .iter()
+                .filter(|name| !matches_a_glob(name))
+                .cloned(),
+        );
+        inputs
+    }
+
+    /// The repo's own declaration files (`.d.ts`) in the program, relative to the root, sorted. They are not in [`Project::files`], because nothing
+    /// in them is analyzed, but a call into one resolves to the declaration and not to a def, so editing one must reload the project.
+    pub fn declaration_files(&self) -> Vec<String> {
+        let mut files: Vec<String> = self
+            .sem
+            .files()
+            .filter(|&file| self.sem.is_repo_declaration_file(file))
             .filter_map(|file| self.sem.relative_path(file))
             .collect();
         files.sort();
