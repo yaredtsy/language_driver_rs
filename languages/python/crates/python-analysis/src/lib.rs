@@ -8,3 +8,4 @@ pub mod interp;
 pub mod project;
 pub mod sem;
 pub mod stable;
+pub mod wire;

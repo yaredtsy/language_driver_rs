@@ -76,13 +76,7 @@ pub struct Stats {
     pub types_dropped: u32,        // a type left out of a key: no one-to-one stable form
     pub lifted_subclass_of: u32,   // `lift` reached a `type[X]` (tests: the arm runs)
 }
-/// How an id is written on the wire: the prefix by kind, then the docstring ID. The prefixes are the caller's (V-NOC's are its own
-/// schema names), so no product word is in this crate. Empty by default: the wire then carries the bare ID.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct WireStyle {
-    pub function_prefix: String,
-    pub class_prefix: String,
-}
+pub use crate::wire::WireStyle;
 
 #[derive(Clone, Debug)]
 pub struct Options {
