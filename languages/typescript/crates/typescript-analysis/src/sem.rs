@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use tsrs_compiler::{Program, ProgramOptions, ProgramRegions};
 use tsrs_core::arena::Region;
-use tsrs_core::{P, tspath};
+use tsrs_core::{CompilerOptions, P, tspath};
 use tsrs_tsoptions::ParseConfigHost;
 use tsrs_vfs::{FS, bundled, cachedvfs, osvfs};
 
@@ -90,6 +90,17 @@ impl Sem {
             {
                 return Err(OpenError::ConfigError(first.localize()));
             }
+            // One checker answers every question, so the same project gives the same answers in the same order (rule 9). Not
+            // `single_threaded`: that also loads files one at a time, 3.5 times slower on a 1,500-file program (ENGINE.md).
+            let mut config = config;
+            let compiler_options = config
+                .compiler_options()
+                .map(|options| (*options).clone())
+                .unwrap_or_default();
+            config.parsed_config.compiler_options = Some(P::new(CompilerOptions {
+                checkers: Some(1),
+                ..compiler_options
+            }));
             let host = tsrs_compiler::new_compiler_host(
                 &cwd,
                 fs,
@@ -179,4 +190,40 @@ fn find_config(root: &Path, file: &Path) -> Option<PathBuf> {
 /// tsrs spells every path absolute, with `/` as the separator.
 fn to_engine_path(path: &Path) -> String {
     tspath::normalize_slashes(&path.to_string_lossy())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn three_files() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files")
+    }
+
+    #[test]
+    fn the_program_has_one_checker() {
+        let sem = Sem::open(&three_files(), Path::new("src/main.ts")).unwrap();
+        assert_eq!(sem.program.options().checkers, Some(1));
+    }
+
+    #[test]
+    fn the_program_lists_its_files_in_the_same_order_every_time() {
+        // Files are parsed on several threads, so the order the program ends with must not depend on which finished first.
+        let names = || -> Vec<String> {
+            let sem = Sem::open(&three_files(), Path::new("src/main.ts")).unwrap();
+            sem.program
+                .get_source_files()
+                .iter()
+                .map(|file| file.file_name().to_owned())
+                .collect()
+        };
+        let first = names();
+        assert!(
+            first.len() > 3,
+            "the bundled libraries are in the program too"
+        );
+        for _ in 0..30 {
+            assert_eq!(names(), first);
+        }
+    }
 }
