@@ -79,9 +79,9 @@ pub use crate::wire::WireStyle;
 pub struct Options {
     pub mode: Mode,
     pub limits: Limits,
-    /// Show only functions with a docstring `ID:` (and what is under them).
+    /// Show only functions that carry a marker (and what is under them): the same as core's `RenderOptions::only_marked`.
     /// The harness runs with it off; the request path turns it on.
-    pub require_ids: bool,
+    pub only_marked: bool,
     /// The prefixes of `target_id` on the wire.
     pub wire: WireStyle,
 }
@@ -127,7 +127,7 @@ impl Options {
         let mut render = analyzer_core::render::RenderOptions::default();
         render.max_nodes = self.limits.render_nodes;
         render.max_depth = self.limits.render_depth;
-        render.only_marked = self.require_ids;
+        render.only_marked = self.only_marked;
         render
     }
 }
@@ -137,7 +137,7 @@ impl Default for Options {
         Options {
             mode: Mode::Inline,
             limits: Limits::default(),
-            require_ids: false, // the harness; requests set it
+            only_marked: false, // the harness; requests set it
             wire: WireStyle::default(),
         }
     }

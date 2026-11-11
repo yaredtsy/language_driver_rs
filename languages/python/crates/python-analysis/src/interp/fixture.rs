@@ -194,7 +194,7 @@ pub(super) fn check_both(fixture: &str) {
         }
     }
     for r in &mut runs {
-        r.require_ids = ids;
+        r.only_marked = ids;
     }
     check_with(fixture, &runs);
 }
@@ -792,7 +792,7 @@ fn every_entry() -> Vec<(String, String, Options)> {
             let mut opts = summary();
             if let Some((limits, ids)) = fixture_limits(&source) {
                 opts.limits = limits;
-                opts.require_ids = ids;
+                opts.only_marked = ids;
             }
             for e in blocks
                 .into_iter()

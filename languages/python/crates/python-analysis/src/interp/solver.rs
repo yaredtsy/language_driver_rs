@@ -503,10 +503,10 @@ impl<'db> Solver<'db> {
     }
 
     /// Its summary is missing what later rounds would have added.
-    /// Is this function part of the view? Project code, and with `require_ids` one
+    /// Is this function part of the view? Project code, and with `only_marked` one
     /// that has a docstring `ID:`.
     pub fn shown(&self, def: Definition<'db>) -> bool {
-        self.sem.is_project(def) && (!self.opts.require_ids || self.sem.docstring_id(def).is_some())
+        self.sem.is_project(def) && (!self.opts.only_marked || self.sem.docstring_id(def).is_some())
     }
 
     pub fn is_incomplete(&self, ctx: ContextId) -> bool {
