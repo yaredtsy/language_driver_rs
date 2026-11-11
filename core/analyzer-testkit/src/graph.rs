@@ -32,7 +32,7 @@ pub fn violations(graph: &Graph) -> Vec<String> {
             ));
         }
         let target = match &edge.to {
-            EdgeTo::Context(id) => Some(id),
+            EdgeTo::Context(id, _) => Some(id),
             EdgeTo::Construct { init, .. } => init.as_ref(),
             _ => None,
         };
@@ -96,7 +96,7 @@ pub fn assert_deterministic(build: impl Fn() -> Graph) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use analyzer_core::graph::{Context, ContextId, DefInfo, Edge, Site, StableDef, Stats};
+    use analyzer_core::graph::{Basis, Context, ContextId, DefInfo, Edge, Site, StableDef, Stats};
     use analyzer_core::outline::DefKind;
     use analyzer_core::text::Span;
 
@@ -120,7 +120,7 @@ mod tests {
         Edge {
             from: id(from),
             site: Site::at(0),
-            to: EdgeTo::Context(id(to)),
+            to: EdgeTo::Context(id(to), Basis::Type),
         }
     }
 
@@ -131,6 +131,7 @@ mod tests {
             to: EdgeTo::Construct {
                 class: def_id(class),
                 init: None,
+                basis: Basis::Type,
             },
         }
     }

@@ -847,6 +847,46 @@ fn the_core_graph_of_every_fixture_keeps_core_s_invariants() {
     }
 }
 
+/// What an edge rests on. A method on an object the walk built is `Path`; a class, a def named in the code, a method on an object only ty
+/// typed, and a library function are `Type`. An `Unresolved` edge has a reason, and the counter of that name counts the edges.
+#[test]
+fn edges_say_what_they_rest_on() {
+    use crate::interp::call_graph;
+    use analyzer_core::graph::EdgeTo;
+    let edges = |fixture: &str, entry: &str| {
+        let (db, file) = open_fixture(fixture);
+        let g = call_graph(&db, file, entry, &summary()).unwrap();
+        let from = g.entries[0].clone();
+        let named = |f: &analyzer_core::graph::StableDef| g.def(f).unwrap().qname.clone();
+        let rows: Vec<String> = g
+            .edges_from(&from)
+            .iter()
+            .map(|e| match &e.to {
+                EdgeTo::Context(c, b) => format!("{} {b:?}", named(&c.func)),
+                EdgeTo::Construct { class, basis, .. } => format!("new {} {basis:?}", named(class)),
+                EdgeTo::External(x, b) => format!("{} {b:?}", x.name),
+                EdgeTo::Unresolved(r) => format!("? {}", r.as_str()),
+                _ => unreachable!(),
+            })
+            .collect();
+        (rows, g.stats)
+    };
+    let (rows, _) = edges("03-classes/python/state.py", "read_json");
+    assert_eq!(
+        rows,
+        [
+            "new state.Pipeline Type",
+            "state.Pipeline.run Path",
+            "new state.JsonHandler Type"
+        ]
+    );
+    let (rows, _) = edges("03-classes/python/chains.py", "annotated");
+    assert_eq!(rows, ["chains.Handler.handle Type"]);
+    let (rows, stats) = edges("03-classes/python/chains.py", "unknown_mid_chain");
+    assert_eq!(rows, ["? unknown_callee"]);
+    assert_eq!(stats.language["unknown_callee"], stats.unresolved);
+}
+
 /// The golden wire of a real project. Not run by default: it needs a project that is not in the repo and the files in `out/golden/`, and the
 /// prefixes are V-NOC's, which no crate may spell. Run it by hand:
 ///
@@ -1142,7 +1182,7 @@ fn compare_with_inline(
                     graph.edges.iter().any(|e| {
                         summary.contexts.contains(&e.from)
                             && e.site == site
-                            && e.to == EdgeTo::Unresolved
+                            && matches!(e.to, EdgeTo::Unresolved(_))
                     })
                 });
                 if unresolved {

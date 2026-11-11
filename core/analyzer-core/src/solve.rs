@@ -11,7 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crate::graph::{
-    Context, ContextId, Cut, DefInfo, Edge, EdgeTo, External, Graph, Site, Stats, Status,
+    Basis, Context, ContextId, Cut, DefInfo, Edge, EdgeTo, External, Graph, Reason, Site, Stats,
+    Status,
 };
 
 /// What one call site can reach.
@@ -23,7 +24,8 @@ pub enum Target<L: Lang + ?Sized> {
         init: Option<(L::Func, L::Key)>,
     },
     External(External),
-    Unresolved,
+    /// The call has no target the engine can give; the reason is the key of the counter in `Stats.language`.
+    Unresolved(Reason),
 }
 
 pub struct SiteCalls<L: Lang + ?Sized> {
@@ -64,6 +66,9 @@ impl<L: Lang + ?Sized> Summary<L> {
 }
 
 pub trait Lang {
+    /// What this language's resolved edges rest on. An answer from the engine is `Basis::Type`. Required, not defaulted: a language
+    /// says it, the core does not assume it.
+    const BASIS: Basis;
     /// The engine's handle for a function or class. Only valid during one request.
     type Func: Copy + Eq + Hash;
     /// What a context holds besides the function. `()` for a default resolver.
@@ -245,7 +250,7 @@ impl<L: Lang> Solver<L> {
                         Target::Call(f, k) => {
                             let callee = (*f, k.clone());
                             run.discover(&callee, depth + 1);
-                            EdgeTo::Context(id_of(&self.lang, &mut run.infos, &callee))
+                            EdgeTo::Context(id_of(&self.lang, &mut run.infos, &callee), L::BASIS)
                         }
                         Target::Construct { class, init } => {
                             // A class has no body to walk, so it gets a row in `defs` and no context.
@@ -257,12 +262,16 @@ impl<L: Lang> Solver<L> {
                                 run.discover(&init, depth + 1);
                                 id_of(&self.lang, &mut run.infos, &init)
                             });
-                            EdgeTo::Construct { class, init }
+                            EdgeTo::Construct {
+                                class,
+                                init,
+                                basis: L::BASIS,
+                            }
                         }
-                        Target::External(e) => EdgeTo::External(e.clone()),
-                        Target::Unresolved => {
+                        Target::External(e) => EdgeTo::External(e.clone(), L::BASIS),
+                        Target::Unresolved(why) => {
                             stats.unresolved += 1;
-                            EdgeTo::Unresolved
+                            EdgeTo::Unresolved(why.clone())
                         }
                     };
                     edges.push(Edge {
@@ -349,6 +358,7 @@ pub(crate) mod tests {
     }
 
     impl Lang for Toy {
+        const BASIS: Basis = Basis::Type;
         type Func = &'static str;
         type Key = ();
 
@@ -370,7 +380,7 @@ pub(crate) mod tests {
                 .enumerate()
                 .map(|(i, callee)| {
                     let target = match *callee {
-                        "?" => Target::Unresolved,
+                        "?" => Target::Unresolved(Reason::new("toy")),
                         c if self.program.contains_key(c) => Target::Call(c, ()),
                         c => Target::External(External {
                             package: "std".into(),
@@ -388,7 +398,7 @@ pub(crate) mod tests {
         for e in &g.edges {
             assert!(g.context(&e.from).is_some());
             match &e.to {
-                EdgeTo::Context(c) => assert!(g.context(c).is_some(), "{c:?}"),
+                EdgeTo::Context(c, _) => assert!(g.context(c).is_some(), "{c:?}"),
                 EdgeTo::Construct { class, .. } => {
                     assert!(g.def(class).is_some(), "no row for class {class:?}")
                 }
@@ -418,12 +428,12 @@ pub(crate) mod tests {
         g.edges_from(&id)
             .iter()
             .map(|e| match &e.to {
-                EdgeTo::Context(c) => match &c.func {
+                EdgeTo::Context(c, _) => match &c.func {
                     StableDef::Marked(n) => n.clone(),
                     _ => unreachable!(),
                 },
-                EdgeTo::External(x) => format!("ext:{}", x.name),
-                EdgeTo::Unresolved => "?".to_owned(),
+                EdgeTo::External(x, _) => format!("ext:{}", x.name),
+                EdgeTo::Unresolved(_) => "?".to_owned(),
                 _ => "other".to_owned(),
             })
             .collect()
@@ -473,6 +483,29 @@ pub(crate) mod tests {
         assert_eq!(names(&g), ["a"]);
         assert_eq!(calls(&g, "a"), ["ext:print", "?", "?"]);
         assert_eq!(g.stats.unresolved, 2);
+    }
+
+    #[test]
+    fn edges_carry_the_language_basis_and_unresolved_carries_its_reason() {
+        let g = graph_of(&[("a", &["b", "print", "?"]), ("b", &[])], "a");
+        let kinds: Vec<_> = g
+            .edges
+            .iter()
+            .map(|e| {
+                (
+                    e.to.basis(),
+                    matches!(&e.to, EdgeTo::Unresolved(r) if r.as_str() == "toy"),
+                )
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                (Some(Basis::Type), false),
+                (Some(Basis::Type), false),
+                (None, true)
+            ]
+        );
     }
 
     #[test]
@@ -559,6 +592,7 @@ pub(crate) mod tests {
         // `summary` of a cut walk is replaced the next time it is asked for
         struct Flaky(u32);
         impl Lang for Flaky {
+            const BASIS: Basis = Basis::Type;
             type Func = u8;
             type Key = ();
             fn describe(&self, _: u8) -> DefInfo {
@@ -586,6 +620,7 @@ pub(crate) mod tests {
     fn graph_marks_a_context_whose_walk_was_cut() {
         struct Cuts;
         impl Lang for Cuts {
+            const BASIS: Basis = Basis::Type;
             type Func = u8;
             type Key = ();
             fn describe(&self, _: u8) -> DefInfo {
@@ -608,6 +643,7 @@ pub(crate) mod tests {
     /// Proves the memo is keyed by `(Func, Key)`, and that the digest tells the contexts apart.
     struct Counting;
     impl Lang for Counting {
+        const BASIS: Basis = Basis::Type;
         type Func = &'static str;
         type Key = u8;
         fn describe(&self, f: &'static str) -> DefInfo {
@@ -658,6 +694,7 @@ pub(crate) mod tests {
     fn construct_edge_carries_the_class_and_queues_the_init() {
         struct Ctor;
         impl Lang for Ctor {
+            const BASIS: Basis = Basis::Type;
             type Func = &'static str;
             type Key = ();
             fn describe(&self, f: &'static str) -> DefInfo {
@@ -697,7 +734,7 @@ pub(crate) mod tests {
         assert_eq!(foo.kind, DefKind::Class);
         assert_eq!(g.defs.len(), 3, "main, Foo.init, Foo");
         no_dangling(&g);
-        let EdgeTo::Construct { class, init } = &g.edges[0].to else {
+        let EdgeTo::Construct { class, init, .. } = &g.edges[0].to else {
             panic!("{:?}", g.edges[0])
         };
         assert_eq!(class, &StableDef::Marked("Foo".into()));

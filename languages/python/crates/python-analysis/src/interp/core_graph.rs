@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use analyzer_core::graph::{
-    Context, ContextId as Id, Cut as CCut, DefInfo, Edge, EdgeTo, External, Graph, Site,
+    Context, ContextId as Id, Cut as CCut, DefInfo, Edge, EdgeTo, External, Graph, Reason, Site,
     Stats as CStats, Status as CStatus,
 };
 use analyzer_core::outline::DefKind;
@@ -62,6 +62,9 @@ fn status(s: &Solver<'_>, c: ContextId) -> CStatus {
     }
 }
 
+/// Why Python's `Unresolved` edges are: the callee's value is `Unknown`, or no value at all. One reason, and the counter of the same name.
+const UNKNOWN_CALLEE: &str = "unknown_callee";
+
 fn stats(old: &Stats, unresolved: u64) -> CStats {
     let mut cuts = BTreeMap::new();
     let mut add = |k: CCut, n: u32| {
@@ -90,6 +93,7 @@ fn stats(old: &Stats, unresolved: u64) -> CStats {
     ] {
         out.language.insert(name.to_owned(), u64::from(n));
     }
+    out.language.insert(UNKNOWN_CALLEE.to_owned(), unresolved);
     out
 }
 
@@ -128,27 +132,31 @@ pub(crate) fn core_graph(s: &Solver<'_>, entries: &[ContextId]) -> Graph {
             let site = Site::new(u32::from(e.site.start), u32::from(e.site.end));
             for t in &e.targets {
                 let to = match t {
-                    Target::Call(ctx) => EdgeTo::Context(ids[ctx].clone()),
-                    Target::Construct { class, init } => {
+                    Target::Call(ctx, basis) => EdgeTo::Context(ids[ctx].clone(), *basis),
+                    Target::Construct { class, init, basis } => {
                         defs.push(def_info(s, *class));
                         EdgeTo::Construct {
                             class: s.sem.stable_def(*class),
                             init: init.map(|i| ids[&i].clone()),
+                            basis: *basis,
                         }
                     }
-                    Target::External(d) => EdgeTo::External(match s.sem.stable_def(*d) {
-                        StableDef::Path { module, qname, .. } => External {
-                            package: module,
-                            name: qname,
+                    Target::External(d, basis) => EdgeTo::External(
+                        match s.sem.stable_def(*d) {
+                            StableDef::Path { module, qname, .. } => External {
+                                package: module,
+                                name: qname,
+                            },
+                            StableDef::Marked(id) => External {
+                                package: String::new(),
+                                name: id,
+                            },
                         },
-                        StableDef::Marked(id) => External {
-                            package: String::new(),
-                            name: id,
-                        },
-                    }),
+                        *basis,
+                    ),
                     Target::Unresolved => {
                         unresolved += 1;
-                        EdgeTo::Unresolved
+                        EdgeTo::Unresolved(Reason::new(UNKNOWN_CALLEE))
                     }
                 };
                 edges.push(Edge {

@@ -12,6 +12,7 @@ use crate::interp::value::{AbstractValue, Values};
 use crate::interp::value::{ActivationId, OriginKey};
 use crate::interp::walk::{Walk, contains_yield};
 use crate::sem::Definition;
+use analyzer_core::graph::Basis;
 use ruff_python_ast::{ExprCall, ExprRef, StmtFunctionDef};
 use ruff_text_size::{Ranged, TextRange};
 use smallvec::{SmallVec, smallvec};
@@ -280,7 +281,11 @@ impl<'db> Walk<'db> {
         }
         if sol.opts.mode == Mode::Summary {
             // every call site gets an edge, even when nothing is walked
-            edge_targets.extend(externals.into_iter().map(Target::External));
+            edge_targets.extend(
+                externals
+                    .into_iter()
+                    .map(|d| Target::External(d, Basis::Type)),
+            );
             if unresolved {
                 edge_targets.push(Target::Unresolved);
             }
@@ -495,7 +500,14 @@ impl<'db> Walk<'db> {
         let runs = !args.has_empty();
         let bound = self.bind_for_callee(sol, def, node, receiver, args, enclosing);
         let ctx = sol.key(self, def, &bound, enclosing, env);
-        targets.push(Target::Call(ctx)); // recorded now, whatever `get` answers
+        // Path when the walk itself holds what the call rests on: an object it built (the receiver carries state) or a closure it made.
+        // Everything else, a def found by name or a method on an object ty typed, is the engine's answer.
+        let basis = match receiver {
+            Some(AbstractValue::Instance { origin, .. }) if origin.holds_state() => Basis::Path,
+            _ if enclosing.is_some() => Basis::Path,
+            _ => Basis::Type,
+        };
+        targets.push(Target::Call(ctx, basis)); // recorded now, whatever `get` answers
         match sol.get(ctx) {
             _ if !runs => Values::new(), // Python never makes this call, whatever `get` answered
             Got::Ready(res) => self.resolve(&res.returns),
@@ -572,7 +584,11 @@ impl<'db> Walk<'db> {
                 sol.get(ctx); // its value is never used; its writes are effects (step 03)
                 Some(ctx)
             });
-        targets.push(Target::Construct { class, init });
+        targets.push(Target::Construct {
+            class,
+            init,
+            basis: Basis::Type, // the class came from a name or a type: no value of ours says which class
+        });
         if args.has_empty() {
             Values::new()
         } else {

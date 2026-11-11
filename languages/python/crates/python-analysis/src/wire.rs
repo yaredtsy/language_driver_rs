@@ -267,7 +267,7 @@ pub fn merge(root: Frame) -> Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use analyzer_core::graph::{Context, DefInfo, Edge, EdgeTo, Site, Stats};
+    use analyzer_core::graph::{Basis, Context, DefInfo, Edge, EdgeTo, Site, Stats};
     use analyzer_core::text::Span;
 
     struct Files(HashMap<String, String>);
@@ -290,7 +290,7 @@ mod tests {
         Edge {
             from: ContextId::of(marked(from)),
             site: Site::new(at, at + 3),
-            to: EdgeTo::Context(ContextId::of(marked(to))),
+            to: EdgeTo::Context(ContextId::of(marked(to)), Basis::Type),
         }
     }
 
@@ -381,12 +381,13 @@ mod tests {
                     to: EdgeTo::Construct {
                         class: marked("Report"),
                         init: None,
+                        basis: Basis::Type,
                     },
                 },
                 Edge {
                     from: ContextId::of(marked("main")),
                     site: Site::new(5, 8),
-                    to: EdgeTo::Context(ContextId::of(path)),
+                    to: EdgeTo::Context(ContextId::of(path), Basis::Type),
                 },
             ],
             Stats::default(),

@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use analyzer_core::edit::{Edit, MarkerStyle, comment_marker};
-use analyzer_core::graph::{DefInfo, External, Graph, Site, StableDef};
+use analyzer_core::graph::{Basis, DefInfo, External, Graph, Reason, Site, StableDef};
 use analyzer_core::outline::{Def, DefKind, Outline};
 use analyzer_core::solve::{Cancel, Lang, Limits, SiteCalls, Solver, Summary, Target};
 use analyzer_core::text::Span;
@@ -80,6 +80,7 @@ struct Program {
 }
 
 impl Lang for Program {
+    const BASIS: Basis = Basis::Type;
     type Func = usize;
     type Key = ();
 
@@ -103,7 +104,7 @@ impl Lang for Program {
             .enumerate()
             .map(|(i, callee)| {
                 let target = match (callee.as_str(), self.names.iter().position(|n| n == callee)) {
-                    ("?", _) => Target::Unresolved,
+                    ("?", _) => Target::Unresolved(Reason::new("toy")),
                     (_, Some(g)) => Target::Call(g, ()),
                     (name, None) => Target::External(External {
                         package: "std".into(),

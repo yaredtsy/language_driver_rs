@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::outline::DefKind;
 use crate::text::Span;
@@ -159,19 +159,57 @@ pub struct External {
     pub name: String,
 }
 
+/// What a resolved edge rests on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum Basis {
+    /// Followed along a path the analyzer tracked: an object built in this walk, its attributes. Only Python builds it today.
+    Path,
+    /// The engine's static type answered.
+    Type,
+}
+
+/// Why an edge has no target. The same string as the `Stats.language` counter key, so a count is what the edges say. An owned
+/// string, not `&'static str`: a graph read back from disk could not be deserialized into a borrowed one.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Reason(String);
+
+impl Reason {
+    pub fn new(key: &str) -> Self {
+        Reason(key.to_owned())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[non_exhaustive]
 pub enum EdgeTo {
     /// A call into project code.
-    Context(ContextId),
+    Context(ContextId, Basis),
     /// `Foo()`, `new Foo()`, `Foo { .. }`; `init` is the constructor function when the code has one.
     Construct {
         class: StableDef,
         init: Option<ContextId>,
+        basis: Basis,
     },
-    External(External),
-    /// There was a call; the target is not known. Reported, never guessed and never dropped.
-    Unresolved,
+    External(External, Basis),
+    /// There was a call; the target is not known. Reported, never guessed and never dropped. It says why.
+    Unresolved(Reason),
+}
+
+impl EdgeTo {
+    /// What this edge rests on; `None` for an edge with no target, which has a reason instead.
+    pub fn basis(&self) -> Option<Basis> {
+        match self {
+            EdgeTo::Context(_, b) | EdgeTo::External(_, b) | EdgeTo::Construct { basis: b, .. } => {
+                Some(*b)
+            }
+            EdgeTo::Unresolved(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -296,7 +334,7 @@ pub(crate) mod tests {
         let edge = |from: &str, at: u32, to: &str| Edge {
             from: cid(from),
             site: Site::at(at),
-            to: EdgeTo::Context(cid(to)),
+            to: EdgeTo::Context(cid(to), Basis::Type),
         };
         let g = Graph::new(
             vec![cid("b")],

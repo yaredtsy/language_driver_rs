@@ -249,9 +249,9 @@ impl<'g> Renderer<'g> {
     fn child(&self, edge: &'g Edge) -> Option<Child<'g>> {
         let site = edge.site;
         match &edge.to {
-            EdgeTo::Context(id) => self.code(site, id),
-            EdgeTo::Construct { class, init } => self.class(site, class, init.as_ref()),
-            EdgeTo::External(ext) => self.opts.show_external.then(|| Child {
+            EdgeTo::Context(id, _) => self.code(site, id),
+            EdgeTo::Construct { class, init, .. } => self.class(site, class, init.as_ref()),
+            EdgeTo::External(ext, _) => self.opts.show_external.then(|| Child {
                 site,
                 order: (1, "", 0),
                 func: StableDef::Path {
@@ -267,7 +267,7 @@ impl<'g> Renderer<'g> {
                 contexts: Vec::new(),
                 kind: Kind::External,
             }),
-            EdgeTo::Unresolved => self.opts.show_unresolved.then(|| Child {
+            EdgeTo::Unresolved(_) => self.opts.show_unresolved.then(|| Child {
                 site,
                 order: (2, "", 0),
                 func: StableDef::Path {
@@ -350,7 +350,7 @@ pub fn to_text(root: &Node) -> String {
 mod tests {
     use super::*;
     use crate::graph::tests::{cid, ctx, def, marked};
-    use crate::graph::{Context, DefInfo, External, Stats};
+    use crate::graph::{Basis, Context, DefInfo, External, Reason, Stats};
     use crate::outline::DefKind;
     use crate::text::Span;
 
@@ -377,12 +377,15 @@ mod tests {
             contexts.push(ctx(name.trim()));
             for (i, callee) in calls.split_whitespace().enumerate() {
                 let to = match callee {
-                    "?" => EdgeTo::Unresolved,
-                    "ext" => EdgeTo::External(External {
-                        package: "lib".into(),
-                        name: "call".into(),
-                    }),
-                    callee => EdgeTo::Context(cid(callee)),
+                    "?" => EdgeTo::Unresolved(Reason::new("toy")),
+                    "ext" => EdgeTo::External(
+                        External {
+                            package: "lib".into(),
+                            name: "call".into(),
+                        },
+                        Basis::Type,
+                    ),
+                    callee => EdgeTo::Context(cid(callee), Basis::Type),
                 };
                 edges.push(Edge {
                     from: cid(name.trim()),
@@ -439,12 +442,12 @@ mod tests {
             Edge {
                 from: cid("main"),
                 site,
-                to: EdgeTo::Context(cid("f")),
+                to: EdgeTo::Context(cid("f"), Basis::Type),
             },
             Edge {
                 from: cid("main"),
                 site,
-                to: EdgeTo::Context(f2.clone()),
+                to: EdgeTo::Context(f2.clone(), Basis::Type),
             },
         ];
         edges.extend(g.edges.clone());
@@ -465,12 +468,12 @@ mod tests {
             Edge {
                 from: cid("main"),
                 site,
-                to: EdgeTo::Context(cid("a")),
+                to: EdgeTo::Context(cid("a"), Basis::Type),
             },
             Edge {
                 from: cid("main"),
                 site,
-                to: EdgeTo::Context(cid("b")),
+                to: EdgeTo::Context(cid("b"), Basis::Type),
             },
         ];
         edges.extend(g.edges.clone());
@@ -511,7 +514,7 @@ mod tests {
         let edges = vec![Edge {
             from: cid("f"),
             site: Site::at(0),
-            to: EdgeTo::Context(f2),
+            to: EdgeTo::Context(f2, Basis::Type),
         }];
         g = Graph::new(vec![], g.defs.clone(), contexts, edges, Stats::default());
         assert_eq!(
@@ -530,8 +533,8 @@ mod tests {
             nth: 0,
         };
         for e in &mut g.edges {
-            if e.to == EdgeTo::Context(cid("a")) {
-                e.to = EdgeTo::Context(ContextId::of(unmarked.clone()));
+            if e.to == EdgeTo::Context(cid("a"), Basis::Type) {
+                e.to = EdgeTo::Context(ContextId::of(unmarked.clone()), Basis::Type);
             }
         }
         let mut row = def("a");
@@ -577,6 +580,7 @@ mod tests {
             to: EdgeTo::Construct {
                 class: marked("Foo"),
                 init: Some(cid("Foo.init")),
+                basis: Basis::Type,
             },
         });
         edges.push(Edge {
@@ -585,6 +589,7 @@ mod tests {
             to: EdgeTo::Construct {
                 class: marked("Bar"),
                 init: None,
+                basis: Basis::Type,
             },
         });
         Graph::new(vec![], defs, g.contexts.clone(), edges, Stats::default())
@@ -615,6 +620,7 @@ mod tests {
             to: EdgeTo::Construct {
                 class: marked("Bar"),
                 init: None,
+                basis: Basis::Type,
             },
         };
         let mut defs = g.defs.clone();
@@ -643,8 +649,15 @@ mod tests {
         let construct = EdgeTo::Construct {
             class: marked("Ghost"),
             init: None,
+            basis: Basis::Type,
         };
-        let with = with_edges(&g, vec![edge(EdgeTo::Context(cid("a"))), edge(construct)]);
+        let with = with_edges(
+            &g,
+            vec![
+                edge(EdgeTo::Context(cid("a"), Basis::Type)),
+                edge(construct),
+            ],
+        );
         assert_eq!(
             text(&with, "main", &RenderOptions::default()),
             "main\n  <unknown>\n  a\n"
@@ -657,8 +670,8 @@ mod tests {
             g.defs.clone(),
             contexts,
             vec![
-                edge(EdgeTo::Context(cid("a"))),
-                edge(EdgeTo::Context(cid("ghost"))),
+                edge(EdgeTo::Context(cid("a"), Basis::Type)),
+                edge(EdgeTo::Context(cid("ghost"), Basis::Type)),
             ],
             Stats::default(),
         );
@@ -674,7 +687,7 @@ mod tests {
         let edge = Edge {
             from: cid("main"),
             site: Site::at(0),
-            to: EdgeTo::Context(cid("gone")),
+            to: EdgeTo::Context(cid("gone"), Basis::Type),
         };
         let g = with_edges(&g, vec![edge]);
         assert_eq!(
@@ -695,6 +708,7 @@ mod tests {
                 to: EdgeTo::Construct {
                     class: marked("Foo"),
                     init: Some(cid("Foo.init")),
+                    basis: Basis::Type,
                 },
             },
             Edge {
@@ -703,6 +717,7 @@ mod tests {
                 to: EdgeTo::Construct {
                     class: marked("Foo"),
                     init: Some(cid("Foo.init")),
+                    basis: Basis::Type,
                 },
             },
         ];
@@ -727,6 +742,7 @@ mod tests {
             to: EdgeTo::Construct {
                 class: class.clone(),
                 init: None,
+                basis: Basis::Type,
             },
         };
         let mut row = def_at("Foo", DefKind::Class, 1);

@@ -1,4 +1,5 @@
 // src/interp/summary.rs
+use analyzer_core::graph::Basis;
 use ruff_text_size::{TextRange, TextSize};
 use smallvec::{SmallVec, smallvec};
 
@@ -68,14 +69,15 @@ pub(crate) struct CallEdge<'db> {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) enum Target<'db> {
-    Call(ContextId),
+    Call(ContextId, Basis),
     /// A new object. `init`: the `__init__` context, if the MRO has a body.
     Construct {
         class: Definition<'db>,
         init: Option<ContextId>,
+        basis: Basis,
     },
     /// Code outside the project: nothing is walked. The graph shows it, the tree does not.
-    External(Definition<'db>),
+    External(Definition<'db>, Basis),
     /// A call nothing could be said about: the graph shows it, the tree does not.
     Unresolved,
 }
@@ -84,9 +86,9 @@ impl<'db> Target<'db> {
     /// The contexts this target leads to: what the graph walks next.
     pub(crate) fn contexts(&self) -> SmallVec<[ContextId; 1]> {
         match *self {
-            Target::Call(ctx) => smallvec![ctx],
+            Target::Call(ctx, _) => smallvec![ctx],
             Target::Construct { init, .. } => init.into_iter().collect(),
-            Target::External(_) | Target::Unresolved => SmallVec::new(),
+            Target::External(..) | Target::Unresolved => SmallVec::new(),
         }
     }
 }
