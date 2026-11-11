@@ -156,11 +156,49 @@ pub fn call_tree(
 ) -> Option<(Node, Stats)> {
     match opts.mode {
         Mode::Inline => inline_tree(db, file, entry, opts),
-        Mode::Summary => {
-            let (wire, stats) = call_wire(db, file, entry, opts)?;
-            Some((wire.to_node(), stats))
+        Mode::Summary => summary_tree(db, file, entry, opts),
+    }
+}
+
+/// Summary mode's tree for the harness: the graph, drawn by core's renderer, as this crate's `Node` (names and marks: what the
+/// `# expect:` blocks say). Only the three marks the default options leave on are carried over.
+fn summary_tree(
+    db: &ProjectDatabase,
+    file: File,
+    entry: &str,
+    opts: &Options,
+) -> Option<(Node, Stats)> {
+    use analyzer_core::render::{Mark as CoreMark, Node as CoreNode, render};
+    fn convert(n: &CoreNode) -> Node {
+        Node {
+            qname: n.qname.clone(),
+            site: None,
+            marks: n
+                .marks
+                .iter()
+                .filter_map(|m| match m {
+                    CoreMark::Recursive => Some(Mark::Recursive),
+                    CoreMark::Cut => Some(Mark::Cut),
+                    CoreMark::Incomplete => Some(Mark::Incomplete),
+                    _ => None,
+                })
+                .collect(),
+            children: n.children.iter().map(convert).collect(),
         }
     }
+    fn below(n: &Node) -> u32 {
+        n.children.iter().map(|c| 1 + below(c)).sum()
+    }
+    let (mut s, root) = solve(db, file, entry, opts)?;
+    s.stats.contexts = s.contexts.len() as u32;
+    let graph = core_graph::core_graph(&s, &[root]);
+    let tree = convert(&render(
+        &graph,
+        graph.entries.first()?,
+        &opts.render_options(),
+    ));
+    s.stats.nodes = below(&tree);
+    Some((tree, s.stats))
 }
 
 /// The context graph of `entry`: what the server's `resolve_calls` returns as `graph`.

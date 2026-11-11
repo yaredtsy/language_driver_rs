@@ -205,6 +205,73 @@ fn check_with(fixture: &str, runs: &[Options]) {
     assert!(report.is_empty(), "\n{report}");
 }
 
+/// A tree as text (one line per node, two spaces per level) with every node's children in the order of their own text: what two
+/// renderers that agree on content and disagree on order both reduce to.
+fn sorted_siblings(text: &str) -> String {
+    struct N {
+        line: String,
+        kids: Vec<N>,
+    }
+    fn render(n: &N, depth: usize, out: &mut Vec<String>) {
+        out.push(format!("{}{}", "  ".repeat(depth), n.line));
+        let mut kids: Vec<Vec<String>> = n
+            .kids
+            .iter()
+            .map(|k| {
+                let mut v = Vec::new();
+                render(k, depth + 1, &mut v);
+                v
+            })
+            .collect();
+        kids.sort();
+        out.extend(kids.into_iter().flatten());
+    }
+    let mut roots: Vec<(usize, N)> = Vec::new(); // the path of open nodes, with their depth
+    let mut top: Vec<N> = Vec::new();
+    for l in text.lines().filter(|l| !l.trim().is_empty()) {
+        let depth = (l.len() - l.trim_start().len()) / 2;
+        while roots.last().is_some_and(|(d, _)| *d >= depth) {
+            let (_, done) = roots.pop().unwrap();
+            match roots.last_mut() {
+                Some((_, parent)) => parent.kids.push(done),
+                None => top.push(done),
+            }
+        }
+        roots.push((
+            depth,
+            N {
+                line: l.trim().to_owned(),
+                kids: Vec::new(),
+            },
+        ));
+    }
+    while let Some((_, done)) = roots.pop() {
+        match roots.last_mut() {
+            Some((_, parent)) => parent.kids.push(done),
+            None => top.push(done),
+        }
+    }
+    let mut out = Vec::new();
+    top.iter().for_each(|n| render(n, 0, &mut out));
+    out.join("\n")
+}
+
+#[test]
+fn sorted_siblings_reduces_two_orders_to_one_text() {
+    let a = "main\n  b\n    y\n    x\n  a\n";
+    let b = "main\n  a\n  b\n    x\n    y\n";
+    assert_eq!(sorted_siblings(a), sorted_siblings(b));
+    assert_ne!(
+        sorted_siblings(a),
+        sorted_siblings("main\n  a\n  b\n    x\n")
+    );
+    // the shape still matters: the same lines at other depths are another tree
+    assert_ne!(
+        sorted_siblings(a),
+        sorted_siblings("main\n  b\n  y\n  x\n  a\n")
+    );
+}
+
 fn failures(fixture: &str, opts: &Options) -> String {
     let path = std::fs::canonicalize(format!("tests/fixtures/{fixture}")).unwrap();
     let root = path.parent().unwrap();
@@ -224,7 +291,13 @@ fn failures(fixture: &str, opts: &Options) -> String {
             .map(|(t, _)| to_text(&t, module))
             .unwrap_or_else(|| format!("(no function `{}`)\n", e.entry));
         println!("--- {fixture}: {} ({:?})\n{got}", e.entry, opts.mode); // --show-output
-        if got != e.tree {
+        // Inline mode lists a call in the order it is evaluated, which is how the blocks are written. Summary mode draws the graph with
+        // core's renderer, which lists siblings in source order (D17, decision A): the same tree, compared with siblings in any order.
+        let same = match opts.mode {
+            Mode::Inline => got == e.tree,
+            Mode::Summary => sorted_siblings(&got) == sorted_siblings(&e.tree),
+        };
+        if !same {
             report += &format!(
                 "--- {fixture}: {} {opts:?}\nexpected:\n{}got:\n{}\n",
                 e.entry, e.tree, got
