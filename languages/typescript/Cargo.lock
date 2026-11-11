@@ -397,6 +397,7 @@ dependencies = [
 name = "typescript-cli"
 version = "0.0.0"
 dependencies = [
+ "analyzer-core",
  "typescript-analysis",
  "typescript-syntax",
 ]

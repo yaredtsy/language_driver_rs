@@ -9,5 +9,6 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+analyzer-core = { workspace = true }
 typescript-syntax = { workspace = true }
 typescript-analysis = { workspace = true }
