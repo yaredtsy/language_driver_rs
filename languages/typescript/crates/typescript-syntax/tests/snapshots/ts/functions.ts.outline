@@ -1,0 +1,13 @@
+Function plain [50..95] name [59..64] (a, b)
+Function exported [116..145] name [132..140]
+Function default [147..176] name [154..161]
+Function fetchIt [178..231] name [193..200] (url)
+Function generate [233..268] name [243..251]
+Function overloaded [270..398] name [359..369] (a)
+Function ambient [400..442] name [417..424] (x)
+Function outer [444..537] name [453..458]
+  Function outer.<locals>.inner [465..515] name [474..479]
+    Function outer.<locals>.inner.<locals>.innermost [488..511] name [497..506]
+Function inBlock [553..574] name [562..569]
+Function withDestructuring [578..683] name [587..604] ({ a, b }, [c, ...d], rest)
+Function generic [685..744] name [694..701] (x)

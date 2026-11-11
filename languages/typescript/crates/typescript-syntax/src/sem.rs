@@ -225,6 +225,14 @@ impl Parsed<'_> {
         }
     }
 
+    /// The `default` keyword of `export default …`, for a def that has no name token to point at.
+    pub(crate) fn default_keyword(&self, n: RawNode) -> Option<Span> {
+        n.0.modifier_nodes()
+            .iter()
+            .find(|m| m.kind() == Kind::DefaultKeyword)
+            .map(|&m| self.span(RawNode(m)))
+    }
+
     /// The parameter names of a function-like node, as written: `a`, `{ x, y }`, `[h, ...t]`. A rest parameter's `...` is not part of it.
     pub(crate) fn params(&self, n: RawNode) -> Vec<String> {
         n.0.parameters()
@@ -271,7 +279,10 @@ mod tests {
 
     fn kinds(text: &str, dialect: Dialect) -> Vec<NodeKind> {
         with_parsed(text, dialect, |p| {
-            p.statements(p.root()).into_iter().map(|n| p.kind(n)).collect()
+            p.statements(p.root())
+                .into_iter()
+                .map(|n| p.kind(n))
+                .collect()
         })
     }
 
@@ -290,7 +301,9 @@ mod tests {
                 [NodeKind::FunctionDeclaration, NodeKind::ClassDeclaration],
                 "{dialect:?}"
             );
-            with_parsed(text, dialect, |p| assert!(p.syntax_errors().is_empty(), "{dialect:?}"));
+            with_parsed(text, dialect, |p| {
+                assert!(p.syntax_errors().is_empty(), "{dialect:?}")
+            });
         }
     }
 
@@ -354,7 +367,11 @@ mod tests {
         with_parsed(text, Dialect::Ts, |p| {
             let errors = p.syntax_errors();
             assert!(!errors.is_empty());
-            assert!(errors.iter().all(|(s, m)| s.end as usize <= text.len() && !m.is_empty()));
+            assert!(
+                errors
+                    .iter()
+                    .all(|(s, m)| s.end as usize <= text.len() && !m.is_empty())
+            );
         });
     }
 

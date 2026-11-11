@@ -1,0 +1,23 @@
+Class Plain [0..354] name [6..11]
+  Method Plain.constructor [16..67] name [16..27] (x, y)
+  Method Plain.method [71..91] name [71..77] (a)
+  Method Plain.create [95..153] name [102..108]
+  Method Plain.value [157..188] name [161..166]
+  Method Plain.value [192..215] name [196..201] (v)
+  Method Plain.#secret [219..231] name [219..226]
+  Method Plain.load [235..250] name [241..245]
+  Method Plain.items [254..265] name [255..260]
+  Method Plain.overload [269..352] name [327..335] (a)
+Class Shape [356..451] name [371..376]
+  Method Shape.area [381..405] name [390..394]
+  Method Shape.describe [408..449] name [408..416]
+    Function Shape.describe.<locals>.helper [425..445] name [434..440]
+Class Exported [453..477] name [466..474]
+Class default [479..502] name [486..493]
+Class Decorated [504..572] name [535..544]
+  Method Decorated.decorated [549..570] name [556..565]
+Class Statics [574..638] name [580..587]
+  Function Statics.inStaticBlock [605..632] name [614..627]
+Function makeClass [640..697] name [649..658]
+  Class makeClass.<locals>.Local [665..695] name [671..676]
+    Method makeClass.<locals>.Local.run [683..691] name [683..686]

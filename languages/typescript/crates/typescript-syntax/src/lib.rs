@@ -1,6 +1,10 @@
 //! FAST: outline, markers, header. `sem.rs` is the only file that imports the engine.
 
+mod outline;
 mod sem;
+
+pub use analyzer_core::outline::{Def, DefKind, Outline, SyntaxError};
+pub use analyzer_core::text::Span;
 
 /// Which grammar to parse with. The same text parses differently as `.ts` and `.tsx` (`<T>x` is a cast in one and the start of
 /// an element in the other).
@@ -11,6 +15,11 @@ pub enum Dialect {
     Tsx,
     Js,
     Jsx,
+}
+
+/// The defs of one file, in source order, parents before children. Text in, data out: no file is read.
+pub fn outline(text: &str, dialect: Dialect) -> Outline {
+    outline::outline(text, dialect)
 }
 
 impl Dialect {
