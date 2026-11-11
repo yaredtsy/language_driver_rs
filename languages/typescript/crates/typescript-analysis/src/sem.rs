@@ -13,6 +13,7 @@
     )
 )]
 
+use std::collections::{HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -79,8 +80,6 @@ impl Sem {
         if !file.is_file() {
             return Err(OpenError::NoSuchFile);
         }
-        let config_path = find_config(&root, &file);
-
         let cwd = to_engine_path(&root);
         let fs: Arc<dyn FS> = Arc::new(bundled::wrap_fs(cachedvfs::from(osvfs::fs())));
         let config_host = ConfigHost {
@@ -90,11 +89,14 @@ impl Sem {
 
         let region = Region::new_scratch(CHUNK);
         let loaders = Arc::new(ProgramRegions::default());
-        let program = {
+        let (program, config_name) = {
             let _scope = region.enter();
-            let mut config = match &config_path {
-                Some(path) => load_config(path, &config_host)?,
-                None => inferred_config(&file, &config_host),
+            let (config_name, mut config) = match find_owner(&root, &file, &config_host)? {
+                Owner::Config(name, config) => (Some(name), config),
+                Owner::NoneHolds(name) => {
+                    return Err(OpenError::NotInProject(relative_to(&root, &name)));
+                }
+                Owner::NoConfig => (None, inferred_config(&file, &config_host)),
             };
             // One checker answers every question, so the same project gives the same answers in the same order (rule 9). Not
             // `single_threaded`: that also loads files one at a time, 3.5 times slower on a 1,500-file program (ENGINE.md).
@@ -115,13 +117,15 @@ impl Sem {
                 None,
             );
             let mut options = ProgramOptions::new(P::new(config), host);
+            // A referenced project's source stands in for its build output (its `.d.ts`, often not built): as `tsrs_lint` does for a config.
+            options.use_source_of_project_reference = config_name.is_some();
             // The checkers' memory goes back with the program (S-TS3).
             options.checker_regions = true;
             options.regions = Some(Arc::clone(&loaders));
             let program = tsrs_compiler::new_program(options);
             // Load and bind only: calls are resolved on demand, so nothing here type-checks the whole program.
             program.bind_source_files();
-            program
+            (program, config_name)
         };
 
         let sem = Sem {
@@ -135,8 +139,8 @@ impl Sem {
             .get_source_file(&to_engine_path(&file))
             .is_none()
         {
-            return Err(OpenError::NotInProject(match &config_path {
-                Some(path) => to_engine_path(path.strip_prefix(&sem.root).unwrap_or(path)),
+            return Err(OpenError::NotInProject(match &config_name {
+                Some(name) => relative_to(&sem.root, name),
                 None => INFERRED.into(),
             }));
         }
@@ -288,11 +292,10 @@ fn inferred_config(file: &Path, host: &ConfigHost) -> ParsedCommandLine {
     )
 }
 
-/// The nearest `tsconfig.json`, else `jsconfig.json`, from the file's directory up to `root`: the editor's upward search, bounded by
-/// the repository.
-fn find_config(root: &Path, file: &Path) -> Option<PathBuf> {
-    file.ancestors()
-        .skip(1)
+/// The nearest `tsconfig.json`, else `jsconfig.json`, in `dir` or above it, up to `root`: the editor's upward search, bounded by the
+/// repository.
+fn find_config(root: &Path, dir: &Path) -> Option<PathBuf> {
+    dir.ancestors()
         .take_while(|dir| dir.starts_with(root))
         .find_map(|dir| {
             ["tsconfig.json", "jsconfig.json"]
@@ -300,6 +303,87 @@ fn find_config(root: &Path, file: &Path) -> Option<PathBuf> {
                 .map(|name| dir.join(name))
                 .find(|path| path.is_file())
         })
+}
+
+/// What the search for the config that owns a file found.
+enum Owner {
+    /// The config whose program holds the file, as engine path and parsed.
+    Config(String, ParsedCommandLine),
+    /// There are configs above the file but none of them, nor any they reference, holds it. The nearest one's engine path.
+    NoneHolds(String),
+    /// No config above the file, up to the root.
+    NoConfig,
+}
+
+/// Which config owns `file`, as `tsrs_lint`'s `find_tsconfig` (and tsserver) decide, but bounded by `root`: the nearest config, then the configs it
+/// references (a solution config has `"files": []` and only references: the Vite layout), then the config above that, and so on; the first whose
+/// file list holds the file. A `composite` config must hold it by its own patterns. `disableSolutionSearching` stops the climb.
+///
+/// A syntax error in the **nearest** config is the person's to fix (`ConfigError`). One in a config only reached by a reference or a climb is
+/// skipped, as `tsrs_lint` does: it may have nothing to do with this file.
+fn find_owner(root: &Path, file: &Path, host: &ConfigHost) -> Result<Owner, OpenError> {
+    let Some(nearest) = file.parent().and_then(|dir| find_config(root, dir)) else {
+        return Ok(Owner::NoConfig);
+    };
+    let nearest = to_engine_path(&nearest);
+    let file_name = to_engine_path(file);
+    let file_path = tspath::to_path(
+        &file_name,
+        &host.cwd,
+        host.fs.use_case_sensitive_file_names(),
+    );
+
+    let mut visited = HashSet::new();
+    let mut next = Some(nearest.clone());
+    while let Some(config_name) = next {
+        let mut queue = VecDeque::from([config_name.clone()]);
+        let mut disable_solution_searching = false;
+        while let Some(name) = queue.pop_front() {
+            if !visited.insert(name.clone()) {
+                continue;
+            }
+            let config = match load_config(Path::new(&name), host) {
+                Ok(config) => config,
+                Err(error) if name == nearest => return Err(error),
+                Err(_) => continue,
+            };
+            if name == config_name {
+                disable_solution_searching = config
+                    .compiler_options()
+                    .is_some_and(|options| options.disable_solution_searching.is_true());
+            }
+            let holds = !config.file_names().is_empty()
+                && (config
+                    .compiler_options()
+                    .is_none_or(|options| !options.composite.is_true())
+                    || config.possibly_matches_file_name(&file_name))
+                && config.file_names_by_path().contains_key(&file_path);
+            if holds {
+                return Ok(Owner::Config(name, config));
+            }
+            queue.extend(config.resolved_project_reference_paths().iter().cloned());
+        }
+        if disable_solution_searching {
+            break;
+        }
+        // the config above: look from the parent of this config's directory
+        next = Path::new(&config_name)
+            .parent()
+            .and_then(Path::parent)
+            .and_then(|dir| find_config(root, dir))
+            .map(|path| to_engine_path(&path));
+    }
+    Ok(Owner::NoneHolds(nearest))
+}
+
+/// An engine path made relative to `root` (the config's name in `NotInProject`).
+fn relative_to(root: &Path, engine_path: &str) -> String {
+    let root = to_engine_path(root);
+    engine_path
+        .strip_prefix(root.as_str())
+        .and_then(|rest| rest.strip_prefix('/'))
+        .unwrap_or(engine_path)
+        .to_owned()
 }
 
 /// tsrs spells every path absolute, with `/` as the separator.

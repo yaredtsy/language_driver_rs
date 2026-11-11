@@ -104,3 +104,33 @@ fn a_repo_declaration_file_is_not_in_files() {
     // the packages are in `node_modules`. Whether a call into it resolves as `External` is TS4's (`external/`).
     assert_eq!(project.files(), ["src/main.ts"]);
 }
+
+#[test]
+fn a_solution_config_hands_each_file_to_the_referenced_config_that_holds_it() {
+    let root = fixture("solution");
+    // The Vite layout: `tsconfig.json` has `"files": []` and references two configs, one for the app and one for the build script.
+    let app = Project::open(&root, Path::new("src/main.ts")).unwrap();
+    assert_eq!(app.files(), ["src/main.ts", "src/util.ts"]);
+    let node = Project::open(&root, Path::new("vite.config.ts")).unwrap();
+    assert_eq!(node.files(), ["vite.config.ts"]);
+}
+
+#[test]
+fn a_referenced_projects_source_is_in_the_program_not_its_missing_build_output() {
+    let root = fixture("references");
+    let app = Project::open(&root, Path::new("packages/app/src/main.ts")).unwrap();
+    assert_eq!(
+        app.files(),
+        ["packages/app/src/main.ts", "packages/lib/src/greet.ts"]
+    );
+}
+
+#[test]
+fn a_config_above_holds_a_file_the_nearest_config_leaves_out() {
+    let root = fixture("parent-config");
+    let inside = Project::open(&root, Path::new("sub/only/in.ts")).unwrap();
+    assert_eq!(inside.files(), ["sub/only/in.ts"]);
+    // `sub/tsconfig.json` does not include `other.ts`; the root config does, so that is its program
+    let outside = Project::open(&root, Path::new("sub/other.ts")).unwrap();
+    assert_eq!(outside.files(), ["sub/only/in.ts", "sub/other.ts"]);
+}
