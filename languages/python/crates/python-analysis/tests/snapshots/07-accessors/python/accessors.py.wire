@@ -1,0 +1,41 @@
+== reads
+accessors.reads
+  accessors.Box @21:9
+  accessors.Box.h @22:5
+
+== reads (merged)
+accessors.reads
+  accessors.Box @21:9
+  accessors.Box.h @22:5
+
+== writes
+accessors.writes
+  accessors.Box @26:9
+  accessors.Box.h @27:5
+
+== writes (merged)
+accessors.writes
+  accessors.Box @26:9
+  accessors.Box.h @27:5
+
+== deletes
+accessors.deletes
+  accessors.Box @31:9
+  accessors.Box.h @32:9
+
+== deletes (merged)
+accessors.deletes
+  accessors.Box @31:9
+  accessors.Box.h @32:9
+
+== both
+accessors.both
+  accessors.Box @36:9
+  accessors.Box.h @37:5
+  accessors.Box.h @37:11
+
+== both (merged)
+accessors.both
+  accessors.Box @36:9
+  accessors.Box.h x2 @37:5
+

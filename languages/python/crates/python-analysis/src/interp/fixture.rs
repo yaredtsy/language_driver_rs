@@ -618,6 +618,11 @@ fn p04_01_in_keys() {
 }
 
 #[test]
+fn p07_accessors_run_in_summary_mode_as_they_do_inline() {
+    check_both("07-accessors/python/accessors.py");
+}
+
+#[test]
 fn p05_01_graph() {
     let g = graph_for("02-function-summaries/python/graph.py", "main");
     assert_eq!((g.contexts.len(), g.edges.len()), (8, 9));
@@ -849,10 +854,13 @@ fn the_core_graph_of_every_fixture_keeps_core_s_invariants() {
 ///  PYTHON_GOLDEN_PREFIXES=<function prefix>,<class prefix> cargo test -p python-analysis golden -- --ignored --nocapture`
 ///
 /// Two comparisons, for the unmerged wire and the merged one. `pylspt-wire*.json` is what pylspt gave at the pin: the new wire must have
-/// its content, with siblings in any order (decision A) and the one rename of the plan, `Node` to `Marked`. `wire*.json` is this crate's own
-/// wire, generated from itself after W4: the new wire must equal it exactly, so a change is noticed to the byte. With
-/// `PYTHON_GOLDEN_EMIT=1` the test prints the wire between `=====BEGIN <file>` and `=====END` lines instead of comparing it with `wire*.json`
-/// (a library never writes a file: redirect and split the output to regenerate them).
+/// its content, with siblings in any order (decision A), the one rename of the plan (`Node` to `Marked`), and **except the accessor nodes**:
+/// the calls to a property's getter or setter that summary mode makes now and pylspt's did not (inline mode always made them). The
+/// accessors are named by `PYTHON_GOLDEN_ACCESSORS=<qname>,<qname>`, and the nodes removed are listed (parent, node, call site) and must
+/// equal `accessors.txt` / `accessors-merged.txt`, so a new accessor node, or a missing one, is a diff. `wire*.json` is this crate's own
+/// wire, generated from itself: the new wire must equal it exactly, so a change is noticed to the byte. With `PYTHON_GOLDEN_EMIT=1` the
+/// test prints the wire and the lists between `=====BEGIN <file>` and `=====END` lines instead of comparing them with the own files (a
+/// library never writes a file: redirect and split the output to regenerate them).
 #[test]
 #[ignore = "needs a real project and out/golden/: see the comment"]
 fn golden_wire_of_a_real_project() {
@@ -906,6 +914,29 @@ fn golden_wire_of_a_real_project() {
     let read = |name: &str| -> Value {
         serde_json::from_str(&std::fs::read_to_string(format!("{dir}/{name}")).unwrap()).unwrap()
     };
+    let accessors_var = std::env::var("PYTHON_GOLDEN_ACCESSORS").unwrap_or_default();
+    let accessors: Vec<&str> = accessors_var.split(',').filter(|a| !a.is_empty()).collect();
+    // take the accessor nodes out, listing each as `parent -> node @line:column`; an accessor with calls under it is not handled here
+    fn strip(v: &mut Value, accessors: &[&str], removed: &mut Vec<String>) {
+        let parent = v["target_qname"].as_str().unwrap_or("").to_owned();
+        let Some(kids) = v.get_mut("children").and_then(Value::as_array_mut) else {
+            return;
+        };
+        kids.retain(|k| {
+            let name = k["target_qname"].as_str().unwrap_or("");
+            if !accessors.contains(&name) {
+                return true;
+            }
+            assert!(
+                k["children"].as_array().is_none_or(|c| c.is_empty()),
+                "the accessor {name} has calls under it"
+            );
+            let at = &k["call_site"]["start"];
+            removed.push(format!("{parent} -> {name} @{}:{}", at[0], at[1]));
+            false
+        });
+        kids.iter_mut().for_each(|k| strip(k, accessors, removed));
+    }
 
     for (merged, name) in [(false, "wire.json"), (true, "wire-merged.json")] {
         let mut opts = summary();
@@ -917,26 +948,41 @@ fn golden_wire_of_a_real_project() {
         let new = serde_json::to_value(&new).unwrap();
 
         let reference = renamed(read(&format!("pylspt-{name}")));
-        let (mut a, mut b) = (reference.clone(), new.clone());
+        let mut stripped = new.clone();
+        let mut removed = Vec::new();
+        strip(&mut stripped, &accessors, &mut removed);
+        let (mut a, mut b) = (reference.clone(), stripped);
         canon(&mut a);
         canon(&mut b);
         println!(
-            "{name}: {} nodes from pylspt, {} nodes new | same content in any sibling order: {}",
+            "{name}: {} nodes from pylspt, {} nodes new, {} of them accessor nodes | same content in any sibling order, accessors aside: {}",
             nodes(&reference),
             nodes(&new),
+            removed.len(),
             a == b
         );
-        assert!(a == b, "{name}: differs from pylspt's beyond sibling order");
+        assert!(
+            a == b,
+            "{name}: differs from pylspt's beyond sibling order and the accessor nodes"
+        );
 
+        let list_file = if merged {
+            "accessors-merged.txt"
+        } else {
+            "accessors.txt"
+        };
+        let list = removed.join("\n") + "\n";
         if emit {
             println!(
-                "=====BEGIN {name}\n{}\n=====END",
+                "=====BEGIN {name}\n{}\n=====END\n=====BEGIN {list_file}\n{list}=====END",
                 serde_json::to_string_pretty(&new).unwrap()
             );
         } else {
             let own = read(name);
             println!("{name}: equal to this crate's own golden: {}", own == new);
             assert!(own == new, "{name}: differs from this crate's own golden");
+            let listed = std::fs::read_to_string(format!("{dir}/{list_file}")).unwrap();
+            assert_eq!(listed, list, "{list_file}: the accessor nodes changed");
         }
     }
 }
@@ -996,12 +1042,12 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
             _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 28 programs are verified in both modes and 6 only inline; 34 are run at all; 42 have `# expect:` blocks (eight were never run,
+    // 29 programs are verified in both modes and 6 only inline; 35 are run at all; 43 have `# expect:` blocks (eight were never run,
     // even at the pin: `every_entry` skips them)
     let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
     assert_eq!(
         (verified, by_fixture.len() - verified),
-        (28, 6),
+        (29, 6),
         "a program was added or lost"
     );
     for (fixture, verified, text) in by_fixture {
@@ -1166,31 +1212,31 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
         total.extra
     );
     assert_eq!((entries, failing), (48, 22));
-    assert_eq!(total.missing, 48, "nodes inline finds and summary does not");
-    assert_eq!(total.highest_missing, 39, "the topmost of them");
+    assert_eq!(total.missing, 46, "nodes inline finds and summary does not");
+    assert_eq!(total.highest_missing, 37, "the topmost of them");
     assert_eq!(
         total.at_unresolved, 32,
         "topmost missing nodes at a call site the graph marks Unresolved"
     );
     assert_eq!(
         (total.nodes_at_unresolved, total.nodes_elsewhere),
-        (40, 8),
+        (40, 6),
         "of the missing nodes: under an Unresolved call site, and elsewhere"
     );
-    assert_eq!(total.missing, 40 + 8);
+    assert_eq!(total.missing, 40 + 6);
 
-    // The claim "every missing node is under an Unresolved call site" is false, and these seven are why. Weak writes: the site is resolved
-    // to the OTHER handler, so an alternative is dropped and nothing marks it. Property accessors: summary mode does not model them, so
-    // there is no edge at all. `either`: inline lists one Pipeline.run per object, summary joins them (rule 7), so it is not lost
-    // information. A fix removes lines from this list; a regression adds one.
+    // The claim "every missing node is under an Unresolved call site" is false, and these five are why. Weak writes: the site is resolved
+    // to the OTHER handler, so an alternative is dropped and nothing marks it. Property accessors: summary mode makes the call when it
+    // knows the receiver (`Box.handler` in `swap` is back), but not here: `r` comes from a classmethod that returns an object, which
+    // summary mode cannot follow (step 2 of part 04), so the getter has no receiver to run on and there is no edge. `either`: inline
+    // lists one Pipeline.run per object, summary joins them (rule 7), so it is not lost information. A fix removes lines from this list;
+    // a regression adds one.
     assert_eq!(
         total.not_at_unresolved,
         [
             "03-classes/python/isolation.py maybe_opaque/isolation.Pipeline.run -> isolation.JsonHandler.process",
             "03-classes/python/special.py main -> special.Registry.active",
             "03-classes/python/special.py main -> special.Registry.get_h",
-            "03-classes/python/special.py swap -> special.Box.handler",
-            "03-classes/python/special.py swap -> special.Box.handler",
             "03-classes/python/state.py either -> state.Pipeline.run",
             "03-classes/python/writes.py two_candidates/writes.Pipeline.run -> writes.CsvHandler.process",
         ]

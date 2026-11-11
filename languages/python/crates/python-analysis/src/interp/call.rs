@@ -507,6 +507,44 @@ impl<'db> Walk<'db> {
         }
     }
 
+    /// Summary mode's counterpart of `call_function` for a property's getter or setter: a call at `range` (the attribute expression), with
+    /// `recv` as its receiver. It is a call like any other: the edge is recorded, the receiver is keyed, and a receiver that is not known
+    /// yet defers the call to the fixpoint. A getter and a setter only: inline mode runs no deleter either.
+    pub(crate) fn call_accessor(
+        &mut self,
+        sol: &mut Solver<'db>,
+        func: Definition<'db>,
+        recv: AbstractValue<'db>,
+        args: EvaluatedArgs<'db>,
+        range: TextRange,
+        env: &mut Env<'db>,
+    ) -> Values<'db> {
+        let site = SiteId::new(range, self.frame.def_start);
+        let callee: Values<'db> = smallvec![AbstractValue::BoundMethod {
+            func,
+            receiver: self.values.intern(recv),
+        }];
+        if self.needs_defer(sol, &callee, &args, env) {
+            let edge = self.frame.calls.len();
+            self.frame.calls.push(CallEdge {
+                site,
+                targets: SmallVec::new(), // refilled by every replay, so the edge keeps its place
+            });
+            let id = self.defer(
+                DeferredOp::Call {
+                    site,
+                    callee,
+                    args,
+                    fallback: Values::new(), // a project callee never asks ty
+                    edge,
+                },
+                env,
+            );
+            return smallvec![AbstractValue::Pending(id)];
+        }
+        self.call_values(sol, site, &callee, &args, None, &Values::new(), None, env)
+    }
+
     /// Summary mode: a new object here, and `__init__` keyed on it.
     fn construct_summary(
         &mut self,

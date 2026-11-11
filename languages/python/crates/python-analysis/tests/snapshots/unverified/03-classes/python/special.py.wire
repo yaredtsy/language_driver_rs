@@ -21,12 +21,15 @@ special.main
 special.swap
   special.Box @69:9
   special.JsonHandler @69:13
+  special.Box.handler @70:5
   special.CsvHandler @70:17
+  special.Box.handler @71:5
 
 == swap (merged)
 special.swap
   special.Box @69:9
   special.JsonHandler @69:13
+  special.Box.handler x2 @70:5
   special.CsvHandler @70:17
 
 == lazy

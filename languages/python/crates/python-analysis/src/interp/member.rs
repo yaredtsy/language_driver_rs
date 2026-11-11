@@ -132,12 +132,15 @@ impl<'db> Walk<'db> {
                 {
                     return v.clone(); // 1. this object, on this path
                 }
-                // 2. a property: its getter runs here (inline mode only)
-                if sol.opts.mode == Mode::Inline
-                    && let Some(getter) = sol.sem.property_parts(class, name).and_then(|p| p.getter)
-                {
+                // 2. a property: its getter runs here, as a call at the attribute expression
+                if let Some(getter) = sol.sem.property_parts(class, name).and_then(|p| p.getter) {
                     let args = EvaluatedArgs::default();
-                    return self.call_function(sol, getter, None, Some(recv), site, &args, env);
+                    return match sol.opts.mode {
+                        Mode::Inline => {
+                            self.call_function(sol, getter, None, Some(recv), site, &args, env)
+                        }
+                        Mode::Summary => self.call_accessor(sol, getter, recv, args, site, env),
+                    };
                 }
                 // 3. the class side, through ty
                 let t = sol.sem.member(sol.sem.instance_type(class), name, file);
@@ -186,12 +189,27 @@ impl<'db> Walk<'db> {
             match sol.sem.property_parts(class, &attr.attr.id) {
                 // a property: its setter runs, and nothing is stored under its name
                 Some(parts) => {
-                    if let (Some(setter), Mode::Inline) = (parts.setter, sol.opts.mode) {
+                    if let Some(setter) = parts.setter {
                         let args = EvaluatedArgs {
                             positional: smallvec![v.clone()],
                             ..Default::default()
                         };
-                        self.call_function(sol, setter, None, Some(r), attr.range(), &args, env);
+                        match sol.opts.mode {
+                            Mode::Inline => {
+                                self.call_function(
+                                    sol,
+                                    setter,
+                                    None,
+                                    Some(r),
+                                    attr.range(),
+                                    &args,
+                                    env,
+                                );
+                            }
+                            Mode::Summary => {
+                                self.call_accessor(sol, setter, r, args, attr.range(), env);
+                            }
+                        }
                     }
                 }
                 None if origin.holds_state() => {
