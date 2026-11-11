@@ -96,7 +96,11 @@ pub mod comment_marker {
         if !text.is_char_boundary(at) {
             return None;
         }
-        let start = text[..at].rfind(['\n', '\r']).map_or(0, |i| i + 1);
+        let mut start = text[..at].rfind(['\n', '\r']).map_or(0, |i| i + 1);
+        // a byte-order mark is not part of the first line: it is not whitespace to `trim_start`, and a marker must go after it
+        if start == 0 && text.starts_with('\u{feff}') && at >= '\u{feff}'.len_utf8() {
+            start = '\u{feff}'.len_utf8();
+        }
         let end = text[at..].find(['\n', '\r']).map_or(text.len(), |i| at + i);
         Some(Span::new(start as u32, end as u32))
     }
@@ -256,6 +260,16 @@ mod tests {
         let text = "a\nb";
         let out = apply(text, &[plan(text, 3, "//", ID, "k").unwrap()]).unwrap();
         assert_eq!(out, "a\n// ID: k\nb");
+    }
+
+    #[test]
+    fn a_byte_order_mark_is_not_part_of_the_first_line() {
+        let text = "\u{feff}// ID: k\nfn f() {}\n";
+        assert_eq!(read(text, 4, "//", ID).unwrap().text, "k");
+        assert_eq!(read(text, 4, "//", ID).unwrap().line, Span::new(3, 11));
+        let bare = "\u{feff}fn f() {}\n";
+        let out = apply(bare, &[plan(bare, 3, "//", ID, "k").unwrap()]).unwrap();
+        assert_eq!(out, "\u{feff}// ID: k\nfn f() {}\n", "the mark stays first");
     }
 
     #[test]
