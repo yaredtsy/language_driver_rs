@@ -48,7 +48,7 @@ pub(crate) fn plan_header_marker(
         _ => return Err(Skip::PlacementNotSupported),
     }
     if marker_text.trim().is_empty() || marker_text.contains(['\n', '\r']) {
-        return Err(Skip::BadMarkerText);
+        return Err(Skip::InvalidText);
     }
     if let Some(existing) = header_marker(text, style) {
         return Err(Skip::AlreadyMarked { existing });
@@ -61,7 +61,7 @@ pub(crate) fn plan_header_marker(
         let line = format!("{eol}# {}: {marker_text}", style.label);
         return Ok(Edit::insert(offset as u32, line));
     }
-    comment_marker::plan(text, offset as u32, "#", style, marker_text).ok_or(Skip::BadMarkerText)
+    comment_marker::plan(text, offset as u32, "#", style, marker_text).ok_or(Skip::InvalidText)
 }
 
 #[cfg(test)]
@@ -163,7 +163,7 @@ mod tests {
         for bad in ["", "  ", "a\nb", "a\rb"] {
             assert_eq!(
                 plan_header_marker("x = 1\n", bad, STYLE),
-                Err(Skip::BadMarkerText),
+                Err(Skip::InvalidText),
                 "{bad:?}"
             );
         }

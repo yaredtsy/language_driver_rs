@@ -26,7 +26,7 @@ pub enum Skip {
     PlacementNotSupported,
     /// The marker text could not be read back: it is empty, or has whitespace, a colon, a quote, a backslash or a control
     /// character. Writing it could also end the docstring early.
-    BadMarkerText,
+    InvalidText,
     /// No def in this text has that range: the text is not the one the def came from.
     DefNotFound,
 }
@@ -38,9 +38,7 @@ impl fmt::Display for Skip {
             Skip::AlreadyMarked { existing } => write!(f, "already has a marker ({existing})"),
             Skip::UnsafeDocComment => f.write_str("no safe place for a marker in this body"),
             Skip::PlacementNotSupported => f.write_str("this marker placement is not supported"),
-            Skip::BadMarkerText => {
-                f.write_str("the marker text cannot be written into a docstring")
-            }
+            Skip::InvalidText => f.write_str("the marker text cannot be written into a docstring"),
             Skip::DefNotFound => f.write_str("the text has no def at this range"),
         }
     }
@@ -135,7 +133,7 @@ pub(crate) fn plan_marker(
         _ => return Err(Skip::PlacementNotSupported),
     }
     if !readable(marker_text) {
-        return Err(Skip::BadMarkerText);
+        return Err(Skip::InvalidText);
     }
     let module = sem::parse(text);
     let raw = module
@@ -331,7 +329,7 @@ mod tests {
             "new\nline",
             "\"\"\"",
         ] {
-            assert_eq!(plan(source, bad), Err(Skip::BadMarkerText), "{bad:?}");
+            assert_eq!(plan(source, bad), Err(Skip::InvalidText), "{bad:?}");
         }
     }
 

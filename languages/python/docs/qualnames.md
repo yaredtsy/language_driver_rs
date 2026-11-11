@@ -107,7 +107,7 @@ pylspt's, unchanged (`marker_forms.py`, `marker_crlf.py`, `marker_tabs.py`):
 Line breaks are the file's own (`\r\n` stays `\r\n`), and indentation is copied byte for byte, tabs included.
 
 It writes nothing, and says why, when: a parse error touches the def (`SyntaxError`); the def is already marked, prose that mentions the label included
-(`AlreadyMarked`); the body has no statement or its docstring never closes (`UnsafeDocComment`); the marker text could not be read back (`BadMarkerText`:
+(`AlreadyMarked`); the body has no statement or its docstring never closes (`UnsafeDocComment`); the marker text could not be read back (`InvalidText`:
 empty, or whitespace, a colon, a quote, a backslash or a control character, which would also be able to end the docstring early); the text is not the
 one the def came from (`DefNotFound`); or the style asks for a placement that is not built (`PlacementNotSupported`).
 
