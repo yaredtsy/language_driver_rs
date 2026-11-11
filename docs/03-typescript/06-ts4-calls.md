@@ -205,6 +205,30 @@ pub fn call_graph(project: &Project, file: &str, entry: &Entry, opts: &Options, 
 }
 ```
 
+### 6a. The proof rule for handles
+
+`sem` hands out handles that wrap tsrs's `'static` pointers (`File` in TS3, `Func` in TS4, and any later one: a class, a site, a declaration). The compiler cannot see the
+program being freed, so **every handle type is written together with its proofs, in the same commit and before any code uses it**. The proofs are `compile_fail` doctests in
+`typescript_analysis::proof` (behind the feature `__proof`; `scripts/check-proofs.sh` runs and counts them against `proof-doctests.txt`):
+
+| Proof | A `compile_fail` that must fail | Its twin, which must compile |
+|---|---|---|
+| lifetime | `drop(sem)` while the handle is used afterwards | the same two lines swapped |
+| not `Send` | the handle moved into a spawned thread | the same closure called on this thread |
+| not `Sync` | `&handle` used inside a spawned thread | the same closure called on this thread |
+
+and for `Sem` itself: not `Sync` (shared `&Sem` into a thread fails); it stays `Send`, because a `Project` is opened on one thread and dropped on another (`tests/threads.rs`).
+
+How to write one, which is how the TS3 proofs were made:
+
+1. **Red first.** Write the doctest, run `scripts/check-proofs.sh`, and see it fail for the right reason (the compile_fail "did not fail"), then add the marker or the lifetime and see it pass.
+2. **Mutate once.** Remove the marker, or give the constructor an unbound lifetime (`fn f<'p>(&self) -> H<'p>`), and the proof must fail. A proof that passes under that mutation protects nothing
+   (a first version that went through a wrapper function passed it: the wrapper's own signature re-tied the borrow). Use the real `Sem` and the real handle, not a wrapper.
+3. **The twin is the guard on stable.** Stable rustdoc ignores `compile_fail,E0xxx` (checked), so the pinned code is documentation only; the twin differs from the failing example only in
+   the ordering or the spawn, so a typo cannot hide behind the failure.
+4. **The count moves with the code.** Add the pair and raise `proof-doctests.txt` in the same commit.
+5. **A handle that must be `Send` or `Sync` is a decision for the owner**, written here with the reason. The default is neither, because one checker answers one question at a time.
+
 ## 7. Tests
 
 | Test | What |
@@ -223,7 +247,7 @@ pub fn call_graph(project: &Project, file: &str, entry: &Entry, opts: &Options, 
 | 1 | `sem::entry`: find a def by (file, qualname, occurrence) through `outline_of` | unit test |
 | 2 | `sem::body_parts` + `walk.rs` for plain calls only; targets all `Unresolved` | `sites.ts`: the right sites, in order |
 | 3 | `sem::callee` with the engine's resolver; `describe`; the bridge by range | `straight-line` and `method-on-class` scenarios pass |
-| 4 | `impl Lang`, `call_graph`, `typescript-cli calls <dir> <file> --entry <qualname> [--id <marker>] [--graph]`. A qualname is not unique in a file (D15): when `--entry` matches several defs, the CLI prints every match (kind, line, marker) and asks for `--id`; it never picks the first. With `--id`, the def carrying that marker is the entry | the CLI prints a tree for a fixture; an ambiguous `--entry` prints the list and exits 2 |
+| 4 | `impl Lang`, `call_graph`, `typescript-cli calls <dir> <file> --entry <qualname> [--id <marker>] [--graph]`. A qualname is not unique in a file (D15): when `--entry` matches several defs, the CLI prints every match (kind, line, marker) and asks for `--id`; it never picks the first. With `--id`, the def carrying that marker is the entry **The output ends with the breakdown** (the first `calls` output already has it, not a later addition): edges by kind (call, construct, external, unresolved); `unresolved` split by reason, every `Unresolved` carrying exactly one reason counter in `Stats.language` (`function_typed_value`, `decl_not_in_outline`, and one each for `any`/untyped, a computed name, no declaration); the cuts. So "why is this unresolved" is a number and not a read of the code, and step 9's unresolved share comes from the same place | the CLI prints a tree for a fixture; an ambiguous `--entry` prints the list and exits 2; **the reasons sum to `Stats.unresolved`** (checked on every graph the suite builds), and the fixture's breakdown is a snapshot |
 | 4a | the wire (D17): move `wire.rs` from `python-analysis` to `analyzer-core` unchanged (needs W3 of [05/04](../05-python-migration/04-the-wire.md) done); `Sources` for `Project`; `typescript-cli calls … --wire [--merged] --function-prefix … --class-prefix …` | Python's wire tests still pass from core; a fixture's wire has a `target_id` with the passed prefix for a marked def and `""` for an unmarked one; `--merged` turns two sibling calls of one function into one node with `call_count: 1` |
 | 5 | `Construct`, `External`, project-code test. Write `scenarios/construct-marked-class/typescript/`: the Python program of that scenario in TypeScript, with an `ID: …` line in the JSDoc of both classes | `constructor`, `external-call` and `construct-marked-class` scenarios; a `new` of a library class is an `External` edge |
 | 6 | the remaining site kinds of §3 | their fixtures |

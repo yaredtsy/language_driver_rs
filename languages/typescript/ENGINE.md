@@ -347,8 +347,8 @@ Before this step the compiler said: `File<'static>` is `Send` and `Sync`, and so
 without a `&Sem` and no method touches the checker, but the design is one checker answering one question at a time and tsrs enters its regions per thread, so
 "a handle may cross threads" was a claim nobody had made. `File` now carries a `PhantomData<*const ()>` (neither `Send` nor `Sync`), and two `compile_fail`
 doctests with compiling twins pin it (`typescript_analysis::proof`, run with `--features __proof` by `scripts/check-proofs.sh`; they failed before the marker was added and
-fail again with it removed). **`Sem` and `Project` are still `Send + Sync` and nothing pins that**: decide when TS4 makes the first checker query (a `Sync` `Sem` lets two
-threads call into one checker), and TS5 when the driver asks for parallelism.
+fail again with it removed). **`Sem` (so `Project`) is `Send` but not `Sync`: decided at the start of TS4 and pinned** (a `Cell` marker and a proof pair; moving a `Project` between threads stays allowed, `tests/threads.rs`). Asking a `Sem` questions runs the
+checker, and a shared `&Sem` would let two threads call into one checker. TS5 revisits it only if the driver needs parallel questions.
 
 The proof module is behind the feature `__proof` because a `compile_fail` doctest is a separate crate that can only name public items. With the feature off rustdoc
 finds no proof doctest at all and reports success, hence the script and its count file. Cargo unifies features across a build, so a crate that enables `__proof`
@@ -378,7 +378,7 @@ by its own patterns, `possibly_matches_file_name`). `disableSolutionSearching` o
   Not covered: a file a config reads in some other way (`tsrs` content mappers), and `package.json` fields other than through the glob (a `types` entry is covered by `package.json`).
 - **A `Project` opened on one thread and dropped on another works** (`tests/threads.rs`: 20 move-and-drop rounds, four projects alive at once, four threads opening at once, 100 rounds
   of open-on-one drop-on-another with flat memory; the memory test fails, 116 to 282 MB, with the free removed). So the free does not depend on the thread that made the program.
-  `Project` is still `Send + Sync` and the `Sync` part is not pinned: two threads calling into one checker is TS4's question.
+  `Project` is `Send` and, since TS4, not `Sync` (pinned).
 - **A skipped config is reported, not silent** (`OpenError::NotInProject { config, skipped }`). It is not reported when `open` succeeds: a skipped broken config that would also have
   held the file is invisible then, except through `environment_inputs`. If that matters, `Project` needs a `skipped_configs()`.
 - **The V-NOC frontend, opened through `Project::open`** (2026-11-11, `src/frontend` of the V-NOC repo, read only; debug build): `tsconfig.json` has `"files": []`, references to
