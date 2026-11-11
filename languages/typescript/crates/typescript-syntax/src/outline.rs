@@ -25,8 +25,8 @@ pub(crate) fn outline(text: &str, dialect: Dialect) -> Outline {
 /// An enclosing def while the walk is inside it.
 struct Frame {
     qualname: String,
-    /// Index into `Walker::defs`.
-    index: usize,
+    /// Index into `Walker::defs`; `None` for a name that is not a def (an object literal that holds methods).
+    index: Option<usize>,
     /// A function's locals are joined with `.<locals>.`, a container's members with `.`.
     is_function: bool,
 }
@@ -50,22 +50,34 @@ struct Entry {
 impl Walker<'_, '_> {
     /// Push a def (before its children, so the list is pre-order: parents first, in source order) and open its frame.
     fn enter(&mut self, e: Entry) {
-        let qualname = match self.stack.last() {
-            None => e.name.clone(),
-            Some(parent) if parent.is_function => {
-                format!("{}.<locals>.{}", parent.qualname, e.name)
-            }
-            Some(parent) => format!("{}.{}", parent.qualname, e.name),
-        };
+        let qualname = self.qualname_of(&e.name);
         let mut def = Def::new(qualname.clone(), e.name, e.kind, e.range, e.name_range);
-        def.parent = self.stack.last().map(|f| f.index);
+        def.parent = self.stack.iter().rev().find_map(|f| f.index);
         def.params = e.params;
         self.defs.push(def);
         self.stack.push(Frame {
             qualname,
-            index: self.defs.len() - 1,
+            index: Some(self.defs.len() - 1),
             is_function: e.is_function,
         });
+    }
+
+    /// Open a name that is not a def, so that what is inside is named under it: `api` in `const api = { load() {} }`.
+    fn enter_container(&mut self, name: &str) {
+        let qualname = self.qualname_of(name);
+        self.stack.push(Frame {
+            qualname,
+            index: None,
+            is_function: false,
+        });
+    }
+
+    fn qualname_of(&self, name: &str) -> String {
+        match self.stack.last() {
+            None => name.to_owned(),
+            Some(parent) if parent.is_function => format!("{}.<locals>.{name}", parent.qualname),
+            Some(parent) => format!("{}.{name}", parent.qualname),
+        }
     }
 
     fn leave(&mut self) {
@@ -93,7 +105,9 @@ impl Walker<'_, '_> {
             NodeKind::FunctionDeclaration => {
                 self.function_group(&[n]);
             }
-            NodeKind::ClassDeclaration => self.class(n),
+            NodeKind::ClassDeclaration | NodeKind::ClassExpression => self.class(n),
+            NodeKind::FunctionExpression => self.function_expression(n),
+            NodeKind::VariableStatement => self.variable_statement(n),
             _ if self.p.kind(n) == NodeKind::Other && !self.p.statements(n).is_empty() => {
                 // a block, a case clause: the block adds nothing to a name
                 self.statements(&self.p.statements(n));
@@ -168,6 +182,8 @@ impl Walker<'_, '_> {
 
     fn class(&mut self, n: RawNode) {
         let Some((name, name_range)) = self.name_of(n) else {
+            // an anonymous class expression adds nothing to a name: its methods are named from what is around it
+            self.members(&self.p.members(n));
             return;
         };
         self.enter(Entry {
@@ -195,6 +211,10 @@ impl Walker<'_, '_> {
                 }
                 NodeKind::GetAccessor | NodeKind::SetAccessor => {
                     self.accessor(m);
+                    1
+                }
+                NodeKind::PropertyDeclaration => {
+                    self.property(m);
                     1
                 }
                 NodeKind::ClassStaticBlock => {
@@ -275,5 +295,112 @@ impl Walker<'_, '_> {
         });
         self.function_body(n);
         self.leave();
+    }
+
+    /// A named function expression is a def named by its own name: `run(function step() {})`. An anonymous one is not: its body belongs to
+    /// the def around it.
+    fn function_expression(&mut self, n: RawNode) {
+        let Some((name, name_range)) = self.name_of(n) else {
+            self.function_body(n);
+            return;
+        };
+        self.enter(Entry {
+            name,
+            kind: DefKind::Function,
+            is_function: true,
+            range: self.p.span(n),
+            name_range,
+            params: self.p.params(n),
+        });
+        self.function_body(n);
+        self.leave();
+    }
+
+    /// An arrow, function expression or class expression with no name of its own (the only kind a variable can name).
+    fn is_anonymous_callable(&self, n: RawNode) -> bool {
+        matches!(
+            self.p.kind(n),
+            NodeKind::ArrowFunction | NodeKind::FunctionExpression | NodeKind::ClassExpression
+        ) && self.p.name(n).is_none()
+    }
+
+    /// Define `init`, an anonymous arrow / function / class expression, under `name`. `range` is the whole def.
+    fn named_expression(&mut self, init: RawNode, name: RawNode, is_member: bool, range: Span) {
+        let Some(text) = self.name_text(name) else {
+            return;
+        };
+        let name_range = self.p.span(name);
+        if self.p.kind(init) == NodeKind::ClassExpression {
+            self.enter(Entry {
+                name: text,
+                kind: DefKind::Class,
+                is_function: false,
+                range,
+                name_range,
+                params: Vec::new(),
+            });
+            self.members(&self.p.members(init));
+        } else {
+            self.enter(Entry {
+                name: text,
+                kind: if is_member {
+                    DefKind::Method
+                } else {
+                    DefKind::Function
+                },
+                is_function: true,
+                range,
+                name_range,
+                params: self.p.params(init),
+            });
+            self.function_body(init);
+        }
+        self.leave();
+    }
+
+    /// `const f = () => {}`: the def is the whole statement when it declares one variable, otherwise just the declarator. Only `const`
+    /// names a function: a `let` can be reassigned, so its name is not stable (the engine's rule too).
+    fn variable_statement(&mut self, n: RawNode) {
+        let declarations = self.p.declarations(n);
+        let single = declarations.len() == 1;
+        for d in declarations {
+            let range = if single {
+                self.p.span(n)
+            } else {
+                self.p.span(d)
+            };
+            let name = self
+                .p
+                .name(d)
+                .filter(|&nm| self.p.kind(nm) == NodeKind::Identifier);
+            match (self.p.initializer(d), name) {
+                (Some(init), Some(nm))
+                    if self.p.is_const(d) && self.is_anonymous_callable(init) =>
+                {
+                    self.named_expression(init, nm, false, range);
+                }
+                (Some(init), _) => self.visit(init),
+                (None, _) => {}
+            }
+        }
+    }
+
+    /// `handle = () => {}` in a class: a method, named like one. Only a plain identifier names it (the engine's rule: a private or
+    /// computed name is not accepted).
+    fn property(&mut self, n: RawNode) {
+        let Some(init) = self.p.initializer(n) else {
+            return;
+        };
+        let name = self
+            .p
+            .name(n)
+            .filter(|&nm| self.p.kind(nm) == NodeKind::Identifier);
+        match name {
+            Some(nm) if self.is_anonymous_callable(init) => {
+                let range = self.p.span(n);
+                self.named_expression(init, nm, true, range);
+            }
+            _ => self.visit(init),
+        }
     }
 }
