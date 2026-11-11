@@ -381,5 +381,10 @@ by its own patterns, `possibly_matches_file_name`). `disableSolutionSearching` o
   `Project` is still `Send + Sync` and the `Sync` part is not pinned: two threads calling into one checker is TS4's question.
 - **A skipped config is reported, not silent** (`OpenError::NotInProject { config, skipped }`). It is not reported when `open` succeeds: a skipped broken config that would also have
   held the file is invisible then, except through `environment_inputs`. If that matters, `Project` needs a `skipped_configs()`.
-- **Not checked, still:** the V-NOC frontend itself through `Project::open` (it is not on this machine: the only matches for the name are editor tracker folders), a pnpm workspace,
-  and Windows paths in `find_owner` (`relative_to` and the visited set compare engine strings, which are `/`-separated everywhere; the `canonicalize` of the root is not).
+- **The V-NOC frontend, opened through `Project::open`** (2026-11-11, `src/frontend` of the V-NOC repo, read only; debug build): `tsconfig.json` has `"files": []`, references to
+  `tsconfig.app.json` and `tsconfig.node.json`, and its own `paths`. `src/main.tsx` and every other file under `src` get `tsconfig.app.json` (`"include": ["src"]`); `vite.config.ts` gets
+  `tsconfig.node.json`; `shiki.bundle.ts` and `tailwind.config.js` are in neither config, so `NotInProject`, which is what `tsc` says too. Open takes 0.15 s warm (the whole `typescript-cli files`
+  run, `node_modules` included). The program holds 397 files: 395 TypeScript (+ `src/vite-env.d.ts`, the one declaration file) and **two imported `.json` fixtures, which `files()` wrongly
+  listed as project code**: fixed, `is_project_code` now needs a TypeScript or JavaScript file (`Dialect::from_path`), fixture `json-import`.
+- **Not checked, still:** a pnpm workspace, and Windows paths in `find_owner` (`relative_to` and the visited set compare engine strings, which are `/`-separated everywhere; the
+  `canonicalize` of the root is not).
