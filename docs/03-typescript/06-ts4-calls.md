@@ -107,8 +107,9 @@ implemented with the checker. `tsrs_ls::callhierarchy::resolve_call_hierarchy_de
 declaration of the symbol the checker finds there, once, through aliases. Three things are added to it, found in step 3 by writing the expected answer for each site before running:
 (1) the engine names an overload's **first signature** (no body), and the outline's def is the implementation, so a bodiless function or method is mapped to the declaration of its own
 symbol that has a body; (2) when the hierarchy finds nothing, the checker's `get_resolved_signature_exported(call)` → `Signature::declaration()` is tried, which is what resolves
-`counter["bump"]()`; (3) a call on a **union** is expanded through the property of each member (`Type::types()`, `get_property_of_type_exported`), because the hierarchy gives no declaration for
-it and the signature gives only the first member's, which would pass for the whole answer. The result is one `Resolved` per declaration, in (file, offset) order: a def of project code, an
+`counter["bump"]()`; (3) a call on a **union** asks the checker's own union symbol: the property of a union gets a synthetic symbol that holds the declarations of **every** member and a `value_declaration` only when
+the members share one (`tsrs_checker/src/checker_11.rs`), and the hierarchy follows `value_declaration` alone, so it finds nothing; the signature gives only the first member's, which would pass for
+the whole answer. The symbol is the property's (so `undefined` in the union adds nothing) and is found for `a.b` and for `a["b"]` with a literal name. The result is one `Resolved` per declaration, in (file, offset) order: a def of project code, an
 `External { package, name }`, or `Unknown(why)`. `FunctionType`, `MethodSignature`, `CallSignature` and `ConstructSignature` answers have no body: on the V-NOC frontend 140 of 437 sites were a
 `FunctionType` (a call through a function-typed value). Those are `Unknown` (→ `Unresolved`), and `walk` counts them in
 `Stats.language["function_typed_value"]` so that they can be told apart from a call on `any` (D16). There is no distinct edge kind.
@@ -169,7 +170,7 @@ before the table is frozen.
 | `if`, `switch`, `?:`, `&&`, loops, `try` | every call expression in the body is a site, whatever branch it is in. No condition is evaluated | `branches.ts` |
 | a call on a **class** instance (`w: JsonWriter`) | that class's method (or the inherited one, where it is declared) | `method_on_class.ts` |
 | a call through an **interface** or abstract method (`w: Writer`) | the interface's method signature: a leaf with no body. **Not** the implementations | `interface_dispatch.ts` |
-| a **union** receiver (`w: JsonWriter \| CsvWriter`) | one target per member that declares the method. **Not the engine's answer** (its call hierarchy gives none, its signature gives the first member only): `sem` asks each member. A member with no declaration to enter adds `Unknown(union_receiver)`, so the answer is never mistaken for complete | `union_receiver.ts` |
+| a **union** receiver (`w: JsonWriter \| CsvWriter`) | one target per member that declares the method. This **is** the checker's answer: the union property's symbol holds every member's declarations; only the engine's call hierarchy misses it (it follows `value_declaration`, which is empty when members differ), so `sem` reads the symbol's declarations. A declaration with nothing to enter (a member of type `any`, a function type) adds `Unknown(union_receiver)`, so the answer is never mistaken for complete | `union_receiver.ts` |
 | overloads | the implementation | `overloads.ts` |
 | generics | the generic declaration; type arguments are ignored | `generics.ts` |
 | imports, re-exports, `export default`, namespace imports | followed to the real declaration | `imports/` (a folder) |

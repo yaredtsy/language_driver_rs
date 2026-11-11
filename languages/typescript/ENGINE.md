@@ -431,11 +431,15 @@ The three that did not, and what each showed:
   is the implementation (TS1), so `sem` maps a bodiless function or method to the declaration of its symbol that has a body, in the same file. Without it: `decl_not_in_outline`.
 - **`counter["bump"]()`.** The hierarchy's resolver finds nothing for an `ElementAccessExpression` callee (`get_symbol_at_location` is `None` there), but `get_resolved_signature_exported(call)` →
   `declaration()` is the method. So the signature is the second try. (The plan's §4 had it first; for a plain name the hierarchy answers, and the signature adds nothing.)
-- **A union receiver (`w: JsonWriter | CsvWriter`).** The hierarchy gives no declaration (the union property's symbol has no `value_declaration`), and the signature's `declaration()` is the **first member's**
-  method only. Taken as the answer it would be wrong and look right, so `sem` asks each member (`Type::types()`, `get_property_of_type_exported(member, name)`), and the policy table's "one target per member"
-  holds. It is our code, not the engine's answer; a member with no declaration to enter adds `Unknown(union_receiver)`. Not tried: an intersection, a union of a class and `any`, a union method behind a generic.
+- **A union receiver (`w: JsonWriter | CsvWriter`).** The hierarchy gives no declaration, and the signature's `declaration()` is the **first member's** method only: taken as the answer it would be wrong and
+  look right. But the checker does have the answer: the property of a union gets a synthetic symbol that holds the declarations of **every** member (`tsrs_checker/src/checker_11.rs`, the loop that
+  appends each member's `declarations`), and its `value_declaration` is set only when the members share one. The hierarchy follows `value_declaration` alone, hence nothing. So `sem` asks that symbol
+  (`get_symbol_at_location` of `a.b`, or of the literal in `a["b"]`) and the policy table's "one target per member" is the checker's answer, not an addition of ours. The first version of this step
+  enumerated the members itself (`Type::types()`); review found it wrong for `a["b"]` (fell to the signature: first member only), for a member that holds an arrow (`write = () => {}`: dropped, so it
+  became `union_receiver` inside a union and a target outside one), and for `A | B | undefined` (a spurious `Unknown`); all three go away when the checker's symbol is asked. A declaration that is a
+  property of function type or of type `any` has nothing to enter and adds `Unknown(union_receiver)`. Not tried: an intersection, a generic method on a union.
 
 Other facts: a call through a function type (`cb()`) has `get_type_at_location(callee)` with call signatures and no declaration; a value of type `any` has `TypeFlags::Any` (both are no declaration, told
 apart by the type). A project `.d.ts` is `External` and named by its **relative path** (`src/types.d.ts`), since it has no package; `node_modules` packages are named by `package_of` (`pkg`, `@types/x` as
-`x`), the bundled libraries `typescript:lib`, and the name is the declaration's own (`max`, `map`, `helper`), not the qualified one. One checker handle is taken per `callee` and dropped before it returns
+`x`), the bundled libraries `typescript:lib`, and the name is **qualified** by the classes, interfaces and namespaces around the declaration (`Math.max`, `Array.map`, `helper`), because the merged wire counts a repeated target as one and Python names an external by its qualname too. One checker handle is taken per `callee` and dropped before it returns
 (one checker, so one handle at a time); that is correct, and it was not timed.
