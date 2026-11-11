@@ -53,6 +53,21 @@ pub fn outline(text: &str, dialect: Dialect, style: MarkerStyle<'_>) -> Outline 
     outline::outline(text, dialect, style)
 }
 
+/// `outline`, and for each def the byte span of the syntax node it names, in the order of `Outline::defs`. That node is the one whose body is the def's
+/// body (the function, method, accessor, constructor, arrow or function expression, or the class), or the declaration of a def with no body (an
+/// interface and its method signatures, an enum, a type alias, a namespace). It is not always where `Def::range` starts: an overloaded def's range runs
+/// from its first signature and the node is its implementation, and `const f = () => {}` has the whole statement as its range and the arrow as its node.
+///
+/// For a caller that holds the same text as a tree of its own (the program of `typescript-analysis`): the same text parses to the same node spans, so a
+/// span finds the node, and the rule for what a def is stays in this crate.
+pub fn outline_with_nodes(
+    text: &str,
+    dialect: Dialect,
+    style: MarkerStyle<'_>,
+) -> (Outline, Vec<Span>) {
+    outline::outline_with_nodes(text, dialect, style)
+}
+
 /// Why a marker was not planned. Match on the variant to act on it; `to_string()` gives the reason as a sentence a person can read, for
 /// an editor to show next to the def.
 #[derive(Debug, Clone, PartialEq, Eq)]

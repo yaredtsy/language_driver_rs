@@ -11,10 +11,19 @@ use crate::marker;
 use crate::sem::{NodeKind, Parsed, RawNode, with_parsed};
 
 pub(crate) fn outline(text: &str, dialect: Dialect, style: MarkerStyle<'_>) -> Outline {
+    outline_with_nodes(text, dialect, style).0
+}
+
+/// `outline`, and with each def the span of the syntax node it names (`Walker::enter`'s `node`), in the order of `Outline::defs`.
+pub(crate) fn outline_with_nodes(
+    text: &str,
+    dialect: Dialect,
+    style: MarkerStyle<'_>,
+) -> (Outline, Vec<Span>) {
     with_parsed(text, dialect, |p| {
         let mut errors: Vec<(Span, String)> = p.syntax_errors();
         errors.sort_by_key(|(range, _)| *range);
-        let mut defs = walk(p);
+        let (mut defs, nodes) = walk(p);
         for def in &mut defs {
             def.syntax_error = errors.iter().any(|(range, _)| overlaps(*range, def.range));
             def.marker = match style.placement {
@@ -31,32 +40,34 @@ pub(crate) fn outline(text: &str, dialect: Dialect, style: MarkerStyle<'_>) -> O
             .into_iter()
             .map(|(range, message)| SyntaxError::new(range, message))
             .collect();
-        outline
+        (outline, nodes)
     })
 }
 
 /// The defs of a parsed file, in source order, parents first. `syntax_error` and `marker` are not filled in yet.
-fn walk(p: &Parsed<'_>) -> Vec<Def> {
+fn walk(p: &Parsed<'_>) -> (Vec<Def>, Vec<Span>) {
     let mut walker = Walker {
         p,
         stack: Vec::new(),
         defs: Vec::new(),
+        nodes: Vec::new(),
     };
     walker.statements(&p.statements(p.root()));
-    walker.defs
+    (walker.defs, walker.nodes)
 }
 
 /// Is `def` a def of this text: one with the same qualname and the same range? A def from the outline of another text (an older version of
 /// the file) is not, even when a def of that name is still there: its offsets point somewhere else now.
 pub(crate) fn has_def(p: &Parsed<'_>, def: &Def) -> bool {
     walk(p)
+        .0
         .iter()
         .any(|d| d.range == def.range && d.qualname == def.qualname)
 }
 
 /// Does a def start at byte `start`?
 pub(crate) fn starts_def(p: &Parsed<'_>, start: u32) -> bool {
-    walk(p).iter().any(|d| d.range.start == start)
+    walk(p).0.iter().any(|d| d.range.start == start)
 }
 
 /// Does a parse error touch a def? "When unsure, flag more": an empty error range counts as one byte, so an error at a def's first byte is in it.
@@ -77,6 +88,8 @@ struct Walker<'p, 'a> {
     p: &'p Parsed<'a>,
     stack: Vec<Frame>,
     defs: Vec<Def>,
+    /// One per def, same order: the span of the node the def names.
+    nodes: Vec<Span>,
 }
 
 /// What a def is, as far as naming goes.
@@ -87,6 +100,10 @@ struct Entry {
     range: Span,
     name_range: Span,
     params: Vec<String>,
+    /// The node the def names, which is not always the node `range` starts at: an overloaded def's range runs from its first signature, and
+    /// the node is its implementation; `const f = () => {}` has the whole statement as its range, and the node is the arrow. It is the
+    /// function-like node whose body is the def's body, the class, or the declaration of a def with no body.
+    node: Span,
 }
 
 impl Walker<'_, '_> {
@@ -97,6 +114,7 @@ impl Walker<'_, '_> {
         def.parent = self.stack.iter().rev().find_map(|f| f.index);
         def.params = e.params;
         self.defs.push(def);
+        self.nodes.push(e.node);
         self.stack.push(Frame {
             qualname,
             index: Some(self.defs.len() - 1),
@@ -233,6 +251,7 @@ impl Walker<'_, '_> {
             range: Span::new(self.p.span(first).start, self.p.span(imp).end),
             name_range,
             params: self.p.params(imp),
+            node: self.p.span(imp),
         });
         self.function_body(imp);
         self.leave();
@@ -259,6 +278,7 @@ impl Walker<'_, '_> {
             range: self.p.span(n),
             name_range,
             params: Vec::new(),
+            node: self.p.span(n),
         });
         self.members(&self.p.members(n));
         self.leave();
@@ -319,6 +339,7 @@ impl Walker<'_, '_> {
             range: Span::new(self.p.span(first).start, self.p.span(imp).end),
             name_range,
             params: self.p.params(imp),
+            node: self.p.span(imp),
         });
         self.function_body(imp);
         self.leave();
@@ -336,6 +357,7 @@ impl Walker<'_, '_> {
             range: self.p.span(n),
             name_range,
             params: self.p.params(n),
+            node: self.p.span(n),
         });
         self.function_body(n);
         self.leave();
@@ -358,6 +380,7 @@ impl Walker<'_, '_> {
             range,
             name_range,
             params: self.p.params(n),
+            node: range,
         });
         self.function_body(n);
         self.leave();
@@ -377,6 +400,7 @@ impl Walker<'_, '_> {
             range: self.p.span(n),
             name_range,
             params: self.p.params(n),
+            node: self.p.span(n),
         });
         self.function_body(n);
         self.leave();
@@ -404,6 +428,7 @@ impl Walker<'_, '_> {
                 range,
                 name_range,
                 params: Vec::new(),
+                node: self.p.span(init),
             });
             self.members(&self.p.members(init));
         } else {
@@ -418,6 +443,7 @@ impl Walker<'_, '_> {
                 range,
                 name_range,
                 params: self.p.params(init),
+                node: self.p.span(init),
             });
             self.function_body(init);
         }
@@ -524,6 +550,7 @@ impl Walker<'_, '_> {
             range: self.p.span(n),
             name_range,
             params: Vec::new(),
+            node: self.p.span(n),
         });
         self.leave();
     }
@@ -541,6 +568,7 @@ impl Walker<'_, '_> {
             range: self.p.span(n),
             name_range,
             params: Vec::new(),
+            node: self.p.span(n),
         });
         for m in self.p.members(n) {
             if self.p.kind(m) != NodeKind::MethodSignature {
@@ -556,6 +584,7 @@ impl Walker<'_, '_> {
                 range: self.p.span(m),
                 name_range,
                 params: self.p.params(m),
+                node: self.p.span(m),
             });
             self.leave();
         }
@@ -575,6 +604,7 @@ impl Walker<'_, '_> {
             range: self.p.span(n),
             name_range,
             params: Vec::new(),
+            node: self.p.span(n),
         });
         if let Some(body) = self.p.body(n) {
             self.visit(body);
