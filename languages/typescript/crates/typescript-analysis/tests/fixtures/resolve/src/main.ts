@@ -84,3 +84,8 @@ export function external_value_holders() {
   useThing();
   toolbox.run();
 }
+
+export function twice() {
+  plain();
+  plain();
+}

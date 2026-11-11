@@ -15,6 +15,7 @@ pub use analyzer_core::graph::{
 };
 pub use analyzer_core::render::{Mark, Node, RenderOptions, render, to_text};
 pub use analyzer_core::solve::{Cancel, Limits};
+pub use analyzer_core::wire::{Frame, LineSpan, Sources, WireOptions, WireStyle, merge, wire};
 pub use calls::{Breakdown, Entry, Options, breakdown, call_graph};
 pub use typescript_syntax::{DefKind, MarkerStyle, Placement, Span};
 
@@ -320,6 +321,14 @@ pub mod proof {
     //! The error code is pinned for the reader: stable rustdoc ignores it (checked: pinning `E0499` still passes), and `RUSTC_BOOTSTRAP=1
     //! RUSTDOCFLAGS=-Zunstable-options cargo test --doc` enforces it (`E0505`, "cannot move out of `sem` because it is borrowed").
     pub use crate::sem::{File, Func, Sem};
+}
+
+/// The wire needs the text of a file to turn a call site (bytes relative to its function) into a line and a column. A project has it: the text of the
+/// file in the loaded program, by its path relative to the root.
+impl Sources for Project {
+    fn text(&self, file: &str) -> Option<String> {
+        self.sem.text_of(file)
+    }
 }
 
 /// A def found by qualname: which of the same-named defs it is, what it is, where, and its marker.

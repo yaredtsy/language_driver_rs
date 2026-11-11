@@ -477,6 +477,11 @@ impl Sem {
         }
     }
 
+    /// The text of the file at `relative`, as the program holds it.
+    pub(crate) fn text_of(&self, relative: &str) -> Option<String> {
+        Some(self.file(relative)?.node.text().to_owned())
+    }
+
     /// The file's path relative to the root, with `/`; `None` for a file outside the root, such as the bundled libraries.
     pub(crate) fn relative_path(&self, file: File<'_>) -> Option<String> {
         let root = to_engine_path(&self.root);

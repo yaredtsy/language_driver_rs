@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use analyzer_testkit::graph::check_invariants;
 use analyzer_testkit::scenarios::{Level, Subject, run};
 use typescript_analysis::{
-    Basis, Cancel, Edge, EdgeTo, Entry, Graph, MarkerStyle, Options, Project, Reason, StableDef,
-    breakdown, call_graph,
+    Basis, Cancel, Edge, EdgeTo, Entry, Frame, Graph, MarkerStyle, Options, Project, Reason,
+    RenderOptions, StableDef, WireOptions, WireStyle, breakdown, call_graph, wire,
 };
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
@@ -229,4 +229,51 @@ fn a_class_with_no_constructor_of_its_own_is_a_construction_with_no_init() {
         })
         .collect();
     assert_eq!(inits, [true]);
+}
+
+fn wire_of(entry: &str, merged: bool) -> Frame {
+    let root = fixture("resolve");
+    let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
+    let graph = graph_of(&root, "src/main.ts", entry);
+    let style = WireStyle {
+        function_prefix: "F/".into(),
+        class_prefix: "C/".into(),
+    };
+    wire(
+        &graph,
+        &graph.entries[0],
+        &project,
+        &WireOptions::new(style, merged, RenderOptions::default()),
+    )
+}
+
+#[test]
+fn the_wire_writes_the_prefix_for_a_marked_def_and_nothing_for_an_unmarked_one() {
+    let frame = wire_of("callers", false);
+    assert_eq!(frame.target_qname, "callers");
+    // `plain` carries `ID: PLAIN-0001`; `Counter.bump` carries none: it is still on the wire, named by its qualname
+    let child = |name: &str| {
+        frame
+            .children
+            .iter()
+            .find(|c| c.target_qname == name)
+            .unwrap()
+    };
+    assert_eq!(child("plain").target_id, "F/PLAIN-0001");
+    assert_eq!(child("Counter.bump").target_id, "");
+    // where the call is: the callee expression, as 1-based [line, column] in the file
+    assert!(child("plain").call_site.is_some());
+    assert!(frame.call_site.is_none());
+}
+
+#[test]
+fn merged_turns_two_sibling_calls_of_one_function_into_one_node_with_call_count_one() {
+    let unmerged = wire_of("twice", false);
+    assert_eq!(unmerged.children.len(), 2);
+    assert!(unmerged.children.iter().all(|c| c.call_count == 0));
+    let merged = wire_of("twice", true);
+    assert_eq!(merged.children.len(), 1);
+    assert_eq!(merged.children[0].target_qname, "plain");
+    // "the calls joined into this node, less one"
+    assert_eq!(merged.children[0].call_count, 1);
 }

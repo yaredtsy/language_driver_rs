@@ -3,22 +3,24 @@
 //! - `outline <file> [--label <label>]`: the defs of one file.
 //! - `files <dir> <file>`: which config owns `file` under `dir`, and what the loaded program holds. The tool for "why is this call unresolved":
 //!   the answer is often that the file is not in the program the config describes.
-//! - `calls <dir> <file> --entry <qualname> [--id <marker>] [--graph] [--timing]`: the call tree under a def, then the breakdown of the graph (edges by kind,
-//!   unresolved edges by reason). A qualname is not unique in a file (D15): when it matches several defs they are listed and the exit code is 2, never
-//!   the first one picked; `--id` names the one that carries that marker.
+//! - `calls <dir> <file> --entry <qualname> [--id <marker>] [--graph | --wire [--merged] [--function-prefix P] [--class-prefix P]] [--timing]`: the call
+//!   tree under a def, then the breakdown of the graph (edges by kind, unresolved edges by reason). A qualname is not unique in a file (D15): when it
+//!   matches several defs they are listed and the exit code is 2, never the first one picked; `--id` names the one that carries that marker. `--wire` prints
+//!   the wire (D17) instead of the tree, as JSON alone on stdout, with the prefixes the caller gives for the ids of functions and classes.
 
 use std::path::Path;
 use std::process::ExitCode;
 
 use analyzer_core::text::{Encoding, LineIndex};
 use typescript_analysis::{
-    Cancel, Entry, Options, Project, RenderOptions, breakdown, call_graph, render, to_text,
+    Cancel, Entry, Options, Project, RenderOptions, WireOptions, WireStyle, breakdown, call_graph,
+    render, to_text, wire,
 };
 use typescript_syntax::{Dialect, MarkerStyle, outline};
 
 const USAGE: &str = "usage: typescript-cli outline <file> [--label <label>]
        typescript-cli files <dir> <file>
-       typescript-cli calls <dir> <file> --entry <qualname> [--id <marker>] [--graph] [--timing] [--label <label>]";
+       typescript-cli calls <dir> <file> --entry <qualname> [--id <marker>] [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--timing] [--label <label>]";
 
 /// Remove `--name value` from `args` and return the value.
 fn take_value(args: &mut Vec<String>, name: &str) -> Option<String> {
@@ -44,6 +46,10 @@ fn main() -> ExitCode {
     let entry = take_value(&mut args, "--entry");
     let id = take_value(&mut args, "--id");
     let graph = take_flag(&mut args, "--graph");
+    let wire = take_flag(&mut args, "--wire");
+    let merged = take_flag(&mut args, "--merged");
+    let function_prefix = take_value(&mut args, "--function-prefix");
+    let class_prefix = take_value(&mut args, "--class-prefix");
     let timing = take_flag(&mut args, "--timing");
     match args
         .iter()
@@ -53,6 +59,15 @@ fn main() -> ExitCode {
     {
         ["outline", path] => print_outline(path, &label),
         ["files", dir, file] => print_files(Path::new(dir), Path::new(file)),
+        ["calls", dir, file]
+            if (graph && wire)
+                || (!wire && (merged || function_prefix.is_some() || class_prefix.is_some())) =>
+        {
+            eprintln!(
+                "--graph and --wire are two outputs, and --merged and the prefixes belong to --wire\n{USAGE}"
+            );
+            ExitCode::from(2)
+        }
         ["calls", dir, file] => match entry {
             Some(entry) => print_calls(
                 Path::new(dir),
@@ -62,6 +77,11 @@ fn main() -> ExitCode {
                     id: id.as_deref(),
                     label,
                     graph,
+                    wire: wire.then(|| WireStyle {
+                        function_prefix: function_prefix.unwrap_or_default(),
+                        class_prefix: class_prefix.unwrap_or_default(),
+                    }),
+                    merged,
                     timing,
                 },
             ),
@@ -83,6 +103,9 @@ struct Calls<'a> {
     id: Option<&'a str>,
     label: String,
     graph: bool,
+    /// `Some`: print the wire, with these prefixes.
+    wire: Option<WireStyle>,
+    merged: bool,
     timing: bool,
 }
 
@@ -159,7 +182,19 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
         );
     }
     let summary = breakdown(&graph);
-    if ask.graph {
+    if let Some(style) = &ask.wire {
+        // the wire alone on stdout: JSON, so it can be read as it is; the breakdown goes to stderr
+        let options = WireOptions::new(style.clone(), ask.merged, RenderOptions::default());
+        let frame = wire(&graph, &graph.entries[0], &project, &options);
+        match serde_json::to_string_pretty(&frame) {
+            Ok(json) => println!("{json}"),
+            Err(e) => {
+                eprintln!("{file}: the wire cannot be written: {e}");
+                return ExitCode::from(1);
+            }
+        }
+        eprint!("{summary}");
+    } else if ask.graph {
         // the graph on stdout and nothing else, so it can be read as it is; the breakdown goes to stderr
         println!("{graph:#?}");
         eprint!("{summary}");

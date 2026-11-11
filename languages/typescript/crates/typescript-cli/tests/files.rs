@@ -228,3 +228,73 @@ fn graph_prints_the_graph_and_keeps_the_breakdown_off_stdout() {
             .contains("breakdown:")
     );
 }
+
+#[test]
+fn wire_prints_the_wire_with_the_prefixes_it_was_given() {
+    let out = calls(
+        &fixture("resolve"),
+        "src/main.ts",
+        &[
+            "--entry",
+            "callers",
+            "--wire",
+            "--function-prefix",
+            "F/",
+            "--class-prefix",
+            "C/",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    // the wire alone on stdout, so it can be read as it is: JSON, a marked def with its prefix, an unmarked one with an empty id
+    let wire: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(wire["target_qname"], "callers");
+    let child = |name: &str| {
+        wire["children"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["target_qname"] == name)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(child("plain")["target_id"], "F/PLAIN-0001");
+    assert_eq!(child("Counter.bump")["target_id"], "");
+    assert!(
+        String::from_utf8(out.stderr)
+            .unwrap()
+            .contains("breakdown:")
+    );
+}
+
+#[test]
+fn wire_merged_joins_sibling_calls_of_one_function() {
+    let run = |merged: bool| {
+        let mut rest = vec!["--entry", "twice", "--wire"];
+        if merged {
+            rest.push("--merged");
+        }
+        let out = calls(&fixture("resolve"), "src/main.ts", &rest);
+        assert!(out.status.success());
+        let wire: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        wire["children"].as_array().unwrap().clone()
+    };
+    assert_eq!(run(false).len(), 2);
+    let merged = run(true);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0]["call_count"], 1);
+}
+
+#[test]
+fn wire_and_graph_cannot_both_be_asked() {
+    let out = calls(
+        &fixture("resolve"),
+        "src/main.ts",
+        &["--entry", "callers", "--wire", "--graph"],
+    );
+    assert_eq!(out.status.code(), Some(2));
+}
