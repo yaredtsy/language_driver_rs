@@ -1,0 +1,9 @@
+Function Greeting [28..110] name [37..45] ({ name })
+Function Arrow [112..251] name [118..123] (props)
+Class Counter [253..479] name [259..266]
+  Method Counter.increment [334..391] name [334..343]
+  Method Counter.render [394..477] name [394..400]
+Function generic [481..596] name [490..497] (value)
+  Function generic.<locals>.wrapped [516..548] name [522..529] (x)
+Function App [598..748] name [622..625]
+  Function App.<locals>.onClick [632..657] name [638..645]

@@ -1,0 +1,5 @@
+Function before [0..20] name [9..15]
+Function broken [22..54] name [31..37] ({ const x = })
+Function after [56..75] name [65..70]
+Class AlsoAfter [77..110] name [83..92]
+  Method AlsoAfter.method [97..108] name [97..103]

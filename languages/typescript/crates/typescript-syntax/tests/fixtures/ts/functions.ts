@@ -39,3 +39,11 @@ function withDestructuring({ a, b }: { a: number; b: number }, [c, ...d]: number
 function generic<T extends object>(x: T): T {
   return x;
 }
+
+function multiLineParams(
+  {
+    a,
+    b,
+  }: Options,
+  second: string,
+) {}

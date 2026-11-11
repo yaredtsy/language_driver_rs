@@ -1,0 +1,4 @@
+Function View [0..65] name [9..13] ({ title })
+Function Item [67..112] name [73..77] ({ label })
+Class Panel [114..184] name [120..125]
+  Method Panel.render [148..182] name [148..154]

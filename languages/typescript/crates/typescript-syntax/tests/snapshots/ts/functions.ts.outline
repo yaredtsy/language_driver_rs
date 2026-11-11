@@ -11,3 +11,4 @@ Function outer [444..537] name [453..458]
 Function inBlock [553..574] name [562..569]
 Function withDestructuring [578..683] name [587..604] ({ a, b }, [c, ...d], rest)
 Function generic [685..744] name [694..701] (x)
+Function multiLineParams [746..826] name [755..770] ({ a, b, }, second)

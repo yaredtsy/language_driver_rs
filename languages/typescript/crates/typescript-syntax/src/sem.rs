@@ -238,13 +238,14 @@ impl Parsed<'_> {
             .map(|&m| self.span(RawNode(m)))
     }
 
-    /// The parameter names of a function-like node, as written: `a`, `{ x, y }`, `[h, ...t]`. A rest parameter's `...` is not part of it.
+    /// The parameter names of a function-like node, as written, on one line: `a`, `{ x, y }`, `[h, ...t]`. A rest parameter's `...` is not part of it.
     pub(crate) fn params(&self, n: RawNode) -> Vec<String> {
         n.0.parameters()
             .iter()
             .filter_map(|p| p.name())
             .filter_map(|name| self.slice(self.span(RawNode(name))))
-            .map(str::to_owned)
+            // a destructuring pattern can span lines: one line, single spaces
+            .map(|written| written.split_whitespace().collect::<Vec<_>>().join(" "))
             .collect()
     }
 

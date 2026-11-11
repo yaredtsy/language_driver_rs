@@ -1,0 +1,4 @@
+Function afterEmoji [77..101] name [86..96]
+Class 日本語クラス [103..151] name [109..127]
+  Method 日本語クラス.メソッド [132..149] name [132..144]
+Function 変数 [153..177] name [159..165]

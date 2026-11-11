@@ -22,3 +22,18 @@ fn subject(outline: fn(&str) -> typescript_syntax::Outline, dir: &'static str) -
 fn ts_fixtures() {
     snapshot_every_fixture(&subject(|t| outline(t, Dialect::Ts), "tests/fixtures/ts"));
 }
+
+#[test]
+fn tsx_fixtures() {
+    snapshot_every_fixture(&subject(|t| outline(t, Dialect::Tsx), "tests/fixtures/tsx"));
+}
+
+#[test]
+fn js_fixtures() {
+    snapshot_every_fixture(&subject(|t| outline(t, Dialect::Js), "tests/fixtures/js"));
+}
+
+#[test]
+fn jsx_fixtures() {
+    snapshot_every_fixture(&subject(|t| outline(t, Dialect::Jsx), "tests/fixtures/jsx"));
+}

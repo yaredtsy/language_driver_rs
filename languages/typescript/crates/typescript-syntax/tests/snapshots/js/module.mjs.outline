@@ -1,0 +1,4 @@
+Function exported [0..29] name [16..24]
+Function arrow [31..61] name [44..49]
+Class Widget [63..108] name [84..90]
+  Method Widget.render [95..106] name [95..101]

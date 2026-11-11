@@ -1,0 +1,3 @@
+﻿function afterBom() {}
+
+class AfterBom {}
