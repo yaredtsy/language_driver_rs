@@ -3,7 +3,9 @@
 use analyzer_testkit::syntax::{Subject, cut_every_50_bytes, snapshot_every_fixture};
 use typescript_syntax::{Dialect, outline};
 
-fn subject(outline: fn(&str) -> typescript_syntax::Outline, dir: &'static str) -> Subject {
+type OutlineFn = fn(&str) -> typescript_syntax::Outline;
+
+fn subject(outline: OutlineFn, dir: &'static str) -> Subject {
     Subject {
         outline,
         // markers are TS2: until then nothing is planned
@@ -42,7 +44,7 @@ fn jsx_fixtures() {
 fn nothing_panics_on_a_cut_fixture() {
     // Naming the element type makes each non-capturing closure coerce to a `fn` pointer; without it every closure has its own type
     // and the array does not compile.
-    let subjects: [(fn(&str) -> typescript_syntax::Outline, &'static str); 4] = [
+    let subjects: [(OutlineFn, &'static str); 4] = [
         (|t| outline(t, Dialect::Ts), "tests/fixtures/ts"),
         (|t| outline(t, Dialect::Tsx), "tests/fixtures/tsx"),
         (|t| outline(t, Dialect::Js), "tests/fixtures/js"),
