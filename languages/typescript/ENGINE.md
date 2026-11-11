@@ -474,14 +474,17 @@ that type-checks, so a function the resolver failed to enter would have been cou
 (`PropertySignature`, `PropertyDeclaration`, `PropertyAssignment`), variable, binding element or shorthand property; a callee with no symbol (`makeHandler()()`, `(flag ? f : g)()`) is `no_declaration`.
 `union_receiver` is left for a union where some members have a declaration to enter and some do not.
 
-On the V-NOC component `TaskDetailPanel` the 75 were all value holders by declaration, but of four kinds:
+On the V-NOC component `TaskDetailPanel` the 75 were all value holders by declaration, but of four kinds (counted from the list of callee texts, not estimated):
 
 | kind | calls | example | now |
 |---|---|---|---|
-| a function declared as a `const` with a function type **in a package** | 18 | `useQueryClient`, `toast.error` (`export declare const useQueryClient: () => QueryClient`) | `External` (a named call into the package): 84 external, 57 unresolved |
-| a state setter from `useState` (a destructured binding) | about 30 | `setAddingSubtask` | D16, as decided |
-| a project hook or store built by a call | about 11 | `useVersioningStore(…)`, `useProjectStore(…)` | D16 |
-| an **arrow held by a property of an object literal in the project** | about 22 | `tasksApi.updateTask(…)`, `queryKeys.tasks.anchorSummary(…)` | D16, and **a coverage gap**: these are project functions the outline does not treat as defs (a property holding an arrow is not a def, "for now"), and the engine's call hierarchy does not resolve them either (`is_assigned_expression` wants a `const` or a class property). Idiomatic code puts a whole API in such an object; whether `key: () => {}` should be a def is the owner's question |
+| a value declared **in a package** with a function type | 18 | `useQueryClient` 8, `toast.error` 2, `mutation.mutate` 8 (react-query's result, a union whose members each hold a `mutate`) | `External` (a named call into the package): 84 external, 57 unresolved |
+| a state setter from `useState` (a destructured binding) | 25 | `setAddingSubtask`, `setSubtaskQuery` | D16, as decided |
+| a project hook or store built by a call | 11 | `useVersioningStore(…)` 6, `useProjectStore(…)` 4, `useTabStore(…)` 1 | D16 |
+| an **arrow held by a property of an object literal in the project** | 20 | `tasksApi.updateTask(…)` and ten more, `queryKeys.tasks.anchorSummary(…)` and two more (9 in all) | D16, and **a coverage gap**: these are project functions the outline does not treat as defs (a property holding an arrow is not a def, "for now"), and the engine's call hierarchy does not resolve them either (`is_assigned_expression` wants a `const` or a class property). Idiomatic code puts a whole API in such an object; whether `key: () => {}` should be a def is the owner's question |
+| an optional callback prop of the project | 1 | `onNavigateToNode` | D16 |
+
+25 + 11 + 20 + 1 = 57, the unresolved edges left after the 18 moved to external.
 
 **A union of callables has no single declaration, and the checker hides that.** `(flag ? plain : second)()` resolved, through the resolved signature, to `plain` alone: for the branches of a conditional the checker
 applies subtype reduction, and two alike function types become one type, so the signature names the first. The signature is therefore used only for a **name** (identifier, property access, element access) and
