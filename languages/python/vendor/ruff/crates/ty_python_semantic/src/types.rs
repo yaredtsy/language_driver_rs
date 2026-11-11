@@ -178,7 +178,7 @@ mod typed_dict;
 mod typevar;
 mod unpacker;
 mod variance;
-pub mod vnoc;
+pub mod analyzer_ext;
 mod visitor;
 
 mod definition;

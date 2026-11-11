@@ -1,5 +1,5 @@
 //! `pub` wrappers around otherwise-private `ty_python_semantic` accessors,
-//! for `pylspt` (`crates/pylspt`) — the entire reason this crate is forked
+//! for `python-analysis` (`languages/python/crates/python-analysis`) — the entire reason this crate is forked
 //! rather than pulled from crates.io/git.
 //!
 //! Lives under `types` (not a sibling of it) because Rust privacy is
@@ -11,7 +11,7 @@
 //! Rules for anything added here, because a fork without them is
 //! unmaintainable:
 //!
-//! 1. One `pub fn` per accessor `pylspt` actually needs — add on demand, not
+//! 1. One `pub fn` per accessor `python-analysis` actually needs — add on demand, not
 //!    speculatively.
 //! 2. One internal call each. No logic, no reimplemented semantics — that is
 //!    the entire point of forking instead of hand-rolling MRO/descriptors/
@@ -19,13 +19,13 @@
 //!    ty wherever ty is right.
 //! 3. Only genuinely PUBLIC types in a wrapper's signature — `Type<'db>`,
 //!    `&dyn Db`, `&ProgramEnvironment<'db>`, plain Rust types. Never
-//!    `ClassLiteral`/`ClassBase`/`ClassType` themselves: `pylspt` could not
+//!    `ClassLiteral`/`ClassBase`/`ClassType` themselves: `python-analysis` could not
 //!    write that type name even if the wrapper were `pub`, for the reason
 //!    above.
-//! 4. A rebase only ever conflicts on this file plus the one `pub mod vnoc;`
+//! 4. A rebase only ever conflicts on this file plus the one `pub mod analyzer_ext;`
 //!    line in `types.rs` — keep it that way.
 //!
-//! `pylspt` owns one test per wrapper (not here): the compiler catches a
+//! `python-analysis` owns one test per wrapper (not here): the compiler catches a
 //! signature change on rebase, only a test catches a *behaviour* change.
 
 use super::{ClassBase, ClassType, KnownClass, ProgramEnvironment, Type};
