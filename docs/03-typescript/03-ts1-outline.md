@@ -50,7 +50,7 @@ type-like things worth documenting:
 | `enum E {}`, `type T = …`, `namespace N {}` | yes | enum, type, namespace | `E`, `T`, `N` |
 | `let f = () => {}` / `var f = …` | **no** | | the engine's rule accepts only `const`: a `let` can be reassigned, so its name is not stable |
 | an anonymous function passed as an argument: `xs.map(x => …)` | **no** | | no name. Its calls belong to the enclosing def (rule 3) |
-| a property in an object literal holding an arrow: `{ load: () => {} }` | no for now | | the engine's rule does not accept it. Adding it later is safe |
+| a property holding an arrow or function expression: `const api = { load: () => {} }` | **yes, narrowly (D21)**: in a literal that is the initializer of a `const` (also through `as const`, `satisfies`, parentheses) or nested in one | method | `api.load`, `api.tasks.update`. **No** for `let`/`var`, `export default`, a class property's literal, and a literal that is an argument, a return value, an array element or a spread (`useMutation({ onSuccess: () => {} })`, `Object.freeze({…})`, `create((set) => ({…}))`) |
 | a local variable, a field without a function, a parameter | no | | |
 | the file itself | not in `defs` | | the file is already a node in V-NOC |
 
