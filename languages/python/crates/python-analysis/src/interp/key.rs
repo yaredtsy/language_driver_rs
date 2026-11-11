@@ -353,7 +353,7 @@ impl<'db> Walk<'db> {
                 });
                 for (name, a) in attrs {
                     let v = self.from_fp(sol, *a, at.attr(name), cl, env);
-                    env.bind_attr(origin, name, v, false); // weak: a union shares this origin
+                    env.join_attr(origin, name, v); // a union shares this origin
                 }
                 smallvec![AbstractValue::Instance {
                     class: *class,

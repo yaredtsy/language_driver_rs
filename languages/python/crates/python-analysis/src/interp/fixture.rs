@@ -887,6 +887,25 @@ fn edges_say_what_they_rest_on() {
     assert_eq!(stats.language["unknown_callee"], stats.unresolved);
 }
 
+/// A weak write marks what it may have dropped, and only that. `outside` writes one object (a strong write) and its answer is complete:
+/// no `Unresolved` edge anywhere, in `Pipeline.run` either, where the object's attributes come back from its fingerprint (that is not a
+/// write, and adds no `Unknown`). `two_candidates` writes one of two objects onto an attribute this path holds nothing for: its read is
+/// an `Unresolved` site next to the written handler.
+#[test]
+fn a_weak_write_marks_what_it_may_have_dropped_and_a_strong_one_marks_nothing() {
+    use crate::interp::call_graph;
+    let unresolved = |entry: &str| {
+        let (db, file) = open_fixture("03-classes/python/writes.py");
+        let g = call_graph(&db, file, entry, &summary()).unwrap();
+        g.edges
+            .iter()
+            .filter(|e| matches!(e.to, analyzer_core::graph::EdgeTo::Unresolved(_)))
+            .count()
+    };
+    assert_eq!(unresolved("outside"), 0);
+    assert!(unresolved("two_candidates") > 0);
+}
+
 /// The golden wire of a real project. Not run by default: it needs a project that is not in the repo and the files in `out/golden/`, and the
 /// prefixes are V-NOC's, which no crate may spell. Run it by hand:
 ///

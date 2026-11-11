@@ -58,6 +58,21 @@ impl<'db> Env<'db> {
         };
         self.attrs.insert_mut(key, v);
     }
+    /// Rebuilding an object from a fingerprint: what the attribute is, added to what an earlier member of a union already put there. Not a
+    /// write: nothing here may have been missed, so unlike a weak `bind_attr` it adds no `Unknown`.
+    pub(crate) fn join_attr(&mut self, origin: OriginId, name: &Name, v: Values<'db>) {
+        let key = (origin, name.clone());
+        let v = match self.attrs.get(&key) {
+            Some(old) => {
+                let mut m = old.clone();
+                m.extend(v);
+                dedup(&mut m);
+                m
+            }
+            None => v,
+        };
+        self.attrs.insert_mut(key, v);
+    }
     /// One object's attributes, sorted by name. Scans the flat map.
     pub(crate) fn attrs_of(&self, origin: OriginId) -> Vec<(Name, Values<'db>)> {
         let mut out: Vec<(Name, Values<'db>)> = self
