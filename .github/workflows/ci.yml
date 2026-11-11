@@ -1,8 +1,94 @@
-# TODO: shape in docs/01-monorepo/05-ci.md
+# Shape and reasons: docs/01-monorepo/05-ci.md
 name: ci
+# No workflow-level `paths:` filter: a workflow that does not start reports nothing, and a required check that
+# never reports blocks the pull request forever. Jobs are skipped with `if:` instead.
 on: { pull_request: {}, push: { branches: [main] } }
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  ci-ok:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.f.outputs.core }}
+      languages: ${{ steps.f.outputs.languages }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: f
+        run: |
+          base="${{ github.event.pull_request.base.sha || github.event.before }}"
+          scripts/changed-languages.sh "$base" "${{ github.sha }}" | tee -a "$GITHUB_OUTPUT"
+
+  repo:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "placeholder"
+      - uses: actions/checkout@v4
+      - run: scripts/check-all.sh --static
+
+  core:
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    strategy:
+      fail-fast: false
+      matrix: { os: [ubuntu-latest, macos-latest, windows-latest] }
+    runs-on: ${{ matrix.os }}
+    defaults: { run: { working-directory: core } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: core }
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - run: cargo doc --no-deps
+        env: { RUSTDOCFLAGS: "-D warnings" }
+
+  # A language's fast crate: `cargo test -p <lang>-syntax` never compiles the type checker.
+  syntax:
+    needs: changes
+    if: needs.changes.outputs.languages != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: ${{ fromJSON(needs.changes.outputs.languages) }}
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults: { run: { working-directory: "languages/${{ matrix.lang }}" } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: "languages/${{ matrix.lang }}" }
+      - run: cargo fmt --check
+      - run: cargo clippy -p ${{ matrix.lang }}-syntax --all-targets -- -D warnings
+      - run: cargo test -p ${{ matrix.lang }}-syntax
+
+  # The slow crates, and the scenarios for that language.
+  analysis:
+    needs: changes
+    if: needs.changes.outputs.languages != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: ${{ fromJSON(needs.changes.outputs.languages) }}
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults: { run: { working-directory: "languages/${{ matrix.lang }}" } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: "languages/${{ matrix.lang }}" }
+      - run: cargo clippy -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli --all-targets -- -D warnings
+      - run: cargo test -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli
+
+  # The one required check. `if: always()` so it runs (and decides) even when a dependency was skipped.
+  ci-ok:
+    needs: [changes, repo, core, syntax, analysis]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: every needed job succeeded or was skipped
+        env: { NEEDS: "${{ toJSON(needs) }}" }
+        run: echo "$NEEDS" | python3 scripts/all-ok.py

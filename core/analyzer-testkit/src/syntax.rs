@@ -95,8 +95,9 @@ pub fn snapshot_every_fixture(subject: &Subject) {
 }
 
 /// Plan a marker on every def of every fixture, apply it, and outline again. The def carries the marker, no other def
-/// changed, and planning again is refused. ("Only the marker was added" is the language's own test: what counts as
-/// the marker, a line or a rewritten docstring, differs per language.)
+/// changed, nothing was lost (the old text is a subsequence of the new), and planning again is refused. "Only the
+/// marker was added" is stricter and is the language's own test: what counts as the marker, a line or a rewritten
+/// docstring, differs per language.
 pub fn marker_round_trip(subject: &Subject) {
     let mut planned = 0;
     for (path, text) in fixtures(subject.fixtures) {
@@ -111,6 +112,11 @@ pub fn marker_round_trip(subject: &Subject) {
             let at = &def.qualname;
             let new = apply(&text, std::slice::from_ref(&edit))
                 .unwrap_or_else(|| panic!("{file}: the edit for {at} does not apply"));
+
+            assert!(
+                is_subsequence(&text, &new),
+                "{file}: marking {at} damaged the text: something that was there is gone"
+            );
 
             let after = (subject.outline)(&new);
             assert_eq!(
@@ -147,6 +153,12 @@ pub fn marker_round_trip(subject: &Subject) {
         planned > 0,
         "no fixture def accepted a marker: the round trip proved nothing"
     );
+}
+
+/// Every byte of `old` appears in `new`, in order. An edit that only adds text passes; one that deletes or rewrites fails.
+fn is_subsequence(old: &str, new: &str) -> bool {
+    let mut rest = new.bytes();
+    old.bytes().all(|b| rest.any(|n| n == b))
 }
 
 /// The outline of every fixture, cut at every 50th byte (on a character boundary), returns and is well formed.
@@ -195,8 +207,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "changed the number of defs")]
-    fn a_planner_that_destroys_a_def_is_caught() {
+    #[should_panic(expected = "damaged the text")]
+    fn a_planner_that_destroys_text_is_caught() {
         // replaces the `fn` line instead of inserting above it
         fn bad(text: &str, def: &Def, marker: &str) -> Option<Edit> {
             let end = text[def.range.start as usize..].find('\n')? as u32 + def.range.start;
@@ -207,6 +219,28 @@ mod tests {
         }
         marker_round_trip(&Subject {
             plan_marker: bad,
+            ..toy::SYNTAX
+        });
+    }
+
+    #[test]
+    fn subsequence_means_added_only() {
+        assert!(is_subsequence("ab", "xaxbx"));
+        assert!(is_subsequence("", "x"));
+        assert!(!is_subsequence("ab", "ba"));
+        assert!(!is_subsequence("abc", "ab"));
+    }
+
+    #[test]
+    #[should_panic(expected = "changed the number of defs")]
+    fn a_planner_that_hides_a_def_is_caught() {
+        // keeps every old byte but turns the `fn` line into a comment, so the def disappears
+        fn hide(text: &str, def: &Def, marker: &str) -> Option<Edit> {
+            let _ = (text, marker);
+            Some(Edit::insert(def.range.start, "// "))
+        }
+        marker_round_trip(&Subject {
+            plan_marker: hide,
             ..toy::SYNTAX
         });
     }

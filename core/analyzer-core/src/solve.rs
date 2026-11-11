@@ -227,6 +227,7 @@ impl<L: Lang> Solver<L> {
             seen: HashSet::new(),
             queue: VecDeque::new(),
             infos: HashMap::new(),
+            classes: HashSet::new(),
         };
         let mut contexts = Vec::new();
         let mut edges = Vec::new();
@@ -276,7 +277,19 @@ impl<L: Lang> Solver<L> {
                             EdgeTo::Context(id_of(&self.lang, &mut run.infos, &callee))
                         }
                         Target::Construct { class, init } => {
-                            let class = info_of(&self.lang, &mut run.infos, *class).stable.clone();
+                            // A class has no body to walk, but the tree names its node from a context, so
+                            // the graph holds one (status `Finished`, no edges). It is not counted in `stats.contexts`.
+                            let info = info_of(&self.lang, &mut run.infos, *class).clone();
+                            let class = info.stable.clone();
+                            if run.classes.insert(class.clone()) {
+                                contexts.push(Context::new(
+                                    ContextId::of(class.clone()),
+                                    info.qname,
+                                    info.kind,
+                                    info.file,
+                                    info.range,
+                                ));
+                            }
                             let init = init.as_ref().map(|(f, k)| {
                                 let init = (*f, k.clone());
                                 run.discover(&init, depth + 1);
@@ -324,6 +337,8 @@ struct Run<L: Lang> {
     queue: VecDeque<(Node<L>, u32)>,
     /// `describe` can be expensive in an engine; ask once per function per call.
     infos: HashMap<L::Func, FuncInfo>,
+    /// Classes already given a context in this graph.
+    classes: HashSet<StableDef>,
 }
 
 impl<L: Lang> Run<L> {
@@ -414,6 +429,15 @@ pub(crate) mod tests {
                 })
                 .collect();
             Summary::complete(sites)
+        }
+    }
+
+    pub(crate) fn no_dangling(g: &Graph) {
+        for e in &g.edges {
+            assert!(g.context(&e.from).is_some());
+            if let EdgeTo::Context(c) = &e.to {
+                assert!(g.context(c).is_some(), "{c:?}");
+            }
         }
     }
 
@@ -683,7 +707,14 @@ pub(crate) mod tests {
             }
         }
         let g = Solver::new(Ctor, Limits::default()).graph(&[("main", ())], &Cancel::new());
-        assert_eq!(g.contexts.len(), 2);
+        // `main`, `Foo.init`, and a context for the class `Foo` so the tree can name its node
+        assert_eq!(g.contexts.len(), 3);
+        assert_eq!(g.stats.contexts, 2, "a class is not a walked context");
+        assert!(
+            g.context(&ContextId::of(StableDef::Marked("Foo".into())))
+                .is_some()
+        );
+        crate::solve::tests::no_dangling(&g);
         let EdgeTo::Construct { class, init } = &g.edges[0].to else {
             panic!("{:?}", g.edges[0])
         };

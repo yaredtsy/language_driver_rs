@@ -2,8 +2,12 @@
 //!
 //! The rules (see `docs/02-tree-rules/02-the-rules.md`): one node per call site and callee function (7), recursion is
 //! shown and not entered (8), hidden means hidden with everything under it (9), every cut is marked (10).
+//!
+//! Nothing here recurses once per level (the walk, [`to_text`] and `Node`'s drop use explicit stacks), so how deep a
+//! tree goes is decided by [`RenderOptions`] and by nothing about the machine. `Node`'s derived `Clone`, `Debug` and
+//! `PartialEq` do recurse: do not use them on a tree tens of thousands of levels deep.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::graph::{ContextId, Edge, EdgeTo, Graph, Site, StableDef, Status};
 
@@ -41,10 +45,21 @@ pub struct Node {
     pub qname: String,
     /// `None` for the root.
     pub site: Option<Site>,
-    /// Which graph contexts this node stands for.
+    /// Which graph contexts this node stands for. A construction stands for its `init` contexts (none if the class has
+    /// no constructor function).
     pub contexts: Vec<ContextId>,
     pub marks: Vec<Mark>,
     pub children: Vec<Node>,
+}
+
+impl Drop for Node {
+    /// The derived drop would recurse once per level and overflow the stack on a deep tree.
+    fn drop(&mut self) {
+        let mut pending = std::mem::take(&mut self.children);
+        while let Some(mut node) = pending.pop() {
+            pending.append(&mut node.children);
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +67,7 @@ pub struct Node {
 pub struct RenderOptions {
     /// Counts every node, the root included.
     pub max_nodes: u32,
-    /// `None`: the node budget is the guard (and an internal depth cap that keeps the stack safe).
+    /// `None`: the node budget is the guard.
     pub max_depth: Option<u32>,
     /// Hide a function with no marker, and everything under it.
     pub only_marked: bool,
@@ -73,16 +88,12 @@ impl Default for RenderOptions {
     }
 }
 
-/// Whatever the caller sets, a tree this deep is cut. The renderer recurses once per level, so this is sized to
-/// `RENDER_STACK`. (`Node`'s drop and `to_text` recurse too, with much smaller frames.)
-const DEPTH_CAP: u32 = 5_000;
-
-/// Stack for the thread `render` runs on: a debug build spends about 2.5 KB per level, so 5,000 levels fit with room.
-/// The memory is reserved, not touched, until a tree is that deep.
-const RENDER_STACK: usize = 64 * 1024 * 1024;
-
-/// The depth that fits the stack of an ordinary thread (2 MiB, in a debug build), for when a bigger thread cannot be made.
-const FALLBACK_DEPTH_CAP: u32 = 300;
+#[derive(PartialEq, Eq)]
+enum Kind {
+    Code,
+    External,
+    Unresolved,
+}
 
 /// What one group of edges (one site, one callee function) becomes.
 struct Child<'g> {
@@ -92,61 +103,88 @@ struct Child<'g> {
     func: StableDef,
     qname: String,
     contexts: Vec<&'g ContextId>,
-    kind: ChildKind,
+    kind: Kind,
 }
 
-#[derive(PartialEq, Eq)]
-enum ChildKind {
-    Code,
-    External,
-    Unresolved,
+/// A node being built, and the children it has not visited yet.
+struct Frame<'g> {
+    node: Node,
+    kids: std::vec::IntoIter<Child<'g>>,
 }
 
 struct Renderer<'g> {
     graph: &'g Graph,
     opts: &'g RenderOptions,
-    budget: u32,
-    cap: u32,
 }
 
 /// The tree under `entry`. An entry that is not in the graph gives a bare root (the caller asked for something we
 /// do not have; it is not a panic).
 pub fn render(graph: &Graph, entry: &ContextId, opts: &RenderOptions) -> Node {
-    // The thread borrows `graph` and `opts`; `scope` guarantees it ends before this function returns.
-    let big = std::thread::scope(|s| {
-        std::thread::Builder::new()
-            .stack_size(RENDER_STACK)
-            .spawn_scoped(s, || render_with(graph, entry, opts, DEPTH_CAP))
-            .ok()
-            .and_then(|h| h.join().ok())
-    });
-    big.unwrap_or_else(|| render_with(graph, entry, opts, FALLBACK_DEPTH_CAP))
-}
-
-fn render_with(graph: &Graph, entry: &ContextId, opts: &RenderOptions, cap: u32) -> Node {
-    let mut r = Renderer {
-        graph,
-        opts,
-        budget: opts.max_nodes.saturating_sub(1),
-        cap,
-    };
+    let r = Renderer { graph, opts };
+    let mut budget = opts.max_nodes.saturating_sub(1);
     let qname = graph
         .context(entry)
         .map_or_else(|| "<unknown>".to_owned(), |c| c.qname.clone());
-    let mut path = vec![entry.func.clone()];
-    r.node(entry.func.clone(), qname, None, vec![entry], &mut path, 0)
+    // Functions on the path from the root to the node being built (rule 8 asks "is it on the path?").
+    let mut path: HashSet<StableDef> = HashSet::from([entry.func.clone()]);
+    let mut stack = vec![r.open(entry.func.clone(), qname, None, vec![entry], 0)];
+
+    loop {
+        let top = stack.last_mut().expect("the root frame is popped last");
+        let Some(child) = top.kids.next() else {
+            let mut done = stack.pop().expect("just looked at it").node;
+            done.marks.sort();
+            done.marks.dedup();
+            let Some(parent) = stack.last_mut() else {
+                return done;
+            };
+            path.remove(&done.func);
+            parent.node.children.push(done);
+            continue;
+        };
+        if budget == 0 {
+            top.node.marks.push(Mark::Cut);
+            top.kids = Vec::new().into_iter();
+            continue;
+        }
+        budget -= 1;
+        let site = Some(child.site);
+        match child.kind {
+            Kind::External => top.node.children.push(leaf(child, Mark::External)),
+            Kind::Unresolved => top.node.children.push(leaf(child, Mark::Unresolved)),
+            // Rule 8: by function, not by context.
+            Kind::Code if path.contains(&child.func) => {
+                top.node.children.push(leaf(child, Mark::Recursive))
+            }
+            Kind::Code => {
+                path.insert(child.func.clone());
+                let depth = stack.len() as u32;
+                stack.push(r.open(child.func, child.qname, site, child.contexts, depth));
+            }
+        }
+    }
+}
+
+fn leaf(c: Child<'_>, mark: Mark) -> Node {
+    Node {
+        func: c.func,
+        qname: c.qname,
+        site: Some(c.site),
+        contexts: c.contexts.into_iter().cloned().collect(),
+        marks: vec![mark],
+        children: Vec::new(),
+    }
 }
 
 impl<'g> Renderer<'g> {
-    fn node(
-        &mut self,
+    fn open(
+        &self,
         func: StableDef,
         qname: String,
         site: Option<Site>,
         contexts: Vec<&'g ContextId>,
-        path: &mut Vec<StableDef>,
         depth: u32,
-    ) -> Node {
+    ) -> Frame<'g> {
         let mut marks = Vec::new();
         if contexts.iter().any(|id| {
             self.graph
@@ -155,55 +193,22 @@ impl<'g> Renderer<'g> {
         }) {
             marks.push(Mark::Incomplete);
         }
-        let mut children = Vec::new();
-        let groups = self.children_of(&contexts);
-        if !groups.is_empty() {
-            let limit = self.opts.max_depth.map_or(self.cap, |d| d.min(self.cap));
-            if depth >= limit {
-                marks.push(Mark::Cut);
-            } else {
-                for child in groups {
-                    if self.budget == 0 {
-                        marks.push(Mark::Cut);
-                        break;
-                    }
-                    self.budget -= 1;
-                    children.push(self.child(child, path, depth + 1));
-                }
-            }
+        let mut groups = self.children_of(&contexts);
+        if !groups.is_empty() && self.opts.max_depth.is_some_and(|limit| depth >= limit) {
+            marks.push(Mark::Cut);
+            groups.clear();
         }
-        marks.sort();
-        marks.dedup();
-        Node {
+        let node = Node {
             func,
             qname,
             site,
             contexts: contexts.into_iter().cloned().collect(),
             marks,
-            children,
-        }
-    }
-
-    fn child(&mut self, c: Child<'g>, path: &mut Vec<StableDef>, depth: u32) -> Node {
-        let leaf = |marks: Vec<Mark>, c: Child<'g>| Node {
-            func: c.func,
-            qname: c.qname,
-            site: Some(c.site),
-            contexts: c.contexts.into_iter().cloned().collect(),
-            marks,
             children: Vec::new(),
         };
-        match c.kind {
-            ChildKind::External => leaf(vec![Mark::External], c),
-            ChildKind::Unresolved => leaf(vec![Mark::Unresolved], c),
-            // Rule 8: by function, not by context.
-            ChildKind::Code if path.contains(&c.func) => leaf(vec![Mark::Recursive], c),
-            ChildKind::Code => {
-                path.push(c.func.clone());
-                let node = self.node(c.func, c.qname, Some(c.site), c.contexts, path, depth);
-                path.pop();
-                node
-            }
+        Frame {
+            node,
+            kids: groups.into_iter(),
         }
     }
 
@@ -212,21 +217,19 @@ impl<'g> Renderer<'g> {
         let mut groups: BTreeMap<(Site, StableDef, u8), Child<'g>> = BTreeMap::new();
         for id in contexts {
             for edge in self.graph.edges_from(id) {
-                let Some(target) = self.target(edge) else {
+                let Some(child) = self.child(edge) else {
                     continue;
                 };
-                let (func, kind) = (target.func.clone(), target.kind_rank());
-                let slot = groups.entry((edge.site, func, kind));
-                match slot {
+                match groups.entry((edge.site, child.func.clone(), child.order.0)) {
                     std::collections::btree_map::Entry::Occupied(mut o) => {
-                        for id in target.contexts {
+                        for id in child.contexts {
                             if !o.get().contexts.contains(&id) {
                                 o.get_mut().contexts.push(id);
                             }
                         }
                     }
                     std::collections::btree_map::Entry::Vacant(v) => {
-                        v.insert(target.into_child(edge.site));
+                        v.insert(child);
                     }
                 }
             }
@@ -239,12 +242,15 @@ impl<'g> Renderer<'g> {
         out
     }
 
-    fn target(&self, edge: &'g Edge) -> Option<Target<'g>> {
+    fn child(&self, edge: &'g Edge) -> Option<Child<'g>> {
+        let site = edge.site;
         match &edge.to {
-            EdgeTo::Context(id) => self.code(id),
-            // A construction with no constructor function has no body to show.
-            EdgeTo::Construct { init, .. } => init.as_ref().and_then(|id| self.code(id)),
-            EdgeTo::External(ext) => self.opts.show_external.then(|| Target {
+            EdgeTo::Context(id) => self.code(site, id),
+            // Rule 5: a node for the class; its children come from `init`, if the class has a constructor function.
+            EdgeTo::Construct { class, init } => self.class(site, class, init.as_ref()),
+            EdgeTo::External(ext) => self.opts.show_external.then(|| Child {
+                site,
+                order: (1, "", 0),
                 func: StableDef::Path {
                     module: ext.package.clone(),
                     qname: ext.name.clone(),
@@ -256,10 +262,11 @@ impl<'g> Renderer<'g> {
                     format!("{}.{}", ext.package, ext.name)
                 },
                 contexts: Vec::new(),
-                order: (1, "", 0),
-                kind: ChildKind::External,
+                kind: Kind::External,
             }),
-            EdgeTo::Unresolved => self.opts.show_unresolved.then(|| Target {
+            EdgeTo::Unresolved => self.opts.show_unresolved.then(|| Child {
+                site,
+                order: (2, "", 0),
                 func: StableDef::Path {
                     module: String::new(),
                     qname: "<unresolved>".to_owned(),
@@ -267,56 +274,61 @@ impl<'g> Renderer<'g> {
                 },
                 qname: "<unresolved>".to_owned(),
                 contexts: Vec::new(),
-                order: (2, "", 0),
-                kind: ChildKind::Unresolved,
+                kind: Kind::Unresolved,
             }),
         }
     }
 
-    fn code(&self, id: &'g ContextId) -> Option<Target<'g>> {
+    fn code(&self, site: Site, id: &'g ContextId) -> Option<Child<'g>> {
         if self.opts.only_marked && !id.func.is_marked() {
             return None;
         }
         // A context the graph does not hold (dangling) cannot be named or ordered; the invariant checker reports it.
         let ctx = self.graph.context(id)?;
-        Some(Target {
+        Some(Child {
+            site,
+            order: (0, &ctx.file, ctx.range.start),
             func: id.func.clone(),
             qname: ctx.qname.clone(),
             contexts: vec![id],
-            order: (0, &ctx.file, ctx.range.start),
-            kind: ChildKind::Code,
+            kind: Kind::Code,
         })
     }
-}
 
-struct Target<'g> {
-    func: StableDef,
-    qname: String,
-    contexts: Vec<&'g ContextId>,
-    order: (u8, &'g str, u32),
-    kind: ChildKind,
-}
-
-impl<'g> Target<'g> {
-    fn kind_rank(&self) -> u8 {
-        self.order.0
-    }
-
-    fn into_child(self, site: Site) -> Child<'g> {
-        Child {
-            site,
-            order: self.order,
-            func: self.func,
-            qname: self.qname,
-            contexts: self.contexts,
-            kind: self.kind,
+    /// The class is named and placed by its own context when the graph has one (a solver adds it); a hand-written graph
+    /// may not, and then the stable name is all there is.
+    fn class(
+        &self,
+        site: Site,
+        class: &'g StableDef,
+        init: Option<&'g ContextId>,
+    ) -> Option<Child<'g>> {
+        if self.opts.only_marked && !class.is_marked() {
+            return None;
         }
+        let ctx = self.graph.context(&ContextId::of(class.clone()));
+        let qname = match (ctx, class) {
+            (Some(c), _) => c.qname.clone(),
+            (None, StableDef::Path { qname, .. }) => qname.clone(),
+            (None, StableDef::Marked(_)) => "<class>".to_owned(),
+        };
+        let order = ctx.map_or((0, "", 0), |c| (0, c.file.as_str(), c.range.start));
+        Some(Child {
+            site,
+            order,
+            func: class.clone(),
+            qname,
+            contexts: init.into_iter().collect(),
+            kind: Kind::Code,
+        })
     }
 }
 
 /// One line per node, two spaces per level: `qname`, then ` [Mark]` for each mark. The format of the scenario files.
 pub fn to_text(root: &Node) -> String {
-    fn go(node: &Node, level: usize, out: &mut String) {
+    let mut out = String::new();
+    let mut stack = vec![(root, 0usize)];
+    while let Some((node, level)) = stack.pop() {
         out.push_str(&"  ".repeat(level));
         out.push_str(&node.qname);
         for m in &node.marks {
@@ -325,12 +337,8 @@ pub fn to_text(root: &Node) -> String {
             out.push(']');
         }
         out.push('\n');
-        for c in &node.children {
-            go(c, level + 1, out);
-        }
+        stack.extend(node.children.iter().rev().map(|c| (c, level + 1)));
     }
-    let mut out = String::new();
-    go(root, 0, &mut out);
     out
 }
 
@@ -543,30 +551,115 @@ mod tests {
         );
     }
 
+    /// `main` builds `Foo` at one site and `Bar` (no constructor function) at the next. The graph holds a context for
+    /// each class, the way a solver writes it.
+    fn construct_graph() -> Graph {
+        let mut g = graph(&["main:", "Foo:", "Foo.init: helper", "helper:", "Bar:"]);
+        g.edges.retain(|e| e.from != cid("main"));
+        let mut edges = g.edges.clone();
+        edges.push(Edge {
+            from: cid("main"),
+            site: Site::at(0),
+            to: EdgeTo::Construct {
+                class: marked("Foo"),
+                init: Some(cid("Foo.init")),
+            },
+        });
+        edges.push(Edge {
+            from: cid("main"),
+            site: Site::at(5),
+            to: EdgeTo::Construct {
+                class: marked("Bar"),
+                init: None,
+            },
+        });
+        Graph::new(vec![], g.contexts.clone(), edges, Stats::default())
+    }
+
     #[test]
-    fn a_construct_with_a_constructor_is_a_call_and_without_one_shows_nothing() {
-        let mut g = graph(&["main:", "Foo.__init__:"]);
-        let class = marked("Foo");
+    fn rule_5_a_construct_is_a_node_for_the_class_with_the_children_of_init() {
+        let g = construct_graph();
+        assert_eq!(
+            text(&g, "main", &RenderOptions::default()),
+            "main\n  Foo\n    helper\n  Bar\n"
+        );
+        let tree = render(&g, &cid("main"), &RenderOptions::default());
+        assert_eq!(tree.children[0].func, marked("Foo"));
+        assert_eq!(tree.children[0].contexts, vec![cid("Foo.init")]);
+        assert!(
+            tree.children[1].contexts.is_empty(),
+            "Bar has no constructor function"
+        );
+    }
+
+    #[test]
+    fn rule_5_a_construct_without_init_is_still_a_leaf_node() {
+        let mut g = graph(&["main:"]);
+        let edge = Edge {
+            from: cid("main"),
+            site: Site::at(0),
+            to: EdgeTo::Construct {
+                class: marked("Bar"),
+                init: None,
+            },
+        };
+        g = Graph::new(vec![], g.contexts.clone(), vec![edge], Stats::default());
+        // the graph has no context for the class (a hand-written graph): the node still exists
+        assert_eq!(
+            text(&g, "main", &RenderOptions::default()),
+            "main\n  <class>\n"
+        );
+    }
+
+    #[test]
+    fn a_construct_of_a_class_already_on_the_path_is_recursive() {
+        // Foo's constructor builds a Foo
+        let mut g = graph(&["main:", "Foo:", "Foo.init:"]);
         let edges = vec![
             Edge {
                 from: cid("main"),
                 site: Site::at(0),
                 to: EdgeTo::Construct {
-                    class: class.clone(),
-                    init: Some(cid("Foo.__init__")),
+                    class: marked("Foo"),
+                    init: Some(cid("Foo.init")),
                 },
             },
             Edge {
-                from: cid("main"),
-                site: Site::at(5),
-                to: EdgeTo::Construct { class, init: None },
+                from: cid("Foo.init"),
+                site: Site::at(0),
+                to: EdgeTo::Construct {
+                    class: marked("Foo"),
+                    init: Some(cid("Foo.init")),
+                },
             },
         ];
         g = Graph::new(vec![], g.contexts.clone(), edges, Stats::default());
         assert_eq!(
             text(&g, "main", &RenderOptions::default()),
-            "main\n  Foo.__init__\n"
+            "main\n  Foo\n    Foo [Recursive]\n"
         );
+    }
+
+    #[test]
+    fn only_marked_hides_an_unmarked_class() {
+        let mut g = graph(&["main:"]);
+        let class = StableDef::Path {
+            module: "m".into(),
+            qname: "Foo".into(),
+            nth: 0,
+        };
+        let edge = Edge {
+            from: cid("main"),
+            site: Site::at(0),
+            to: EdgeTo::Construct { class, init: None },
+        };
+        g = Graph::new(vec![], g.contexts.clone(), vec![edge], Stats::default());
+        let opts = RenderOptions {
+            only_marked: true,
+            ..RenderOptions::default()
+        };
+        assert_eq!(text(&g, "main", &opts), "main\n");
+        assert_eq!(text(&g, "main", &RenderOptions::default()), "main\n  Foo\n");
     }
 
     #[test]
@@ -612,23 +705,69 @@ mod tests {
         assert_eq!(text(&g, "nope", &RenderOptions::default()), "<unknown>\n");
     }
 
+    /// Levels of a chain, by walking down (a recursive helper would be the thing under test).
+    fn chain_length(root: &Node) -> (usize, Vec<Mark>) {
+        let (mut n, mut node) = (1, root);
+        while let Some(child) = node.children.first() {
+            n += 1;
+            node = child;
+        }
+        (n, node.marks.clone())
+    }
+
     #[test]
-    fn a_very_deep_chain_is_cut_not_overflowed() {
-        let n = 20_000;
-        let names: Vec<String> = (0..n).map(|i| format!("f{i}")).collect();
+    fn depth_is_limited_by_the_options_and_nothing_else() {
+        // deep enough to overflow any per-level recursion, in the walk and in drop
+        let n = 60_000;
         let spec: Vec<String> = (0..n)
             .map(|i| {
                 if i + 1 < n {
-                    format!("{}: {}", names[i], names[i + 1])
+                    format!("f{i}: f{}", i + 1)
                 } else {
-                    format!("{}:", names[i])
+                    format!("f{i}:")
                 }
             })
             .collect();
         let spec_refs: Vec<&str> = spec.iter().map(String::as_str).collect();
         let g = graph(&spec_refs);
         let tree = render(&g, &cid("f0"), &RenderOptions::default());
-        assert!(to_text(&tree).contains("[Cut]"));
+        assert_eq!(
+            chain_length(&tree),
+            (n, vec![]),
+            "every level is there, nothing is cut"
+        );
+        drop(tree);
+
+        let opts = RenderOptions {
+            max_depth: Some(40_000),
+            ..RenderOptions::default()
+        };
+        let tree = render(&g, &cid("f0"), &opts);
+        assert_eq!(chain_length(&tree), (40_001, vec![Mark::Cut]));
+    }
+
+    #[test]
+    fn to_text_does_not_recurse_either() {
+        // the text of a chain is quadratic in its depth (two spaces per level), so keep this one moderate
+        let n = 4_000;
+        let spec: Vec<String> = (0..n)
+            .map(|i| {
+                if i + 1 < n {
+                    format!("f{i}: f{}", i + 1)
+                } else {
+                    format!("f{i}:")
+                }
+            })
+            .collect();
+        let spec_refs: Vec<&str> = spec.iter().map(String::as_str).collect();
+        let out = text(&graph(&spec_refs), "f0", &RenderOptions::default());
+        assert_eq!(out.lines().count(), n);
+        assert!(
+            out.lines()
+                .last()
+                .unwrap()
+                .ends_with(&format!("f{}", n - 1))
+        );
     }
 
     #[test]

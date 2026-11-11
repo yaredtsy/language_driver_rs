@@ -1,0 +1,16 @@
+[package]
+name = "s-ts1-full"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+tsrs_ast      = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31a4cac36b980db090a91ec12a3c3686de14d" }
+tsrs_core     = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31a4cac36b980db090a91ec12a3c3686de14d" }
+tsrs_compiler = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31a4cac36b980db090a91ec12a3c3686de14d" }
+tsrs_tsoptions = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31a4cac36b980db090a91ec12a3c3686de14d" }
+tsrs_vfs      = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31a4cac36b980db090a91ec12a3c3686de14d" }
+tsrs_checker  = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31a4cac36b980db090a91ec12a3c3686de14d" }
+tsrs_ls       = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31a4cac36b980db090a91ec12a3c3686de14d" }

@@ -1,0 +1,5 @@
+main
+  fetch
+    parse
+  transform
+  store
