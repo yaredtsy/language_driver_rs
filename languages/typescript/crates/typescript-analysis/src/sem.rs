@@ -5,6 +5,14 @@
 //! a region set, and free the program on drop with that region entered. The region alone is not enough: the `Program` and its processed
 //! files are `Box::leak`ed on the heap, outside it (60 opens grew RSS to 349 MB without the free, 24 MB with it: `tests/memory.rs`).
 
+#![cfg_attr(
+    not(feature = "__proof"),
+    expect(
+        unreachable_pub,
+        reason = "`Sem` and `File` are `pub` only for `proof`, which exists with the feature `__proof`"
+    )
+)]
+
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -142,6 +150,10 @@ impl Sem {
     }
 
     /// The file at `relative` (to the root, with `/`; `./` and `..` are folded), if the program holds it.
+    #[cfg_attr(
+        not(any(test, feature = "__proof")),
+        expect(dead_code, reason = "TS4 finds an entry with it")
+    )]
     pub fn file(&self, relative: &str) -> Option<File<'_>> {
         let name = tspath::get_normalized_absolute_path(relative, &to_engine_path(&self.root));
         let node = self.program.get_source_file(&name)?;

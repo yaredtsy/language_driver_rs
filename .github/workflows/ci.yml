@@ -81,6 +81,9 @@ jobs:
         with: { workspaces: "languages/${{ matrix.lang }}" }
       - run: cargo clippy -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli --all-targets -- -D warnings
       - run: cargo test -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli
+      # compile-fail proofs sit behind a feature, so `cargo test` above does not see them (scripts/check-proofs.sh says why)
+      - run: ../../scripts/check-proofs.sh ${{ matrix.lang }}
+        shell: bash
 
   # The one required check. `if: always()` so it runs (and decides) even when a dependency was skipped.
   ci-ok:

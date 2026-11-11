@@ -74,5 +74,5 @@ langs=${1:-$(scripts/list-languages.sh)}
 for l in $langs; do
   (cd "languages/$l" && cargo fmt --check &&
     cargo clippy -p "$l-syntax" -p "$l-analysis" -p "$l-cli" --all-targets -- -D warnings &&
-    cargo test)
+    cargo test) && scripts/check-proofs.sh "$l"
 done

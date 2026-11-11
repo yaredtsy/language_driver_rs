@@ -34,6 +34,7 @@ impl Project {
     }
 }
 
+#[cfg(feature = "__proof")]
 #[doc(hidden)]
 pub mod proof {
     //! Not API. The real `Sem` and `File`, public only so a doctest (a separate crate) can name them in the proof that a `File<'p>` cannot

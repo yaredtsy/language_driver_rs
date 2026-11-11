@@ -8,6 +8,12 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Not API. Turns on `typescript_analysis::proof`: the real `Sem` and `File`, public so doctests (separate crates) can show what the compiler rejects.
+# Without it rustdoc finds no such doctest and reports success, so `scripts/check-proofs.sh` runs them with it and counts them. Cargo unifies
+# features across a build: a crate that enables this exposes `Sem` to everything built alongside it. The name is a convention, not a wall.
+__proof = []
+
 [dependencies]
 analyzer-core     = { workspace = true }
 typescript-syntax = { workspace = true }
