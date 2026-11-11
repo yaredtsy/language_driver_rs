@@ -1,4 +1,4 @@
 # What `scripts/check-proofs.sh` expects from `cargo test -p typescript-analysis --doc --features __proof`.
 # Change these with `src/lib.rs`'s `proof` module, in the same commit: a proof that is added, removed or silently not run changes the count.
-compile_fail=4
-pass=4
+compile_fail=7
+pass=7

@@ -13,8 +13,8 @@
     )
 )]
 
-use std::cell::Cell;
-use std::collections::{BTreeSet, HashSet, VecDeque};
+use std::cell::{Cell, RefCell};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -28,7 +28,7 @@ use tsrs_core::{
 use tsrs_tsoptions::{ParseConfigHost, ParsedCommandLine};
 use tsrs_vfs::{FS, bundled, cachedvfs, osvfs};
 
-use typescript_syntax::Dialect;
+use typescript_syntax::{Def, Dialect, MarkerStyle, Outline};
 
 use crate::OpenError;
 
@@ -61,6 +61,18 @@ pub struct File<'p> {
     _one_thread: PhantomData<*const ()>,
 }
 
+/// The outlines made so far, by file and marker label.
+type Outlines = HashMap<(P<SourceFile>, String), Arc<Outline>>;
+
+/// A def of one file's outline (`typescript_syntax::outline`, the rule TS1 froze): a `File` and the index of the def in that file's outline. It holds no
+/// tsrs pointer of its own, only the `File`, so it is valid for the `Sem`'s life and no longer, stays on one thread, and is not shared, exactly as `File`
+/// is. `proof` pins all three for `Func` too.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Func<'p> {
+    file: File<'p>,
+    def: usize,
+}
+
 pub struct Sem {
     root: PathBuf,
     /// The program is freed by `Drop`. A `P<…>` taken from it must not outlive `self`.
@@ -73,6 +85,8 @@ pub struct Sem {
     /// `Cell` is `Send` but not `Sync`, so neither is a `Sem` shared by reference: one checker answers one question at a time, and nothing
     /// here makes concurrent questions safe (`proof` pins this). Moving a `Sem` to another thread stays allowed.
     _not_shared: PhantomData<Cell<()>>,
+    /// One outline per (file, marker label), made on first use. A `Sem` is not `Sync`, so a `RefCell` is enough.
+    outlines: RefCell<Outlines>,
     // Fields drop in this order, after `Drop::drop` has freed the program: the loaders' regions, then the program's own.
     _loaders: Arc<ProgramRegions>,
     _region: Region,
@@ -156,6 +170,7 @@ impl Sem {
             config_files,
             config_file,
             _not_shared: PhantomData,
+            outlines: RefCell::new(HashMap::new()),
             _loaders: loaders,
             _region: region,
         };
@@ -197,6 +212,59 @@ impl Sem {
             _sem: PhantomData,
             _one_thread: PhantomData,
         })
+    }
+
+    /// The outline of a TypeScript or JavaScript file, as `typescript_syntax::outline` makes it from the file's own text; made once per
+    /// (file, label). `None` for a file that is not code (an imported `.json`).
+    #[cfg_attr(
+        not(any(test, feature = "__proof")),
+        expect(dead_code, reason = "TS4 step 2 walks from it")
+    )]
+    pub(crate) fn outline(&self, file: File<'_>, style: MarkerStyle<'_>) -> Option<Arc<Outline>> {
+        let dialect = Dialect::from_path(file.node.file_name())?;
+        let key = (file.node, style.label.to_owned());
+        if let Some(found) = self.outlines.borrow().get(&key) {
+            return Some(Arc::clone(found));
+        }
+        let made = Arc::new(typescript_syntax::outline(file.node.text(), dialect, style));
+        self.outlines.borrow_mut().insert(key, Arc::clone(&made));
+        Some(made)
+    }
+
+    /// The `occurrence`th def (0-based, in source order: the number `StableDef::Path::nth` holds) with this `qualname` in the file at `file`
+    /// (relative to the root). A qualname is not unique in a file (overloads, a getter and a setter), so the caller says which.
+    #[cfg_attr(
+        not(any(test, feature = "__proof")),
+        expect(dead_code, reason = "TS4 step 4 starts a graph from it")
+    )]
+    pub fn entry(
+        &self,
+        file: &str,
+        qualname: &str,
+        occurrence: u16,
+        style: MarkerStyle<'_>,
+    ) -> Option<Func<'_>> {
+        let file = self.file(file)?;
+        let outline = self.outline(file, style)?;
+        let (def, _) = outline
+            .defs
+            .iter()
+            .enumerate()
+            .filter(|(_, def)| def.qualname == qualname)
+            .nth(usize::from(occurrence))?;
+        Some(Func { file, def })
+    }
+
+    /// What the outline says the def is (qualname, kind, range, marker).
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "TS4 step 3's `describe` is built on it")
+    )]
+    pub(crate) fn def(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Def {
+        let outline = self
+            .outline(func.file, style)
+            .expect("a Func is made from an outline, so its file has one");
+        outline.defs[func.def].clone()
     }
 
     /// The file's path relative to the root, with `/`; `None` for a file outside the root, such as the bundled libraries.
@@ -459,6 +527,7 @@ fn to_engine_path(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use typescript_syntax::MarkerStyle;
 
     fn three_files() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files")
@@ -602,5 +671,64 @@ mod tests {
         );
         assert_eq!(name("/r/src/node_modules_like/a.ts"), None);
         assert_eq!(name("/r/node_modules/"), None);
+    }
+
+    const STYLE: MarkerStyle<'static> = MarkerStyle {
+        label: "ID",
+        placement: typescript_syntax::Placement::Docstring,
+    };
+
+    fn entries() -> Sem {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/entries");
+        Sem::open(&root, Path::new("src/main.ts")).unwrap()
+    }
+
+    /// (qualname, start of the def in bytes) of the def `entry` finds.
+    fn found(sem: &Sem, qualname: &str, occurrence: u16) -> Option<(String, u32)> {
+        let func = sem.entry("src/main.ts", qualname, occurrence, STYLE)?;
+        let def = sem.def(func, STYLE);
+        Some((def.qualname.clone(), def.range.start))
+    }
+
+    #[test]
+    fn entry_finds_the_nth_def_with_a_qualname_in_source_order() {
+        let sem = entries();
+        // overloads with an implementation are one def: `dup` has one
+        assert!(found(&sem, "dup", 0).is_some());
+        assert_eq!(found(&sem, "dup", 1), None);
+        // signatures with no implementation are a def each, with one qualname
+        let first = found(&sem, "ambient", 0).unwrap().1;
+        let second = found(&sem, "ambient", 1).unwrap().1;
+        assert!(first < second);
+        assert_eq!(found(&sem, "ambient", 2), None);
+        // a getter and a setter of one property
+        let getter = found(&sem, "Box.size", 0).unwrap().1;
+        let setter = found(&sem, "Box.size", 1).unwrap().1;
+        assert!(getter < setter);
+        assert_eq!(found(&sem, "Box.size", 2), None);
+    }
+
+    #[test]
+    fn entry_finds_every_kind_of_def_by_its_qualname() {
+        let sem = entries();
+        for qualname in ["Box", "Box.open", "arrow", "outer", "outer.<locals>.inner"] {
+            assert_eq!(found(&sem, qualname, 0).unwrap().0, qualname);
+        }
+    }
+
+    #[test]
+    fn entry_is_none_for_an_unknown_qualname_or_file() {
+        let sem = entries();
+        assert_eq!(found(&sem, "nope", 0), None);
+        assert!(sem.entry("src/gone.ts", "dup", 0, STYLE).is_none());
+        // `inner` alone is not its qualname
+        assert_eq!(found(&sem, "inner", 0), None);
+    }
+
+    #[test]
+    fn a_def_of_a_file_that_is_not_code_cannot_be_an_entry() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/json-import");
+        let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+        assert!(sem.entry("src/data.json", "items", 0, STYLE).is_none());
     }
 }

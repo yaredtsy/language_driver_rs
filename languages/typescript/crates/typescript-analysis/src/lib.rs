@@ -186,6 +186,85 @@ pub mod proof {
     //! })();
     //! ```
     //!
+    //! A `Func` (a def of one file's outline) is a handle too, so it has the same three proofs. It holds a `File` and an index, and gets
+    //! its lifetime and its thread markers from the `File`:
+    //!
+    //! ```compile_fail,E0505
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //! use typescript_syntax::MarkerStyle;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/entries");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let func = sem.entry("src/main.ts", "dup", 0, MarkerStyle::docstring("ID")).unwrap();
+    //! drop(sem);
+    //! let _still_used = func;
+    //! ```
+    //!
+    //! ```
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //! use typescript_syntax::MarkerStyle;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/entries");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let func = sem.entry("src/main.ts", "dup", 0, MarkerStyle::docstring("ID")).unwrap();
+    //! let _still_used = func;
+    //! drop(sem);
+    //! ```
+    //!
+    //! ```compile_fail,E0277
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //! use typescript_syntax::MarkerStyle;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/entries");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let func = sem.entry("src/main.ts", "dup", 0, MarkerStyle::docstring("ID")).unwrap();
+    //! std::thread::scope(|scope| {
+    //!     scope.spawn(move || drop(func));
+    //! });
+    //! ```
+    //!
+    //! ```
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //! use typescript_syntax::MarkerStyle;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/entries");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let func = sem.entry("src/main.ts", "dup", 0, MarkerStyle::docstring("ID")).unwrap();
+    //! (move || drop(func))();
+    //! ```
+    //!
+    //! ```compile_fail,E0277
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //! use typescript_syntax::MarkerStyle;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/entries");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let func = sem.entry("src/main.ts", "dup", 0, MarkerStyle::docstring("ID")).unwrap();
+    //! std::thread::scope(|scope| {
+    //!     scope.spawn(|| {
+    //!         let _shared = &func;
+    //!     });
+    //! });
+    //! ```
+    //!
+    //! ```
+    //! use std::path::Path;
+    //! use typescript_analysis::proof::Sem;
+    //! use typescript_syntax::MarkerStyle;
+    //!
+    //! let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/entries");
+    //! let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+    //! let func = sem.entry("src/main.ts", "dup", 0, MarkerStyle::docstring("ID")).unwrap();
+    //! (|| {
+    //!     let _shared = &func;
+    //! })();
+    //! ```
+    //!
     //! A `Sem` may move to another thread (a `Project` is opened on one and dropped on another: `tests/threads.rs`) but is not shared by
     //! reference: asking it questions runs the checker, and one checker answers one question at a time.
     //!
@@ -215,7 +294,7 @@ pub mod proof {
     //!
     //! The error code is pinned for the reader: stable rustdoc ignores it (checked: pinning `E0499` still passes), and `RUSTC_BOOTSTRAP=1
     //! RUSTDOCFLAGS=-Zunstable-options cargo test --doc` enforces it (`E0505`, "cannot move out of `sem` because it is borrowed").
-    pub use crate::sem::{File, Sem};
+    pub use crate::sem::{File, Func, Sem};
 }
 
 /// Why a project did not load.
