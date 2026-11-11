@@ -72,3 +72,34 @@ names                                  // `_scope`, then `region`, drop here
 
 Node walk used: `node.for_each_child(&mut |c| { ...; false })` (return `true` to stop), `tsrs_ast::is_function_declaration(node)`,
 `node.name()` is an `Option<P<Node>>`, `name_node.text()` is the identifier text.
+
+## Spike S-TS4: can we find and edit the JSDoc of every kind of def?
+
+Answer: **yes**. Fixture: one file with 21 candidate nodes (see the table). tsrs reported 0 syntax diagnostics. For each node I printed
+`node.jsdoc(None)` (the `JSDoc` nodes) and the `/**` comments from `tsrs_scanner::get_leading_comment_ranges(text, node.pos())`.
+
+| Kind of def | Node that carries the JSDoc | Notes |
+|---|---|---|
+| function declaration, exported or not | `FunctionDeclaration` | |
+| class | `ClassDeclaration` | |
+| decorated class | `ClassDeclaration` | the block above the decorator is the one attached |
+| method, getter | `MethodDeclaration`, `GetAccessor` | |
+| class property holding an arrow | `PropertyDeclaration` | |
+| `export const f = () => {}` | the **`VariableStatement`**, not the `VariableDeclaration` | the declarator has no JSDoc |
+| object-literal method `om() {}` | `MethodDeclaration` | |
+| object-literal `pf: function () {}` | `PropertyAssignment` | |
+| overloaded function | **each overload signature** (a `FunctionDeclaration`) has its own block; the implementation has none | the def's marker goes on the implementation: it has no JSDoc, so TS2 must insert one |
+| interface method | `MethodSignature` | |
+
+- **Range**: `jsdoc.end()` is the exact end of the comment, but **`jsdoc.pos()` is not the start of the comment**: it is the end of the
+  previous node (it includes the whitespace before). Take the start from `get_leading_comment_ranges(text, node.pos())` filtered to comments
+  starting with `/**`: in every case above it gave the exact `(start, end)` and the same `end` as the `JSDoc` node. So TS2 reads ranges from
+  the scanner and uses `node.jsdoc()` only to know whether one exists.
+- **Offsets**: `Node::pos()` returns a `TextPos` enum, not an integer. `pos().expect_source(msg)` or `source_offset()` gives the UTF-8 byte offset.
+- **Two blocks above one def**: `node.jsdoc()` returns both, in order; the scanner lists both. The nearer one (the last) is the one that
+  documents the def, and it is the one our rule uses.
+- **Blank line between the block and the def**: tsrs **still attaches** it. So does a `//` comment between the block and the def. Our rule says a
+  blank line detaches, so TS2 applies its own blank-line check on the text.
+- **Insert a line and reparse**: replacing `/** fn doc */` with a three-line block containing ` * ID: abc` gave 0 diagnostics, and the JSDoc was still
+  attached to the function (range `(0, 28)`).
+- The fallback from the plan (walk up from the def's first byte over whitespace) was not needed.
