@@ -746,6 +746,7 @@ dependencies = [
  "analyzer-testkit",
  "tsrs_checker",
  "tsrs_compiler",
+ "tsrs_core",
  "tsrs_tsoptions",
  "tsrs_vfs",
  "typescript-syntax",
