@@ -41,7 +41,7 @@ rust-analysis    + ra_ap_ide            Analysis / AnalysisHost: the designed AP
 | parse one file | `syntax::SourceFile::parse(text, edition) -> Parse<SourceFile>` | error-tolerant; `Parse::errors()` |
 | walk the tree | typed nodes: `ast::Fn`, `ast::Impl`, `ast::Trait`, `ast::Struct`, `ast::Enum`, `ast::Module`, `ast::Const`, `ast::Static`, `ast::MacroRules`; `HasName`, `HasAttrs`, `HasDocComments`, `HasVisibility` | generated from the grammar (`ungrammar`) |
 | ranges | `node.syntax().text_range()`, UTF-8 bytes | attributes, doc comments **and plain comments directly above an item** (no blank line between) are part of the item's node. The rule is `n_attached_trivias` in `crates/parser/src/shortcuts.rs` |
-| comments above an item | the item node's first tokens (`SyntaxKind::COMMENT`, `WHITESPACE`) | the tree is lossless: every byte is in it. The parser's "a blank line detaches a comment" rule is the same as our marker rule, so a marker line is simply the item's first `//` child |
+| comments above an item | the item node's first tokens (`SyntaxKind::COMMENT`, `WHITESPACE`) | the tree is lossless: every byte is in it. The parser's "a blank line detaches a comment" rule is the same as our marker rule, so the item's doc lines (where the marker lives) are simply the node's first children |
 | memory | ordinary Rust ownership: `Parse` is dropped, memory is freed | no arenas to manage |
 
 ### For `rust-analysis`
@@ -64,7 +64,7 @@ rust-analysis    + ra_ap_ide            Analysis / AnalysisHost: the designed AP
 | # | Work | Why | Phase |
 |---|---|---|---|
 | 1 | **the outline rule and qualnames** | `impl` blocks have no name: `impl Foo { fn bar }` must become `Foo::bar`, and `impl Display for Foo { fn fmt }` must not collide with `impl Debug for Foo { fn fmt }` | RS1 |
-| 2 | **the marker** | the same `// ID: …` comment as TypeScript; where it sits relative to `///` doc comments and `#[attributes]` | RS2 |
+| 2 | **the marker** | a `/// ID: …` line in the item's doc comment (D6): reading it, and placing it after the last doc line without gluing it to the user's paragraph | RS2 |
 | 3 | **per-site results in source order** | `outgoing_calls` groups by callee. Each `CallItem` keeps its `ranges`, so regrouping by range is easy; or write the 60-line walk ourselves on `Semantics` to also get construction (`Foo { .. }`) and unresolved sites, which `outgoing_calls` silently drops | RS4 |
 | 4 | **`NavigationTarget` / `hir::Function` → our identity** | the bridge to the outline, by file + range, as in TypeScript | RS4 |
 | 5 | **loading that is fast enough and honest about what it skipped** | build scripts and proc macros off by default; say so in `Stats` | RS3 |

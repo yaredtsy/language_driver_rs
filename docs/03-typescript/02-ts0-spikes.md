@@ -7,7 +7,7 @@ TS0
 │   ├── S-TS1  does it build as a dependency?
 │   ├── S-TS2  can a long-running process parse without growing?
 │   ├── S-TS3  load a real project and resolve its calls
-│   └── S-TS4  does a comment between JSDoc and a function break anything?
+│   └── S-TS4  can we find and edit the JSDoc of every kind of def?
 ├── 3. where the spike code lives
 └── 4. what TS0 hands to the next phases
 ```
@@ -62,14 +62,20 @@ A spike is done when its question has an answer **written down**. Its code is no
 
 This spike's printed output is the first draft of the policy table in TS4.
 
-### S-TS4: does a comment between JSDoc and a function break anything?
+### S-TS4: can we find and edit the JSDoc of every kind of def?
+
+The marker goes inside the JSDoc block (decision D6, [`04-ts2-markers.md`](04-ts2-markers.md)). So TS2 depends on getting the exact byte range of
+the JSDoc that belongs to a def.
 
 | | |
 |---|---|
-| Question | TS2 plans to put the marker as a `//` line directly above a def. If the def has a JSDoc block, the marker lands between the JSDoc and the def. Does the JSDoc still attach? |
-| Do | parse `/** doc */\n// ID: abc\nexport function f() {}` with tsrs and check `node.jsdoc(file)` is not empty. Open the same file in VS Code and hover `f`: the doc must still show. Repeat for a class, a method, a decorated class, and an arrow function assigned to a `const` |
-| Write down | yes or no per case, for tsrs **and** for VS Code's own TypeScript |
-| If the answer is no | the marker goes **above** the JSDoc block instead (TS2 §3 has both placements) |
+| Question | For each kind of def, where does tsrs attach the JSDoc, and can we get its range in the source text? |
+| Do | parse a file with a JSDoc above: a function, a class, a method, a decorated class (JSDoc above the decorator), `export const f = () => {}`, an object-literal method, an overloaded function, an interface method. For each, print `node.jsdoc(file)` (is it empty? which node carries it: the declarator or the statement?) and the comment's start and end offsets. Then insert a ` * ID: abc` line by hand, parse again, and check the JSDoc is still attached and the file has no new diagnostics |
+| Write down | per kind: which node has the JSDoc, and how its range is obtained (`node.jsdoc(file)` versus `get_leading_comment_ranges` filtered to `/**`); what tsrs does with two JSDoc blocks above one def; whether a blank line between the block and the def detaches it in tsrs (our rule says it does: if tsrs still attaches it, we apply our own blank-line check on the text) |
+| If a kind gives no usable range | fall back to the text: from the def's first byte, walk upward over whitespace and take the comment that ends there, if it starts with `/**`. That needs no JSDoc support from the engine at all |
+
+Optional, only for the later comment-above option ([`04-ts2-markers.md`](04-ts2-markers.md) §8): does a `//` line between a JSDoc block and a
+declaration detach the JSDoc, in tsrs and in VS Code? Not needed for TS2.
 
 ## 3. Where the spike code lives
 
@@ -82,7 +88,7 @@ real build. The folder is deleted when TS0 closes; the answers move to `language
 |---|---|
 | `ENGINE.md` | the pinned `rev`; the exact crate list; build notes; the allocator note |
 | TS1 | the parse time; the region pattern that worked, as ten lines to copy into `sem.rs` |
-| TS2 | marker placement: below or above JSDoc |
+| TS2 | how to get the JSDoc range for each kind of def |
 | TS3 | load time and memory for a real project; whether memory comes back |
 | TS4 | the first policy table, from real output |
 | [`../06-roadmap.md`](../06-roadmap.md) | real sizes for TS1–TS4 in place of my S/M/L guesses |

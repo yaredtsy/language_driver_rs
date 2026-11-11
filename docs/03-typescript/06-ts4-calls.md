@@ -74,8 +74,8 @@ calls are its own. It **does** descend into anonymous functions (rule 3).
 | `new C(x)` | yes, as a construction | the class expression |
 | `` tag`text` `` | yes | the tag |
 | `@decorator` | yes | the decorator expression |
-| `<Component prop={x} />` | yes (proposed; **Q-M8**) | the tag name. This is how a React component "calls" another, and TypeScript's call hierarchy counts it |
-| `a.b` with no call, where `b` is a getter or setter | yes when it resolves to an accessor declaration (proposed; **Q-M8**) | the property access |
+| `<Component prop={x} />` | yes (D8) | the tag name. This is how a React component "calls" another, and TypeScript's call hierarchy counts it |
+| `a.b` with no call, where `b` is a getter or setter | yes when it resolves to an accessor declaration (D8) | the property access |
 | `super(x)` | yes | resolves to the base class constructor |
 | `import("./m")`, `require("./m")` | no | module loading, not a call into a function |
 | anything in a type position (`typeof f`, a type argument) | no | not descended into |

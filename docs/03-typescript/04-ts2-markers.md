@@ -3,12 +3,16 @@
 ```
 TS2
 ├── 1. what a marker is, for an analyzer
-├── 2. the choice: where a TypeScript marker lives
+├── 2. the decision: the marker lives in the JSDoc (D6)
 ├── 3. the rule, exactly
+│   ├── reading
+│   ├── planning
+│   └── when nothing is written (Skip)
 ├── 4. the public functions
 ├── 5. the file header
 ├── 6. fixtures and tests
-└── 7. steps
+├── 7. steps
+└── 8. the later option: a comment above the def
 ```
 
 ## 1. What a marker is, for an analyzer
@@ -17,66 +21,110 @@ V-NOC writes a small ID into the code so that a doc finds its function again aft
 text with a label, attached to a def**. The analyzer reads it (in the outline's `marker` field) and plans where one would go. It never chooses
 the text and never writes a file (rule 2). The label, `ID`, is a parameter (row PA6).
 
-In Python the marker is a line in the docstring (your decision F1). F1 also says "a comment above the def comes later as an option". TypeScript
-and Rust have no docstrings, so **this is where that option gets built**.
+## 2. The decision
 
-## 2. The choice
+**D6 (2026-11-11): the marker lives in the docstring, in every language, for now.** A configurable placement comes later.
 
-| | A. a line in the JSDoc block | B. a line comment above the def (recommended) |
+| Language | "Docstring" means | Looks like |
 |---|---|---|
-| looks like | `/** Parses an order.`<br>` * ID: 3RGJ… */` | `// ID: 3RGJ…`<br>`export function parseOrder() {` |
-| a def with no JSDoc | a JSDoc block must be created for it | one line |
-| shows in hover tooltips and generated API docs | **yes**: JSDoc is rendered | no |
-| a formatter (Prettier) may move or rewrap it | JSDoc bodies are sometimes rewrapped by plugins | a `//` line directly above a declaration stays put |
-| edits an existing comment | yes: must parse JSDoc and keep its style | never touches existing text |
-| the same rule works for Rust | no (`///` is rendered by rustdoc; a different rule) | **yes**: `// ID: …` above the item |
-| closest to Python's docstring style | yes | no |
+| Python | the docstring (F1, unchanged) | `"""Parses an order.` / `ID: 3RGJ…` / `"""` |
+| TypeScript, JavaScript | the JSDoc block above the def | `/**` / ` * Parses an order.` / ` * ID: 3RGJ…` / ` */` |
+| Rust | the doc comment above the item | `/// Parses an order.` / `///` / `/// ID: 3RGJ…` |
 
-**Recommended: B.** It is one rule for TypeScript, JavaScript and Rust; it is the smallest possible diff; and it is invisible to every tool that
-renders documentation. It is what users commit, so it is your decision: **Q-M3**. The rest of this file assumes B; A would change §3 only.
+What this choice costs, so that nobody is surprised: the marker line is **rendered** wherever documentation is rendered (hover tooltips, TypeDoc,
+rustdoc). That was accepted with the decision, and it is the same in Python today.
+
+How the later option stays cheap: `MarkerStyle` carries the placement from the first day.
+
+```rust
+// analyzer-core::edit
+#[derive(Clone, Copy)]
+pub struct MarkerStyle<'a> {
+    pub label: &'a str,              // "ID"
+    pub placement: Placement,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Placement {
+    Docstring,                       // the only one built now
+    // CommentAbove,                 // §8: added later, as a new variant
+}
+```
+
+> **🦀 Rust note: leaving room for a variant.** `#[non_exhaustive]` on the enum means code *outside* `analyzer-core` cannot write a `match` on
+> `Placement` without a `_ =>` arm. So when `CommentAbove` is added, every language crate still compiles; each one's `_ =>` arm returns
+> `Skip::PlacementNotSupported` until that language implements it. Without the attribute, adding a variant would be a breaking change for every
+> crate that matches on it.
 
 ## 3. The rule, exactly
 
-**Reading.** The marker of a def is found like this:
+### Reading
 
 ```
 1. start at the first byte of the def's `range` (TS1 §4): its first decorator, modifier or keyword
-2. look at the comments directly above it, nearest first, with only whitespace between them and the def
-3. the first `//` comment whose text is   <label>:<one or more spaces><text>   is the marker; <text> is returned exactly as written, trimmed
-4. stop at the first blank line, or at anything that is not a comment
+2. take the JSDoc block (`/** … */`) directly above it: only whitespace between, and NO blank line
+3. inside it, the first line that, after its leading `*` and spaces, reads   <label>:<spaces><text>   is the marker
+4. <text> is returned exactly as written, trimmed
 ```
 
-So a JSDoc block may sit above or below the marker line; both are read. A marker separated from the def by a blank line is **not** read: a
-blank line means the comment belongs to the file, not to the def.
+- A blank line between the block and the def detaches it: the comment belongs to the file, not to the def.
+- A one-line block (`/** ID: x */`) is read the same way.
+- A plain block comment (`/* ID: x */`) or a line comment (`// ID: x`) is **not** read. Only `/**`.
+- With several JSDoc blocks above a def, only the nearest one counts. That is the one TypeScript itself attaches.
+- A marker line that sits under a block tag (after `@param`, `@returns`) is still **read**. It is only never *written* there (below).
 
-**Planning** (where a new marker goes): directly above the first line of the def's `range`, on its own line, with the def's indentation and the
-file's line ending.
+### Planning
+
+Where the new line goes depends on what is above the def:
+
+| Above the def | Edit |
+|---|---|
+| a multi-line JSDoc with **no** block tags | insert ` * <label>: <text>` as the last line before ` */` |
+| a multi-line JSDoc **with** block tags (`@param`, `@returns`, …) | insert the line **before the first block-tag line**, so that it ends the description. A line after `@returns` would become part of that tag's text in every tool |
+| a one-line JSDoc (`/** Parses. */`) | rewrite that one comment as three lines: `/**`, ` * Parses.`, ` * <label>: <text>`, ` */` |
+| no JSDoc (nothing, or a plain `/* */` or `//` comment) | insert a new one-line block `/** <label>: <text> */` directly above the def's first line, **below** any plain comment |
+
+In every case the inserted text copies the block's own indentation and ` * ` prefix (or the def's indentation for a new block) and the file's
+line ending.
 
 ```ts
-/** Parses an order. */
-// ID: 3RGJ8M2K…                 ← inserted here: below the JSDoc, above the decorator
+/**
+ * Parses an order.
+ * ID: 3RGJ8M2K…                 ← inserted here: ends the description, before the tags
+ * @param raw the wire text
+ */
 @logged
 export async function parseOrder(raw: string) {
 ```
 
-If S-TS4 shows that a line between the JSDoc and the def detaches the JSDoc (in tsrs or in VS Code), the placement becomes "above the topmost
-comment that is directly attached to the def" instead. The reading rule already accepts both, so that is a change in `plan_marker` only.
+The one-line case is the only edit that changes existing bytes (it splits one comment into lines). The no-damage test (§6) allows exactly that:
+the old comment's text must appear unchanged inside the new block.
 
-Three cases where the def does not start its own line:
+Where "above the def" is, for defs that are not a statement of their own:
 
-| Case | Example | Rule |
-|---|---|---|
-| a method in an object literal or class, on its own line | `  load() {` | above it, indented like it |
-| `export const f = () => {`, one variable | | above the `export const` |
-| several things on one line | `const a = () => 1, b = () => 2;` or a minified file | **skipped**, with the reason "the definition does not start its own line". Never reformat the user's code to make room |
+| Def | The JSDoc is looked for above |
+|---|---|
+| `export const f = () => {}` (one variable) | the `export const` statement. That is where TypeScript attaches it |
+| a class member, an object-literal method | the member's own first line |
+| an overloaded function | the **first overload signature** (the def's `range` starts there, TS1 §4) |
 
-**Not touched, ever** (V-NOC plan `09/04`): a file with a syntax error overlapping the def; generated files are the core's decision, not ours.
+### When nothing is written (`Skip`)
+
+| Case | Reason given |
+|---|---|
+| several defs on one line (`const a = () => 1, b = () => 2;`, a minified file) | `NotOnOwnLine`. Never reformat the user's code to make room |
+| a syntax error overlaps the def or its JSDoc | `SyntaxError` |
+| the def already has a marker | `AlreadyMarked { existing }` |
+| the JSDoc block is malformed (no closing `*/` on its own, mixed prefixes we cannot copy safely) | `UnsafeDocComment`. A new block is **not** stacked on top of it: two JSDoc blocks would hide the user's own |
+
+Generated files and files V-NOC must never touch are the core's decision (V-NOC plan `09/04`), not the analyzer's.
 
 ## 4. The public functions
 
 ```rust
 // typescript-syntax/src/lib.rs (added in TS2)
-pub use analyzer_core::edit::{Edit, MarkerStyle};
+pub use analyzer_core::edit::{Edit, MarkerStyle, Placement};
 
 /// The marker on this def, if one is written. The outline already fills `Def::marker` with it.
 pub fn marker(text: &str, dialect: Dialect, def: &Def, style: MarkerStyle<'_>) -> Option<String>;
@@ -85,23 +133,31 @@ pub fn marker(text: &str, dialect: Dialect, def: &Def, style: MarkerStyle<'_>) -
 pub fn plan_marker(text: &str, dialect: Dialect, def: &Def, marker_text: &str, style: MarkerStyle<'_>) -> Result<Edit, Skip>;
 
 #[non_exhaustive]
-pub enum Skip { NotOnOwnLine, SyntaxError, AlreadyMarked { existing: String } }
+pub enum Skip { NotOnOwnLine, SyntaxError, AlreadyMarked { existing: String }, UnsafeDocComment, PlacementNotSupported }
 ```
 
-Both are thin: they compute "the first byte of the def" and "is it alone on its line", then call
-`analyzer_core::edit::comment_marker::{read, plan}` with the prefix `//`. The Rust analyzer calls the same two core functions.
+`marker.rs` does the work in two layers:
 
-`outline` takes the style too, so that it knows which label to read: `outline(text, dialect)` becomes `outline(text, dialect, style)`. Decide
-this signature in TS1 even though the field stays `None` until TS2; changing a public signature after the first tag is a breaking change.
+```
+sem.rs       the JSDoc comment range directly above a node            (tsrs: node.jsdoc(file), get_leading_comment_ranges)
+marker.rs    lines of the block · find the label · find the first block-tag line · build the Edit
+```
+
+The second layer is plain text work on one comment: it takes the block's text and returns an offset and a string. Keep it free of tsrs types.
+Rust's `/** … */` doc comments have the same shape, so by the rule of two this layer may move to `analyzer-core` when `rust-syntax` needs it
+(RS2). Not before.
+
+`outline` takes the style too, so that it knows which label to read: `outline(text, dialect, style)`. Decide this signature in TS1 even though
+`Def::marker` stays `None` until TS2; changing a public signature after the first tag is a breaking change.
 
 > **🦀 Rust note: `Result<Edit, Skip>` instead of `Option<Edit>`.** `Option` would say "no edit" without saying why, and the driver contract
 > requires a reason a person can read (`skipped` entries). An enum of reasons is better than a `String`: the driver can turn each variant into its
-> own message, and a test can match on the variant without comparing text. `#[non_exhaustive]` lets a later version add a reason without breaking
-> the driver's `match` (it must already have a `_ =>` arm).
+> own message, and a test can match on the variant without comparing text.
 
 ## 5. The file header
 
-The file's own marker (`FileID` in V-NOC; here just "the header marker") is a comment at the top of the file. The analyzer answers two questions:
+The file's own marker (`FileID` in V-NOC; here just "the header marker") is **a comment at the top of the file**, in every language. D6 does not
+change it: a file has no docstring to put it in (your earlier decision: "file ID = comment at the top of the file").
 
 ```rust
 pub fn header_marker(text: &str, style: MarkerStyle<'_>) -> Option<String>;
@@ -120,8 +176,8 @@ Where it may go in a TypeScript or JavaScript file:
 import …
 ```
 
-Python's version of this lives in the V-NOC driver today (`file_id.rs`) and moves down in the Python migration. Both languages end up calling the
-same core helper with a different comment prefix.
+Both functions call `analyzer_core::edit::comment_marker::{read, plan}` with the prefix `//`. Python calls the same pair with `#`, Rust with
+`//`. That helper is the one piece of marker code all three languages share today.
 
 ## 6. Fixtures and tests
 
@@ -129,19 +185,28 @@ Marker fixtures are the outline fixtures: the testkit's `marker_round_trip` runs
 of TS1 §6 is also a placement test. It checks, per def:
 
 1. `plan_marker` returns an edit or a `Skip`;
-2. apply the edit, outline again: that def's `marker` is the text, every other def is unchanged, and the byte difference between old and new
-   text is exactly the inserted line (the **no-damage rule**);
-3. plan again on the marked text: `Skip::AlreadyMarked`.
+2. apply the edit, outline again: that def's `marker` is the text and every other def is unchanged;
+3. **no damage**: removing the inserted marker line from the new text gives back the old text, except in the one-line case, where the old
+   comment's words must appear unchanged inside the new block;
+4. the new text still parses with the same number of syntax errors, and the def's JSDoc is still attached to it;
+5. plan again on the marked text: `Skip::AlreadyMarked`.
 
-A few files exist only for markers:
+Files that exist only for markers:
 
 ```
-marker_with_jsdoc.ts        JSDoc above · marker between · both orders are read
-marker_blank_line.ts        a marker-looking comment separated by a blank line is NOT the marker
-marker_block_comment.ts     `/* ID: x */` is not a marker (only `//`)
-marker_indent_tabs.ts       indentation is copied byte for byte
-marker_crlf.ts              the inserted line ends with \r\n
-one_line_many_defs.js       Skip::NotOnOwnLine
+marker_jsdoc_multi.ts          description only → the line goes last
+marker_jsdoc_tags.ts           @param / @returns present → the line goes before the first tag
+marker_jsdoc_oneline.ts        /** Parses. */ → becomes three lines
+marker_no_jsdoc.ts             a new one-line block
+marker_plain_comment.ts        `/* x */` or `// x` above the def → a new JSDoc goes BELOW it; `/* ID: x */` is not read
+marker_jsdoc_blank_line.ts     a block separated by a blank line is NOT the def's
+marker_under_tag.ts            a hand-written marker after @returns is read
+marker_decorators.ts           the JSDoc sits above the decorators
+marker_const_arrow.ts          JSDoc on the `export const` statement
+marker_overloads.ts            JSDoc on the first overload signature
+marker_indent_tabs.ts          indentation is copied byte for byte
+marker_crlf.ts                 inserted lines end with \r\n
+one_line_many_defs.js          Skip::NotOnOwnLine
 header_shebang.js  header_license.ts  header_reference.ts  header_use_strict.js
 ```
 
@@ -149,15 +214,43 @@ header_shebang.js  header_license.ts  header_reference.ts  header_use_strict.js
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | `analyzer_core::edit::comment_marker::{read, plan}` (in `core/`, with its own tests: indentation, line endings, the blank-line rule) | `cd core && cargo test` |
-| 2 | `marker.rs`: first-byte and own-line logic; fill `Def::marker` in the outline | snapshots now show markers |
-| 3 | `plan_marker` + `Skip` | `marker_round_trip` passes on every fixture |
-| 4 | `header.rs` | the four header fixtures |
-| 5 | `languages/typescript/docs/markers.md` from §3 and §5 | — |
-| 6 | README example; **tag `typescript-v0.1.0`** | a fresh clone builds and tests `typescript-syntax` with one command |
-| 7 | in `vnoc`: `drivers/typescript`, tier 1–2 ([`01-monorepo/06`](../01-monorepo/06-versions-and-vnoc.md) §4) | the driver conformance test passes |
+| 1 | `analyzer_core::edit`: `MarkerStyle { label, placement }`, `Placement`, and `comment_marker::{read, plan}` for headers (in `core/`, with its own tests: indentation, line endings) | `cd core && cargo test` |
+| 2 | `sem.rs`: the JSDoc range directly above a node; the blank-line rule | unit tests on four small inputs |
+| 3 | `marker.rs` reading; fill `Def::marker` in the outline | snapshots now show markers |
+| 4 | `marker.rs` planning: the four cases of §3, then `Skip` | `marker_round_trip` passes on every fixture |
+| 5 | `header.rs` | the four header fixtures |
+| 6 | `languages/typescript/docs/markers.md` from §3 and §5 | — |
+| 7 | README example; **tag `typescript-v0.1.0`** | a fresh clone builds and tests `typescript-syntax` with one command |
+| 8 | in `vnoc`: `drivers/typescript`, tier 1–2 ([`01-monorepo/06`](../01-monorepo/06-versions-and-vnoc.md) §4) | the driver conformance test passes |
 
-Step 7 is `vnoc` work and is listed so that the tag has a consumer. It also needs the V-NOC-side items the plan already lists for a second
-language: drivers chosen by file extension, an open `DefKind`, and the comment `style` capability (`06-drivers.md` §3).
+Step 8 is `vnoc` work and is listed so that the tag has a consumer. It also needs the V-NOC-side items the plan already lists for a second
+language: drivers chosen by file extension and an open `DefKind` (`06-drivers.md` §3).
+
+## 8. The later option: a comment above the def
+
+Not built now. Recorded so that the design has room for it and nobody has to rediscover the rule.
+
+`Placement::CommentAbove` would put the marker on its own `//` line directly above the def, and never touch the JSDoc:
+
+```ts
+/** Parses an order. */
+// ID: 3RGJ8M2K…
+@logged
+export async function parseOrder(raw: string) {
+```
+
+| | Docstring (built now) | Comment above (later) |
+|---|---|---|
+| shows in hover tooltips and generated docs | yes | no |
+| a def with no doc comment | a block is created | one line |
+| edits an existing comment | yes | never |
+| one rule for TypeScript and Rust | no (JSDoc and `///` differ) | yes |
+
+What adding it needs: the new `Placement` variant; a reading rule ("the first `//` comment directly above the def, no blank line, that reads
+`<label>: <text>`"); a planning rule (one line, the def's indentation); and one check first, which is why spike S-TS4 stays on the list as
+optional: a `//` line between a JSDoc block and a declaration must not detach the JSDoc, in tsrs and in VS Code. `comment_marker` in the core
+already does the text work, because the file header uses it.
+
+A file should use one placement. When both exist on one def, the reader for the configured placement wins and the other is ignored.
 
 Next: [`05-ts3-project.md`](05-ts3-project.md)

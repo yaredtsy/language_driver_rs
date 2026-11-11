@@ -85,13 +85,17 @@ the V-NOC plan already asks for (`09-adding-a-language/02` §2). The list is fla
 |---|---|
 | `Edit { at: Span, text: String }` | one replacement, in the coordinates of the text it was planned on |
 | `apply(text, &[Edit]) -> String` | for tests and the CLI. A driver sends edits to the editor instead |
-| `MarkerStyle { label: &str }` | the label (`"ID"`) is the caller's (row PA6) |
-| `comment_marker::read(text, def_start, prefix, style)` | find a `<prefix> <label>: <text>` comment line directly above a def |
-| `comment_marker::plan(text, def_start, prefix, style, marker_text)` | the edit that inserts that line, copying the def's indentation and the file's line ending |
+| `MarkerStyle { label, placement }` | the label (`"ID"`) is the caller's (row PA6). `Placement::Docstring` is the only placement built now (D6); the enum is `#[non_exhaustive]` so a comment-above placement can be added later |
+| `comment_marker::read(text, at, prefix, style)` | find a `<prefix> <label>: <text>` comment line at a place in the text |
+| `comment_marker::plan(text, at, prefix, style, marker_text)` | the edit that inserts that line, copying the indentation there and the file's line ending |
 
-The comment-marker pair is here because **TypeScript and Rust use the same shape of marker** (a line comment above the def,
-[`03-typescript/04-ts2-markers.md`](../03-typescript/04-ts2-markers.md)), and Python's file header uses it with `#`. The functions know nothing
-about a language: they take an offset and a comment prefix. Deciding *which offset* is each language's job.
+The comment-marker pair is here because **every language's file header uses it**: the file's own marker is a comment at the top of the file
+(`#` in Python, `//` in TypeScript and Rust). The functions know nothing about a language: they take an offset and a comment prefix. Deciding
+*which offset* is each language's job. The same pair is what a later comment-above placement for defs would call.
+
+The marker of a **def** lives in its docstring (D6), and that is per-language work: a Python docstring, a JSDoc block and a `///` run are three
+different shapes ([`03-typescript/04-ts2-markers.md`](../03-typescript/04-ts2-markers.md)). The one overlap, a `/** … */` block in TypeScript
+and in Rust, moves here when Rust needs it.
 
 ### `graph`
 
@@ -154,7 +158,7 @@ const TS: Subject = Subject {
 |---|---|
 | the parser, the AST walk, "what is a def" | the whole content of a language |
 | qualname rules | Python has `<locals>`, Rust has `impl` blocks and traits, TypeScript has assigned arrow functions |
-| **where** a marker may go | docstring (Python) versus a comment above (TypeScript, Rust); what counts as "above" differs |
+| **where** a def's marker goes | a Python docstring, a JSDoc block, a Rust `///` run: three shapes, three rules |
 | project loading | `pyproject.toml` + a virtual environment, `tsconfig.json` + `node_modules`, `Cargo.toml` + a sysroot |
 | Python's context-sensitive solver (`interp/`) | 4,600 lines written against ty's types. It stays in `python-analysis` until a second language needs the same machinery ([`03-typescript/08`](../03-typescript/08-later-context-sensitive.md) §4) |
 | the developer CLI | about 100 lines per language; a shared one would have to link every engine into one binary, which §1 of the last file rules out |

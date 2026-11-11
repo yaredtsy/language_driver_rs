@@ -105,7 +105,7 @@ already waits for, and is the first real test of the core. So my suggested inter
 ```
 
 If you would rather see TypeScript first, swap 2–3 with 4–5; nothing breaks, and B0's toy language stands in for Python as the core's first
-user. That choice is **Q-M2**. What I would not do is start TS4 before either PY6 or a careful review of B0 step 3.
+user. You chose Python first (D10). What I would not do is start TS4 before either PY6 or a careful review of B0 step 3.
 
 Sizes, relative: B0 is M. PY2 is M (the PA plan calls it "the real work"). PY5 is M–L, mostly moving files. PY6 is S–M. TS0 is S. TS1 is M.
 TS2 is S. TS3 is M. TS4 is L. TS5 is M. Rust as a whole is about TS1–TS4 at two thirds the size. **[measure]**: replace these with real numbers

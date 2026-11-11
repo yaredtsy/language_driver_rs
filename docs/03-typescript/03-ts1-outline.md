@@ -45,7 +45,7 @@ type-like things worth documenting:
 | `const f = () => {}`, `const f = function () {}`, `const C = class {}` | yes: the variable names it | function / class | `f`, `C` |
 | a class property holding a function: `handle = () => {}` | yes | method | `C.handle` |
 | a named function expression: `run(function step() {})` | yes | function | `outer.<locals>.step` |
-| a method in an object literal: `const api = { load() {} }` | **yes** (proposed; Q-M6) | method | `api.load` |
+| a method in an object literal: `const api = { load() {} }` | **yes** (D9: the engine resolves calls to them) | method | `api.load` |
 | an interface, its method signatures | yes | interface, method | `Writer`, `Writer.write` |
 | `enum E {}`, `type T = …`, `namespace N {}` | yes | enum, type, namespace | `E`, `T`, `N` |
 | `let f = () => {}` / `var f = …` | **no** | | the engine's rule accepts only `const`: a `let` can be reassigned, so its name is not stable |
@@ -117,10 +117,10 @@ The qualname never contains the file path and never contains `export`.
 | `range` | from the first byte of the def's first **decorator**, modifier (`export`, `async`, `static`) or keyword, to its last byte. For `const f = () => {}`: the whole `const` statement when it declares one variable, otherwise just the declarator. For an overloaded function: from the first overload signature |
 | `name_range` | the name token |
 
-Comments above the def (JSDoc, the marker line) are **not** in `range`. That differs from the driver contract's wording ("from its first
+Comments above the def (the JSDoc, which holds the marker) are **not** in `range`. That differs from the driver contract's wording ("from its first
 decorator / attribute / doc comment"), and the difference is deliberate: in TypeScript `node.pos()` includes all leading trivia, even a licence
 header at the top of the file, so "the node's own start" is unusable, and "the JSDoc's start" needs a rule about blank lines. The *driver* can
-extend the range upward over the JSDoc for display, using `marker.rs`'s knowledge of what is directly above. **[your call: Q-M5]**, because it
+extend the range upward over the JSDoc for display, using `marker.rs`'s knowledge of what is directly above. Decided (D10): the analyzer's `range` excludes the JSDoc. It matters because it
 changes what a card shows.
 
 `syntax_error` is true when a diagnostic's range overlaps the def's range. The V-NOC rule is "when unsure, flag more".

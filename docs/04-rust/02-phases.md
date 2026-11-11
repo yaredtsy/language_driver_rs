@@ -81,29 +81,44 @@ error messages:
 | local item | `outer::{fn}::inner` | the function-body joiner, as `.<locals>.` in Python and TypeScript, written in Rust's style. Cannot collide with a real path |
 | `#[cfg]` twins | the same qualname twice; `occurrence` separates them | |
 
-**[your call: Q-M9]** on `<S as T>::m` versus something friendlier to read such as `S::m (T)`. It is displayed in V-NOC's UI and stored in
-`.vnoc/`.
+Decided (D10): `<S as T>::m`. It is displayed in V-NOC's UI and stored in `.vnoc/`.
 
 ### Ranges
 
 `range` is the item node's range **without** its leading plain comments, starting at the first doc comment or attribute: here the driver
 contract's wording ("from its first decorator / attribute / doc comment") fits Rust exactly, because doc comments are attributes in Rust. The
-marker line sits above that.
+marker is one of those doc lines (RS2), so it is inside the range.
 
 ## RS2: markers
 
-The same rule as TypeScript ([`03-typescript/04-ts2-markers.md`](../03-typescript/04-ts2-markers.md) §3): a `// <label>: <text>` line directly
-above the def, no blank line between. Rust-specific points:
+**D6: the marker lives in the doc comment** (the same decision as Python's docstring and TypeScript's JSDoc,
+[`03-typescript/04-ts2-markers.md`](../03-typescript/04-ts2-markers.md) §2). The comment-above placement is the later option described there in §8.
+
+```rust
+/// Parses an order.
+///
+/// ID: 3RGJ8M2K…                ← the marker: the last line of the item's doc comment
+#[inline]
+pub fn parse_order(raw: &str) -> Order {
+```
 
 | Point | Rule |
 |---|---|
-| doc comments (`///`, `/** */`) | never used for the marker: rustdoc would publish it in the API docs |
-| `////` (four slashes) | a plain comment in Rust, not a doc comment; not treated as a marker either (only `//` followed by a space or the label) |
-| placement with doc comments and attributes | above everything: above the first `///` and the first `#[…]`. Rust style keeps doc comments glued to the item, and `rustfmt` does not move a plain comment that sits above them |
-| reading | the item node's leading `//` comments, nearest-first, until a blank line: the parser already attached exactly those (last file, §3) |
-| `rustfmt` | a full-line `//` comment is preserved byte for byte. Fixture: run `rustfmt` on every marked fixture in a test and assert the marker line is unchanged **[check]** |
-| file header | after a leading licence comment; **before** inner attributes and inner doc comments (`#![…]`, `//!`), which must come before any item but may follow a plain comment |
+| reading | among the item's own outer doc comments (`///` lines, or one `/** */` block), the first line that reads `<label>: <text>` after the `///` (or the leading `*`) is the marker. The parser already attached exactly these comments to the item node (last file, §3), so this is a loop over the node's first children |
+| planning, the item has `///` lines | add `/// <label>: <text>` after the **last** doc line. If that last line is not empty, add an empty `///` line first: in Markdown a line directly under a paragraph joins it, and the marker would be glued to the user's sentence in rustdoc |
+| planning, the item has a `/** */` block | the same text work as TypeScript's JSDoc: the last line before `*/`. This is the second user of that helper, so it moves to `analyzer-core` now (rule of two) |
+| planning, no doc comment | one new line `/// <label>: <text>` directly above the item's first attribute or keyword |
+| doc comments written as attributes (`#[doc = "…"]`) | not read as a marker, and not edited. A new `///` line is added above them |
+| inner doc comments (`//!` inside a module or function body) | belong to the enclosing item, not to this one. Never read, never written |
+| `////` (four slashes) and plain `//` comments | not doc comments in Rust. Not read |
+| `rustdoc` and `#![warn(missing_docs)]` | the marker line is published in the API docs: the accepted cost of D6. A side effect to know: an item with only a marker line now "has docs" for the `missing_docs` lint |
+| `rustfmt` | does not reflow `///` lines unless `wrap_comments` is set, and a short line is never wrapped. Test: run `rustfmt` on every marked fixture and assert the marker line is unchanged **[check]** |
 | items inside a macro call (`lazy_static! { … }`, `cfg_if! { … }`) | not defs, so never marked |
+| `Skip` | the same reasons as TypeScript: `NotOnOwnLine`, `SyntaxError`, `AlreadyMarked`, `UnsafeDocComment`, `PlacementNotSupported` |
+
+**The file header** is a plain comment, as in every language: `// <label>: <text>` after a leading licence comment and **before** inner
+attributes and inner doc comments (`#![…]`, `//!`), which must come before any item but may follow a plain comment. It uses the core's
+`comment_marker` with the prefix `//`.
 
 ## RS3: project loading
 
