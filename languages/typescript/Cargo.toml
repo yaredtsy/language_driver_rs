@@ -12,7 +12,10 @@ analyzer-core    = { path = "../../core/analyzer-core" }
 analyzer-testkit = { path = "../../core/analyzer-testkit" }
 
 # the engine: ONE rev, written once (ENGINE.md records why this one)
-# TODO engine pin
+tsrs_parser  = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31a4cac36b980db090a91ec12a3c3686de14d" }
+tsrs_ast     = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31a4cac36b980db090a91ec12a3c3686de14d" }
+tsrs_core    = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31a4cac36b980db090a91ec12a3c3686de14d" }
+tsrs_scanner = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31a4cac36b980db090a91ec12a3c3686de14d" }
 
 typescript-syntax   = { path = "crates/typescript-syntax" }
 typescript-analysis = { path = "crates/typescript-analysis" }

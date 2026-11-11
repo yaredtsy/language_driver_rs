@@ -10,6 +10,10 @@ workspace = true
 
 [dependencies]
 analyzer-core = { workspace = true }
+tsrs_parser   = { workspace = true }
+tsrs_ast      = { workspace = true }
+tsrs_core     = { workspace = true }
+tsrs_scanner  = { workspace = true }
 
 [dev-dependencies]
 analyzer-testkit = { workspace = true }
