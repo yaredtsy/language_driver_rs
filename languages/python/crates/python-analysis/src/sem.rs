@@ -3,6 +3,7 @@ use analyzer_core::edit::MarkerStyle;
 use ruff_db::files::{File, system_path_to_file};
 use ruff_db::parsed::{ParsedModuleRef, parsed_module};
 use ruff_db::source::{line_index, source_text};
+use ruff_db::system::SystemPath;
 use ruff_python_ast::visitor::{Visitor, walk_stmt};
 use ruff_python_ast::{Alias, AnyNodeRef, ExprName, ExprRef, Stmt, StmtFunctionDef};
 use ruff_text_size::{Ranged, TextRange, TextSize};
@@ -668,6 +669,59 @@ impl crate::wire::Sources for DbSources<'_> {
         let path = self.0.project().root(self.0).join(file);
         let file = system_path_to_file(self.0, &path).ok()?;
         Some(source_text(self.0, file).as_str().to_owned())
+    }
+}
+
+/// A loaded project: the one handle of the public API, so no engine type is in it. Requests read from it and it is not changed by them.
+pub struct Project {
+    db: ProjectDatabase,
+}
+
+/// Why a project could not be opened.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum OpenError {
+    /// The path is not a directory we can read.
+    NotADirectory(String),
+}
+
+impl std::fmt::Display for OpenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OpenError::NotADirectory(path) => write!(f, "{path} is not a directory"),
+        }
+    }
+}
+
+impl std::error::Error for OpenError {}
+
+impl Project {
+    /// Opens the project rooted at `dir`. A broken project configuration never fails it (the defaults are used): only a path that is not
+    /// a directory does.
+    pub fn open(dir: &str) -> Result<Project, OpenError> {
+        let not = || OpenError::NotADirectory(dir.to_owned());
+        let absolute = std::fs::canonicalize(dir).map_err(|_| not())?;
+        let root = SystemPath::from_std_path(&absolute)
+            .filter(|_| absolute.is_dir())
+            .ok_or_else(not)?;
+        let db = open_project(root).map_err(|_| not())?;
+        Ok(Project { db })
+    }
+
+    pub(crate) fn db(&self) -> &ProjectDatabase {
+        &self.db
+    }
+
+    /// A file of the project, by an absolute path or one relative to the root. `None` when there is no such file.
+    pub(crate) fn file(&self, path: &str) -> Option<File> {
+        let given = std::path::Path::new(path);
+        let absolute = if given.is_absolute() {
+            std::fs::canonicalize(given).ok()?
+        } else {
+            let root = self.db.project().root(&self.db);
+            std::path::PathBuf::from(root.as_str()).join(given)
+        };
+        system_path_to_file(&self.db, SystemPath::from_std_path(&absolute)?).ok()
     }
 }
 
