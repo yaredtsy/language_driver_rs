@@ -122,11 +122,18 @@ They fit inside PY5–PY7; no step is added to the roadmap. Each is a commit.
 
 | # | When | Do | Proof |
 |---|---|---|---|
-| W1 | now (PY5) | Put back what `8363c23` cut, on the **old** renderer: `target_id` built from a `WireStyle` in `Options` (no product word in the crate), `merge_for_output`, and the second half of the merge test (`p05_02_merge_matches_v_noc`, renamed without the product name) | `cargo test -p python-analysis`: 46 pass, and that test checks `children.len() == 1` and `call_count == 1` after the merge; `scripts/check-all.sh --static` passes |
-| W2 | PY5 | The golden baseline, once, from a worktree of `670ae79a15` (D14): `calls --wire` and `calls --wire --merged` on the Jarvis project, kept outside git. `cli-wire.json` is checked against the first | two files; the unmerged one equals `cli-wire.json` |
+| W1 | **done** (`e027756`) | Put back what `8363c23` cut, on the **old** renderer: `target_id` built from a `WireStyle` in `Options` (no product word in the crate), `merge_for_output`, and the second half of the merge test (`p05_02_merge_matches_v_noc`, renamed without the product name) | `cargo test -p python-analysis`: 49 pass (the 46 moved tests and three new ones), and that test checks `children.len() == 1` and `call_count == 1` after the merge; `scripts/check-all.sh --static` passes |
+| W2 | **done** | The golden baseline, once, from a worktree of `670ae79a15` (D14): `calls --wire` and `calls --wire --merged` on the Jarvis project, kept outside git. `cli-wire.json` is checked against the first | two files; the unmerged one equals `cli-wire.json` |
 | W3 | PY5, after the graph is core's | `wire.rs`: `wire(&graph, …)` and `merge`, built on `Graph` + `render` as in §3. A test on every fixture: the new wire equals the old renderer's wire, after the renames of §4 | the comparison passes on all 41 fixture tests' programs; it is PY6's renderer comparison, one level up |
 | W4 | PY6 | Delete the old renderer and the old `FrameJson` with it; `wire.rs` is the only wire | `cargo test -p python-analysis` passes with the same count |
 | W5 | PY7 | `python-cli calls --wire [--merged] --function-prefix … --class-prefix …`; the doc edits of §5; delete the sentence under this file's title | `calls --wire` on Jarvis equals W2's file and `--merged` equals the merged one, after the renames of §4; `grep -rn "not moved" docs` finds no line about the wire |
+
+**W2 result (2026-11-11).** Built from `git archive 670ae79a15` (not a worktree: no metadata is added to pylspt's `.git`). On the Jarvis project,
+entry `CallGraphGenerator.do_pass`: `wire.json` has **195 nodes and is the same JSON as `cli-wire.json`** (only the pretty-print layout differs);
+`wire-merged.json` has **64 nodes and its `call_count` sums to 131** (= 195 − 64). Both are in `out/golden/` (git-ignored), with a checksum file and
+the exact commands, so W3 and W5 compare against them. The count of tests is by source, not by running pylspt's suite: 46 tests moved, and the
+16 `#[test]` that stayed are in files that stayed. The golden was made with the owner's uncommitted `run-jarvis.sh` (`jarvis.py`), and the pin
+reproduces it, so the two agree on that project.
 
 W1 is small and can be done today. It gives back a working, complete wire in this repo before the graph work starts, so nothing later is
 judged against a wire that was already cut.
