@@ -1,6 +1,7 @@
 //! FAST: outline, markers, header. `sem.rs` is the only file that imports the parser.
 
 mod edit;
+mod header;
 mod ids;
 mod outline;
 mod sem;
@@ -33,4 +34,20 @@ pub fn plan_marker(
     style: MarkerStyle<'_>,
 ) -> Result<Edit, Skip> {
     edit::plan_marker(text, def, marker_text, style)
+}
+
+/// The file's own marker: a `# <label>: <text>` comment in the header, before the first statement. Not part of the outline, because the
+/// header has its own label.
+pub fn header_marker(text: &str, style: MarkerStyle<'_>) -> Option<String> {
+    header::header_marker(text, style)
+}
+
+/// The edit that adds the header marker after the leading comments (shebang, encoding line, licence) and before the first statement,
+/// or why it cannot be done. Planned on `text`, never applied.
+pub fn plan_header_marker(
+    text: &str,
+    marker_text: &str,
+    style: MarkerStyle<'_>,
+) -> Result<Edit, Skip> {
+    header::plan_header_marker(text, marker_text, style)
 }
