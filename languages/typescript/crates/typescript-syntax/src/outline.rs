@@ -2,7 +2,7 @@
 //! TypeScript is tagged, `languages/typescript/docs/qualnames.md`. **Qualnames are stored in users' files: never change how an
 //! existing kind of def is named.**
 
-use analyzer_core::outline::{Def, DefKind, Outline};
+use analyzer_core::outline::{Def, DefKind, Outline, SyntaxError};
 use analyzer_core::text::Span;
 
 use crate::Dialect;
@@ -16,10 +16,25 @@ pub(crate) fn outline(text: &str, dialect: Dialect) -> Outline {
             defs: Vec::new(),
         };
         walker.statements(&p.statements(p.root()));
+        let mut errors: Vec<(Span, String)> = p.syntax_errors();
+        errors.sort_by_key(|(range, _)| *range);
+        let mut defs = walker.defs;
+        for def in &mut defs {
+            def.syntax_error = errors.iter().any(|(range, _)| overlaps(*range, def.range));
+        }
         let mut outline = Outline::default();
-        outline.defs = walker.defs;
+        outline.defs = defs;
+        outline.syntax_errors = errors
+            .into_iter()
+            .map(|(range, message)| SyntaxError::new(range, message))
+            .collect();
         outline
     })
+}
+
+/// Does a parse error touch a def? "When unsure, flag more": an empty error range counts as one byte, so an error at a def's first byte is in it.
+fn overlaps(error: Span, def: Span) -> bool {
+    error.start < def.end && error.end.max(error.start + 1) > def.start
 }
 
 /// An enclosing def while the walk is inside it.

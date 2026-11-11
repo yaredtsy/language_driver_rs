@@ -1,5 +1,8 @@
 Function before [0..20] name [9..15]
-Function broken [22..54] name [31..37] ({ const x = })
-Function after [56..75] name [65..70]
+Function broken [22..54] name [31..37] ({ const x = }) SYNTAX-ERROR
+Function after [56..75] name [65..70] SYNTAX-ERROR
 Class AlsoAfter [77..110] name [83..92]
   Method AlsoAfter.method [97..108] name [97..103]
+syntax error [49..50]: ':' expected.
+syntax error [53..54]: Expression expected.
+syntax error [56..64]: ',' expected.
