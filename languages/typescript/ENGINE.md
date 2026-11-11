@@ -388,3 +388,35 @@ by its own patterns, `possibly_matches_file_name`). `disableSolutionSearching` o
   listed as project code**: fixed, `is_project_code` now needs a TypeScript or JavaScript file (`Dialect::from_path`), fixture `json-import`.
 - **Not checked, still:** a pnpm workspace, and Windows paths in `find_owner` (`relative_to` and the visited set compare engine strings, which are `/`-separated everywhere; the
   `canonicalize` of the root is not).
+
+## TS4: reading a def's body
+
+### A def and its node in the program's tree (step 2a)
+
+The outline (`typescript_syntax::outline_with_nodes`) is made from the **text** of each program file, a second parse; the program has its own tree of the same text. A def is joined to its node by the node's **span**
+(first token to end, trivia skipped: `tsrs_scanner::skip_trivia` from `pos`), which `typescript-syntax` reports with each def, plus a kind a def can name (`FunctionDeclaration`, `FunctionExpression`,
+`ArrowFunction`, `ClassDeclaration`, `ClassExpression`, `MethodDeclaration`, `Constructor`, `GetAccessor`, `SetAccessor`, `InterfaceDeclaration`, `MethodSignature`, `EnumDeclaration`,
+`TypeAliasDeclaration`, `ModuleDeclaration`). The two parses agree: the 44 files of the TS1 fixture suite (ts, tsx, js, jsx, including a `.d.ts`, a file with a syntax error and `.mjs` / `.cjs`) hold 292 defs, and
+every one maps to exactly one node and back. Dropping `ArrowFunction` from the kinds gives 36 failures; not skipping trivia gives 314.
+
+- **The node is not where `Def::range` starts.** An overloaded def's range runs from its first signature and its node is the implementation (what the checker returns too); `const f = () => {}` has the whole
+  statement as its range and the arrow as its node; a modifier (`export`) is inside a node's span.
+- **Why not `name_range.start`** (the review's suggestion): it is one token and unique, but from the name token to the node takes a rule per kind (a variable declaration's initializer, a property's, a
+  constructor's keyword, `default`), which is the def rule written a second time. The span comes out of the walk that finds the defs.
+- A def with no unique node is `None` in `FileDefs::nodes`; `describe` (step 3) turns that into an `Unresolved` edge and a count (`decl_not_in_outline`). None was found in the suite.
+
+### The plain calls of a body (step 2b)
+
+`Sem::call_sites` follows `tsrs_ls`'s `CallSiteCollector` (`callhierarchy.rs`): `Ambient` nodes are not descended, nor an identifier, an import or export declaration, an interface, a type alias, the type side
+of `as` / `satisfies` / `<T>x`, the type of a variable or parameter, a call's type arguments, or any type node. The differences, all from the plan: it stops at a nested node that is a def **of the outline**
+(`FileDefs::def_of`) and not at what tsrs's call hierarchy calls a declaration, so an anonymous function and an anonymous class's initializers belong to the def around them; a class's `extends`
+expression, decorators (also those on its members), property initializers and static blocks are the class's body, and its methods, accessors and constructor are defs of their own (tsrs makes a static block its
+own call-hierarchy item and walks the constructor in the class; we do not). A nested class still owns the calls in its computed member names, as in tsrs.
+
+- **Only plain calls are sites so far**: `f(x)`, `a.b(x)`, `a?.b(x)`, `(g)(x)`, `a["k"](x)`, `f()(x)`, `super(x)`. Not `import("./m")` (an `ImportKeyword` callee), not `require("./m")` (an identifier `require` with
+  one string argument), and, until steps 5 and 6: `new`, a tagged template, a decorator's own site, a JSX element, a property read that is an accessor.
+- **The site is the callee expression**, from its first token to its end, relative to the def's start (`Def::range.start`). `f()(g())` has the sites `f`, `f()` and `g`; sites are sorted by where the callee
+  starts, then where it ends, so an argument's call comes after its callee's. That is source order of the resolved expression, not evaluation order; the order of siblings in the wire is the open question W3 Q4 and
+  does not depend on this.
+- The walk is checked on `tests/fixtures/sites/src/sites.ts` (28 defs, lists written from the rules before the run). Not counting the "nested def" rule gives `["f", "g", "a.b"]` for `nested` instead of `["f"]`;
+  counting `import()` and `require()` gives two sites for `not_sites`.
