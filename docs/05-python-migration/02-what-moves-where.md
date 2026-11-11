@@ -89,7 +89,7 @@ what lets the testkit and the V-NOC drivers treat the languages alike.
 | `stable.rs`: `StableType` | move | stays here; it encodes ty's types |
 | `attrs.rs` (123), `mro.rs` (146) | move → `classes/` | |
 | `interp/` solver files: `value`, `env`, `walk`, `bind`, `member`, `key`, `summary`, `call`, `defer`, `solver`, `entry`, `relevant`, `canon` (about 4,000 lines) | move | `require_ids` → `only_marked`; the in-memory context id keeps its meaning under a private name; imports of the moved types point at `analyzer_core` |
-| `interp/graph.rs`: the function `graph()` | move | builds `analyzer_core::graph::Graph`; fills `file` and `range` on each context; converts line/column spans to relative byte `Site`s |
+| `interp/graph.rs`: the function `graph()` | move | builds `analyzer_core::graph::Graph`; fills `defs`: one row for the function of every reached context and one for the class of every `Construct` target ([`02-tree-rules/04`](../02-tree-rules/04-the-defs-table.md) §7); converts line/column spans to relative byte `Site`s |
 | `interp/render.rs`, `interp/tree.rs` | **replaced by core** | the old `render.rs` is kept as a private test helper until PY6's comparison passes, then deleted |
 | `interp/fixture.rs` (594): the 41 tests | move | they assert on `to_text` output, which now comes from core. **The count of passing tests is the proof for the whole migration** |
 | `Mode::Inline` (the earlier walk that follows every call, without summaries) | move | keep it only if the fixture tests still use it as a cross-check **[check]**; not part of the public API |

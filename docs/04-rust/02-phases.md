@@ -153,6 +153,24 @@ plus: ast::RecordExpr  `Foo { .. }`          →  Construct { class: Foo, init: 
 plus: ast::MacroCall                         →  descend into its expansion, map sites back with `original_range`
 ```
 
+### `describe` and the defs table (D13)
+
+The graph keeps what a definition is in a table, `Graph::defs`, apart from its contexts
+([`02-tree-rules/04`](../02-tree-rules/04-the-defs-table.md)). The core solver fills it from `Lang::describe`, so Rust's `describe`:
+
+| Do | Why |
+|---|---|
+| return `analyzer_core::graph::DefInfo` (`id`, `qname`, `kind`, `file`, `range`). It is the row type of `Graph::defs`; its identity field is `id` | one description type, for functions and types |
+| answer for a **struct** (kind `Struct`) as well as a function: `Foo { .. }` and `Foo(a, b)` have the struct as their `class` | the solver calls `describe(class)` for every `Construct` target; that row is where the tree gets the name |
+| for `Enum::Variant(a)`, the `class` is the **enum** (kind `Enum`) | a variant is not a def (RS1), and a row must be an outline entry |
+| test "project code" **before** building a `Construct`: a struct from a registry crate or the sysroot is an `External` edge | a row holds a file relative to the project root; TypeScript and Python do the same |
+| never add a context for a struct, and never build `defs` yourself | the solver writes one row per listed context and per constructed type; `check_invariants` rejects a missing or an unused row |
+| read a name in a test with `graph.def(&id.func)` | a `Context` holds only `id` and `status` |
+
+Proof, with RS4's: the fixture of the policy row "`Foo { a, b }`, `Foo(a, b)`, `Enum::Variant(a)`" has a marked struct, a marked tuple
+struct and a marked enum (a `/// ID: …` line on each), and its tree shows each by name. The shared scenario `construct-marked-class` is
+not Rust's proof: its tree has a constructor function under the class, and Rust has none (`init` is always `None`).
+
 ### The policy table (`languages/rust/docs/policy.md`)
 
 | Feature | Phase-1 policy |

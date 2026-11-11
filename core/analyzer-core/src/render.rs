@@ -88,6 +88,10 @@ impl Default for RenderOptions {
     }
 }
 
+/// The name of a definition the graph has no row for. It is drawn, not skipped: the invariant checker reports the
+/// missing row, and the renderer never fails on a broken graph.
+const UNKNOWN: &str = "<unknown>";
+
 #[derive(PartialEq, Eq)]
 enum Kind {
     Code,
@@ -123,8 +127,8 @@ pub fn render(graph: &Graph, entry: &ContextId, opts: &RenderOptions) -> Node {
     let r = Renderer { graph, opts };
     let mut budget = opts.max_nodes.saturating_sub(1);
     let qname = graph
-        .context(entry)
-        .map_or_else(|| "<unknown>".to_owned(), |c| c.qname.clone());
+        .def(&entry.func)
+        .map_or_else(|| UNKNOWN.to_owned(), |d| d.qname.clone());
     // Functions on the path from the root to the node being built (rule 8 asks "is it on the path?").
     let mut path: HashSet<StableDef> = HashSet::from([entry.func.clone()]);
     let mut stack = vec![r.open(entry.func.clone(), qname, None, vec![entry], 0)];
@@ -246,7 +250,6 @@ impl<'g> Renderer<'g> {
         let site = edge.site;
         match &edge.to {
             EdgeTo::Context(id) => self.code(site, id),
-            // Rule 5: a node for the class; its children come from `init`, if the class has a constructor function.
             EdgeTo::Construct { class, init } => self.class(site, class, init.as_ref()),
             EdgeTo::External(ext) => self.opts.show_external.then(|| Child {
                 site,
@@ -283,20 +286,19 @@ impl<'g> Renderer<'g> {
         if self.opts.only_marked && !id.func.is_marked() {
             return None;
         }
-        // A context the graph does not hold (dangling) cannot be named or ordered; the invariant checker reports it.
-        let ctx = self.graph.context(id)?;
+        let (qname, order) = self.describe(&id.func);
         Some(Child {
             site,
-            order: (0, &ctx.file, ctx.range.start),
+            order,
             func: id.func.clone(),
-            qname: ctx.qname.clone(),
+            qname,
             contexts: vec![id],
             kind: Kind::Code,
         })
     }
 
-    /// The class is named and placed by its own context when the graph has one (a solver adds it); a hand-written graph
-    /// may not, and then the stable name is all there is.
+    /// Rule 5: a node for the class, named and placed by its row in `defs`; its children come from `init`, if the class
+    /// has a constructor function.
     fn class(
         &self,
         site: Site,
@@ -306,13 +308,7 @@ impl<'g> Renderer<'g> {
         if self.opts.only_marked && !class.is_marked() {
             return None;
         }
-        let ctx = self.graph.context(&ContextId::of(class.clone()));
-        let qname = match (ctx, class) {
-            (Some(c), _) => c.qname.clone(),
-            (None, StableDef::Path { qname, .. }) => qname.clone(),
-            (None, StableDef::Marked(_)) => "<class>".to_owned(),
-        };
-        let order = ctx.map_or((0, "", 0), |c| (0, c.file.as_str(), c.range.start));
+        let (qname, order) = self.describe(class);
         Some(Child {
             site,
             order,
@@ -321,6 +317,14 @@ impl<'g> Renderer<'g> {
             contexts: init.into_iter().collect(),
             kind: Kind::Code,
         })
+    }
+
+    /// The name and the sibling order of a definition. Without a row: `<unknown>`, ordered before everything else.
+    fn describe(&self, func: &StableDef) -> (String, (u8, &'g str, u32)) {
+        match self.graph.def(func) {
+            Some(d) => (d.qname.clone(), (0, d.file.as_str(), d.range.start)),
+            None => (UNKNOWN.to_owned(), (0, "", 0)),
+        }
     }
 }
 
@@ -345,21 +349,32 @@ pub fn to_text(root: &Node) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::tests::{cid, ctx, marked};
-    use crate::graph::{Context, External, Stats};
+    use crate::graph::tests::{cid, ctx, def, marked};
+    use crate::graph::{Context, DefInfo, External, Stats};
     use crate::outline::DefKind;
     use crate::text::Span;
 
-    /// `spec`: `"a: b c"` means `a` calls `b` then `c`, one site each, 10 bytes apart.
+    /// The `n`th definition of `m.py`, 100 bytes apart.
+    fn def_at(name: &str, kind: DefKind, n: u32) -> DefInfo {
+        DefInfo::new(
+            marked(name),
+            name,
+            kind,
+            "m.py",
+            Span::new(n * 100, n * 100 + 50),
+        )
+    }
+
+    /// `spec`: `"a: b c"` means `a` calls `b` then `c`, one site each, 10 bytes apart. Each line is a function with a
+    /// row and one context.
     fn graph(spec: &[&str]) -> Graph {
+        let mut defs = Vec::new();
         let mut contexts = Vec::new();
         let mut edges = Vec::new();
         for (n, line) in spec.iter().enumerate() {
             let (name, calls) = line.split_once(':').unwrap();
-            let mut c = ctx(name.trim());
-            c.file = "m.py".into();
-            c.range = Span::new(n as u32 * 100, n as u32 * 100 + 50);
-            contexts.push(c);
+            defs.push(def_at(name.trim(), DefKind::Function, n as u32));
+            contexts.push(ctx(name.trim()));
             for (i, callee) in calls.split_whitespace().enumerate() {
                 let to = match callee {
                     "?" => EdgeTo::Unresolved,
@@ -376,7 +391,18 @@ mod tests {
                 });
             }
         }
-        Graph::new(vec![], contexts, edges, Stats::default())
+        Graph::new(vec![], defs, contexts, edges, Stats::default())
+    }
+
+    /// `g` with other edges, keeping its rows and contexts.
+    fn with_edges(g: &Graph, edges: Vec<Edge>) -> Graph {
+        Graph::new(
+            vec![],
+            g.defs.clone(),
+            g.contexts.clone(),
+            edges,
+            Stats::default(),
+        )
     }
 
     fn text(g: &Graph, root: &str, opts: &RenderOptions) -> String {
@@ -423,14 +449,8 @@ mod tests {
         ];
         edges.extend(g.edges.clone());
         let mut contexts = g.contexts.clone();
-        contexts.push(Context::new(
-            f2.clone(),
-            "f",
-            DefKind::Function,
-            "m.py",
-            Span::new(100, 150),
-        ));
-        g = Graph::new(vec![], contexts, edges, Stats::default());
+        contexts.push(Context::new(f2.clone()));
+        g = Graph::new(vec![], g.defs.clone(), contexts, edges, Stats::default());
         let tree = render(&g, &cid("main"), &RenderOptions::default());
         assert_eq!(tree.children.len(), 1);
         assert_eq!(tree.children[0].contexts, vec![cid("f"), f2]);
@@ -454,7 +474,7 @@ mod tests {
             },
         ];
         edges.extend(g.edges.clone());
-        g = Graph::new(vec![], g.contexts.clone(), edges, Stats::default());
+        g = with_edges(&g, edges);
         assert_eq!(
             text(&g, "main", &RenderOptions::default()),
             "main\n  b\n  a\n"
@@ -487,19 +507,13 @@ mod tests {
         };
         let mut g = graph(&["f:", "main:"]);
         let mut contexts = g.contexts.clone();
-        contexts.push(Context::new(
-            f2.clone(),
-            "f",
-            DefKind::Function,
-            "m.py",
-            Span::new(200, 250),
-        ));
+        contexts.push(Context::new(f2.clone()));
         let edges = vec![Edge {
             from: cid("f"),
             site: Site::at(0),
             to: EdgeTo::Context(f2),
         }];
-        g = Graph::new(vec![], contexts, edges, Stats::default());
+        g = Graph::new(vec![], g.defs.clone(), contexts, edges, Stats::default());
         assert_eq!(
             text(&g, "f", &RenderOptions::default()),
             "f\n  f [Recursive]\n"
@@ -520,13 +534,11 @@ mod tests {
                 e.to = EdgeTo::Context(ContextId::of(unmarked.clone()));
             }
         }
-        g.contexts.push(Context::new(
-            ContextId::of(unmarked),
-            "a",
-            DefKind::Function,
-            "m.py",
-            Span::new(0, 5),
-        ));
+        let mut row = def("a");
+        row.id = unmarked.clone();
+        g.defs.push(row);
+        g.defs.sort_by(|a, b| a.id.cmp(&b.id));
+        g.contexts.push(Context::new(ContextId::of(unmarked)));
         g.contexts.sort_by(|a, b| a.id.cmp(&b.id));
         let opts = RenderOptions {
             only_marked: true,
@@ -551,11 +563,13 @@ mod tests {
         );
     }
 
-    /// `main` builds `Foo` at one site and `Bar` (no constructor function) at the next. The graph holds a context for
-    /// each class, the way a solver writes it.
+    /// `main` builds `Foo` at one site and `Bar` (no constructor function) at the next. The graph holds a row for each
+    /// class and no context, the way a solver writes it.
     fn construct_graph() -> Graph {
-        let mut g = graph(&["main:", "Foo:", "Foo.init: helper", "helper:", "Bar:"]);
-        g.edges.retain(|e| e.from != cid("main"));
+        let g = graph(&["main:", "Foo.init: helper", "helper:"]);
+        let mut defs = g.defs.clone();
+        defs.push(def_at("Foo", DefKind::Class, 3));
+        defs.push(def_at("Bar", DefKind::Class, 4));
         let mut edges = g.edges.clone();
         edges.push(Edge {
             from: cid("main"),
@@ -573,7 +587,7 @@ mod tests {
                 init: None,
             },
         });
-        Graph::new(vec![], g.contexts.clone(), edges, Stats::default())
+        Graph::new(vec![], defs, g.contexts.clone(), edges, Stats::default())
     }
 
     #[test]
@@ -603,18 +617,77 @@ mod tests {
                 init: None,
             },
         };
-        g = Graph::new(vec![], g.contexts.clone(), vec![edge], Stats::default());
-        // the graph has no context for the class (a hand-written graph): the node still exists
+        let mut defs = g.defs.clone();
+        defs.push(def_at("Bar", DefKind::Class, 1));
+        g = Graph::new(
+            vec![],
+            defs,
+            g.contexts.clone(),
+            vec![edge],
+            Stats::default(),
+        );
+        assert_eq!(text(&g, "main", &RenderOptions::default()), "main\n  Bar\n");
+    }
+
+    #[test]
+    fn a_def_the_graph_does_not_describe_is_drawn_as_unknown() {
+        // a class with no row, and a called function with a context and no row, each beside a described function that
+        // is defined later: the unknown one sorts first at its site
+        let site = Site::at(0);
+        let edge = |to| Edge {
+            from: cid("main"),
+            site,
+            to,
+        };
+        let g = graph(&["main:", "a:"]);
+        let construct = EdgeTo::Construct {
+            class: marked("Ghost"),
+            init: None,
+        };
+        let with = with_edges(&g, vec![edge(EdgeTo::Context(cid("a"))), edge(construct)]);
+        assert_eq!(
+            text(&with, "main", &RenderOptions::default()),
+            "main\n  <unknown>\n  a\n"
+        );
+
+        let mut contexts = g.contexts.clone();
+        contexts.push(ctx("ghost"));
+        let with = Graph::new(
+            vec![],
+            g.defs.clone(),
+            contexts,
+            vec![
+                edge(EdgeTo::Context(cid("a"))),
+                edge(EdgeTo::Context(cid("ghost"))),
+            ],
+            Stats::default(),
+        );
+        assert_eq!(
+            text(&with, "main", &RenderOptions::default()),
+            "main\n  <unknown>\n  a\n"
+        );
+    }
+
+    #[test]
+    fn an_edge_to_a_context_the_graph_does_not_hold_is_still_drawn() {
+        let g = graph(&["main:"]);
+        let edge = Edge {
+            from: cid("main"),
+            site: Site::at(0),
+            to: EdgeTo::Context(cid("gone")),
+        };
+        let g = with_edges(&g, vec![edge]);
         assert_eq!(
             text(&g, "main", &RenderOptions::default()),
-            "main\n  <class>\n"
+            "main\n  <unknown>\n",
+            "the call is in the tree even though nothing describes its target"
         );
     }
 
     #[test]
     fn a_construct_of_a_class_already_on_the_path_is_recursive() {
         // Foo's constructor builds a Foo
-        let mut g = graph(&["main:", "Foo:", "Foo.init:"]);
+        let g = graph(&["main:", "Foo:", "Foo.init:"]);
         let edges = vec![
             Edge {
                 from: cid("main"),
@@ -633,7 +706,7 @@ mod tests {
                 },
             },
         ];
-        g = Graph::new(vec![], g.contexts.clone(), edges, Stats::default());
+        let g = with_edges(&g, edges);
         assert_eq!(
             text(&g, "main", &RenderOptions::default()),
             "main\n  Foo\n    Foo [Recursive]\n"
@@ -642,7 +715,7 @@ mod tests {
 
     #[test]
     fn only_marked_hides_an_unmarked_class() {
-        let mut g = graph(&["main:"]);
+        let g = graph(&["main:"]);
         let class = StableDef::Path {
             module: "m".into(),
             qname: "Foo".into(),
@@ -651,9 +724,22 @@ mod tests {
         let edge = Edge {
             from: cid("main"),
             site: Site::at(0),
-            to: EdgeTo::Construct { class, init: None },
+            to: EdgeTo::Construct {
+                class: class.clone(),
+                init: None,
+            },
         };
-        g = Graph::new(vec![], g.contexts.clone(), vec![edge], Stats::default());
+        let mut row = def_at("Foo", DefKind::Class, 1);
+        row.id = class;
+        let mut defs = g.defs.clone();
+        defs.push(row);
+        let g = Graph::new(
+            vec![],
+            defs,
+            g.contexts.clone(),
+            vec![edge],
+            Stats::default(),
+        );
         let opts = RenderOptions {
             only_marked: true,
             ..RenderOptions::default()
@@ -691,7 +777,7 @@ mod tests {
     fn an_incomplete_context_is_marked() {
         use crate::graph::Cut;
         let mut g = graph(&["main: a", "a:"]);
-        let a = g.contexts.iter_mut().find(|c| c.qname == "a").unwrap();
+        let a = g.contexts.iter_mut().find(|c| c.id == cid("a")).unwrap();
         a.status = Status::Incomplete(Cut::Deadline);
         assert_eq!(
             text(&g, "main", &RenderOptions::default()),

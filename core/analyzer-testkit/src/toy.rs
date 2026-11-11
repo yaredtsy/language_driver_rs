@@ -7,9 +7,9 @@
 use std::path::Path;
 
 use analyzer_core::edit::{Edit, MarkerStyle, comment_marker};
-use analyzer_core::graph::{External, Graph, Site, StableDef};
+use analyzer_core::graph::{DefInfo, External, Graph, Site, StableDef};
 use analyzer_core::outline::{Def, DefKind, Outline};
-use analyzer_core::solve::{Cancel, FuncInfo, Lang, Limits, SiteCalls, Solver, Summary, Target};
+use analyzer_core::solve::{Cancel, Lang, Limits, SiteCalls, Solver, Summary, Target};
 use analyzer_core::text::Span;
 
 use crate::syntax::Subject;
@@ -83,8 +83,8 @@ impl Lang for Program {
     type Func = usize;
     type Key = ();
 
-    fn describe(&self, f: usize) -> FuncInfo {
-        FuncInfo::new(
+    fn describe(&self, f: usize) -> DefInfo {
+        DefInfo::new(
             StableDef::Marked(self.names[f].clone()),
             &self.names[f],
             DefKind::Function,

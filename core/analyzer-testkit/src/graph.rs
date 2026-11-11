@@ -2,14 +2,18 @@
 
 use std::collections::HashSet;
 
-use analyzer_core::graph::{ContextId, EdgeTo, Graph};
+use analyzer_core::graph::{ContextId, EdgeTo, Graph, StableDef};
 
-/// Everything wrong with `graph`, one sentence each. Empty means the graph is well formed:
-/// sorted, no duplicates, no edge or entry pointing at a context the graph does not hold.
+/// Everything wrong with `graph`, one sentence each. Empty means the graph is well formed: sorted, no duplicates,
+/// no edge or entry pointing at a context the graph does not hold, and `defs` has a row for every function and class
+/// the graph mentions and for nothing else.
 pub fn violations(graph: &Graph) -> Vec<String> {
     let mut out = Vec::new();
     if !graph.contexts.windows(2).all(|w| w[0].id < w[1].id) {
         out.push("contexts are not sorted by id, or an id appears twice".to_owned());
+    }
+    if !graph.defs.windows(2).all(|w| w[0].id < w[1].id) {
+        out.push("defs are not sorted by id, or an id appears twice".to_owned());
     }
     if !graph.edges.windows(2).all(|w| w[0] < w[1]) {
         out.push("edges are not sorted by (from, site, to), or one appears twice".to_owned());
@@ -39,6 +43,32 @@ pub fn violations(graph: &Graph) -> Vec<String> {
             ));
         }
     }
+
+    // `defs` and the things that need a row: the function of a context, the class of a construction. A row nothing
+    // needs would come from a cache or from the order work was done in, and two runs could differ.
+    // Rows are found in a set, not with `Graph::def`: that one binary-searches, and on unsorted `defs` it would turn
+    // one sorting fault into a "no row" for everything.
+    let rows: HashSet<&StableDef> = graph.defs.iter().map(|d| &d.id).collect();
+    let mut used: HashSet<&StableDef> = HashSet::new();
+    for context in &graph.contexts {
+        used.insert(&context.id.func);
+        if !rows.contains(&context.id.func) {
+            out.push(format!("context {:?} has no row in defs", context.id.func));
+        }
+    }
+    for edge in &graph.edges {
+        if let EdgeTo::Construct { class, .. } = &edge.to {
+            used.insert(class);
+            if !rows.contains(class) {
+                out.push(format!("class {class:?} has no row in defs"));
+            }
+        }
+    }
+    for def in &graph.defs {
+        if !used.contains(&def.id) {
+            out.push(format!("def {:?} is used by nothing", def.id));
+        }
+    }
     out
 }
 
@@ -66,16 +96,24 @@ pub fn assert_deterministic(build: impl Fn() -> Graph) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use analyzer_core::graph::{Context, ContextId, Edge, Site, StableDef, Stats};
+    use analyzer_core::graph::{Context, ContextId, DefInfo, Edge, Site, StableDef, Stats};
     use analyzer_core::outline::DefKind;
     use analyzer_core::text::Span;
 
+    fn def_id(n: &str) -> StableDef {
+        StableDef::Marked(n.to_owned())
+    }
+
     fn id(n: &str) -> ContextId {
-        ContextId::of(StableDef::Marked(n.to_owned()))
+        ContextId::of(def_id(n))
     }
 
     fn ctx(n: &str) -> Context {
-        Context::new(id(n), n, DefKind::Function, "f", Span::new(0, 1))
+        Context::new(id(n))
+    }
+
+    fn row(n: &str, kind: DefKind) -> DefInfo {
+        DefInfo::new(def_id(n), n, kind, "f", Span::new(0, 1))
     }
 
     fn edge(from: &str, to: &str) -> Edge {
@@ -86,21 +124,49 @@ mod tests {
         }
     }
 
+    fn construct(from: &str, class: &str) -> Edge {
+        Edge {
+            from: id(from),
+            site: Site::at(0),
+            to: EdgeTo::Construct {
+                class: def_id(class),
+                init: None,
+            },
+        }
+    }
+
+    /// `a` calls `b` and builds `Foo`: two contexts and three rows.
+    fn good() -> Graph {
+        Graph::new(
+            vec![id("a")],
+            vec![
+                row("a", DefKind::Function),
+                row("b", DefKind::Function),
+                row("Foo", DefKind::Class),
+            ],
+            vec![ctx("a"), ctx("b")],
+            vec![edge("a", "b"), construct("a", "Foo")],
+            Stats::default(),
+        )
+    }
+
+    /// Exactly one violation, and it says `sentence`.
+    fn only(g: &Graph, sentence: &str) {
+        let bad = violations(g);
+        assert_eq!(bad.len(), 1, "{bad:?}");
+        assert!(bad[0].contains(sentence), "{bad:?}");
+    }
+
     #[test]
     fn a_good_graph_has_no_violations() {
-        let g = Graph::new(
-            vec![id("a")],
-            vec![ctx("a"), ctx("b")],
-            vec![edge("a", "b")],
-            Stats::default(),
-        );
-        assert_eq!(violations(&g), Vec::<String>::new());
+        assert_eq!(violations(&good()), Vec::<String>::new());
     }
 
     #[test]
     fn dangling_and_missing_entries_are_found() {
         let g = Graph::new(
             vec![id("zz")],
+            vec![row("a", DefKind::Function)],
             vec![ctx("a")],
             vec![edge("a", "gone"), edge("ghost", "a")],
             Stats::default(),
@@ -118,9 +184,50 @@ mod tests {
     #[test]
     fn unsorted_output_is_found() {
         // `Graph::new` sorts, so build the broken value by editing a good one (the fields are public)
-        let mut g = Graph::new(vec![], vec![ctx("a"), ctx("b")], vec![], Stats::default());
+        let mut g = good();
         g.contexts.reverse();
-        assert!(violations(&g)[0].contains("not sorted"));
+        only(&g, "contexts are not sorted");
+    }
+
+    #[test]
+    fn unsorted_defs_are_found() {
+        let mut g = good();
+        g.defs.reverse();
+        only(&g, "defs are not sorted");
+    }
+
+    #[test]
+    fn a_repeated_def_row_is_found() {
+        let mut g = good();
+        let first = g.defs[0].clone();
+        g.defs.insert(1, first);
+        only(&g, "defs are not sorted");
+    }
+
+    #[test]
+    fn a_context_without_a_def_row_is_found() {
+        let mut g = good();
+        g.defs.retain(|d| d.id != def_id("b"));
+        only(&g, "context");
+        assert!(violations(&g)[0].contains("has no row in defs"));
+        assert!(violations(&g)[0].contains("\"b\""));
+    }
+
+    #[test]
+    fn a_constructed_class_without_a_def_row_is_found() {
+        let mut g = good();
+        g.defs.retain(|d| d.id != def_id("Foo"));
+        only(&g, "class");
+        assert!(violations(&g)[0].contains("has no row in defs"));
+        assert!(violations(&g)[0].contains("\"Foo\""));
+    }
+
+    #[test]
+    fn a_def_row_used_by_nothing_is_found() {
+        let mut g = good();
+        g.defs.push(row("zz", DefKind::Function));
+        only(&g, "is used by nothing");
+        assert!(violations(&g)[0].contains("\"zz\""));
     }
 
     #[test]
@@ -130,9 +237,11 @@ mod tests {
         let n = Cell::new(0);
         assert_deterministic(|| {
             n.set(n.get() + 1);
+            let name = format!("f{}", n.get());
             Graph::new(
                 vec![],
-                vec![ctx(&format!("f{}", n.get()))],
+                vec![row(&name, DefKind::Function)],
+                vec![ctx(&name)],
                 vec![],
                 Stats::default(),
             )

@@ -77,8 +77,8 @@ pub trait Lang {
     /// What a context holds besides the function. `()` for a default resolver.
     type Key: Clone + Eq + Hash;
 
-    /// Name, file, range, kind, stable identity: what goes into `graph::Context`.
-    fn describe(&self, f: Self::Func) -> FuncInfo;
+    /// Name, file, range, kind, stable identity: a row of `graph::Graph::defs`.
+    fn describe(&self, f: Self::Func) -> DefInfo;
     /// The 16 bytes of `ContextId::digest`. Zeros for `()`.
     fn digest(&self, key: &Self::Key) -> [u8; 16];
     /// Walk ONE body under ONE key. No recursion into callees: the solver does that.
@@ -214,4 +214,4 @@ Neither is planned in a phase; they are options for after TS5.
 | **show implementations** | under an interface or trait method, the classes that implement it, as children marked "possible" | no new key. `sem` gains `implementations(func)`; the renderer gets an option. This is class-hierarchy analysis; both engines have "go to implementations" |
 | **local values only** | `const w = new JsonWriter(); w.write()` resolves to `JsonWriter.write` inside one function | `env` is filled within one body and never crosses a call, so `Key` stays `()`. In typed TypeScript and Rust the type checker already does this; it helps mostly for plain JavaScript |
 
-Next: [`../03-typescript/README.md`](../03-typescript/README.md)
+Next: [`04-the-defs-table.md`](04-the-defs-table.md)

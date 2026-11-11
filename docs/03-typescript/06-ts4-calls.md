@@ -16,7 +16,7 @@ TS4
 
 ```rust
 // typescript-analysis/src/lib.rs
-pub use analyzer_core::graph::{Graph, Context, Edge, EdgeTo, StableDef, ContextId};
+pub use analyzer_core::graph::{Graph, DefInfo, Context, Edge, EdgeTo, StableDef, ContextId};
 pub use analyzer_core::render::{render, Node, Mark, RenderOptions, to_text};
 pub use analyzer_core::solve::{Limits, Cancel};
 
@@ -103,20 +103,23 @@ Then `walk.rs` turns each declaration into a core target:
 
 ```
 declaration
-├── is it a class (or `new` was used)?
-│     └── Construct { class, init: its `constructor` member if it has one in project code }
 ├── is its file project code?            (Sem::is_project_code: not node_modules, not .d.ts, not a bundled lib)
-│     ├── yes → Call(func, ())           the solver will walk it
-│     └── no  → External { package, name }
+│     ├── no  → External { package, name }        a class too: `new Map()` is an external call
+│     └── yes
+│           ├── a class (or `new` was used) → Construct { class, init: its `constructor` member if it has one in project code }
+│           └── anything else               → Call(func, ())           the solver will walk it
 └── Unknown → Unresolved
 ```
+
+The project-code test comes **first**. `Construct` is only for a class in project code: the graph describes every constructed class in
+its `defs` table, and a row holds a file relative to the project root. pylspt does the same (an external class is an external target).
 
 **The bridge.** A tsrs declaration node must become the *same* def the outline reports, so that a tree node can be joined to V-NOC's index:
 
 ```rust
 impl Sem {
     /// file (relative to the root), qualname, occurrence, marker — computed by typescript-syntax's outline rule on this file's tree
-    pub(crate) fn describe(&self, f: Func<'_>) -> FuncInfo;
+    pub(crate) fn describe(&self, f: Func<'_>) -> DefInfo;
 }
 ```
 
@@ -125,6 +128,17 @@ resolver returns is not in the outline, that is a bug in one of the two rules; a
 becomes `Unresolved` and is counted in `Stats.language["decl_not_in_outline"]`. (Rule 6: never fail. Rule 10: always count.)
 
 `StableDef` for a def: `Marked(text)` when it has a marker, else `Path { module: "<file relative to root, with />", qname, nth }`.
+
+**What `describe` must cover (D13, [`02-tree-rules/04`](../02-tree-rules/04-the-defs-table.md)).** The graph keeps what a definition is
+in a table, `Graph::defs`, apart from its contexts. The core solver fills the table from `describe`, so:
+
+| Do | Why |
+|---|---|
+| return `analyzer_core::graph::DefInfo` (`id`, `qname`, `kind`, `file`, `range`). It is the row type of `Graph::defs`; its identity field is `id` | one description type, for functions and classes |
+| answer for a **class** declaration as well as a function: its outline entry, with kind `Class` | the solver calls `describe(class)` for every `Construct` target; that row is where the tree gets the class's name |
+| a class that is not in the outline (a class expression passed to `new`) follows the rule above: `Unresolved`, counted | a `Construct` edge without a row breaks an invariant |
+| never add a context for a class, and never build `defs` yourself | the solver writes one row per listed context and per constructed class; `check_invariants` rejects a missing or an unused row |
+| read a name in a test with `graph.def(&id.func)` | a `Context` holds only `id` and `status` |
 
 ## 5. The policy table
 
@@ -198,7 +212,7 @@ pub fn call_graph(project: &Project, file: &str, entry: &Entry, opts: &Options, 
 | 2 | `sem::body_parts` + `walk.rs` for plain calls only; targets all `Unresolved` | `sites.ts`: the right sites, in order |
 | 3 | `sem::callee` with the engine's resolver; `describe`; the bridge by range | `straight-line` and `method-on-class` scenarios pass |
 | 4 | `impl Lang`, `call_graph`, `typescript-cli calls <dir> <file> --entry <qualname> [--graph]` | the CLI prints a tree for a fixture |
-| 5 | `Construct`, `External`, project-code test | `constructor`, `external-call` scenarios |
+| 5 | `Construct`, `External`, project-code test. Write `scenarios/construct-marked-class/typescript/`: the Python program of that scenario in TypeScript, with an `ID: …` line in the JSDoc of both classes | `constructor`, `external-call` and `construct-marked-class` scenarios; a `new` of a library class is an `External` edge |
 | 6 | the remaining site kinds of §3 | their fixtures |
 | 7 | the policy table, row by row, each with its fixture | the `policy` test, including the "row without fixture" check |
 | 8 | all scenarios at `Level::Default`; invariants; determinism | CI green on three operating systems |

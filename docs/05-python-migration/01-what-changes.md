@@ -87,6 +87,15 @@ So the migration keeps **both** renderers for one step (PY6): the old one stays 
 and compares, and when they agree on all 41 the old one is deleted. If they disagree, the disagreement is either a core bug or a rule that was
 never written down; either way it is found before TypeScript depends on it.
 
+Three more differences a real run showed, on a program with two marked classes (`scenarios/construct-marked-class/`). They are PY6 work
+([`02-tree-rules/04`](../02-tree-rules/04-the-defs-table.md) §7 has the run):
+
+| Difference | pylspt today | core | Do |
+|---|---|---|---|
+| no fixture constructs a marked class | the 36 fixture programs pass on both renderers while the tree is wrong | — | add one fixture (the scenario's program) before the parity test is trusted |
+| the name printed | `to_text` drops the `module.` prefix: `read_json` | prints `DefInfo::qname` as given | Python writes the qualname **without** the module, as the outline does, so a tree node joins to an outline entry by `(file, qualname)` |
+| the marks | `[recursive]`, `[cut]`, `[incomplete]` | `[Recursive]`, `[Cut]`, `[Incomplete]` | rewrite the `# expect:` blocks of the fixtures once, in PY6 |
+
 **Python does not use `analyzer_core::solve`.** Its solver stays whole in `python-analysis/src/interp/`
 ([`02-tree-rules/03`](../02-tree-rules/03-the-seam.md) §4).
 

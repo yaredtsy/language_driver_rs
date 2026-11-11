@@ -11,39 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crate::graph::{
-    Context, ContextId, Cut, Edge, EdgeTo, External, Graph, Site, StableDef, Stats, Status,
+    Context, ContextId, Cut, DefInfo, Edge, EdgeTo, External, Graph, Site, Stats, Status,
 };
-use crate::outline::DefKind;
-use crate::text::Span;
-
-/// What goes into a [`Context`] for a function.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct FuncInfo {
-    pub stable: StableDef,
-    pub qname: String,
-    pub kind: DefKind,
-    pub file: String,
-    pub range: Span,
-}
-
-impl FuncInfo {
-    pub fn new(
-        stable: StableDef,
-        qname: impl Into<String>,
-        kind: DefKind,
-        file: impl Into<String>,
-        range: Span,
-    ) -> Self {
-        FuncInfo {
-            stable,
-            qname: qname.into(),
-            kind,
-            file: file.into(),
-            range,
-        }
-    }
-}
 
 /// What one call site can reach.
 #[non_exhaustive]
@@ -100,7 +69,8 @@ pub trait Lang {
     /// What a context holds besides the function. `()` for a default resolver.
     type Key: Clone + Eq + Hash;
 
-    fn describe(&self, f: Self::Func) -> FuncInfo;
+    /// What the function or class is. Called once per definition per `graph` call.
+    fn describe(&self, f: Self::Func) -> DefInfo;
     /// The 16 bytes of `ContextId::digest`. Zeros for `()`.
     fn digest(&self, key: &Self::Key) -> [u8; 16];
     /// Walk ONE body under ONE key. No recursion into callees: the solver does that.
@@ -227,8 +197,8 @@ impl<L: Lang> Solver<L> {
             seen: HashSet::new(),
             queue: VecDeque::new(),
             infos: HashMap::new(),
-            classes: HashSet::new(),
         };
+        let mut defs = Vec::new();
         let mut contexts = Vec::new();
         let mut edges = Vec::new();
         let mut stats = Stats::default();
@@ -240,7 +210,8 @@ impl<L: Lang> Solver<L> {
 
         while let Some((node, depth)) = run.queue.pop_front() {
             let from = self.id_of(&mut run, &node);
-            let mut context = self.context_of(&mut run, &node, &from);
+            defs.push(info_of(&self.lang, &mut run.infos, node.0).clone());
+            let mut context = Context::new(from.clone());
             stats.contexts += 1;
 
             let stop = if stats.walks >= u64::from(self.limits.max_contexts) {
@@ -277,19 +248,10 @@ impl<L: Lang> Solver<L> {
                             EdgeTo::Context(id_of(&self.lang, &mut run.infos, &callee))
                         }
                         Target::Construct { class, init } => {
-                            // A class has no body to walk, but the tree names its node from a context, so
-                            // the graph holds one (status `Finished`, no edges). It is not counted in `stats.contexts`.
+                            // A class has no body to walk, so it gets a row in `defs` and no context.
                             let info = info_of(&self.lang, &mut run.infos, *class).clone();
-                            let class = info.stable.clone();
-                            if run.classes.insert(class.clone()) {
-                                contexts.push(Context::new(
-                                    ContextId::of(class.clone()),
-                                    info.qname,
-                                    info.kind,
-                                    info.file,
-                                    info.range,
-                                ));
-                            }
+                            let class = info.id.clone();
+                            defs.push(info);
                             let init = init.as_ref().map(|(f, k)| {
                                 let init = (*f, k.clone());
                                 run.discover(&init, depth + 1);
@@ -312,22 +274,11 @@ impl<L: Lang> Solver<L> {
             }
             contexts.push(context);
         }
-        Graph::new(entry_ids, contexts, edges, stats)
+        Graph::new(entry_ids, defs, contexts, edges, stats)
     }
 
     fn id_of(&self, run: &mut Run<L>, node: &Node<L>) -> ContextId {
         id_of(&self.lang, &mut run.infos, node)
-    }
-
-    fn context_of(&self, run: &mut Run<L>, node: &Node<L>, id: &ContextId) -> Context {
-        let info = info_of(&self.lang, &mut run.infos, node.0);
-        Context::new(
-            id.clone(),
-            info.qname.clone(),
-            info.kind.clone(),
-            info.file.clone(),
-            info.range,
-        )
     }
 }
 
@@ -336,9 +287,7 @@ struct Run<L: Lang> {
     seen: HashSet<Node<L>>,
     queue: VecDeque<(Node<L>, u32)>,
     /// `describe` can be expensive in an engine; ask once per function per call.
-    infos: HashMap<L::Func, FuncInfo>,
-    /// Classes already given a context in this graph.
-    classes: HashSet<StableDef>,
+    infos: HashMap<L::Func, DefInfo>,
 }
 
 impl<L: Lang> Run<L> {
@@ -352,15 +301,15 @@ impl<L: Lang> Run<L> {
 
 fn info_of<'a, L: Lang>(
     lang: &L,
-    infos: &'a mut HashMap<L::Func, FuncInfo>,
+    infos: &'a mut HashMap<L::Func, DefInfo>,
     f: L::Func,
-) -> &'a FuncInfo {
+) -> &'a DefInfo {
     infos.entry(f).or_insert_with(|| lang.describe(f))
 }
 
-fn id_of<L: Lang>(lang: &L, infos: &mut HashMap<L::Func, FuncInfo>, node: &Node<L>) -> ContextId {
+fn id_of<L: Lang>(lang: &L, infos: &mut HashMap<L::Func, DefInfo>, node: &Node<L>) -> ContextId {
     ContextId {
-        func: info_of(lang, infos, node.0).stable.clone(),
+        func: info_of(lang, infos, node.0).id.clone(),
         digest: lang.digest(&node.1),
     }
 }
@@ -368,6 +317,9 @@ fn id_of<L: Lang>(lang: &L, infos: &mut HashMap<L::Func, FuncInfo>, node: &Node<
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::graph::StableDef;
+    use crate::outline::DefKind;
+    use crate::text::Span;
 
     /// A language whose "program" is a table: function name → the names it calls, one site each, in order.
     /// A name that is not a key is external; `"?"` is unresolved.
@@ -385,9 +337,9 @@ pub(crate) mod tests {
         }
     }
 
-    pub fn toy_info(f: &'static str) -> FuncInfo {
+    pub fn toy_info(f: &'static str) -> DefInfo {
         let start = f.bytes().map(u32::from).sum::<u32>();
-        FuncInfo::new(
+        DefInfo::new(
             StableDef::Marked(f.to_owned()),
             f,
             DefKind::Function,
@@ -400,7 +352,7 @@ pub(crate) mod tests {
         type Func = &'static str;
         type Key = ();
 
-        fn describe(&self, f: &'static str) -> FuncInfo {
+        fn describe(&self, f: &'static str) -> DefInfo {
             toy_info(f)
         }
 
@@ -435,9 +387,16 @@ pub(crate) mod tests {
     pub(crate) fn no_dangling(g: &Graph) {
         for e in &g.edges {
             assert!(g.context(&e.from).is_some());
-            if let EdgeTo::Context(c) = &e.to {
-                assert!(g.context(c).is_some(), "{c:?}");
+            match &e.to {
+                EdgeTo::Context(c) => assert!(g.context(c).is_some(), "{c:?}"),
+                EdgeTo::Construct { class, .. } => {
+                    assert!(g.def(class).is_some(), "no row for class {class:?}")
+                }
+                _ => {}
             }
+        }
+        for c in &g.contexts {
+            assert!(g.def(&c.id.func).is_some(), "no row for {:?}", c.id.func);
         }
     }
 
@@ -446,8 +405,12 @@ pub(crate) mod tests {
         solver.graph(&[(entry, ())], &Cancel::new())
     }
 
+    /// The names of the functions the contexts are of, in context order.
     fn names(g: &Graph) -> Vec<&str> {
-        g.contexts.iter().map(|c| c.qname.as_str()).collect()
+        g.contexts
+            .iter()
+            .map(|c| g.def(&c.id.func).unwrap().qname.as_str())
+            .collect()
     }
 
     fn calls(g: &Graph, from: &str) -> Vec<String> {
@@ -555,7 +518,9 @@ pub(crate) mod tests {
         let mut solver = Solver::new(Toy::new(program), Limits::new(100, Some(2)));
         let g = solver.graph(&[("a", ())], &Cancel::new());
         assert_eq!(names(&g), ["a", "b", "c", "d"]);
-        let d = g.contexts.iter().find(|c| c.qname == "d").unwrap();
+        let d = g
+            .context(&ContextId::of(StableDef::Marked("d".into())))
+            .unwrap();
         assert_eq!(d.status, Status::Incomplete(Cut::MaxDepth));
         assert_eq!(g.stats.cuts.get(&Cut::MaxDepth), Some(&1));
     }
@@ -596,7 +561,7 @@ pub(crate) mod tests {
         impl Lang for Flaky {
             type Func = u8;
             type Key = ();
-            fn describe(&self, _: u8) -> FuncInfo {
+            fn describe(&self, _: u8) -> DefInfo {
                 toy_info("f")
             }
             fn digest(&self, _: &()) -> [u8; 16] {
@@ -623,7 +588,7 @@ pub(crate) mod tests {
         impl Lang for Cuts {
             type Func = u8;
             type Key = ();
-            fn describe(&self, _: u8) -> FuncInfo {
+            fn describe(&self, _: u8) -> DefInfo {
                 toy_info("f")
             }
             fn digest(&self, _: &()) -> [u8; 16] {
@@ -645,7 +610,7 @@ pub(crate) mod tests {
     impl Lang for Counting {
         type Func = &'static str;
         type Key = u8;
-        fn describe(&self, f: &'static str) -> FuncInfo {
+        fn describe(&self, f: &'static str) -> DefInfo {
             toy_info(f)
         }
         fn digest(&self, key: &u8) -> [u8; 16] {
@@ -681,13 +646,26 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_function_with_two_contexts_has_one_def_row() {
+        let g = Solver::new(Counting, Limits::default()).graph(&[("f", 0)], &Cancel::new());
+        assert_eq!(g.contexts.len(), 4);
+        assert_eq!(g.defs.len(), 1);
+        assert_eq!(g.defs[0].id, StableDef::Marked("f".into()));
+        no_dangling(&g);
+    }
+
+    #[test]
     fn construct_edge_carries_the_class_and_queues_the_init() {
         struct Ctor;
         impl Lang for Ctor {
             type Func = &'static str;
             type Key = ();
-            fn describe(&self, f: &'static str) -> FuncInfo {
-                toy_info(f)
+            fn describe(&self, f: &'static str) -> DefInfo {
+                let mut info = toy_info(f);
+                if f == "Foo" {
+                    info.kind = DefKind::Class;
+                }
+                info
             }
             fn digest(&self, _: &()) -> [u8; 16] {
                 [0; 16]
@@ -707,14 +685,18 @@ pub(crate) mod tests {
             }
         }
         let g = Solver::new(Ctor, Limits::default()).graph(&[("main", ())], &Cancel::new());
-        // `main`, `Foo.init`, and a context for the class `Foo` so the tree can name its node
-        assert_eq!(g.contexts.len(), 3);
-        assert_eq!(g.stats.contexts, 2, "a class is not a walked context");
+        // `main` and `Foo.init` are contexts; the class `Foo` is only a row in `defs`
+        assert_eq!(g.contexts.len(), 2);
+        assert_eq!(g.stats.contexts, 2);
         assert!(
             g.context(&ContextId::of(StableDef::Marked("Foo".into())))
-                .is_some()
+                .is_none(),
+            "a class has no body, so no context"
         );
-        crate::solve::tests::no_dangling(&g);
+        let foo = g.def(&StableDef::Marked("Foo".into())).unwrap();
+        assert_eq!(foo.kind, DefKind::Class);
+        assert_eq!(g.defs.len(), 3, "main, Foo.init, Foo");
+        no_dangling(&g);
         let EdgeTo::Construct { class, init } = &g.edges[0].to else {
             panic!("{:?}", g.edges[0])
         };

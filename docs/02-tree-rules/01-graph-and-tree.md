@@ -43,19 +43,25 @@ resolver and a language with a context-sensitive solver return the *same type*. 
 #[non_exhaustive]
 pub struct Graph {
     pub entries:  Vec<ContextId>,
+    pub defs:     Vec<DefInfo>,        // one row per function or class the graph mentions; sorted by id
     pub contexts: Vec<Context>,        // everything reachable from the entries; sorted by id
     pub edges:    Vec<Edge>,           // sorted by (from, site, to)
     pub stats:    Stats,
 }
 
+/// What a definition is. A context is an analysis of one of these; a constructed class is one too, and has no context.
+#[non_exhaustive]
+pub struct DefInfo {
+    pub id:    StableDef,
+    pub qname: String,                 // the language's qualified name, for display
+    pub kind:  DefKind,
+    pub file:  String,                 // path relative to the project root, with `/`
+    pub range: Span,                   // the whole definition, bytes
+}
+
 #[non_exhaustive]
 pub struct Context {
-    pub id:     ContextId,
-    pub func:   StableDef,
-    pub qname:  String,                // the language's qualified name, for display
-    pub kind:   DefKind,
-    pub file:   String,                // path relative to the project root, with `/`
-    pub range:  Span,                  // the whole definition, bytes
+    pub id:     ContextId,             // id.func is the key into `defs`
     pub status: Status,                // Finished · Incomplete(why)
 }
 
@@ -78,7 +84,11 @@ pub struct External { pub package: String, pub name: String }
 ```
 
 Why `site` is relative to the function: an edit *above* a function moves every absolute offset in it, but not the offsets inside it. A relative
-site stays the same, so a cache keyed by it survives the edit. To show the call in an editor, add `Context::range.start`.
+site stays the same, so a cache keyed by it survives the edit. To show the call in an editor, add the range start of the function's `DefInfo` (`graph.def(&edge.from.func)`).
+
+The graph describes definitions in a table of their own, not on the contexts: a function with several contexts has one row, and a class
+that is constructed has a row and no context. `ContextId::func` and `Construct::class` are both keys into `defs`
+([`04-the-defs-table.md`](04-the-defs-table.md) has the reasons and the four invariants).
 
 `Stats` is pylspt's `Stats` reduced to what every language can count: `walks`, `contexts`, `reuse_hits`, `cuts` (by kind), `unresolved`. A
 language may add its own counters in a `language: BTreeMap<String, u64>` field. Rule 10 in the next file says why every limit must be counted.
@@ -159,8 +169,9 @@ What the V-NOC driver sends is built from `Node`. V-NOC's own merge (`call_count
 | `GraphOut`, `ContextOut`, `EdgeOut` | `Graph`, `Context`, `Edge` | shorter; nothing else is called `Graph` here |
 | `StableContextId` | `ContextId` | pylspt's in-memory `ContextId` (a counter) stays private to `python-analysis` under another name |
 | `StableDef::Node(String)` | `StableDef::Marked(String)` | "this def carries a marker" says no product (PA plan `02-target/02` §3) |
+| `ContextOut` held the name, file and range | `DefInfo`, one row per definition | a class is constructed and never walked, so it needs a description without a context ([`04-the-defs-table.md`](04-the-defs-table.md)) |
 | `ContextOut::target_id: "FunctionSchema/<id>"` | removed | product. The driver builds it from `StableDef::Marked` |
-| `Span { start: (line, col), end }` on an edge | `Site` relative bytes on the edge; `file` + `range` on the context | the wire's line and column rule (UTF-16) is the driver's; bytes are what all three engines give |
+| `Span { start: (line, col), end }` on an edge | `Site` relative bytes on the edge; `file` + `range` on the def's row in `defs` | the wire's line and column rule (UTF-16) is the driver's; bytes are what all three engines give |
 | `EdgeTo::External(StableDef)` | `EdgeTo::External(External { package, name })` | the V-NOC driver contract asks for `{ package, name }` on external leaves (`09/02` §4) |
 | `StableType` | stays in `python-analysis` | it encodes ty's types inside a key. No other language has keys yet |
 | `FrameJson`, `merge_for_output` | not moved | V-NOC's stored shape (PA5) |

@@ -55,7 +55,7 @@ The goal of B0 is a repo where "add a language" is a known, small job, and where
 >     type Func = &'static str;                                // &'static str is Copy + Eq + Hash: a fine handle
 >     type Key = ();
 >     fn digest(&self, _: &()) -> [u8; 16] { [0; 16] }
->     fn describe(&self, f: &'static str) -> FuncInfo { FuncInfo::for_test(f) }
+>     fn describe(&self, f: &'static str) -> DefInfo { DefInfo::for_test(f) }
 >     fn walk(&mut self, f: &'static str, _: &(), _: &Cancel) -> Summary<Self> {
 >         let sites = self.0.get(f).into_iter().flatten().enumerate()
 >             .map(|(i, callee)| SiteCalls { site: Site::at(i as u32), targets: vec![match self.0.contains_key(callee) {

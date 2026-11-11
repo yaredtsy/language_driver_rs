@@ -8,7 +8,7 @@ use crate::outline::DefKind;
 use crate::text::Span;
 
 /// A call expression: a byte range **relative to the start of the calling function**, so an edit above the function
-/// does not move it. Add `Context::range.start` to show it in an editor.
+/// does not move it. Add the function's `DefInfo::range.start` to show it in an editor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct Site {
     pub start: u32,
@@ -98,10 +98,11 @@ pub enum Status {
     Incomplete(Cut),
 }
 
+/// What a definition is. One row per definition the graph mentions, function or class: [`Graph::defs`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
-pub struct Context {
-    pub id: ContextId,
+pub struct DefInfo {
+    pub id: StableDef,
     /// The language's qualified name, for display.
     pub qname: String,
     pub kind: DefKind,
@@ -109,23 +110,39 @@ pub struct Context {
     pub file: String,
     /// The whole definition, in bytes.
     pub range: Span,
-    pub status: Status,
 }
 
-impl Context {
+impl DefInfo {
     pub fn new(
-        id: ContextId,
+        id: StableDef,
         qname: impl Into<String>,
         kind: DefKind,
         file: impl Into<String>,
         range: Span,
     ) -> Self {
-        Context {
+        DefInfo {
             id,
             qname: qname.into(),
             kind,
             file: file.into(),
             range,
+        }
+    }
+}
+
+/// One analysis of one function body. What the function is lives in [`Graph::defs`], under `id.func`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct Context {
+    pub id: ContextId,
+    pub status: Status,
+}
+
+impl Context {
+    /// A context whose body was walked to the end.
+    pub fn new(id: ContextId) -> Self {
+        Context {
+            id,
             status: Status::Finished,
         }
     }
@@ -186,6 +203,8 @@ impl Stats {
 #[non_exhaustive]
 pub struct Graph {
     pub entries: Vec<ContextId>,
+    /// One row per function or class a context or a `Construct` edge names. Sorted by id.
+    pub defs: Vec<DefInfo>,
     /// Sorted by id.
     pub contexts: Vec<Context>,
     /// Sorted by `(from, site, to)`.
@@ -194,19 +213,26 @@ pub struct Graph {
 }
 
 impl Graph {
-    /// Sorts contexts and edges and drops exact duplicates. Entries keep the caller's order (it is the request's order).
+    /// Sorts defs, contexts and edges and drops duplicates. Entries keep the caller's order (it is the request's order).
+    ///
+    /// Two defs with one id (a copied function carries the same marker) keep the first by `(file, range.start)`, so the
+    /// graph does not depend on the order the rows arrived in.
     pub fn new(
         entries: Vec<ContextId>,
+        mut defs: Vec<DefInfo>,
         mut contexts: Vec<Context>,
         mut edges: Vec<Edge>,
         stats: Stats,
     ) -> Self {
+        defs.sort_by(|a, b| (&a.id, &a.file, a.range.start).cmp(&(&b.id, &b.file, b.range.start)));
+        defs.dedup_by(|later, first| later.id == first.id);
         contexts.sort_by(|a, b| a.id.cmp(&b.id));
         contexts.dedup_by(|a, b| a.id == b.id);
         edges.sort();
         edges.dedup();
         Graph {
             entries,
+            defs,
             contexts,
             edges,
             stats,
@@ -218,6 +244,13 @@ impl Graph {
             .binary_search_by(|c| c.id.cmp(id))
             .ok()
             .map(|i| &self.contexts[i])
+    }
+
+    pub fn def(&self, id: &StableDef) -> Option<&DefInfo> {
+        self.defs
+            .binary_search_by(|d| d.id.cmp(id))
+            .ok()
+            .map(|i| &self.defs[i])
     }
 
     /// The edges leaving `id`, in site order.
@@ -241,7 +274,17 @@ pub(crate) mod tests {
     }
 
     pub fn ctx(name: &str) -> Context {
-        Context::new(cid(name), name, DefKind::Function, "m.py", Span::new(0, 10))
+        Context::new(cid(name))
+    }
+
+    pub fn def(name: &str) -> DefInfo {
+        DefInfo::new(
+            marked(name),
+            name,
+            DefKind::Function,
+            "m.py",
+            Span::new(0, 10),
+        )
     }
 
     #[test]
@@ -253,6 +296,7 @@ pub(crate) mod tests {
         };
         let g = Graph::new(
             vec![cid("b")],
+            vec![def("b"), def("a"), def("b")],
             vec![ctx("b"), ctx("a"), ctx("b")],
             vec![
                 edge("b", 5, "a"),
@@ -263,11 +307,13 @@ pub(crate) mod tests {
             Stats::default(),
         );
         assert_eq!(
-            g.contexts
-                .iter()
-                .map(|c| c.qname.as_str())
-                .collect::<Vec<_>>(),
-            ["a", "b"]
+            g.contexts.iter().map(|c| &c.id.func).collect::<Vec<_>>(),
+            [&marked("a"), &marked("b")]
+        );
+        assert_eq!(
+            g.defs.iter().map(|d| d.qname.as_str()).collect::<Vec<_>>(),
+            ["a", "b"],
+            "one row per id, sorted"
         );
         assert_eq!(g.edges.len(), 3);
         assert_eq!(
@@ -283,9 +329,54 @@ pub(crate) mod tests {
 
     #[test]
     fn context_lookup() {
-        let g = Graph::new(vec![], vec![ctx("b"), ctx("a")], vec![], Stats::default());
-        assert_eq!(g.context(&cid("a")).unwrap().qname, "a");
+        let g = Graph::new(
+            vec![],
+            vec![],
+            vec![ctx("b"), ctx("a")],
+            vec![],
+            Stats::default(),
+        );
+        assert_eq!(g.context(&cid("a")).unwrap().id, cid("a"));
         assert!(g.context(&cid("c")).is_none());
+    }
+
+    #[test]
+    fn def_lookup() {
+        let g = Graph::new(
+            vec![],
+            vec![def("b"), def("a")],
+            vec![],
+            vec![],
+            Stats::default(),
+        );
+        assert_eq!(g.def(&marked("a")).unwrap().qname, "a");
+        assert_eq!(g.def(&marked("b")).unwrap().qname, "b");
+        assert!(g.def(&marked("c")).is_none());
+    }
+
+    #[test]
+    fn two_rows_for_one_id_keep_the_first_by_position() {
+        // a copied function carries the same marker: the row that wins must not depend on the order they arrive in
+        let at = |file: &str, start: u32| {
+            DefInfo::new(
+                marked("f"),
+                "f",
+                DefKind::Function,
+                file,
+                Span::new(start, start + 5),
+            )
+        };
+        let rows = [at("b.py", 0), at("a.py", 90), at("a.py", 10)];
+        let forward = Graph::new(vec![], rows.to_vec(), vec![], vec![], Stats::default());
+        let mut reversed_rows = rows.to_vec();
+        reversed_rows.reverse();
+        let backward = Graph::new(vec![], reversed_rows, vec![], vec![], Stats::default());
+        assert_eq!(forward, backward);
+        assert_eq!(forward.defs.len(), 1);
+        assert_eq!(
+            (forward.defs[0].file.as_str(), forward.defs[0].range.start),
+            ("a.py", 10)
+        );
     }
 
     #[test]
