@@ -466,3 +466,33 @@ apart by the type). A project `.d.ts` is `External` and named by its **relative 
 - **A class reached by a plain call** (`Foo()`, `super(x)` when the engine names the class) is a `Construct` with no `init` for now; `new` and the constructor are step 5.
 - **The breakdown is the first thing to read** when a tree looks short: `edges` says how many calls were not followed and why. 66 externals in one component is the React and library surface; the share of
   `function_typed_value` is what context sensitivity (C3, unscheduled) would buy back.
+
+### What the 75 were, and the choices among the engine's declarations (TS4 step 4, after review)
+
+**`function_typed_value` is evidence only when the callee is declared as a value holder.** After the `any` check the first version asked whether the callee's *type* is callable, which is true of every call
+that type-checks, so a function the resolver failed to enter would have been counted as a D16 case. Now the callee's symbol (through an import alias) must be declared as a parameter, property
+(`PropertySignature`, `PropertyDeclaration`, `PropertyAssignment`), variable, binding element or shorthand property; a callee with no symbol (`makeHandler()()`, `(flag ? f : g)()`) is `no_declaration`.
+`union_receiver` is left for a union where some members have a declaration to enter and some do not.
+
+On the V-NOC component `TaskDetailPanel` the 75 were all value holders by declaration, but of four kinds:
+
+| kind | calls | example | now |
+|---|---|---|---|
+| a function declared as a `const` with a function type **in a package** | 18 | `useQueryClient`, `toast.error` (`export declare const useQueryClient: () => QueryClient`) | `External` (a named call into the package): 84 external, 57 unresolved |
+| a state setter from `useState` (a destructured binding) | about 30 | `setAddingSubtask` | D16, as decided |
+| a project hook or store built by a call | about 11 | `useVersioningStore(…)`, `useProjectStore(…)` | D16 |
+| an **arrow held by a property of an object literal in the project** | about 22 | `tasksApi.updateTask(…)`, `queryKeys.tasks.anchorSummary(…)` | D16, and **a coverage gap**: these are project functions the outline does not treat as defs (a property holding an arrow is not a def, "for now"), and the engine's call hierarchy does not resolve them either (`is_assigned_expression` wants a `const` or a class property). Idiomatic code puts a whole API in such an object; whether `key: () => {}` should be a def is the owner's question |
+
+**A union of callables has no single declaration, and the checker hides that.** `(flag ? plain : second)()` resolved, through the resolved signature, to `plain` alone: for the branches of a conditional the checker
+applies subtype reduction, and two alike function types become one type, so the signature names the first. The signature is therefore used only for a **name** (identifier, property access, element access) and
+not when the name's type is a union of more than one type once `undefined` and `null` are set aside; for anything else (a conditional, a `||`, a call's result) the answer is `no_declaration`. Resolving each branch
+of a conditional would be the next step; it was not done.
+
+**D19, a script file's function that merges with a library global.** Pinned in `tests/fixtures/script-global/main.ts` (no `export`): `function fetch()` and `function open()` are each one symbol with `lib.dom.d.ts`'s,
+and the engine lists both declarations (`main.ts fetch` and `typescript:lib fetch`). *Our choice among the engine's declarations*: when a declaration with a body is in project code and every other one is in a
+declaration file, only the project's stay; `declare function alert(…)` in the same script, with no body, keeps both. An engine bump must re-run this fixture: it depends on the checker listing both declarations
+of a merged symbol, in (file, offset) order.
+
+**The seam** (`key.rs`, `env.rs`, `walk::resolve(site, &env)` with `resolve_from_env` returning `None`) exists as `docs/02-tree-rules/03-the-seam.md` §3 asks; `calls.rs` implements `Lang` and delegates to `walk::body`.
+`def_without_node` is one `Unresolved` edge at the def's first byte and a count, the context `Finished`, and it is tested by a test hook that drops a def's node (nothing in the suite makes the two parses disagree).
+A class reached by a plain call (`super(x)`) is a construction whose `init` is its own constructor; with none of its own, `init` is none (an inherited one is `new`'s, step 5).

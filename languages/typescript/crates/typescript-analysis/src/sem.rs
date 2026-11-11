@@ -996,7 +996,8 @@ mod resolve {
             let Some(callee) = call.call.expression() else {
                 return vec![Resolved::Unknown(Why::NoDeclaration)];
             };
-            let mut declarations = declarations_of(&mut checker, callee);
+            let mut declarations =
+                self.prefer_project_bodies(declarations_of(&mut checker, callee));
             let mut unresolved_members = false;
             if declarations.is_empty()
                 && let Some((members, all_resolved)) =
@@ -1032,6 +1033,43 @@ mod resolve {
                 found.push(Resolved::Unknown(Why::UnionReceiver));
             }
             found
+        }
+
+        /// Our choice among the engine's declarations, for one case (pinned in `ENGINE.md` and the policy table): in a script file a function named like a
+        /// library global (`fetch`, `open`, `close`, `name`) is the same symbol as the library's, so the checker lists both and a call to the project's
+        /// function would also be an `External` edge to something never called. When a declaration with a **body** is in project code and every other one
+        /// is in a declaration file (a bundled library, a package's `.d.ts`), only the project's stay. If no project declaration has a body, or another
+        /// declaration is project code, nothing changes: the engine's list is the answer.
+        fn prefer_project_bodies(&self, declarations: Vec<P<Node>>) -> Vec<P<Node>> {
+            let is_declaration_file = |declaration: &P<Node>| {
+                ast::get_source_file_of_node(*declaration)
+                    .is_some_and(|file| tspath::is_declaration_file_name(file.file_name()))
+            };
+            let is_project_body = |declaration: &P<Node>| {
+                declaration.body().is_some()
+                    && !is_declaration_file(declaration)
+                    && ast::get_source_file_of_node(*declaration).is_some_and(|file| {
+                        self.is_project_code(File {
+                            node: file,
+                            _sem: PhantomData,
+                            _one_thread: PhantomData,
+                        })
+                    })
+            };
+            let wins: Vec<P<Node>> = declarations
+                .iter()
+                .copied()
+                .filter(|declaration| is_project_body(declaration))
+                .collect();
+            let others_are_libraries = declarations
+                .iter()
+                .filter(|declaration| !wins.contains(declaration))
+                .all(is_declaration_file);
+            if !wins.is_empty() && others_are_libraries {
+                wins
+            } else {
+                declarations
+            }
         }
 
         /// A callee declared as a holder of a value (`export declare const useThing: () => number`, a property of function type in a package) **outside**
@@ -2301,6 +2339,34 @@ mod tests {
         assert_eq!(
             entries.describe(class, STYLE).kind,
             analyzer_core::outline::DefKind::Class
+        );
+    }
+
+    #[test]
+    fn sem_contract_in_a_script_the_project_function_with_a_body_wins_over_the_libs_global() {
+        let sem = Sem::open(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/script-global"),
+            Path::new("main.ts"),
+        )
+        .unwrap();
+        let one = |site: &str, target: &str| (site.to_owned(), vec![target.to_owned()]);
+        // `function fetch() {}` in a script is the same symbol as the DOM's `fetch`; the checker lists both declarations, and a call to the project's
+        // function is not a call into the browser. Our choice among the engine's declarations (ENGINE.md): one with a body in project code wins when the
+        // others are in a bundled library or a .d.ts
+        assert_eq!(
+            resolved_sites(&sem, "main.ts", "caller"),
+            [
+                one("fetch", "main.ts fetch"),
+                one("open", "main.ts open"),
+                // the project's `declare function alert` has no body, so nothing is preferred: both targets stay, as the engine says
+                (
+                    "alert".to_owned(),
+                    vec![
+                        "main.ts alert".to_owned(),
+                        "external typescript:lib alert".to_owned()
+                    ]
+                ),
+            ]
         );
     }
 }
