@@ -771,7 +771,7 @@ fn line(
     format!("{qname} id={id:?} count={count} site={site} marks={marks:?} contexts={ctxs:?}")
 }
 
-fn describe_old(f: &crate::interp::FrameJson, sorted: bool) -> String {
+fn describe_old(f: &crate::interp::FrameJson, sorted: bool, sites: bool) -> String {
     let marks = f
         .marks
         .iter()
@@ -782,8 +782,16 @@ fn describe_old(f: &crate::interp::FrameJson, sorted: bool) -> String {
         .iter()
         .map(|c| format!("{:?}{:?}", c.func, c.digest))
         .collect();
-    let site = format!("{:?}", f.call_site.map(|s| (s.start, s.end)));
-    let mut kids: Vec<String> = f.children.iter().map(|c| describe_old(c, sorted)).collect();
+    let site = if sites {
+        format!("{:?}", f.call_site.map(|s| (s.start, s.end)))
+    } else {
+        String::new()
+    };
+    let mut kids: Vec<String> = f
+        .children
+        .iter()
+        .map(|c| describe_old(c, sorted, sites))
+        .collect();
     if sorted {
         kids.sort();
     }
@@ -800,14 +808,22 @@ fn describe_old(f: &crate::interp::FrameJson, sorted: bool) -> String {
     })
 }
 
-fn describe_new(f: &crate::wire::Frame, sorted: bool) -> String {
+fn describe_new(f: &crate::wire::Frame, sorted: bool, sites: bool) -> String {
     let ctxs = f
         .contexts
         .iter()
         .map(|c| format!("{:?}{:?}", c.func, c.digest))
         .collect();
-    let site = format!("{:?}", f.call_site.map(|s| (s.start, s.end)));
-    let mut kids: Vec<String> = f.children.iter().map(|c| describe_new(c, sorted)).collect();
+    let site = if sites {
+        format!("{:?}", f.call_site.map(|s| (s.start, s.end)))
+    } else {
+        String::new()
+    };
+    let mut kids: Vec<String> = f
+        .children
+        .iter()
+        .map(|c| describe_new(c, sorted, sites))
+        .collect();
     if sorted {
         kids.sort();
     }
@@ -830,35 +846,49 @@ fn describe_new(f: &crate::wire::Frame, sorted: bool) -> String {
 /// The count of entries that differ only in order is printed, and the test asks for the content.
 #[test]
 fn the_wire_from_the_core_graph_has_the_old_renderers_content_on_every_fixture() {
-    use crate::interp::{WireStyle, call_frame, call_wire};
+    use crate::interp::{WireStyle, call_frame, call_wire, merge_for_output};
     let all = every_entry();
-    let (mut content_differs, mut order_differs) = (String::new(), 0);
+    let mut content_differs = String::new();
+    // [unmerged, merged]: entries compared, and entries whose content matches but whose order of siblings does not
+    let (mut compared, mut order_differs) = ([0usize; 2], [0usize; 2]);
     for (fixture, entry, mut opts) in all.clone() {
         opts.wire = WireStyle {
             function_prefix: "F/".into(),
             class_prefix: "C/".into(),
         };
         let (db, file) = open_fixture(&fixture);
-        let (Some((old, _)), Some((new, _))) = (
-            call_wire(&db, file, &entry, &opts),
-            call_frame(&db, file, &entry, &opts, false),
-        ) else {
+        let Some((old, _)) = call_wire(&db, file, &entry, &opts) else {
             continue;
         };
-        if describe_old(&old, true) != describe_new(&new, true) {
-            content_differs += &format!(
-                "--- {fixture} {entry}\nold:\n{}\nnew:\n{}\n",
-                describe_old(&old, true),
-                describe_new(&new, true)
+        for (n, merged) in [false, true].into_iter().enumerate() {
+            let old = if merged {
+                merge_for_output(&old)
+            } else {
+                old.clone()
+            };
+            let (new, _) = call_frame(&db, file, &entry, &opts, merged)
+                .expect("the old renderer found the entry, so the new one does");
+            compared[n] += 1;
+            // a merged node keeps the call site of its first sibling, and which one is first is exactly the order of siblings
+            let sites = !merged;
+            let (a, b) = (
+                describe_old(&old, true, sites),
+                describe_new(&new, true, sites),
             );
-        } else if describe_old(&old, false) != describe_new(&new, false) {
-            order_differs += 1;
+            if a != b {
+                content_differs +=
+                    &format!("--- {fixture} {entry} (merged: {merged})\nold:\n{a}\nnew:\n{b}\n");
+            } else if describe_old(&old, false, sites) != describe_new(&new, false, sites) {
+                order_differs[n] += 1;
+            }
         }
     }
     println!(
-        "{} entries: {order_differs} differ only in the order of siblings",
-        all.len()
+        "unmerged: {} entries, {} differ only in the order of siblings | merged: {} entries, {} differ only in order",
+        compared[0], order_differs[0], compared[1], order_differs[1]
     );
+    assert_eq!(compared[0], all.len(), "an entry was skipped");
+    assert_eq!(compared[1], all.len(), "an entry was skipped");
     assert!(
         content_differs.is_empty(),
         "content differs:\n{content_differs}"

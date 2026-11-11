@@ -454,6 +454,22 @@ mod tests {
     }
 
     #[test]
+    fn a_merged_node_keeps_the_call_site_of_its_first_sibling() {
+        // two calls to `run`, at bytes 0 and 10: the merged node is where the first is, and has its site
+        let text = "aaaaaaaaaa bbbbbbbbbb\n";
+        let entry = ContextId::of(marked("main"));
+        let merged = wire(&twice(), &entry, &files(text), &opts(true));
+        let site = merged.children[0].call_site.unwrap();
+        assert_eq!(
+            site,
+            LineSpan {
+                start: (1, 1),
+                end: (1, 4)
+            }
+        );
+    }
+
+    #[test]
     fn merging_twice_changes_nothing() {
         let entry = ContextId::of(marked("main"));
         let once = wire(&twice(), &entry, &files("x\n"), &opts(true));
