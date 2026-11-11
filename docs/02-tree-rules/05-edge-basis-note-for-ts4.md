@@ -1,6 +1,6 @@
 # Note for the TS4 session: what an edge rests on (`Basis`) and why an edge is `Unresolved` (`Reason`)
 
-Status: **applied.** `Basis` and `Reason` are in `core/` (graph, solve, render, the testkit) and Python's `core_graph.rs`, `call.rs`, `summary.rs` and `wire.rs` are adapted, in one commit with
+Status: **applied in commit 2296fc8.** `Basis` and `Reason` are in `core/` (graph, solve, render, the testkit) and Python's `core_graph.rs`, `call.rs`, `summary.rs` and `wire.rs` are adapted, in one commit with
 every language's tests green (rule 5). The owner approved the direction on 2026-11-12; the shape below is the one TypeScript step 4 is written against. (Written as a proposal first; the text below
 is unchanged.)
 
