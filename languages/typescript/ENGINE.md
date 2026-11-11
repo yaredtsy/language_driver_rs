@@ -303,3 +303,13 @@ So the plan (`docs/03-typescript/05-ts3-project.md` §4) was right that `Drop` f
 The plan (`docs/03-typescript/05-ts3-project.md` §3) listed `single_threaded` and `checkers = 1` as two options and left "what the flag covers" as a
 `[check]`: it covers file loading and the checker pool, and `checkers = 1` is the part we need. Cold opens vary a lot (the same program: 126 to 444 ms
 on a first run), so quote warm numbers.
+
+### The inferred project (no config above the file)
+
+Built with `tsrs_tsoptions::new_parsed_command_line` and the file as the only root; its imports and `require` calls pull in the rest (fixtures `plain-js`,
+`plain-js-require`: an unimported sibling is not in the program). Options, from `tsrs_lint`'s set for files no config claims (`engine.rs`, the `unmatched`
+branch), with the plan's changes: `allow_js` on, `check_js` off, `no_emit` on, `module` ESNext, `module_resolution` bundler, `target` ES2022, `jsx` react-jsx
+(so JSX elements are call sites in a `.jsx` file), `allow_importing_ts_extensions`, `es_module_interop`, `resolve_json_module`. Left out of `tsrs_lint`'s set:
+`source_map` (nothing is emitted), `strict_null_checks` / `strict_function_types` (not set; whether they ever change which signature a call resolves to was not checked), and
+`allow_non_ts_extensions`: without it a `.txt` root is ignored, so `open` says `NotInProject("(inferred project)")` instead of reading prose as TypeScript.
+Not checked: that the options above change a resolved call target compared with `tsc`'s own inferred-project defaults (TS4's fixtures will show it).

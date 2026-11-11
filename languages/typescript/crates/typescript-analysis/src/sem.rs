@@ -10,8 +10,10 @@ use std::sync::Arc;
 
 use tsrs_compiler::{Program, ProgramOptions, ProgramRegions};
 use tsrs_core::arena::Region;
-use tsrs_core::{CompilerOptions, P, tspath};
-use tsrs_tsoptions::ParseConfigHost;
+use tsrs_core::{
+    CompilerOptions, JsxEmit, ModuleKind, ModuleResolutionKind, P, ScriptTarget, Tristate, tspath,
+};
+use tsrs_tsoptions::{ParseConfigHost, ParsedCommandLine};
 use tsrs_vfs::{FS, bundled, cachedvfs, osvfs};
 
 use crate::OpenError;
@@ -44,7 +46,8 @@ pub(crate) struct Sem {
 }
 
 impl Sem {
-    /// Loads the program of the `tsconfig.json` (or `jsconfig.json`) nearest above `file`, looking no further up than `root`.
+    /// Loads the program of the `tsconfig.json` (or `jsconfig.json`) nearest above `file`, looking no further up than `root`; with none, an
+    /// inferred project built from `file` alone.
     /// `file` is relative to `root`, or absolute. A program that loads with type errors is not an error.
     pub(crate) fn open(root: &Path, file: &Path) -> Result<Sem, OpenError> {
         let root = root.canonicalize().map_err(|_| OpenError::NoSuchFile)?;
@@ -55,9 +58,7 @@ impl Sem {
         if !file.is_file() {
             return Err(OpenError::NoSuchFile);
         }
-        let config_path = find_config(&root, &file).ok_or_else(|| {
-            OpenError::ConfigError("no tsconfig.json or jsconfig.json above the file".into())
-        })?;
+        let config_path = find_config(&root, &file);
 
         let cwd = to_engine_path(&root);
         let fs: Arc<dyn FS> = Arc::new(bundled::wrap_fs(cachedvfs::from(osvfs::fs())));
@@ -70,29 +71,12 @@ impl Sem {
         let loaders = Arc::new(ProgramRegions::default());
         let program = {
             let _scope = region.enter();
-            let (config, diagnostics) = tsrs_tsoptions::get_parsed_command_line_of_config_file(
-                &to_engine_path(&config_path),
-                None,
-                None,
-                &config_host,
-                None,
-            );
-            if let Some(first) = diagnostics.first() {
-                return Err(OpenError::ConfigError(first.localize()));
-            }
-            let config = config.ok_or_else(|| {
-                OpenError::ConfigError("the config file could not be read".into())
-            })?;
-            // A config with a syntax error still parses, its errors kept on its own source file (as `tsrs_lint`'s `find_tsconfig` reads them).
-            if let Some(first) = config
-                .config_file
-                .and_then(|file| file.source_file.diagnostics().first().copied())
-            {
-                return Err(OpenError::ConfigError(first.localize()));
-            }
+            let mut config = match &config_path {
+                Some(path) => load_config(path, &config_host)?,
+                None => inferred_config(&file, &config_host),
+            };
             // One checker answers every question, so the same project gives the same answers in the same order (rule 9). Not
             // `single_threaded`: that also loads files one at a time, 3.5 times slower on a 1,500-file program (ENGINE.md).
-            let mut config = config;
             let compiler_options = config
                 .compiler_options()
                 .map(|options| (*options).clone())
@@ -130,8 +114,10 @@ impl Sem {
             .get_source_file(&to_engine_path(&file))
             .is_none()
         {
-            let config = config_path.strip_prefix(&sem.root).unwrap_or(&config_path);
-            return Err(OpenError::NotInProject(to_engine_path(config)));
+            return Err(OpenError::NotInProject(match &config_path {
+                Some(path) => to_engine_path(path.strip_prefix(&sem.root).unwrap_or(path)),
+                None => INFERRED.into(),
+            }));
         }
         Ok(sem)
     }
@@ -166,6 +152,59 @@ impl Drop for Sem {
         // hands none out, and nothing reads `self.program` after this.
         unsafe { tsrs_compiler::free_unshared_program(self.program) };
     }
+}
+
+/// What `NotInProject` names when there was no config: the program was inferred from the file alone.
+const INFERRED: &str = "(inferred project)";
+
+/// Reads a `tsconfig.json` / `jsconfig.json`: its options, its files and its references.
+fn load_config(path: &Path, host: &ConfigHost) -> Result<ParsedCommandLine, OpenError> {
+    let (config, diagnostics) = tsrs_tsoptions::get_parsed_command_line_of_config_file(
+        &to_engine_path(path),
+        None,
+        None,
+        host,
+        None,
+    );
+    if let Some(first) = diagnostics.first() {
+        return Err(OpenError::ConfigError(first.localize()));
+    }
+    let config =
+        config.ok_or_else(|| OpenError::ConfigError("the config file could not be read".into()))?;
+    // A config with a syntax error still parses, its errors kept on its own source file (as `tsrs_lint`'s `find_tsconfig` reads them).
+    if let Some(first) = config
+        .config_file
+        .and_then(|file| file.source_file.diagnostics().first().copied())
+    {
+        return Err(OpenError::ConfigError(first.localize()));
+    }
+    Ok(config)
+}
+
+/// The program of a folder with no config: `file` alone is the root, and its imports pull in the rest. The options are `tsrs_lint`'s
+/// for files no config claims, except that nothing is emitted (`no_emit`) and a `.js` file is read, never checked (`check_js` off).
+fn inferred_config(file: &Path, host: &ConfigHost) -> ParsedCommandLine {
+    tsrs_tsoptions::new_parsed_command_line(
+        P::new(CompilerOptions {
+            allow_js: Tristate::True,
+            check_js: Tristate::False,
+            no_emit: Tristate::True,
+            module: ModuleKind::ES_NEXT,
+            module_resolution: ModuleResolutionKind::BUNDLER,
+            target: ScriptTarget::ES2022,
+            jsx: JsxEmit::REACT_JSX,
+            allow_importing_ts_extensions: Tristate::True,
+            es_module_interop: Tristate::True,
+            resolve_json_module: Tristate::True,
+            ..Default::default()
+        }),
+        vec![to_engine_path(file)],
+        Vec::new(),
+        tspath::ComparePathsOptions {
+            current_directory: host.cwd.clone(),
+            use_case_sensitive_file_names: host.fs.use_case_sensitive_file_names(),
+        },
+    )
 }
 
 /// The nearest `tsconfig.json`, else `jsconfig.json`, from the file's directory up to `root`: the editor's upward search, bounded by

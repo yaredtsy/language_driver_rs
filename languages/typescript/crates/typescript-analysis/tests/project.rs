@@ -47,11 +47,30 @@ fn opening_twice_in_one_process_works() {
 }
 
 #[test]
-fn no_config_above_the_file_is_a_config_error() {
-    let error = Project::open(&fixture("no-config"), Path::new("a.ts")).err();
-    assert!(
-        matches!(error, Some(OpenError::ConfigError(_))),
-        "{error:?}"
+fn a_folder_with_no_config_is_an_inferred_project_of_the_file_and_its_imports() {
+    let project = Project::open(&fixture("plain-js"), Path::new("index.js")).unwrap();
+    // `unused.js` is not imported, so it is not in the program.
+    assert_eq!(project.files(), ["index.js", "lib/util.js"]);
+}
+
+#[test]
+fn an_inferred_project_follows_require_in_a_js_file() {
+    let project = Project::open(&fixture("plain-js-require"), Path::new("main.js")).unwrap();
+    assert_eq!(project.files(), ["dep.js", "main.js"]);
+}
+
+#[test]
+fn an_inferred_project_of_a_ts_file_loads_too() {
+    let project = Project::open(&fixture("no-config"), Path::new("a.ts")).unwrap();
+    assert_eq!(project.files(), ["a.ts"]);
+}
+
+#[test]
+fn a_file_that_is_not_source_has_no_program() {
+    let error = Project::open(&fixture("no-config"), Path::new("notes.txt")).err();
+    assert_eq!(
+        error,
+        Some(OpenError::NotInProject("(inferred project)".into()))
     );
 }
 

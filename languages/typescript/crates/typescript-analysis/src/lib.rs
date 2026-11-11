@@ -12,7 +12,8 @@ pub struct Project {
 
 impl Project {
     /// Loads the project that owns `file` (relative to `root`, or absolute): the nearest `tsconfig.json` or `jsconfig.json` above it,
-    /// searching no higher than `root`. A project that loads with type errors is not an error.
+    /// searching no higher than `root`. With none, an inferred project: `file` alone is the root and its imports pull in the rest. A
+    /// project that loads with type errors is not an error.
     pub fn open(root: &Path, file: &Path) -> Result<Project, OpenError> {
         Ok(Project {
             sem: sem::Sem::open(root, file)?,
@@ -31,10 +32,10 @@ impl Project {
 pub enum OpenError {
     /// The root or the file does not exist, or the file is not a file.
     NoSuchFile,
-    /// No config was found, or the config could not be read. The text is for a person.
+    /// The config could not be read, or has a syntax error. The text is for a person.
     ConfigError(String),
     /// The config is valid and was loaded, but its program does not hold the file (its `include` / `exclude` leave it out). Holds the
-    /// config's path relative to the root. A solution config's `references` are not followed yet (TS3 step 6).
+    /// config's path relative to the root, or `(inferred project)` when there was none (the file is not TypeScript or JavaScript). A solution config's `references` are not followed yet (TS3 step 6).
     NotInProject(String),
 }
 

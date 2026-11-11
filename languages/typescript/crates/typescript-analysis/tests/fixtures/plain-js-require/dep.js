@@ -1,0 +1,3 @@
+exports.double = function double(x) {
+  return x * 2;
+};
