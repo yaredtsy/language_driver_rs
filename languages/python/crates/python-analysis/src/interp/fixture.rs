@@ -827,11 +827,17 @@ fn the_core_graph_of_every_fixture_keeps_core_s_invariants() {
     }
 }
 
-/// The golden wire of a real project, taken from pylspt at the pin (D14). Not run by default: it needs a project that is not in the repo and
-/// the files in `out/golden/`, and the prefixes are V-NOC's, which no crate may spell. Run it by hand:
+/// The golden wire of a real project. Not run by default: it needs a project that is not in the repo and the files in `out/golden/`, and the
+/// prefixes are V-NOC's, which no crate may spell. Run it by hand:
 ///
 /// `PYTHON_GOLDEN_PROJECT=<dir> PYTHON_GOLDEN_FILE=<file in it> PYTHON_GOLDEN_ENTRY=<entry> PYTHON_GOLDEN_DIR=<out/golden>
 ///  PYTHON_GOLDEN_PREFIXES=<function prefix>,<class prefix> cargo test -p python-analysis golden -- --ignored --nocapture`
+///
+/// Two comparisons, for the unmerged wire and the merged one. `pylspt-wire*.json` is what pylspt gave at the pin: the new wire must have
+/// its content, with siblings in any order (decision A) and the one rename of the plan, `Node` to `Marked`. `wire*.json` is this crate's own
+/// wire, generated from itself after W4: the new wire must equal it exactly, so a change is noticed to the byte. With
+/// `PYTHON_GOLDEN_EMIT=1` the test prints the wire between `=====BEGIN <file>` and `=====END` lines instead of comparing it with `wire*.json`
+/// (a library never writes a file: redirect and split the output to regenerate them).
 #[test]
 #[ignore = "needs a real project and out/golden/: see the comment"]
 fn golden_wire_of_a_real_project() {
@@ -845,6 +851,7 @@ fn golden_wire_of_a_real_project() {
         var("PYTHON_GOLDEN_DIR"),
         var("PYTHON_GOLDEN_PREFIXES"),
     );
+    let emit = std::env::var("PYTHON_GOLDEN_EMIT").is_ok_and(|v| v == "1");
     let (function_prefix, class_prefix) = prefixes.split_once(',').expect("two prefixes");
     let db = open_project(SystemPath::new(&project)).unwrap();
     let (file, _) = open(&db, &SystemPath::new(&project).join(file)).unwrap();
@@ -866,7 +873,7 @@ fn golden_wire_of_a_real_project() {
             other => other,
         }
     }
-    // children in any order, contexts and marks sorted: what is left is the content
+    // children in any order, contexts sorted: what is left is the content
     fn canon(v: &mut Value) {
         if let Some(kids) = v.get_mut("children").and_then(Value::as_array_mut) {
             kids.iter_mut().for_each(canon);
@@ -881,8 +888,11 @@ fn golden_wire_of_a_real_project() {
             .as_array()
             .map_or(0, |k| k.iter().map(nodes).sum())
     }
+    let read = |name: &str| -> Value {
+        serde_json::from_str(&std::fs::read_to_string(format!("{dir}/{name}")).unwrap()).unwrap()
+    };
 
-    for (merged, golden) in [(false, "wire.json"), (true, "wire-merged.json")] {
+    for (merged, name) in [(false, "wire.json"), (true, "wire-merged.json")] {
         let mut opts = summary();
         opts.wire = WireStyle {
             function_prefix: function_prefix.into(),
@@ -890,21 +900,29 @@ fn golden_wire_of_a_real_project() {
         };
         let (new, _) = call_frame(&db, file, &entry, &opts, merged).unwrap();
         let new = serde_json::to_value(&new).unwrap();
-        let old = renamed(
-            serde_json::from_str(&std::fs::read_to_string(format!("{dir}/{golden}")).unwrap())
-                .unwrap(),
-        );
-        let exact = new == old;
-        let (mut a, mut b) = (old.clone(), new.clone());
+
+        let reference = renamed(read(&format!("pylspt-{name}")));
+        let (mut a, mut b) = (reference.clone(), new.clone());
         canon(&mut a);
         canon(&mut b);
         println!(
-            "{golden}: {} nodes golden, {} nodes new | identical: {exact} | identical in any sibling order: {}",
-            nodes(&old),
+            "{name}: {} nodes from pylspt, {} nodes new | same content in any sibling order: {}",
+            nodes(&reference),
             nodes(&new),
             a == b
         );
-        assert!(a == b, "{golden}: differs beyond sibling order");
+        assert!(a == b, "{name}: differs from pylspt's beyond sibling order");
+
+        if emit {
+            println!(
+                "=====BEGIN {name}\n{}\n=====END",
+                serde_json::to_string_pretty(&new).unwrap()
+            );
+        } else {
+            let own = read(name);
+            println!("{name}: equal to this crate's own golden: {}", own == new);
+            assert!(own == new, "{name}: differs from this crate's own golden");
+        }
     }
 }
 
