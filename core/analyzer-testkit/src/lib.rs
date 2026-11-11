@@ -12,8 +12,9 @@ pub mod syntax;
 use std::fs;
 use std::path::Path;
 
-/// Compare `actual` with the file at `path`. A mismatch panics with the first differing line.
-pub(crate) fn expect_file(path: &Path, actual: &str) {
+/// Compare `actual` with the file at `path`. A mismatch panics with the first differing line. Public so a language can keep reviewed
+/// snapshots of its own answers (the wire, a graph) the way the testkit keeps its own, with the same `ANALYZER_BLESS=1` switch.
+pub fn expect_file(path: &Path, actual: &str) {
     if std::env::var_os("ANALYZER_BLESS").is_some_and(|v| v == "1") {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir).expect("create the directory of an expected file");
