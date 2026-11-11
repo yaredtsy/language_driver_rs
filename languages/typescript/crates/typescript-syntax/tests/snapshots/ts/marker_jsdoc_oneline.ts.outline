@@ -1,0 +1,5 @@
+Function oneLine [15..36] name [24..31]
+Function markedOneLine [59..86] name [68..81] marker="oneline-1"
+Function oneLineTag [110..134] name [119..129]
+Function emptyStars [142..166] name [151..161]
+Function emptyBlock [175..199] name [184..194]

@@ -1,0 +1,6 @@
+Function bare [0..18] name [9..13]
+Class Bare [20..48] name [26..30]
+  Method Bare.member [35..46] name [35..41]
+Function arrow [50..80] name [63..68]
+Interface Shape [82..119] name [92..97]
+  Method Shape.area [102..117] name [102..106]

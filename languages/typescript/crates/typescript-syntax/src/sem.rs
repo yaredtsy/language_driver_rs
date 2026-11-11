@@ -4,6 +4,8 @@
 //! so a pointer must never outlive `with_parsed`. Two things keep that true: `RawNode`'s field is private to this file, and
 //! `Parsed` is neither `Send` nor `Sync` and only lends itself to the closure.
 
+use std::cell::OnceCell;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use analyzer_core::text::Span;
@@ -62,10 +64,27 @@ pub(crate) struct Modifiers {
     pub(crate) declare: bool,
 }
 
+/// What kind of comment this is. A JSDoc block starts with `/**` (and is not the empty `/**/`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum CommentKind {
+    Line,
+    Block,
+    Jsdoc,
+}
+
+/// One comment: its bytes, from its first `/` to its last byte (a line comment stops before the line break).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct Comment {
+    pub(crate) span: Span,
+    pub(crate) kind: CommentKind,
+}
+
 /// A file parsed in a region. Lives only inside `with_parsed`.
 pub(crate) struct Parsed<'a> {
     file: P<SourceFile>,
     text: &'a str,
+    /// First byte of a token (a node's start) → where that node's leading trivia begins, for nodes that have any. Built on first use.
+    trivia_start: OnceCell<HashMap<u32, u32>>,
     /// `*const ()` is neither `Send` nor `Sync`: a parse belongs to the thread (and region) that made it.
     _not_send: PhantomData<*const ()>,
 }
@@ -107,6 +126,7 @@ pub(crate) fn with_parsed<R>(text: &str, dialect: Dialect, f: impl FnOnce(&Parse
     f(&Parsed {
         file,
         text,
+        trivia_start: OnceCell::new(),
         _not_send: PhantomData,
     })
 }
@@ -261,6 +281,58 @@ impl Parsed<'_> {
     /// The text a span covers; `None` if it is out of bounds or cuts a character.
     pub(crate) fn slice(&self, span: Span) -> Option<&str> {
         span.slice(self.text)
+    }
+
+    /// The comments directly before the token that starts at byte `start` (a def's first byte), in order. Comments on the previous token's
+    /// own line are not among them: they trail that token.
+    pub(crate) fn comments_before(&self, start: u32) -> Vec<Comment> {
+        let index = self.trivia_start.get_or_init(|| self.index_trivia());
+        match index.get(&start) {
+            Some(&from) => self.comments_from(from),
+            None => Vec::new(),
+        }
+    }
+
+    /// The comments from byte `from` up to the next token, in order. With `from == 0` this is the top of the file.
+    pub(crate) fn comments_from(&self, from: u32) -> Vec<Comment> {
+        // the engine's range type needs the file's own `'static` copy of the text; offsets are the same
+        let text = self.file.text();
+        tsrs_scanner::get_leading_comment_ranges(text, from)
+            .map(|c| {
+                let span = Span::new(c.pos(), c.end());
+                let written = span.slice(text).unwrap_or("");
+                let kind = if c.kind == Kind::SingleLineCommentTrivia {
+                    CommentKind::Line
+                } else if written.starts_with("/**") && written != "/**/" {
+                    CommentKind::Jsdoc
+                } else {
+                    CommentKind::Block
+                };
+                Comment { span, kind }
+            })
+            .collect()
+    }
+
+    /// The first line of the file when it is a `#!` line, without its line break; empty when there is none.
+    pub(crate) fn shebang(&self) -> &str {
+        tsrs_scanner::get_shebang(self.text)
+    }
+
+    /// One pass over the tree: for every node that has leading trivia, where its token starts and where the trivia begins. The first
+    /// node (the outermost) found for a start wins: a statement, not its first child.
+    fn index_trivia(&self) -> HashMap<u32, u32> {
+        let mut index = HashMap::new();
+        let mut todo = vec![self.root()];
+        while let Some(n) = todo.pop() {
+            let pos = n.0.pos().source_offset().unwrap_or(0);
+            let start = self.span(n).start;
+            if start != pos {
+                index.entry(start).or_insert(pos);
+            }
+            // pushed in reverse so that children come off in source order: a pre-order walk, without recursion
+            todo.extend(self.children(n).into_iter().rev());
+        }
+        index
     }
 
     /// The parse errors, in the order the engine reports them: a range and an English message. (`message_text()` is empty for

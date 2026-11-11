@@ -1,0 +1,6 @@
+Function marked [70..90] name [79..85] marker="multi-1"
+Function unmarked [141..163] name [150..158]
+Function blankStarLine [201..228] name [210..223]
+Class Holder [230..360] name [243..249]
+  Method Holder.method [281..292] name [281..287]
+  Method Holder.marked [347..358] name [347..353] marker="multi-2"

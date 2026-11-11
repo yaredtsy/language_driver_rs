@@ -1,0 +1,4 @@
+Class Tabs [0..110] name [6..10]
+  Method Tabs.method [42..53] name [42..48]
+  Method Tabs.marked [81..92] name [81..87] marker="tabs-1"
+  Method Tabs.unmarked [95..108] name [95..103]

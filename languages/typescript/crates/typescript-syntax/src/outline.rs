@@ -2,14 +2,15 @@
 //! TypeScript is tagged, `languages/typescript/docs/qualnames.md`. **Qualnames are stored in users' files: never change how an
 //! existing kind of def is named.**
 
-use analyzer_core::edit::MarkerStyle;
+use analyzer_core::edit::{MarkerStyle, Placement};
 use analyzer_core::outline::{Def, DefKind, Outline, SyntaxError};
 use analyzer_core::text::Span;
 
 use crate::Dialect;
+use crate::marker;
 use crate::sem::{NodeKind, Parsed, RawNode, with_parsed};
 
-pub(crate) fn outline(text: &str, dialect: Dialect, _style: MarkerStyle<'_>) -> Outline {
+pub(crate) fn outline(text: &str, dialect: Dialect, style: MarkerStyle<'_>) -> Outline {
     with_parsed(text, dialect, |p| {
         let mut walker = Walker {
             p,
@@ -22,6 +23,16 @@ pub(crate) fn outline(text: &str, dialect: Dialect, _style: MarkerStyle<'_>) -> 
         let mut defs = walker.defs;
         for def in &mut defs {
             def.syntax_error = errors.iter().any(|(range, _)| overlaps(*range, def.range));
+            def.marker = match style.placement {
+                Placement::Docstring => marker::marker_of(
+                    text,
+                    def.range.start,
+                    &p.comments_before(def.range.start),
+                    style.label,
+                ),
+                // a placement this analyzer does not build reads nothing
+                _ => None,
+            };
         }
         let mut outline = Outline::default();
         outline.defs = defs;

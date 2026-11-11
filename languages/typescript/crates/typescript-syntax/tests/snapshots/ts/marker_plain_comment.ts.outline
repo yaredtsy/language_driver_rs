@@ -1,0 +1,6 @@
+Function afterPlainBlock [20..49] name [29..44]
+Function afterLineComment [69..99] name [78..94]
+Function plainBlockWithLabel [124..157] name [133..152]
+Function lineWithLabel [186..213] name [195..208]
+Function jsdocThenLine [263..290] name [272..285]
+Function jsdocThenBlock [342..370] name [351..365]
