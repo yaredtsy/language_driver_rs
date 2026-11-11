@@ -98,8 +98,9 @@ fn type_errors_do_not_stop_a_project_loading() {
 }
 
 #[test]
-fn files_lists_project_code_only() {
+fn a_repo_declaration_file_is_not_in_files() {
     let project = Project::open(&fixture("with-node-modules"), Path::new("src/main.ts")).unwrap();
-    // `src/types.d.ts` is in the program but is a declaration file; the packages are in `node_modules`
+    // `src/types.d.ts` is the repo's own and is in the program (a sem test checks that, so its absence here is the rule and not an accident);
+    // the packages are in `node_modules`. Whether a call into it resolves as `External` is TS4's (`external/`).
     assert_eq!(project.files(), ["src/main.ts"]);
 }

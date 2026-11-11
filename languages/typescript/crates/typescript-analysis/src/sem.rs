@@ -402,6 +402,16 @@ mod tests {
     }
 
     #[test]
+    fn a_repo_declaration_file_is_in_the_program_but_is_not_project_code() {
+        let sem = Sem::open(&with_node_modules(), Path::new("src/main.ts")).unwrap();
+        let types = sem
+            .file("src/types.d.ts")
+            .expect("main.ts imports it, so the program holds it");
+        assert!(!sem.is_project_code(types));
+        assert_eq!(sem.package_of(types), None);
+    }
+
+    #[test]
     fn a_file_is_found_by_its_relative_path() {
         let sem = Sem::open(&with_node_modules(), Path::new("src/main.ts")).unwrap();
         let file = sem.file("./src/../src/main.ts").unwrap();

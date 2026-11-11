@@ -339,3 +339,16 @@ re-exported there (a wrapper function would prove only its own signature).
   the code is checked (the error is `E0505`, "cannot move out of `sem` because it is borrowed"; `E0499` failed). On stable the guard against "fails for the wrong reason" is
   the **twin** doctest, which differs only in the order of the last two lines and must compile.
 - A `PhantomData<&'p ()>` in place of `PhantomData<&'p Sem>` also passes: it binds the borrow just the same through `Sem::file`'s signature, so it is not a bug.
+
+### Thread safety of the handles (checked 2026-11-11)
+
+Before this step the compiler said: `File<'static>` is `Send` and `Sync`, and so is `Sem` (so `Project` is). Nothing was wrong yet, because no handle can be used
+without a `&Sem` and no method touches the checker, but the design is one checker answering one question at a time and tsrs enters its regions per thread, so
+"a handle may cross threads" was a claim nobody had made. `File` now carries a `PhantomData<*const ()>` (neither `Send` nor `Sync`), and two `compile_fail`
+doctests with compiling twins pin it (`typescript_analysis::proof`, run with `--features __proof` by `scripts/check-proofs.sh`; they failed before the marker was added and
+fail again with it removed). **`Sem` and `Project` are still `Send + Sync` and nothing pins that**: decide when TS4 makes the first checker query (a `Sync` `Sem` lets two
+threads call into one checker), and TS5 when the driver asks for parallelism.
+
+The proof module is behind the feature `__proof` because a `compile_fail` doctest is a separate crate that can only name public items. With the feature off rustdoc
+finds no proof doctest at all and reports success, hence the script and its count file. Cargo unifies features across a build, so a crate that enables `__proof`
+exposes `Sem` to everything built with it.

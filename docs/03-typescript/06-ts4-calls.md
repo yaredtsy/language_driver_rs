@@ -169,7 +169,7 @@ before the table is frozen.
 | a callback **parameter** being called (`function run(cb) { cb() }`) | `Unresolved`: the declaration is a parameter, not a function. This is the headline case for context sensitivity | `callback_param.ts` |
 | a value of type `any` or an untyped JavaScript value | `Unresolved` | `any.js` |
 | `obj[name]()` with a computed name | `Unresolved` unless the checker narrows the name to a literal | `computed.ts` |
-| project code | not under `node_modules`, not a `.d.ts`, not a bundled lib | `external/` |
+| project code | not under `node_modules`, not a `.d.ts`, not a bundled lib. A call that resolves into the **repo's own** `.d.ts` is `External`, not a def (TS3 pinned that such a file is absent from `files()`; this is the half that needs call resolution) | `external/` (include a repo `.d.ts`) |
 | an external call | an `External` edge with the package name; never entered | `external/` |
 | a `.d.ts` beside its `.js` in the project | the `.d.ts` wins in the checker; the target is `External`. **[check]** with S-TS3 whether this is common in your target projects | `dts_shadow/` |
 
