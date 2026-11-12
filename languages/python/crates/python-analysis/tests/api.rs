@@ -175,8 +175,8 @@ fn a_def_inside_a_block_is_an_entry() {
     }
 }
 
-#[test]
-fn every_def_of_the_outline_round_trips() {
+/// Every def of every file of the `08-entries` project, as (file, outline qualname, occurrence), in file order and then source order.
+fn every_def() -> Vec<(String, String, u16)> {
     use python_analysis::MarkerStyle;
     let mut files: Vec<_> = std::fs::read_dir(ENTRIES)
         .unwrap()
@@ -184,7 +184,7 @@ fn every_def_of_the_outline_round_trips() {
         .filter(|p| p.extension().is_some_and(|e| e == "py"))
         .collect();
     files.sort();
-    let mut asked = 0;
+    let mut out = Vec::new();
     for path in files {
         let name = path.file_name().unwrap().to_str().unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
@@ -194,17 +194,25 @@ fn every_def_of_the_outline_round_trips() {
                 .iter()
                 .filter(|d| d.qualname == def.qualname)
                 .count() as u16;
-            let frame = wire_of(name, &def.qualname, occurrence)
-                .unwrap_or_else(|| panic!("{name}: no frame for {} #{occurrence}", def.qualname));
-            assert_eq!(
-                (frame.target_qualname.as_str(), frame.target_occurrence),
-                (def.qualname.as_str(), occurrence),
-                "{name}"
-            );
-            asked += 1;
+            out.push((name.to_owned(), def.qualname.clone(), occurrence));
         }
     }
-    assert!(asked > 15, "only {asked} defs were asked for");
+    out
+}
+
+#[test]
+fn every_def_of_the_outline_round_trips() {
+    let defs = every_def();
+    for (name, qualname, occurrence) in &defs {
+        let frame = wire_of(name, qualname, *occurrence)
+            .unwrap_or_else(|| panic!("{name}: no frame for {qualname} #{occurrence}"));
+        assert_eq!(
+            (frame.target_qualname.as_str(), frame.target_occurrence),
+            (qualname.as_str(), *occurrence),
+            "{name}"
+        );
+    }
+    assert!(defs.len() > 15, "only {} defs were asked for", defs.len());
 }
 
 /// A frame and everything under it, as the fields a driver reads: the target's name, where the call was made, and the marks. Not the contexts,
@@ -337,4 +345,65 @@ fn the_constructor_context_of_a_class_entry_is_the_one_a_construction_has() {
         root, built,
         "same function and same digest: one context, shared"
     );
+}
+
+#[test]
+fn a_class_whose_constructor_takes_arguments_is_an_entry_with_what_it_calls() {
+    let frame = wire_of("with_args.py", "WithArgs", 0).unwrap();
+    assert_eq!(child_names(&frame), ["helper"]);
+    assert_eq!(
+        frame.children[0].call_site_file.as_deref(),
+        Some("with_args.py")
+    );
+}
+
+/// A path the way a driver reads it: relative to the project root, with `/`. On Windows `canonicalize` gives `\\?\C:\proj`, and a root that is
+/// not stripped leaves a drive and backslashes in every file name. This passes on every other OS before and after the fix (they have no
+/// verbatim prefix to leave in); it can only fail on Windows.
+fn assert_relative(what: &str, file: &str) {
+    let path = std::path::Path::new(file);
+    assert!(
+        !path.is_absolute() && !file.contains('\\') && !file.contains(':'),
+        "{what}: `{file}` is not a relative path with `/`"
+    );
+}
+
+fn assert_frame_files_relative(frame: &python_analysis::Frame) {
+    let mut stack = vec![frame];
+    while let Some(f) = stack.pop() {
+        for (what, file) in [
+            ("target_file", &f.target_file),
+            ("call_site_file", &f.call_site_file),
+        ] {
+            if let Some(file) = file {
+                assert_relative(what, file);
+            }
+        }
+        stack.extend(&f.children);
+    }
+}
+
+#[test]
+fn files_are_relative_and_the_root_does_not_change_the_answer() {
+    let by_relative = Project::open(ENTRIES).unwrap();
+    let absolute = std::fs::canonicalize(ENTRIES).unwrap();
+    let by_absolute = Project::open(absolute.to_str().unwrap()).unwrap();
+    let opts = Options::default();
+    for (file, qualname, occurrence) in every_def() {
+        let entry = Entry {
+            qualname: &qualname,
+            occurrence,
+        };
+        let graph = call_graph(&by_relative, &file, &entry, &opts).unwrap();
+        for def in &graph.defs {
+            assert_relative("DefInfo::file", &def.file);
+        }
+        let frame = call_wire(&by_relative, &file, &entry, &opts, false).unwrap();
+        assert_frame_files_relative(&frame);
+        assert_eq!(
+            call_graph(&by_absolute, &file, &entry, &opts).as_ref(),
+            Some(&graph),
+            "{file} {qualname} #{occurrence}: the project opened by its absolute path"
+        );
+    }
 }

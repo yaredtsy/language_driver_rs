@@ -833,12 +833,39 @@ impl std::fmt::Display for OpenError {
 
 impl std::error::Error for OpenError {}
 
+/// `path` without the verbatim prefix `std::fs::canonicalize` gives on Windows: `\\?\UNC\server\share\x` becomes `\\server\share\x` and `\\?\C:\x`
+/// becomes `C:\x`. The paths the engine hands back for files have none, so with it a root cannot be stripped from them and a file
+/// given by an absolute path is not found. Any other path is returned as it is, and so is one that is not valid UTF-8 (rule 8: never
+/// guess). It reads the path as text, so it compiles and is tested on every OS.
+fn plain(path: std::path::PathBuf) -> std::path::PathBuf {
+    let Some(text) = path.to_str() else {
+        return path;
+    };
+    if let Some(share) = text
+        .strip_prefix(r"\\?\UNC\")
+        .filter(|rest| !rest.is_empty())
+    {
+        return std::path::PathBuf::from(format!(r"\\{share}"));
+    }
+    if let Some(drive) = text.strip_prefix(r"\\?\") {
+        let b = drive.as_bytes();
+        if b.len() >= 2
+            && b[0].is_ascii_alphabetic()
+            && b[1] == b':'
+            && b.get(2).is_none_or(|c| *c == b'\\')
+        {
+            return std::path::PathBuf::from(drive);
+        }
+    }
+    path
+}
+
 impl Project {
     /// Opens the project rooted at `dir`. A broken project configuration never fails it (the defaults are used): only a path that is not
     /// a directory does.
     pub fn open(dir: &str) -> Result<Project, OpenError> {
         let not = || OpenError::NotADirectory(dir.to_owned());
-        let absolute = std::fs::canonicalize(dir).map_err(|_| not())?;
+        let absolute = plain(std::fs::canonicalize(dir).map_err(|_| not())?);
         let root = SystemPath::from_std_path(&absolute)
             .filter(|_| absolute.is_dir())
             .ok_or_else(not)?;
@@ -854,7 +881,7 @@ impl Project {
     pub(crate) fn file(&self, path: &str) -> Option<File> {
         let given = std::path::Path::new(path);
         let absolute = if given.is_absolute() {
-            std::fs::canonicalize(given).ok()?
+            plain(std::fs::canonicalize(given).ok()?)
         } else {
             let root = self.db.project().root(&self.db);
             std::path::PathBuf::from(root.as_str()).join(given)
@@ -1473,5 +1500,54 @@ mod attrs_tests {
             let n = type_of(db, pf, parsed, Want::Name("n"));
             assert!(analyzer_ext::callable_definition(db, n).is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod plain_paths {
+    use super::plain;
+    use std::path::PathBuf;
+
+    fn plain_of(path: &str) -> String {
+        plain(PathBuf::from(path)).to_str().unwrap().to_owned()
+    }
+
+    #[test]
+    fn a_verbatim_unc_path_is_a_unc_path() {
+        assert_eq!(
+            plain_of(r"\\?\UNC\server\share\proj\a.py"),
+            r"\\server\share\proj\a.py"
+        );
+    }
+
+    #[test]
+    fn a_verbatim_drive_path_is_a_drive_path() {
+        assert_eq!(plain_of(r"\\?\C:\proj\a.py"), r"C:\proj\a.py");
+        assert_eq!(plain_of(r"\\?\C:"), "C:");
+    }
+
+    #[test]
+    fn any_other_path_is_unchanged() {
+        for path in [
+            "/usr/proj/a.py",
+            "tests/fixtures",
+            r"C:\proj\a.py",
+            r"\\server\share\proj",
+            r"\\?\Volume{1}\proj", // a verbatim form that is neither of the two: not guessed at
+            r"\\?\UNC",            // no server and no share
+            "",
+        ] {
+            assert_eq!(plain_of(path), path);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_path_that_is_not_utf_8_is_unchanged() {
+        use std::os::unix::ffi::OsStringExt;
+        let mut bytes = br"\\?\C:\proj".to_vec();
+        bytes.push(0xff);
+        let path = PathBuf::from(std::ffi::OsString::from_vec(bytes));
+        assert_eq!(plain(path.clone()), path);
     }
 }

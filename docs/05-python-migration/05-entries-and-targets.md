@@ -13,7 +13,7 @@ entries and targets
 
 Written on 2026-11-12 from reading the code. **Nothing here was built or run when it was written.** Every `[check]` is a claim to verify before depending on it.
 
-**Status (2026-11-12):** E1 is done (`8fafd0f`), E2 is done (`acc1b2a`) and E3 is done (`9120198`) and E4 is done (`3236d54`) and E5 is done (see its commit). EW and E6 are not started. Decisions of the owner while building: the kind on the wire is the outline's (`Method` for a Python method), made in E2; the TypeScript files are edited only after the TypeScript session has committed; EW is done locally and stays *unproven* until CI has run it.
+**Status (2026-11-12):** E1 is done (`8fafd0f`), E2 is done (`acc1b2a`) and E3 is done (`9120198`) and E4 is done (`3236d54`) and E5 is done (`58748f3`). EW is **done locally, unproven on Windows until CI has run it** (see its commit); E6 is not started. Decisions of the owner while building: the kind on the wire is the outline's (`Method` for a Python method), made in E2; the TypeScript files are edited only after the TypeScript session has committed; EW is done locally and stays *unproven* until CI has run it.
 
 Where it comes from: a review of the V-NOC Python driver found three bugs whose cause is in the analyzer, not in the driver. pylspt fixed part
 of them in `c395dde` ("wire names each target by file, qualname and occurrence; call_wire_at"). This repo was ported from `670ae79`, one
@@ -363,7 +363,7 @@ its migration deletes. Its `plain` also had a bug: it turned `\\?\UNC\server\sha
 |---|---|
 | Change | One private function in `sem.rs`, used by `Project::open` and `Project::file` right after `canonicalize`: `\\?\UNC\server\share\…` → `\\server\share\…`; `\\?\C:\…` → `C:\…`; anything else unchanged. It works on the path as text, so it compiles and is tested on every OS |
 | Failing tests | **unit** (`sem.rs`, runs on every OS): the three rows above, as strings. **`tests/api.rs`** (runs on every OS, fails only on Windows before the fix): for the `08-entries` project opened by a relative directory, every `DefInfo::file` of a graph is relative and has no `\`, and after E2 every frame's `target_file` and `call_site_file` too; opening the same project by its canonical absolute path gives the same graph |
-| Proof | this repo's CI, the `analysis` job for `python` on `windows-latest`, green on the pushed commit. That run is the only Windows proof: do not call the step done from a local run on another OS. **Status: done locally, unproven until CI has run it** (owner's decision) |
+| Proof | this repo's CI, the `analysis` job for `python` on `windows-latest`, green on the pushed commit. That run is the only Windows proof: do not call the step done from a local run on another OS. **Status: done locally, unproven on Windows until CI has run it** (owner's decision). Built: `plain` in `sem.rs` (four unit tests, one of them Unix-only for the non-UTF-8 path), called in `Project::open` and `Project::file`; `files_are_relative_and_the_root_does_not_change_the_answer` in `tests/api.rs`, green on macOS and able to fail only on Windows |
 
 **Rust note.** A path on Windows is not guaranteed to be valid UTF-8, so `Path::to_str()` returns an `Option`. When it is `None`, return
 the path unchanged: never fail and never guess (rule 8).
