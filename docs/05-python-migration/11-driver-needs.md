@@ -98,7 +98,7 @@ need an epoch. Python's `Project` already is the long-lived handle (it owns the 
 | How it reaches the solver | a new field `Options::cancel: Cancel` (public `Options`, `lib.rs`), passed into `interp::Options`. Additive: a caller that builds `Options { .., ..Options::default() }` compiles unchanged |
 | Where it is checked | `Solver::cost_limit` (`interp/solver.rs`), next to the deadline, before every walk: `if self.opts.cancel.is_cancelled() { return Some(Cut::Cancelled) }` |
 | What it gives | a new `interp::summary::Cut::Cancelled`, counted in `Stats.cuts` (`Cuts.cancelled`), mapped to core's existing `Cut::Cancelled` in `core_graph.rs` `cut`. The cut contexts are `Status::Incomplete(Cancelled)`: the wire marks them `incomplete`, as the deadline does |
-| What it never does | interrupt the engine. The check is between walks; one walk's engine queries finish. A cancelled request leaves nothing half-made behind: the solver lives for one request, and the engine's memoized answers are whole answers |
+| What it never does | interrupt the engine. The check is between walks; one walk's engine queries finish. A cancelled request leaves nothing half-made behind: the solver lives for one request, and the engine's memoized answers are whole answers. After the last check the tree is still rendered and written as the wire (PY9.0: up to 36 ms cold, 12 ms warm); a cancel cannot stop that part, and the driver drops the answer anyway |
 
 `Limits::deadline` stays as it is. (Core's `Cancel` can carry a deadline too; using one mechanism for both is §10 claim 4.)
 
@@ -173,7 +173,7 @@ nothing in `core/` (rule 5 is still checked: core's tests run).
 | | |
 |---|---|
 | What | an `#[ignore]` test in `python-analysis` (not a spike workspace: a second workspace would build the vendored engine again, several GB, and the disk does not have them; CLAUDE.md's spike rule bends here, and the test is deleted when the numbers are written) |
-| Measures | on Jarvis and the Flask service: (a) three requests, each on a fresh `Project`; (b) three requests on one `Project`; (c) the cost of `Files::sync_all` on a warm project with nothing changed, and after touching one file; (d) the stack: the same request on threads with 1, 2, 4, 8 MB, and the deepest `max_stack` fixture; (e) the resident memory of a warm project (from `ps`, by hand) |
+| Measures | on Jarvis and the Flask service: (a) three requests, each on a fresh `Project`; (b) three requests on one `Project`; (c) the cost of `Files::sync_all` on a warm project with nothing changed, and after touching one file; (d) the stack: the debug CLI under `ulimit -s` (a subshell), on a generated chain that reaches `max_stack` and on the real entries; (e) the resident memory of a warm project (`/usr/bin/time -l`, and `ps` from the test). **Done** (`f4c8885`): the numbers are in `languages/python/ENGINE.md`, "Keeping the project open (PY9.0)" |
 | Proof | the numbers in `languages/python/ENGINE.md`, "Keeping the project open"; the test removed in the same commit |
 
 ### PY9.1. Cancel
