@@ -8,7 +8,8 @@ TS5
 ├── 4. cancel
 ├── 5. the cache
 ├── 6. unsaved text and edits
-└── 7. steps
+├── 7. steps
+└── 8. how drivers ship, and what that asks of the vnoc side
 ```
 
 ## 1. The list
@@ -168,5 +169,29 @@ rebuilding the program with an overlay file system (`tsrs_vfs` has the file-syst
 
 Steps 1 and 2 can be done right after B0, before any TypeScript exists; they need only the core. Doing them early means TS4's `call_graph` is
 built on the final solver.
+
+## 8. How drivers ship, and what that asks of the vnoc side
+
+Context for `vnoc`, decided by the owner (recorded 2026-11-12). Nothing here is built in this repo.
+
+- **One VS Code extension holds the core.**
+- **Each language driver is a separate executable.** The analyzer from this repo is compiled into its driver, pinned by git tag
+  ([`01-monorepo/06`](../01-monorepo/06-versions-and-vnoc.md) §4), so an analyzer and its driver always ship together.
+- **v1 bundles the Python driver** in the extension and copies it to a global drivers folder on first run. Later drivers are downloaded by the
+  core on demand.
+- **So the core and a driver can be at different versions.** Example: V-NOC installed in both VS Code and Cursor, updated at different times,
+  sharing one global drivers folder.
+
+A reader that is older than the driver ignores a field it does not know. For a field that changes what a node means that is a wrong tree, not
+an error: a core that predates `passed` (D22, [`02-tree-rules/06`](../02-tree-rules/06-passed-edges.md)) would draw a def that is handed over
+as a call. Two `vnoc`-side items follow:
+
+| # | Item | When |
+|---|---|---|
+| 1 | **Version the drivers folder path** (`drivers/typescript/0.2.0/`), so each core runs the driver version it was built for | before a second core can share the folder |
+| 2 | **The driver reports the wire format version in `initialize`, and the backend checks it.** The number is the constant in `analyzer_core::wire`, bumped whenever a field is added that changes what a node means (added in step 2 of the passed-edges note, bumped for `passed`). What the backend does with a version it does not know (refuse the tree, ask for an update) is `vnoc`'s choice | **in the same `vnoc` change as the first TypeScript tree view** |
+
+Nothing changes in this repo beyond that constant: there is no handshake here (drivers stay in `vnoc`, Q-M7), and the constant is a fact about
+the wire, with no product word in it (rule 1).
 
 Next: [`08-later-context-sensitive.md`](08-later-context-sensitive.md)
