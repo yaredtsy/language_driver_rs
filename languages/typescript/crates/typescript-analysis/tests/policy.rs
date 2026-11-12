@@ -251,3 +251,11 @@ fn every_row_gives_the_tree_and_edges_of_its_snapshot() {
     }
     assert!(differ.is_empty(), "rows that differ: {differ:?}");
 }
+
+#[test]
+fn every_row_gives_the_same_text_twice() {
+    // rule 11 over the whole table: two projects opened one after the other give the same trees, edges and counters
+    for row in rows(TABLE).iter().filter(|row| row.words.len() > 2) {
+        assert_eq!(render_row(row), render_row(row), "row `{}`", row.id);
+    }
+}

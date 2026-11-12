@@ -56,8 +56,66 @@ fn the_shared_scenarios_in_typescript_give_their_trees() {
         scenarios: "../../../../scenarios",
         graph: scenario_graph,
     };
-    // every scenario that has a TypeScript program: straight-line, recursion-direct, method-on-class, external-call, construct-marked-class; `two-callers` is not written in TypeScript yet
-    assert_eq!(run(&subject, Level::Default), 5);
+    // every scenario has a TypeScript program: straight-line, recursion-direct, method-on-class, external-call, construct-marked-class and two-callers, which
+    // at `Level::Default` is the tree a default resolver gives (`Writer.write` under both callers; the precise tree is Python's)
+    assert_eq!(run(&subject, Level::Default), 6);
+}
+
+/// The scenario folders that have a TypeScript program, by name.
+fn scenario_programs() -> Vec<(String, PathBuf)> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scenarios");
+    let mut found: Vec<(String, PathBuf)> = std::fs::read_dir(&root)
+        .unwrap()
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|dir| dir.join("typescript").is_dir())
+        .map(|dir| {
+            (
+                dir.file_name().unwrap().to_string_lossy().into_owned(),
+                dir.join("typescript"),
+            )
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+/// The merged wire of a scenario's graph, as text.
+fn scenario_wire(program: &Path) -> String {
+    let project = Project::open(program, Path::new("main.ts")).unwrap();
+    let graph = scenario_graph(program).unwrap();
+    let style = WireStyle {
+        function_prefix: "F/".into(),
+        class_prefix: "C/".into(),
+    };
+    let frame = wire(
+        &graph,
+        &graph.entries[0],
+        &project,
+        &WireOptions::new(style, true, RenderOptions::default()),
+    );
+    format!("{frame:?}")
+}
+
+#[test]
+fn each_scenario_gives_the_same_graph_the_same_tree_and_the_same_wire_every_time() {
+    // rule 11: a graph built twice, each time from a project opened afresh, is equal. A map iterated to make output would differ between the two, because
+    // every map seeds its own hasher
+    let programs = scenario_programs();
+    assert_eq!(programs.len(), 6, "{programs:?}");
+    for (name, program) in programs {
+        let first = scenario_graph(&program).unwrap_or_else(|| panic!("{name}: no graph"));
+        let second = scenario_graph(&program).unwrap();
+        check_invariants(&first);
+        assert_eq!(first, second, "{name}: the graph");
+        let tree =
+            |graph: &Graph| to_text(&render(graph, &graph.entries[0], &RenderOptions::default()));
+        assert_eq!(tree(&first), tree(&second), "{name}: the tree");
+        assert_eq!(
+            scenario_wire(&program),
+            scenario_wire(&program),
+            "{name}: the wire"
+        );
+    }
 }
 
 #[test]

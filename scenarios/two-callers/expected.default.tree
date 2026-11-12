@@ -1,0 +1,9 @@
+main
+  read_json
+    JsonWriter
+    emit
+      Writer.write
+  read_csv
+    CsvWriter
+    emit
+      Writer.write
