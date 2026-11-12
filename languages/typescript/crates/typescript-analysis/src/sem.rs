@@ -1040,13 +1040,20 @@ fn inferred_config(file: &Path, host: &ConfigHost) -> ParsedCommandLine {
 /// repository.
 fn find_config(root: &Path, dir: &Path) -> Option<PathBuf> {
     dir.ancestors()
-        .take_while(|dir| dir.starts_with(root))
+        .take_while(|dir| is_within(root, dir))
         .find_map(|dir| {
             ["tsconfig.json", "jsconfig.json"]
                 .iter()
                 .map(|name| dir.join(name))
                 .find(|path| path.is_file())
         })
+}
+
+/// Whether `dir` is `root` or below it, compared as the engine spells paths. `root` is canonical (on Windows verbatim: `\\?\D:\repo`), while a directory
+/// the climb of `find_owner` rebuilds from a config's engine path is not (`D:/repo/sub`): `Path::starts_with` would call them different places and the climb
+/// would find nothing above the nearest config.
+fn is_within(root: &Path, dir: &Path) -> bool {
+    Path::new(&to_engine_path(dir)).starts_with(to_engine_path(root))
 }
 
 /// What the search for the config that owns a file found.
@@ -2508,6 +2515,30 @@ mod tests {
         // already ordinary: unchanged but for the separator
         assert_eq!(engine(r"D:\repo\main.ts"), "D:/repo/main.ts");
         assert_eq!(engine("/repo/src/main.ts"), "/repo/src/main.ts");
+    }
+
+    #[test]
+    fn a_directory_is_within_the_root_whichever_way_each_is_spelled() {
+        // the root is canonical, so on Windows verbatim; the directory of the climb is an engine path. Text on both sides, so this runs on every OS.
+        assert!(is_within(
+            Path::new(r"\\?\D:\repo"),
+            Path::new("D:/repo/sub")
+        ));
+        assert!(is_within(Path::new(r"\\?\D:\repo"), Path::new("D:/repo")));
+        assert!(is_within(Path::new(r"D:\repo"), Path::new("D:/repo/a/b")));
+        assert!(is_within(Path::new("/repo"), Path::new("/repo/sub")));
+        assert!(is_within(
+            Path::new(r"\\?\UNC\server\share"),
+            Path::new("//server/share/sub")
+        ));
+        // above the root, beside it, and a name that only starts with the root's
+        assert!(!is_within(Path::new(r"\\?\D:\repo"), Path::new("D:/")));
+        assert!(!is_within(Path::new(r"\\?\D:\repo"), Path::new("D:/other")));
+        assert!(!is_within(
+            Path::new(r"\\?\D:\repo"),
+            Path::new("D:/repository")
+        ));
+        assert!(!is_within(Path::new("/repo"), Path::new("/repository")));
     }
 
     #[test]
