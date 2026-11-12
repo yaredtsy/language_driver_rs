@@ -1,4 +1,4 @@
-//! SLOW: project loading, call sites, call graph. `sem.rs` is the only file that imports the checker.
+//! SLOW: project loading, call sites, call graph. The `sem` module is the only code that imports the checker.
 
 mod calls;
 mod env;

@@ -50,7 +50,7 @@ pub(super) struct Body {
 
 /// A site found in a body: the span of the expression that is resolved (absolute, in the file), that expression, and the node the site is (a call, a `new`, a
 /// tagged template, a JSX element, a decorator, a property access). Kept privately by `Sem`, per def, so that `callee` can ask the checker about a site given
-/// only its index: the index is plain data, the node never leaves `sem.rs`.
+/// only its index: the index is plain data, the node never leaves the `sem` module.
 #[derive(Clone, Copy)]
 pub(super) struct CallNode {
     pub(super) span: Span,

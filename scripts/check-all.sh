@@ -22,7 +22,7 @@ crates=(languages/*/crates)
 # rule 4: only the sem module (sem.rs, or the files of a sem/ folder) names an engine (Python's interp/ may name types sem re-exports); core names none
 engine='(^|[^A-Za-z0-9_])(tsrs_|ruff_|ty_|ra_ap_)[a-z]'
 none "an engine is named outside the sem module (rule 4)" \
-  "$(rs_files -E "$engine" "${crates[@]}" | grep -vE '/sem(\.rs|/.*\.rs)$' | grep -v '^languages/python/crates/python-analysis/src/interp/' || true)"
+  "$(rs_files -E "$engine" "${crates[@]}" | grep -vE '/src/sem(\.rs|/[^/]+\.rs)$' | grep -v '^languages/python/crates/python-analysis/src/interp/' || true)"
 none "core names an engine (rule 5)" "$(rs -E "$engine" core)"
 
 # rule 1: no product words in code
@@ -46,7 +46,7 @@ for f in languages/*/Cargo.toml; do
   grep -qE '^unsafe_code = "(forbid|deny)"' "$f" || bad "$f: unsafe_code must be \"forbid\" or \"deny\""
 done
 none "unsafe_code is allowed outside the sem module (rule 4)" \
-  "$(rs_files -E 'allow\(unsafe_code\)' core "${crates[@]}" | grep -vE '/sem(\.rs|/.*\.rs)$' || true)"
+  "$(rs_files -E 'allow\(unsafe_code\)' core "${crates[@]}" | grep -vE '/src/sem(\.rs|/[^/]+\.rs)$' || true)"
 
 # there is no Cargo.toml at the root, on purpose
 [ ! -e Cargo.toml ] || bad "a Cargo.toml at the repo root (ruff and rust-analyzer pin different salsa)"

@@ -182,6 +182,8 @@ fn find_implementation_or_all_initial_declarations(
     if all.is_empty() { vec![node] } else { all }
 }
 
+// ---- not the port: the union, callable and signature fallbacks below are ours. `declarations_of`, the last function, is the port's entry again.
+
 /// A call on a union (`w.write()` with `w: JsonWriter | CsvWriter`): the checker gives the property of a union a synthetic symbol that holds the
 /// declarations of **every** member (`checker_11.rs`, `create_union_or_intersection_property`) and sets its value declaration only when the members
 /// share one. The engine's call hierarchy follows the value declaration alone, so it finds nothing; the declarations are asked here instead. They

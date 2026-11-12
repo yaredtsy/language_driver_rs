@@ -8,7 +8,7 @@ The TS0 spikes below were run on 2026-11-11 and their code deleted when TS0 clos
 - Engine crates used: `typescript-syntax`: `tsrs_parser`, `tsrs_ast`, `tsrs_core`, `tsrs_scanner`. `typescript-analysis`: those plus `tsrs_compiler`,
   `tsrs_tsoptions`, `tsrs_vfs`, `tsrs_checker`. **Not `tsrs_ls`** (see S-TS3: the resolver we wanted is private). Final list confirmed when TS1 and TS3 are built.
 - Patches: none
-- How to bump: an engine bump is a change of its own (only the pin, the lockfile, `sem.rs` and this file).
+- How to bump: an engine bump is a change of its own (only the pin, the lockfile, the `sem` module and this file).
   1. Change the `rev` once, in `[workspace.dependencies]` of `languages/typescript/Cargo.toml` (every `tsrs_*` line shares it).
   2. Build: cargo re-resolves the git source on its own when the `rev` changes, and every `tsrs_*` package comes from that one source. Commit the new `Cargo.lock`.
   3. `cargo test`, then `cargo test -p typescript-syntax` alone: the fast crate must still not compile the checker.

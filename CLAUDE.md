@@ -86,8 +86,8 @@ Toolchain: 1.99.1 (`rust-toolchain.toml`). Run `cargo fmt` and `cargo clippy -p 
 - Every behaviour has a fixture: one file per case under `tests/fixtures/`, every policy-table row a fixture, every tree rule a scenario.
   Snapshots are reviewed, not just accepted.
 - tsrs memory: its pointers (`P<T>`, `&'static Program`) are arena pointers the compiler cannot check. Parse inside a region via
-  `sem::with_parsed`, convert to owned `analyzer-core` data before returning, and never let a tsrs type cross out of `sem.rs`
+  `sem::with_parsed`, convert to owned `analyzer-core` data before returning, and never let a tsrs type cross out of the `sem` module
   (`docs/03-typescript/01-what-tsrs-gives.md` §5).
-- Engine bumps are a change of their own: only the pin, the lockfile, `sem.rs` and `ENGINE.md`.
+- Engine bumps are a change of their own: only the pin, the lockfile, the `sem` module and `ENGINE.md`.
 - The owner is mid-level in Rust and wants explanations in a teaching style: when you introduce a non-obvious Rust concept, explain it briefly.
 - Commit only when asked.
