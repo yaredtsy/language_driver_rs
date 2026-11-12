@@ -251,9 +251,22 @@ in `fastapi/routing.py`.
 | Flask service | 266 → 266 | 70 → 70 | 70 → 70 | 81 → 81 | 3 → 0 | 170 → 170 |
 | FastAPI | 436 → 458 | 68 → 70 | 68 → 70 | 27 → 29 | 14 → 0 | 138 → 132 |
 
-The golden of Jarvis is `equal`. All 22 nodes FastAPI gains are one getter, `fastapi._compat.v2.ModelField.type_`, under callers that were already in the
-tree. `create_model_field` builds a v1 or a v2 `ModelField` by a version switch the walk does not narrow, so a v2 object reaches
-`fastapi._compat.v1.is_pv1_scalar_field`. Probably an edge Python never takes there; not checked against inline mode (the CLI has none).
+The golden of Jarvis is `equal`. All 22 nodes FastAPI gains are one getter, `fastapi._compat.v2.ModelField.type_`, under callers that were already in
+the tree: 20 under `v1.is_pv1_scalar_field` and `v1.is_pv1_scalar_sequence_field`, 2 directly under `analyze_param`.
+
+**Inline mode draws them too.** `PYTHON_DUMP_GAP=1` on this entry (the `dump_graph` test, which has inline mode) gives summary 458 nodes, inline 1019,
+`0 extra`: every node summary mode draws, these 22 included, is in inline mode's tree. Both modes draw them for the same reason, a branch the walk does
+not narrow:
+
+- `fastapi/utils.py` `create_model_field` returns a v1 `ModelField` (line 113) or, under `elif PYDANTIC_V2`, a v2 one (line 123), so the field the
+  walk holds is either.
+- `fastapi/_compat/main.py:187-192` `is_scalar_field` sends it to `v1.is_scalar_field` under `isinstance(field, may_v1.ModelField)`. The walk does not
+  narrow by `isinstance`, so the v2 object goes down that branch too, to `_compat/v1.py:282` and `is_pv1_scalar_field`, whose reads `field.type_`
+  (`v1.py:201-204`) are calls of the property at `_compat/v2.py:88-89`.
+- The 2 under `analyze_param` are `field.type_` at `dependencies/utils.py:555`, a real path when pydantic v2 is installed.
+
+So the 20 are edges Python does not take (a v2 field never reaches `v1.is_pv1_scalar_field`), and both modes agree on them. They are not new
+imprecision: the `v1.is_scalar_field` caller was already in the tree before CS2b. They are what "no narrowing" costs.
 
 ## Toolchain
 
