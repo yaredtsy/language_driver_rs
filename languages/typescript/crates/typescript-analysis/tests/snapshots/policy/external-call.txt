@@ -1,0 +1,6 @@
+== external
+external
+edges:
+external | helper | external pkg helper
+external | shimmed | external src/external/shim.d.ts shimmed
+external | Math.max | external typescript:lib Math.max

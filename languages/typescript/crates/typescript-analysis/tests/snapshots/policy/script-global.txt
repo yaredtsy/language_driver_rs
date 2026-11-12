@@ -1,0 +1,10 @@
+== caller
+caller
+  fetch
+  open
+  alert
+edges:
+caller | fetch | call fetch
+caller | open | call open
+caller | alert | call alert
+caller | alert | external typescript:lib alert

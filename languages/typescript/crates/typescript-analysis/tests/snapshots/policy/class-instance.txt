@@ -1,0 +1,7 @@
+== onClass
+onClass
+  JsonWriter.write
+  Base.run
+edges:
+onClass | w.write | call JsonWriter.write
+onClass | d.run | call Base.run

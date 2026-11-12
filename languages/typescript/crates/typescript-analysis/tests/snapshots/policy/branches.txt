@@ -1,0 +1,25 @@
+== branches
+branches
+  a
+  b
+  c
+  d
+  a
+  b
+  c
+  d
+  e
+  a
+  b
+edges:
+branches | a | call a
+branches | b | call b
+branches | c | call c
+branches | d | call d
+branches | a | call a
+branches | b | call b
+branches | c | call c
+branches | d | call d
+branches | e | call e
+branches | a | call a
+branches | b | call b

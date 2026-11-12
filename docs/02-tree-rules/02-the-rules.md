@@ -186,7 +186,7 @@ The rows every table must have:
 | async, generators | transparent or not |
 | what is project code | rule 5's test |
 
-The TypeScript table is in [`03-typescript/06-ts4-calls.md`](../03-typescript/06-ts4-calls.md) §4, the Rust one in
+The TypeScript table is in [`languages/typescript/docs/policy.md`](../../languages/typescript/docs/policy.md) (the plan's copy: [`03-typescript/06-ts4-calls.md`](../03-typescript/06-ts4-calls.md) §5), the Rust one in
 [`04-rust/02-phases.md`](../04-rust/02-phases.md). Python's exists already and moves with the solver's docs.
 
 Next: [`03-the-seam.md`](03-the-seam.md)

@@ -1,0 +1,25 @@
+== elementAccessHandedOver
+elementAccessHandedOver
+  register
+edges:
+elementAccessHandedOver | register | call register
+uncovered: element_access=1
+== bindHandedOver
+bindHandedOver
+  register
+edges:
+bindHandedOver | register | call register
+bindHandedOver | h.bind | external typescript:lib CallableFunction.bind
+uncovered: bind=1
+== classHandedOver
+classHandedOver
+  register
+edges:
+classHandedOver | register | call register
+uncovered: class=1
+== callAndApply
+callAndApply
+edges:
+callAndApply | h.call | external typescript:lib CallableFunction.call
+callAndApply | h.apply | external typescript:lib CallableFunction.apply
+uncovered: call_apply=2

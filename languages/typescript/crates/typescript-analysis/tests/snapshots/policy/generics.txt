@@ -1,0 +1,7 @@
+== usesGeneric
+usesGeneric
+  id
+    leaf
+edges:
+id | leaf | call leaf
+usesGeneric | id | call id

@@ -1,0 +1,15 @@
+== sites
+sites
+  leaf
+  Widget.m
+  Widget.m
+  Widget.s
+  Widget
+  leaf
+edges:
+sites | leaf | call leaf
+sites | k.m | call Widget.m
+sites | k?.m | call Widget.m
+sites | Widget.s | call Widget.s
+sites | Widget | construct Widget no init
+sites | leaf | call leaf

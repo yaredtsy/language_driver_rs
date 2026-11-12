@@ -1,0 +1,11 @@
+== restTakesFunctions
+restTakesFunctions
+  use
+edges:
+restTakesFunctions | use | call use
+uncovered: rest_element=1
+== restIsCalled
+restIsCalled
+  api.save
+edges:
+restIsCalled | others.save | call api.save

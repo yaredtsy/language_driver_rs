@@ -9,6 +9,10 @@ use typescript_analysis::{
     RenderOptions, StableDef, WireOptions, WireStyle, breakdown, call_graph, render, to_text, wire,
 };
 
+mod common;
+
+use common::edges_as_text;
+
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
     placement: typescript_analysis::Placement::Docstring,
@@ -280,34 +284,6 @@ fn merged_turns_two_sibling_calls_of_one_function_into_one_node_with_call_count_
 
 /// Every edge of a graph as `from-qname | callee text | what it is`, in the graph's order (edges are sorted: rule 9). The callee text is read from the
 /// file at the site, so a test names what an editor would highlight.
-fn edges_as_text(graph: &Graph, root: &Path) -> Vec<String> {
-    let name = |id: &StableDef| graph.def(id).unwrap().qname.clone();
-    graph
-        .edges
-        .iter()
-        .map(|edge| {
-            let from = graph.def(&edge.from.func).unwrap();
-            let text = std::fs::read_to_string(root.join(&from.file)).unwrap();
-            let callee = &text[(from.range.start + edge.site.start) as usize
-                ..(from.range.start + edge.site.end) as usize];
-            let to = match &edge.to {
-                EdgeTo::Context(id, _) if edge.passed => format!("pass {}", name(&id.func)),
-                EdgeTo::Context(id, _) => format!("call {}", name(&id.func)),
-                EdgeTo::Construct { class, init, .. } => match init {
-                    Some(init) => format!("construct {} init {}", name(class), name(&init.func)),
-                    None => format!("construct {} no init", name(class)),
-                },
-                EdgeTo::External(external, _) => {
-                    format!("external {} {}", external.package, external.name)
-                }
-                EdgeTo::Unresolved(reason) => format!("unresolved {}", reason.as_str()),
-                _ => unreachable!("an edge kind this test does not know"),
-            };
-            format!("{} | {callee} | {to}", from.qname)
-        })
-        .collect()
-}
-
 #[test]
 fn construct_each_new_is_a_construction_an_external_or_an_unresolved_edge_that_says_why() {
     let root = fixture("construct");

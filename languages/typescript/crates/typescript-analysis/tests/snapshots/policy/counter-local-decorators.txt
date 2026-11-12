@@ -1,0 +1,7 @@
+== declaresDecorated
+declaresDecorated
+edges: none
+uncovered: local_class_decorator_sites=1
+== declaresPlain
+declaresPlain
+edges: none

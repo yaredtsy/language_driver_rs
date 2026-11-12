@@ -1,0 +1,13 @@
+== run
+run
+  fetchIt
+    leaf
+  gen
+    other
+  leaf
+edges:
+fetchIt | leaf | call leaf
+gen | other | call other
+run | fetchIt | call fetchIt
+run | gen | call gen
+run | leaf | call leaf

@@ -1,0 +1,15 @@
+== Body
+Body
+  a
+  b
+  c
+edges:
+Body | a | call a
+Body | b | call b
+Body | c | call c
+== makes
+makes
+  Body
+edges:
+makes | Body | construct Body no init
+uncovered: construct_initializer_sites=1

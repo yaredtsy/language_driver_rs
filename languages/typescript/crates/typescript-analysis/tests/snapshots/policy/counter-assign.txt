@@ -1,0 +1,10 @@
+== assignedAndHanded
+assignedAndHanded
+  use
+edges:
+assignedAndHanded | use | call use
+uncovered: assignment_destructuring=1
+== assignedAndCalled
+assignedAndCalled
+edges:
+assignedAndCalled | load | unresolved function_typed_value

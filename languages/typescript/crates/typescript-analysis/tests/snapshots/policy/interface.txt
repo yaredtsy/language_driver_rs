@@ -1,0 +1,5 @@
+== viaInterface
+viaInterface
+  Writer.write
+edges:
+viaInterface | w.write | call Writer.write

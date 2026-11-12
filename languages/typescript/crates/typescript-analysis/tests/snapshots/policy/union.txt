@@ -1,0 +1,13 @@
+== viaUnion
+viaUnion
+  JsonWriter.write
+  CsvWriter.write
+edges:
+viaUnion | w.write | call CsvWriter.write
+viaUnion | w.write | call JsonWriter.write
+== viaUnionWithFunction
+viaUnionWithFunction
+  JsonWriter.write
+edges:
+viaUnionWithFunction | w.write | call JsonWriter.write
+viaUnionWithFunction | w.write | unresolved union_receiver

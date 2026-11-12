@@ -1,0 +1,27 @@
+== argMethodCalls
+argMethodCalls
+  register
+  argMethodCalls.<locals>.onSuccess [Passed]
+    sharedHelper
+edges:
+argMethodCalls | register | call register
+argMethodCalls | onSuccess | pass argMethodCalls.<locals>.onSuccess
+argMethodCalls.<locals>.onSuccess | sharedHelper | call sharedHelper
+== calledElsewhereInTheTree
+calledElsewhereInTheTree
+  register
+  sharedHelper [Passed]
+  callsIt
+    sharedHelper
+edges:
+calledElsewhereInTheTree | register | call register
+calledElsewhereInTheTree | sharedHelper | pass sharedHelper
+calledElsewhereInTheTree | callsIt | call callsIt
+callsIt | sharedHelper | call sharedHelper
+== destructureThenPass
+destructureThenPass
+  register
+  api.load [Passed]
+edges:
+destructureThenPass | register | call register
+destructureThenPass | load | pass api.load

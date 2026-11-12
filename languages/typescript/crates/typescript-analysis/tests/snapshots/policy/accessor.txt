@@ -1,0 +1,25 @@
+== reads
+reads
+  Box.value
+    read
+edges:
+Box.value | read | call read
+reads | box.value | call Box.value
+== writes
+writes
+  Box.value
+    write
+edges:
+Box.value | write | call write
+writes | box.value | call Box.value
+== compound
+compound
+  Box.value
+    read
+  Box.value
+    write
+edges:
+Box.value | read | call read
+Box.value | write | call write
+compound | box.value | call Box.value
+compound | box.value | call Box.value

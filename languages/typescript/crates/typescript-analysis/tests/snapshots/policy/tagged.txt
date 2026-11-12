@@ -1,0 +1,15 @@
+== tagged
+tagged
+  tag
+    helper
+  helper
+  Formatter.fmt
+  factory
+edges:
+tag | helper | call helper
+tagged | tag | call tag
+tagged | helper | call helper
+tagged | formatter.fmt | call Formatter.fmt
+tagged | factory | call factory
+tagged | factory() | unresolved no_declaration
+tagged | String.raw | external typescript:lib StringConstructor.raw

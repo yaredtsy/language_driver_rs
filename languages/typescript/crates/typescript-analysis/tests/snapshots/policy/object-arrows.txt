@@ -1,0 +1,35 @@
+== run
+run
+  api.load
+    helper
+  api.load
+    helper
+  api.tasks.update
+    helper
+  wrapped.a
+    helper
+  documented.marked
+  left.go
+  right.go
+  run.<locals>.local.l
+    other
+  register
+  other
+edges:
+api.load | helper | call helper
+api.tasks.update | helper | call helper
+run | api.load | call api.load
+run | api["load"] | call api.load
+run | api.tasks.update | call api.tasks.update
+run | wrapped.a | call wrapped.a
+run | documented.marked | call documented.marked
+run | mutable.a | unresolved function_typed_value
+run | defaulted.fromDefault | unresolved function_typed_value
+run | Holder.config.read | unresolved function_typed_value
+run | either.go | call left.go
+run | either.go | call right.go
+run | local.l | call run.<locals>.local.l
+run | register | call register
+run | other | call other
+run.<locals>.local.l | other | call other
+wrapped.a | helper | call helper

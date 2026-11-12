@@ -1,0 +1,64 @@
+== build
+build
+  Report
+    prepare
+  Plain
+  Plain
+  Child
+    prepare
+  Grandchild
+    prepare
+  Own
+    Parent
+      prepare
+  FromPackage
+  MyError
+  WithSuper
+  PackageWithSuper
+  Mixed
+  Overloaded
+    prepare
+  Generic
+    prepare
+  Anonymous
+    prepare
+  Report
+    prepare
+  pick
+  Legacy
+    prepare
+edges:
+Anonymous.constructor | prepare | call prepare
+Generic.constructor | prepare | call prepare
+Legacy | prepare | call prepare
+Overloaded.constructor | prepare | call prepare
+Own.constructor | super | construct Parent init Parent.constructor
+PackageWithSuper.constructor | super | external pkg Base
+Parent.constructor | prepare | call prepare
+Report.constructor | prepare | call prepare
+WithSuper.constructor | super | external typescript:lib Error
+build | Renamed | construct Report init Report.constructor
+build | Plain | construct Plain no init
+build | Plain | construct Plain no init
+build | Child | construct Child init Parent.constructor
+build | Grandchild | construct Grandchild init Parent.constructor
+build | Own | construct Own init Own.constructor
+build | FromPackage | construct FromPackage no init
+build | MyError | construct MyError no init
+build | WithSuper | construct WithSuper init WithSuper.constructor
+build | PackageWithSuper | construct PackageWithSuper init PackageWithSuper.constructor
+build | Mixed | construct Mixed no init
+build | Overloaded | construct Overloaded init Overloaded.constructor
+build | Generic | construct Generic init Generic.constructor
+build | Anonymous | construct Anonymous init Anonymous.constructor
+build | classes.Report | construct Report init Report.constructor
+build | Map | external typescript:lib Map
+build | Boxed | external pkg Boxed
+build | Declared | external src/types.d.ts Declared
+build | Ctor | unresolved function_typed_value
+build | Kind | unresolved function_typed_value
+build | (pick()) | unresolved no_declaration
+build | pick | call pick
+build | (class {}) | unresolved no_declaration
+build | (Legacy as any) | unresolved any_or_untyped
+build | Legacy | call Legacy

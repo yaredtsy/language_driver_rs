@@ -1,0 +1,17 @@
+== constructsWithField
+constructsWithField
+  WithField
+edges:
+constructsWithField | WithField | construct WithField no init
+uncovered: construct_initializer_sites=1
+== constructsStaticOnly
+constructsStaticOnly
+  StaticOnly
+edges:
+constructsStaticOnly | StaticOnly | construct StaticOnly no init
+== constructsDerivedNoConstructor
+constructsDerivedNoConstructor
+  DerivedNoConstructor
+edges:
+constructsDerivedNoConstructor | DerivedNoConstructor | construct DerivedNoConstructor no init
+uncovered: construct_initializer_sites=2

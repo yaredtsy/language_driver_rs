@@ -1,0 +1,14 @@
+== callbacks
+callbacks
+  each
+  leaf
+  each
+  other
+  other
+edges:
+callbacks | each | call each
+callbacks | leaf | call leaf
+callbacks | each | call each
+callbacks | other | call other
+callbacks | other | call other
+each | f | unresolved function_typed_value

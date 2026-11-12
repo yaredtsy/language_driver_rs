@@ -1,0 +1,8 @@
+== convert
+convert
+edges:
+convert | String | external typescript:lib String
+convert | Number | external typescript:lib Number
+convert | Boolean | external typescript:lib Boolean
+convert | Date | external typescript:lib Date
+convert | Intl.DateTimeFormat | external typescript:lib Intl.DateTimeFormat

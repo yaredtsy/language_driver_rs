@@ -1,0 +1,4 @@
+== viaShadow
+viaShadow
+edges:
+viaShadow | thing | external src/dts_shadow/thing.d.ts thing

@@ -1,0 +1,6 @@
+== byName
+byName
+  Counter.bump
+edges:
+byName | c[key] | unresolved computed_name
+byName | c["bump"] | call Counter.bump

@@ -1,0 +1,15 @@
+== components
+components
+  Plain
+  Arrow
+  ClassComponent
+edges:
+components | Plain | call Plain
+components | Arrow | call Arrow
+components | ClassComponent | construct ClassComponent no init
+components | Memoized | unresolved function_typed_value
+components | Ns.Icon | unresolved function_typed_value
+uncovered: class_component_render=1
+== intrinsic
+intrinsic
+edges: none

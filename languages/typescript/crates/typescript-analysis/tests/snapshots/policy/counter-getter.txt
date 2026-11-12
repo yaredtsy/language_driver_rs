@@ -1,0 +1,11 @@
+== callsResult
+callsResult
+  Holder.fn
+edges:
+callsResult | b.fn | call Holder.fn
+uncovered: getter_result_calls=1
+== callsMethod
+callsMethod
+  Holder.run
+edges:
+callsMethod | b.run | call Holder.run

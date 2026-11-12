@@ -1,0 +1,13 @@
+== nested
+nested
+  nested.<locals>.inner
+    leaf
+  nested.<locals>.inner
+    leaf
+edges:
+nested | inner | call nested.<locals>.inner
+nested | inner | call nested.<locals>.inner
+nested.<locals>.inner | leaf | call leaf
+== declaredNotCalled
+declaredNotCalled
+edges: none

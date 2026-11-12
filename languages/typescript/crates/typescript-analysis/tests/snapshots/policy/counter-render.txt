@@ -1,0 +1,11 @@
+== showsWidget
+showsWidget
+  Widget
+edges:
+showsWidget | Widget | construct Widget no init
+uncovered: class_component_render=1
+== showsFunctionComponent
+showsFunctionComponent
+  FunctionComponent
+edges:
+showsFunctionComponent | FunctionComponent | call FunctionComponent
