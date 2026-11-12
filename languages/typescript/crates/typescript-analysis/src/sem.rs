@@ -468,6 +468,7 @@ impl Sem {
             own: node,
             sites: Vec::new(),
             nested: Vec::new(),
+            lits: Vec::new(),
             refs: Vec::new(),
         };
         collector.body_of(node);
@@ -475,6 +476,7 @@ impl Sem {
         let made = Arc::new(Body {
             sites: collector.sites,
             nested: collector.nested,
+            lits: collector.lits,
             refs: collector.refs,
         });
         self.bodies.borrow_mut().insert(node, Arc::clone(&made));
@@ -630,8 +632,12 @@ struct Collector<'a> {
     /// The def being walked: it is in `def_of` too, and must not stop its own walk.
     own: P<Node>,
     sites: Vec<CallNode>,
-    /// The defs the walk stopped at (they are in `def_of`), with whether each is written inside an expression.
+    /// The defs the walk stopped at (they are in `def_of`), with whether each is a named function expression **handed over where it is written**
+    /// (`xs.map(function step() {})`): the only nested def that is handed over by its own place. The others (a method or arrow of a literal, a `const` arrow,
+    /// a function declaration) are handed over by the literal or the name that holds them.
     nested: Vec<(usize, bool)>,
+    /// The object literals written in a position where a value is handed over (`literal_is_handed`): what a literal hands over is its function members.
+    lits: Vec<P<Node>>,
     /// The names in a position where a value is **handed over** (`is_handed_over`): an identifier or a property access, or a shorthand property, with the
     /// span of the name. What each names is asked of the checker later (`Sem::handed_over`).
     refs: Vec<(Span, P<Node>)>,
@@ -641,6 +647,7 @@ struct Collector<'a> {
 struct Body {
     sites: Vec<CallNode>,
     nested: Vec<(usize, bool)>,
+    lits: Vec<P<Node>>,
     refs: Vec<(Span, P<Node>)>,
 }
 
@@ -665,7 +672,7 @@ impl Collector<'_> {
         if node != self.own
             && let Some(&def) = self.def_of.get(&node)
         {
-            self.nested.push((def, is_written_in_expression(node)));
+            self.nested.push((def, is_handed_function_expression(node)));
             if ast::is_class_like(node) {
                 for &member in node.members() {
                     if let Some(name) = member.name()
@@ -739,6 +746,8 @@ impl Collector<'_> {
                 }
                 return;
             }
+            // an object literal handed over where it is written hands over its function members
+            Kind::ObjectLiteralExpression if literal_is_handed(node) => self.lits.push(node),
             // `a.b`: the access is the name (its own name child is not looked at); the object is walked
             Kind::PropertyAccessExpression if !ast::is_part_of_type_node(node) => {
                 self.reference(node, node);
@@ -819,15 +828,28 @@ impl Collector<'_> {
     }
 }
 
-/// A def's node that is a function written where an expression is, with no binding of its own to reach it by: a property of a literal, an argument, a
-/// named function expression. A function declaration and `const f = () => {}` are reached by name (`f`), so a reference to them is the count.
-fn is_written_in_expression(node: P<Node>) -> bool {
-    matches!(
+/// The expression under `(x)`, `x as T`, `x satisfies T`, `<T>x` and `x!`, however many.
+fn unwrap_expression(mut node: P<Node>) -> P<Node> {
+    while matches!(
         node.kind(),
-        Kind::ArrowFunction | Kind::FunctionExpression | Kind::MethodDeclaration
-    ) && node
-        .parent()
-        .is_none_or(|parent| parent.kind() != Kind::VariableDeclaration)
+        Kind::ParenthesizedExpression
+            | Kind::AsExpression
+            | Kind::SatisfiesExpression
+            | Kind::TypeAssertionExpression
+            | Kind::NonNullExpression
+    ) {
+        match node.expression() {
+            Some(inner) => node = inner,
+            None => break,
+        }
+    }
+    node
+}
+
+/// A def's node that is a **named function expression handed over where it is written**: `xs.map(function step() {})`, `register(function step() {})`.
+/// Not `const f = function step() {}` or `{ cb: function step() {} }` (a binding or a property: the name or the literal that holds it hands it over).
+fn is_handed_function_expression(node: P<Node>) -> bool {
+    node.kind() == Kind::FunctionExpression && node.name().is_some() && handed_position(node, true)
 }
 
 /// Whether the value `name` stands for is **handed over** where it is written, and not called, read or tested: an argument of a call or of `new`, the
@@ -839,7 +861,19 @@ fn is_written_in_expression(node: P<Node>) -> bool {
 /// `f ? a : b`), `typeof f`, a comparison, `!f`, the object of an access (`f.length`, `f[0]`), a template's substitution. Those are the language's other
 /// sites or reads of the def, and drawing them as "passed" would say the def is given to something.
 fn is_handed_over(name: P<Node>) -> bool {
-    let mut at = name;
+    handed_position(name, false)
+}
+
+/// Whether an **object literal** is handed over where it is written: the same positions as a name (`is_handed_over`), except that a literal that is only
+/// bound (the initializer of a variable, a property value, a default) is made, not handed over: it is handed over by the name that holds it.
+fn literal_is_handed(literal: P<Node>) -> bool {
+    handed_position(literal, true)
+}
+
+/// `is_handed_over` and `literal_is_handed`: where `value` is handed over. `creating`: the value is a literal or a function expression, which a binding
+/// (an initializer, a property value, a default) only makes.
+fn handed_position(value: P<Node>, creating: bool) -> bool {
+    let mut at = value;
     loop {
         let Some(parent) = at.parent() else {
             return false;
@@ -876,7 +910,7 @@ fn is_handed_over(name: P<Node>) -> bool {
             | Kind::VariableDeclaration
             | Kind::Parameter
             | Kind::BindingElement
-            | Kind::PropertyDeclaration => return parent.initializer() == Some(at),
+            | Kind::PropertyDeclaration => return !creating && parent.initializer() == Some(at),
             Kind::ArrowFunction => return parent.body() == Some(at),
             Kind::ShorthandPropertyAssignment
             | Kind::ArrayLiteralExpression
@@ -1464,22 +1498,35 @@ mod resolve {
                 return Vec::new();
             };
             let mut found: Vec<Handed<'p>> = Vec::new();
-            for &(def, written) in &body.nested {
-                // a def with a name of its own is handed over only where something names it (below); one made inside an expression is handed over by
-                // being written there
-                if !written {
-                    continue;
+            // a named function expression handed over where it is written (`xs.map(function step() {})`): at its name
+            if let Some(defs) = self.file_defs(func.file, style) {
+                for &(def, handed) in &body.nested {
+                    let held = Func {
+                        file: func.file,
+                        def,
+                    };
+                    if handed && self.is_function_with_body(held, style) {
+                        found.push(Handed {
+                            func: held,
+                            written: true,
+                            at: Some(defs.outline.defs[def].name_range),
+                        });
+                    }
                 }
-                let held = Func {
-                    file: func.file,
-                    def,
-                };
-                if self.is_function_with_body(held, style) {
-                    found.push(Handed {
-                        func: held,
-                        written,
-                        at: None,
-                    });
+                // an object literal handed over where it is written hands over its function members, each at its own key
+                for &literal in &body.lits {
+                    let mut carried = Vec::new();
+                    self.functions_of_literal(func.file, &defs, literal, &mut carried);
+                    for (held, key) in carried {
+                        let handed = Handed {
+                            func: held,
+                            written: true,
+                            at: Some(key),
+                        };
+                        if !found.contains(&handed) {
+                            found.push(handed);
+                        }
+                    }
                 }
             }
             if body.refs.is_empty() {
@@ -1501,6 +1548,38 @@ mod resolve {
                     symbol = checker.get_aliased_symbol(symbol);
                 }
                 for declaration in symbol.declarations().to_vec() {
+                    // a name that holds an object literal (`const local = { traverse: () => {} }`, a nested `local.data`) hands over that literal's
+                    // function members, at the name
+                    if (is_variable_like(Some(declaration))
+                        || ast::is_property_assignment(declaration))
+                        && let Some(literal) = declaration
+                            .initializer()
+                            .map(unwrap_expression)
+                            .filter(|init| init.kind() == Kind::ObjectLiteralExpression)
+                        && let Some(file_node) = ast::get_source_file_of_node(declaration)
+                    {
+                        let file = File {
+                            node: file_node,
+                            _sem: PhantomData,
+                            _one_thread: PhantomData,
+                        };
+                        if self.is_project_code(file)
+                            && let Some(defs) = self.file_defs(file, style)
+                        {
+                            let mut carried = Vec::new();
+                            self.functions_of_literal(file, &defs, literal, &mut carried);
+                            for (held, _) in carried {
+                                let handed = Handed {
+                                    func: held,
+                                    written: true,
+                                    at: Some(span),
+                                };
+                                if !found.contains(&handed) {
+                                    found.push(handed);
+                                }
+                            }
+                        }
+                    }
                     for target in callable_declarations(&mut checker, declaration) {
                         let Some(file_node) = ast::get_source_file_of_node(target) else {
                             continue;
@@ -1533,6 +1612,40 @@ mod resolve {
                 }
             }
             found
+        }
+
+        /// The function members of an object literal that are defs, through nested literals, each with the span of its key: a method, an arrow or a function
+        /// expression held by a property (a def by D21's rule, or not: `def_of` says). A getter, a setter, a shorthand property (named in the literal, so a
+        /// hand-over of its own where the literal is written) and a computed key are not looked at.
+        fn functions_of_literal<'p>(
+            &'p self,
+            file: File<'p>,
+            defs: &FileDefs,
+            literal: P<Node>,
+            out: &mut Vec<(Func<'p>, Span)>,
+        ) {
+            let text = file.node.text();
+            for &member in literal.properties() {
+                let key = member.name().map(|name| own_span(text, name));
+                match member.kind() {
+                    Kind::MethodDeclaration => {
+                        if let (Some(&def), Some(key)) = (defs.def_of.get(&member), key) {
+                            out.push((Func { file, def }, key));
+                        }
+                    }
+                    Kind::PropertyAssignment => {
+                        let Some(value) = member.initializer().map(unwrap_expression) else {
+                            continue;
+                        };
+                        if value.kind() == Kind::ObjectLiteralExpression {
+                            self.functions_of_literal(file, defs, value, out);
+                        } else if let (Some(&def), Some(key)) = (defs.def_of.get(&value), key) {
+                            out.push((Func { file, def }, key));
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
 
         /// A def that is a function written with a body: a function declaration, a function expression, an arrow, a method. Not a class, an accessor,

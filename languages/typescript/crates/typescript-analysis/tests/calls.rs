@@ -516,10 +516,31 @@ fn handed(root: &Path, file: &str, entry: &str) -> (u64, u64, u64) {
 fn passed_each_hand_over_is_an_edge_at_its_name_and_a_read_is_not() {
     let root = fixture("handed-over");
     let rows: &[(&str, (u64, u64, u64))] = &[
-        // written inside an expression: step 4's. Counted, no edge yet
-        ("argMethod", (1, 0, 0)),
-        ("localLiteral", (1, 0, 0)),
-        ("namedFunctionExpression", (1, 0, 0)),
+        // written inside an expression, and handed over with what holds it: a method of an argument's literal, an arrow of a literal that is passed on, a
+        // named function expression
+        ("argMethod", (0, 0, 1)),
+        ("localLiteral", (0, 0, 1)),
+        ("namedFunctionExpression", (0, 0, 1)),
+        // a value that holds defs: a literal in a hand-over position (an argument, nested, a return, an element), a name that holds one (nested, by an access,
+        // through a wrapper, an import, twice, from a closure)
+        ("inPlaceLiteral", (0, 0, 1)),
+        ("inPlaceNestedLiteral", (0, 0, 1)),
+        ("literalInReturn", (0, 0, 1)),
+        ("literalInArray", (0, 0, 1)),
+        ("literalByName", (0, 0, 2)),
+        ("nestedLiteralByName", (0, 0, 1)),
+        ("nestedLiteralByAccess", (0, 0, 1)),
+        ("wrappedLiteralByName", (0, 0, 1)),
+        ("literalByNameTwice", (0, 0, 2)),
+        ("literalCalledAndPassed", (0, 0, 1)),
+        ("literalPassedInAClosure", (0, 0, 1)),
+        ("importedLiteralByName", (0, 0, 1)),
+        // nothing hands these over: a literal nobody names or passes, a `let` literal's arrow (not a def), a literal that is read, a stored nested literal
+        ("deadLiteral", (0, 0, 0)),
+        ("letLiteral", (0, 0, 0)),
+        ("literalRead", (0, 0, 0)),
+        ("storedLiteralNotHandedOver", (0, 0, 0)),
+        ("boundNamedFunctionExpression", (0, 0, 0)),
         // written and also named: the name hands it over, so an edge reaches it and it is no longer counted
         ("writtenAndNamed", (0, 0, 1)),
         ("writtenHereNamedInAClosure", (0, 0, 1)),
@@ -606,6 +627,31 @@ fn passed_the_edges_name_the_def_at_the_name_and_a_call_stays_a_call() {
             "namedTwice | handler | pass namedTwice.<locals>.handler",
         ]
     );
+    // a method of an argument's literal is handed over at its key; a literal that is passed on hands its members over at the name
+    assert_eq!(
+        listing("argMethod"),
+        [
+            "argMethod | register | call register",
+            "argMethod | onSuccess | pass argMethod.<locals>.onSuccess",
+        ]
+    );
+    assert_eq!(
+        listing("literalByName"),
+        [
+            "literalByName | register | call register",
+            "literalByName | o | pass literalByName.<locals>.o.a",
+            "literalByName | o | pass literalByName.<locals>.o.m",
+        ]
+    );
+    // called and passed: the call of `m` and the hand-over of it with the literal, each at its own site
+    assert_eq!(
+        listing("literalCalledAndPassed"),
+        [
+            "literalCalledAndPassed | o.m | call literalCalledAndPassed.<locals>.o.m",
+            "literalCalledAndPassed | register | call register",
+            "literalCalledAndPassed | o | pass literalCalledAndPassed.<locals>.o.m",
+        ]
+    );
     // an import, a property arrow of a literal (D21), a method of a class, a shorthand property
     assert_eq!(
         listing("importedByName")[1],
@@ -652,19 +698,44 @@ fn passed_the_tree_draws_the_def_under_the_one_that_hands_it_over_marked_passed(
 }
 
 #[test]
-fn handed_the_counts_are_in_the_graph_stats_and_the_breakdown_says_what_they_are() {
+fn passed_what_a_method_of_an_arguments_literal_calls_is_in_the_tree() {
+    // Q-TS2: before D22 step 4 `sharedHelper()` was in no tree, because `onSuccess` was a def nobody called
     let root = fixture("handed-over");
-    let graph = graph_of(&root, "src/main.ts", "argMethod");
-    assert_eq!(graph.stats.language.get("def_written_not_called"), Some(&1));
-    assert_eq!(graph.stats.language.get("def_named_not_called"), None);
-    let text = breakdown(&graph).to_string();
-    assert!(
-        text.contains(
-            "handed over and not called: 1 written inside an expression, 0 referenced by name"
-        ),
-        "{text}"
+    let graph = graph_of(&root, "src/main.ts", "argMethodCalls");
+    let tree = render(&graph, &graph.entries[0], &RenderOptions::default());
+    assert_eq!(
+        to_text(&tree),
+        "argMethodCalls\n  register\n  argMethodCalls.<locals>.onSuccess [Passed]\n    sharedHelper\n"
     );
-    // a graph with nothing handed over prints no line for it
-    let plain = graph_of(&root, "src/main.ts", "literalCalled");
-    assert!(!breakdown(&plain).to_string().contains("handed over"));
+}
+
+#[test]
+fn handed_a_def_every_hand_over_reaches_leaves_nothing_to_count() {
+    // The counters of what is handed over and reached by no edge are 0 by construction now: a name, and a value that holds defs, each has an edge. They stay as
+    // a cross-check (a nonzero value would mean the edge builder and the counter disagree), and `calls.rs` tests the counting itself.
+    let root = fixture("handed-over");
+    for entry in [
+        "argMethod",
+        "literalByName",
+        "constArrowByName",
+        "namedFunctionExpression",
+    ] {
+        let graph = graph_of(&root, "src/main.ts", entry);
+        assert_eq!(
+            graph.stats.language.get("def_written_not_called"),
+            None,
+            "{entry}"
+        );
+        assert_eq!(
+            graph.stats.language.get("def_named_not_called"),
+            None,
+            "{entry}"
+        );
+        let summary = breakdown(&graph);
+        assert!(summary.passed >= 1, "{entry}");
+        assert!(
+            !summary.to_string().contains("handed over and not called"),
+            "{entry}"
+        );
+    }
 }

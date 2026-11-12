@@ -362,6 +362,39 @@ mod tests {
     }
 
     #[test]
+    fn a_def_a_walk_hands_over_that_no_edge_reaches_is_counted_once_as_written_or_named() {
+        // The cross-check of D22: every hand-over has an edge now, so nothing reaches this count through the walk. Here the record is made by hand,
+        // as a def the edge builder missed would leave it.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/resolve");
+        let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
+        let entry = Entry {
+            qualname: "callers",
+            occurrence: 0,
+        };
+        let opts = Options::new(STYLE);
+        let mut graph = call_graph(&project, "src/main.ts", &entry, &opts, &Cancel::new()).unwrap();
+        assert!(!graph.stats.language.contains_key("def_written_not_called"));
+        let lang = TypeScript::new(&project.sem, STYLE);
+        // two defs the graph has no edge to: one written inside an expression, one named
+        lang.handed
+            .borrow_mut()
+            .insert(StableDef::Marked("NOT-IN-THE-GRAPH-1".into()), true);
+        lang.handed
+            .borrow_mut()
+            .insert(StableDef::Marked("NOT-IN-THE-GRAPH-2".into()), false);
+        count_handed_over(&mut graph, &lang);
+        assert_eq!(graph.stats.language.get("def_written_not_called"), Some(&1));
+        assert_eq!(graph.stats.language.get("def_named_not_called"), Some(&1));
+        let text = breakdown(&graph).to_string();
+        assert!(
+            text.contains(
+                "handed over and not called: 1 written inside an expression, 1 referenced by name"
+            ),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn a_def_with_no_node_is_one_unresolved_edge_and_a_count_not_an_empty_body() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/resolve");
         let project = Project::open(&root, Path::new("src/main.ts")).unwrap();

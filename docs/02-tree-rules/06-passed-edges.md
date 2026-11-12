@@ -1,7 +1,7 @@
 # Note: an edge that passes a def instead of calling it (D22)
 
 Status: **the shape was approved by the owner on 2026-11-12; step 2 (core) is built** (the sections below are the shape as approved, with the four additions of step 2: the wire format version, the pointer
-to the `vnoc` side, classes, and text dumps). Step 3 (TypeScript, by name) is built; steps 4 to 6 are not. Written on 2026-11-12 from reading `core/analyzer-core/src/{graph,solve,render,wire}.rs`, `core/analyzer-testkit`,
+to the `vnoc` side, classes, and text dumps). Steps 3 (TypeScript, by name) and 4 (written inside an expression) are built; steps 5 and 6 are not. Written on 2026-11-12 from reading `core/analyzer-core/src/{graph,solve,render,wire}.rs`, `core/analyzer-testkit`,
 `languages/python/.../interp/core_graph.rs` and the TypeScript counter (`languages/typescript/ENGINE.md`, "Defs handed over and not called"). Every `[check]` is a claim to verify while building.
 
 ## Why
@@ -191,7 +191,7 @@ reads `Edge { to, .. }`, which `#[non_exhaustive]` still allows inside a pattern
 | 1 | this note, and D22 in `docs/07` | the owner's OK on the shape |
 | 2 | **Done.** core: `Edge.passed` with `new`/`passed`, `SiteCalls::passed`, the solver stamp, `Node.passed`, `[Passed]`, `Frame.passed`, the merge key, the invariant; rule 7 in `02-the-rules.md` is amended in the same commit | a toy language in `core/` (below); every language's tests green; the wire of a graph with no passed edge is byte-identical |
 | 3 | **Done** (TypeScript, by name; numbers in `languages/typescript/ENGINE.md`, "Passed edges, by name"). TypeScript, by name: every reference the counter finds is a passed edge at its name | the `handed-over` fixture rows change on purpose; `TaskDetailPanel`'s 7 are edges and `handleClose`'s call inside `handleBack` is in the tree; `def_named_not_called` is 0 for the shapes covered; graph time before and after |
-| 4 | TypeScript, written inside an expression (literal methods, D21 arrows in a passed-on literal) | the Q-TS2 fixture changes its answer on purpose; `traverse` gets `toggleNodeExpansion` back; the 3 written on the frontend are edges. **Q-TS2 is closed** |
+| 4 | **Done** (see `languages/typescript/ENGINE.md`, "written inside an expression"). TypeScript, written inside an expression (literal methods, D21 arrows in a passed-on literal) | the Q-TS2 fixture changes its answer on purpose; `traverse` gets `toggleNodeExpansion` back; the 3 written on the frontend are edges. **Q-TS2 is closed** |
 | 5 | keep the counters for what is still not covered: an element access, `f.bind(…)` and `obj.m.bind(obj)` handed over, `f.call(…)`, **and a class handed over by name** (`register(MyClass)`, `{ Icon: MyClass }`). A passed edge points at a context, and a class has none (a class is a `Construct` target; its constructor is `init`), so it cannot be passed; the counter of the handed-over defs filters function-like defs and does not see a class at all. Step 5 adds a count for it | the remainder is a number, a class included |
 | 6 | TS step 6: JSX, tagged templates, decorators, accessors | its own fixtures |
 

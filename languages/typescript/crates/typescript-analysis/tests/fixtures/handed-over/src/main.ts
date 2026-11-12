@@ -64,6 +64,91 @@ export function shorthand() {
   register({ f });
 }
 
+// ---- a value that holds defs, handed over (D22 step 4): a literal in a hand-over position, or a name that holds a literal; its function members go with it
+export function inPlaceLiteral() {
+  // `m` is a def (a method); `a` is an arrow in an argument's literal, which is not a def (D21), so only `m` is handed over
+  register({ m() {}, a: () => {} });
+}
+// Q-TS2: what a method of an argument's literal calls was in no tree
+export function argMethodCalls() {
+  register({
+    onSuccess() {
+      sharedHelper();
+    },
+  });
+}
+export function inPlaceNestedLiteral() {
+  register({ data: { m() {} } });
+}
+export function literalInReturn() {
+  return { m() {} };
+}
+export function literalInArray() {
+  register([{ m() {} }]);
+}
+export function literalByName() {
+  // both members go with the name, at the name
+  const o = { m() {}, a: () => {}, plain: 3 };
+  register(o);
+}
+export function nestedLiteralByName() {
+  const o = { data: { onToggle: () => {} } };
+  register(o);
+}
+export function nestedLiteralByAccess() {
+  const o = { data: { onToggle: () => {} } };
+  register(o.data);
+}
+export function wrappedLiteralByName() {
+  const o = { m() {} } as const;
+  register(o);
+}
+export function literalByNameTwice() {
+  const o = { m() {} };
+  register(o);
+  register(o);
+}
+export function literalCalledAndPassed() {
+  // `m` is called through the name, and handed over with the literal: both edges
+  const o = { m() {} };
+  o.m();
+  register(o);
+}
+export function literalPassedInAClosure() {
+  const o = { m() {} };
+  function inner() {
+    register(o);
+  }
+  inner();
+}
+export function importedLiteralByName() {
+  register(api);
+}
+// not handed over: a literal that is made and kept, a literal nothing names, a `let` literal's arrow (not a def), a literal that is only read
+export function deadLiteral() {
+  const dead = { a: () => {}, m() {} };
+}
+export function letLiteral() {
+  let o = { a: () => {} };
+  register(o);
+}
+export function literalRead() {
+  const o = { m() {} };
+  if (o) {
+    register(1);
+  }
+  register(typeof o);
+}
+export function boundNamedFunctionExpression() {
+  // bound to a variable, and a property of a literal nobody hands over: made, not handed over
+  const g = function step() {};
+  const o = { cb: function inner() {} };
+}
+export function storedLiteralNotHandedOver() {
+  // a nested literal of a literal nobody hands over
+  const x = { data: { m() {} } };
+}
+
 // ---- where a name is handed over: an argument, a property value, an array element, an initializer, an assignment, a return, a JSX value, through wrappers
 declare class Box {
   constructor(f: unknown);

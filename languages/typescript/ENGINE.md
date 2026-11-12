@@ -646,3 +646,37 @@ still counted is what has no edge: a def written inside an expression (`def_writ
 functions. A dependency array lists what the hook watches; it does not give it to anything. The rule is **not changed** (the owner's decision): an array element is a hand-over, and this is the one place where that
 says more than the code does. Pinned with its current answer in the fixture (`inDependencyArray`, 2 passed edges).
 
+### Passed edges, written inside an expression (D22 step 4; closes Q-TS2)
+
+A value that **holds defs** and is handed over hands them over with it. The def that hands it over gets an edge, **passed**, to each of them:
+
+| What is handed over, and where | The edge | Site |
+|---|---|---|
+| an **object literal written in a hand-over position** (`register({ onSuccess() {} })`, `return { m() {} }`, `[{ m() {} }]`): its function members, through nested literals | to each member def | the member's **key** |
+| a **name that holds a literal** (`register(local)` with `const local = { traverse: () => {} }`, `register(o.data)`, an import, a literal under `as const`): the literal's function members, through nested literals | to each member def | the **name** (all the members at one site) |
+| a **named function expression** written where a value is handed over (`xs.map(function step() {})`) | to it | its **name** |
+
+A member is a method, or an arrow or function expression held by a property, **that is a def** (a method always is; an arrow property is a def by D21, so in an argument's literal it is not, and nothing is handed over for it:
+`register({ m() {}, a: () => {} })` hands `m` over). A getter, a setter, a shorthand property (a hand-over of its own where the literal is written) and a computed key are not looked at. Pinned in `handed-over/` (`argMethod`,
+`localLiteral`, `inPlaceLiteral`, `literalByName`, `nestedLiteralByName`, `nestedLiteralByAccess`, `wrappedLiteralByName`, `importedLiteralByName`, `literalPassedInAClosure`, …).
+
+**What is *not* handed over, on purpose** (rule 3 of D22: a def nothing names stays unreached and uncounted): a literal that is only **made** (the initializer of a variable, a property value, a default: the *name* that holds it hands
+it over); a dead literal (`const dead = { m() {} }`, `deadLiteral`), a nested literal of one nobody hands (`storedLiteralNotHandedOver`), a `let` literal's arrow (not a def), a literal that is only read (`if (o)`, `typeof o`), a named
+function expression that is bound (`const g = function step() {}`, `{ cb: function inner() {} }`). This changes what the old counter counted: **a def written in a literal that nothing hands over is no longer counted**
+(the first counter took every unreached def written in a walked body).
+
+*Our choice, and the one place it is broader than the counter was:* a name that holds a literal declared **anywhere in the project** hands over its members, not only a literal written in the same body (`register(api)` with `api` from
+another file). Handing over an object hands over what it holds; if the receiver calls one member, the tree still shows all of them under the name. A literal handed over with many members shows many nodes.
+
+**Q-TS2 is closed.** `run({ onSuccess() { f(); } })` was a def nobody called, so `f()` was in no tree: the tree of `argMethodCalls` is now `register`, then `argMethodCalls.<locals>.onSuccess [Passed]` with `sharedHelper` under it.
+
+**Mutation-checked**: the in-place literal, "a bound literal is not handed over", nested literals, a name that holds a literal, a property that holds one (`o.data`), the wrapper over a held literal, a bound named function expression
+and a handed one each turns a row red. `def_written_not_called` and `def_named_not_called` are **0 by construction** now (every hand-over has an edge, and a def nothing hands is not recorded); `calls.rs` tests the counting with a record
+made by hand. They stay as a cross-check, not as evidence.
+
+**The numbers** (V-NOC frontend, 2026-11-12). `TaskDetailPanel` is unchanged (84 call, 2 construct, 122 external, 48 unresolved, 15 passed, 50 contexts, graph 16 ms): it hands over no literal. The whole frontend (1084 entries): passed
+edges **143 to 153**, call edges unchanged at 1185, graph 126 ms; **the 3 defs it counted as written are all passed nodes now**, each in the tree of its enclosing def: `FlameGraph.<locals>.itemData.scale` (under `FlameGraph`),
+`CreateProjectDialog.<locals>.onSubmit.<locals>.onSuccess` (under `onSubmit`, with `idPrefixRemover` under it), and `useEnhancedTreeLayout.<locals>.traverse.<locals>.rfNode.data.onToggle` (under `traverse`). The call the review found
+lost, `toggleNodeExpansion(nodeId)` in `onToggle`, **is an edge of the graph again** (bytes 16 to 35 of `onToggle`, 19 characters, the callee): `Unresolved(function_typed_value)`, since `toggleNodeExpansion` is a store action (D16),
+and so not drawn in the tree, which hides unresolved edges unless asked. The other 7 of the 10 new passed edges were not listed.
+
