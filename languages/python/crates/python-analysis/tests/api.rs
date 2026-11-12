@@ -1,8 +1,9 @@
 //! The public surface and nothing else: `Project`, `call_graph`, `call_wire`, and core's renderer on the graph. If this file needs
 //! something that is not in `lib.rs`'s list, the surface is wrong, not this file.
 
+use analyzer_core::graph::{Cut, Status};
 use python_analysis::{
-    EdgeTo, Entry, Graph, MarkerStyle, OpenError, Options, Project, StableDef, WireStyle,
+    Cancel, EdgeTo, Entry, Graph, MarkerStyle, OpenError, Options, Project, StableDef, WireStyle,
     call_graph, call_wire, render, to_text,
 };
 
@@ -25,6 +26,66 @@ fn styled() -> Options {
         },
         ..Options::default()
     }
+}
+
+/// `Options::default()` with `cancel` in place of the one that never fires.
+fn cancelled_with(cancel: Cancel) -> Options {
+    Options {
+        cancel,
+        ..Options::default()
+    }
+}
+
+/// The status of the root context of `main` in the wire fixture.
+fn root_status(graph: &Graph) -> Status {
+    let root = graph.entries[0].context().expect("the entry has a context");
+    graph
+        .context(root)
+        .expect("the root is in the graph")
+        .status
+}
+
+#[test]
+fn a_cancel_fired_before_the_request_cuts_the_root_and_is_counted() {
+    let project = Project::open(DIR).unwrap();
+    let cancel = Cancel::new();
+    cancel.cancel();
+    let opts = cancelled_with(cancel);
+    let graph = call_graph(&project, FILE, &first("main"), &opts).unwrap();
+    assert_eq!(root_status(&graph), Status::Incomplete(Cut::Cancelled));
+    assert_eq!(graph.stats.cuts.get(&Cut::Cancelled), Some(&1));
+    let wire = call_wire(&project, FILE, &first("main"), &opts, false).unwrap();
+    assert!(
+        wire.marks.iter().any(|m| m == "incomplete"),
+        "{:?}",
+        wire.marks
+    );
+}
+
+#[test]
+fn a_deadline_of_the_cancel_is_a_deadline_cut_and_not_a_cancelled_one() {
+    let project = Project::open(DIR).unwrap();
+    let opts = cancelled_with(Cancel::new().with_deadline(std::time::Instant::now()));
+    let graph = call_graph(&project, FILE, &first("main"), &opts).unwrap();
+    assert_eq!(root_status(&graph), Status::Incomplete(Cut::Deadline));
+    assert_eq!(graph.stats.cuts.get(&Cut::Deadline), Some(&1));
+    assert_eq!(graph.stats.cuts.get(&Cut::Cancelled), None);
+}
+
+#[test]
+fn a_cancelled_request_leaves_the_project_as_it_was() {
+    let wire_json = |project: &Project, opts: &Options| {
+        let frame = call_wire(project, FILE, &first("main"), opts, false).unwrap();
+        serde_json::to_string(&frame).unwrap()
+    };
+    let kept = Project::open(DIR).unwrap();
+    let cancel = Cancel::new();
+    cancel.cancel();
+    let cut_short = wire_json(&kept, &cancelled_with(cancel));
+    let after = wire_json(&kept, &Options::default());
+    let fresh = wire_json(&Project::open(DIR).unwrap(), &Options::default());
+    assert_ne!(cut_short, fresh, "the cancelled request was cut");
+    assert_eq!(after, fresh);
 }
 
 #[test]

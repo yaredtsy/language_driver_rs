@@ -45,13 +45,14 @@ fn cut(c: Cut) -> CCut {
         Cut::Stack => CCut::MaxDepth,
         Cut::Contexts | Cut::ContextsPerFunc => CCut::MaxContexts,
         Cut::Deadline => CCut::Deadline,
+        Cut::Cancelled => CCut::Cancelled,
     }
 }
 
 fn status(s: &Solver<'_>, c: ContextId) -> CStatus {
     let slot = &s.slots[c];
     let Some(result) = &slot.result else {
-        // never walked to the end: the limit is unknown, and is not guessed
+        // no result and no cut: a context nobody asked for (none in the suite reaches here). The reason is unknown, and is not guessed
         return slot.cut.map_or(CStatus::Incomplete(CCut::Cancelled), |k| {
             CStatus::Incomplete(cut(k))
         });
@@ -83,6 +84,7 @@ fn stats(old: &Stats, unresolved: u64, likely: u64) -> CStats {
     add(CCut::MaxContexts, old.cuts.contexts);
     add(CCut::MaxContexts, old.cuts.contexts_per_func);
     add(CCut::Deadline, old.cuts.deadline);
+    add(CCut::Cancelled, old.cuts.cancelled);
     add(CCut::MaxRounds, old.rounds_capped);
     let mut out = CStats::default();
     out.walks = u64::from(old.walks);

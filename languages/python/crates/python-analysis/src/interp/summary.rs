@@ -53,6 +53,8 @@ pub(crate) enum Cut {
     Contexts,
     ContextsPerFunc,
     Deadline,
+    /// The caller's `Cancel` fired (`Options::cancel`).
+    Cancelled,
 }
 
 impl<'db> FunctionResult<'db> {

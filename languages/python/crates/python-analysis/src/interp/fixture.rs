@@ -2,7 +2,7 @@
 use crate::interp::bind::param_names;
 use crate::interp::relevant::relevant_params;
 use crate::interp::summary::{PlainVal, SVal};
-use crate::interp::{Limits, Mode, Options, Stats, to_text};
+use crate::interp::{Cuts, Limits, Mode, Options, Stats, to_text};
 use crate::sem::Sem;
 use crate::sem::{ProjectDatabase, open, open_project};
 use analyzer_core::graph::Entry;
@@ -639,6 +639,74 @@ fn p02_08_cuts() {
     };
     let st = stats_for("02-function-summaries/python/cuts.py", "main", &opts);
     assert_eq!(st.cuts.stack, 1); // mid under main > a > b > top
+}
+
+/// A cancel that fires after the second walk: `main` and `a` are walked, and nothing is walked past them.
+#[test]
+fn p09_01_cancel_after_the_second_walk() {
+    use analyzer_core::graph::{Cut as CCut, Status};
+    let fixture = "02-function-summaries/python/cuts.py";
+    let opts = Options {
+        cancel_at_walk: Some(2),
+        ..summary()
+    };
+    let path = std::fs::canonicalize(format!("tests/fixtures/{fixture}")).unwrap();
+    let db = open_project(SystemPath::from_std_path(path.parent().unwrap()).unwrap()).unwrap();
+    let (file, _) = open(&db, SystemPath::from_std_path(&path).unwrap()).unwrap();
+    let (tree, st) = call_tree(&db, file, "main", &opts).unwrap();
+    assert_eq!(st.walks, 2);
+    assert!(st.cuts.cancelled >= 1, "{:?}", st.cuts);
+    assert_eq!(
+        Cuts {
+            cancelled: 0,
+            ..st.cuts.clone()
+        },
+        Cuts::default(),
+        "no cut but the cancel"
+    );
+    let graph = call_graph(&db, file, "main", &opts).unwrap();
+    let root = graph.entries[0].context().unwrap();
+    assert_eq!(
+        graph.context(root).unwrap().status,
+        Status::Incomplete(CCut::Cancelled)
+    );
+    // `b` and `top` are listed and not walked; `handler` is not here, because `top`'s return was never read
+    assert_eq!(
+        to_text(&tree, "cuts"),
+        "main [incomplete]\n  a [incomplete]\n    b [incomplete]\n  top [incomplete]\n"
+    );
+}
+
+/// A context cut before its walk carries its own cut, not the fallback of a context that was never asked for.
+#[test]
+fn p09_01_a_context_cut_before_its_walk_says_which_limit() {
+    let path =
+        std::fs::canonicalize("tests/fixtures/02-function-summaries/python/cuts.py").unwrap();
+    let db = open_project(SystemPath::from_std_path(path.parent().unwrap()).unwrap()).unwrap();
+    let (file, _) = open(&db, SystemPath::from_std_path(&path).unwrap()).unwrap();
+    let opts = Options {
+        limits: Limits {
+            max_stack: 2,
+            ..Limits::default()
+        },
+        ..summary()
+    };
+    let graph = call_graph(&db, file, "main", &opts).unwrap();
+    let statuses: Vec<String> = graph
+        .contexts
+        .iter()
+        .map(|c| format!("{} {:?}", graph.def(&c.id.func).unwrap().qname, c.status))
+        .collect();
+    assert_eq!(
+        statuses,
+        [
+            "cuts.a Incomplete(MaxDepth)",
+            "cuts.b Incomplete(MaxDepth)",
+            "cuts.main Incomplete(MaxDepth)",
+            "cuts.mid Incomplete(MaxDepth)",
+            "cuts.top Incomplete(MaxDepth)",
+        ]
+    );
 }
 
 #[test]

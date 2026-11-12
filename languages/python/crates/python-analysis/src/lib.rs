@@ -21,6 +21,7 @@ pub use analyzer_core::graph::{
     Context, ContextId, Edge, EdgeTo, Entry, Graph, Root, StableDef, Stats,
 };
 pub use analyzer_core::render::{Mark, Node, RenderOptions, render, to_text};
+pub use analyzer_core::solve::Cancel;
 pub use interp::Limits;
 pub use sem::{OpenError, Project};
 pub use wire::{Frame, LineSpan, Sources, WireOptions, WireStyle, merge, wire};
@@ -36,6 +37,10 @@ pub struct Options {
     pub only_marked: bool,
     /// How an id is written on the wire: the prefixes are the caller's.
     pub wire: WireStyle,
+    /// A request to stop. The caller fires it with `cancel()` (the host's `$/cancelRequest`), or gives it a deadline with `with_deadline`
+    /// (counted from the caller's clock, so it can include the queue). A fired cancel cuts every context not yet walked and the answer says so
+    /// (`Cut::Cancelled`, marked `incomplete`). It is checked between walks only: a walk that has begun finishes. The default never fires.
+    pub cancel: Cancel,
 }
 
 impl Default for Options {
@@ -45,6 +50,7 @@ impl Default for Options {
             marker: MarkerStyle::docstring("ID"),
             only_marked: false,
             wire: WireStyle::default(),
+            cancel: Cancel::default(),
         }
     }
 }
@@ -58,6 +64,9 @@ impl Options {
             wire: self.wire.clone(),
             marker: self.marker,
             constructor_effects: false,
+            cancel: self.cancel.clone(),
+            #[cfg(test)]
+            cancel_at_walk: None,
         }
     }
 

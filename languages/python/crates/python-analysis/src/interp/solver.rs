@@ -192,7 +192,11 @@ impl<'db> Solver<'db> {
         }
         if let Some(cut) = self.cost_limit(ctx, depth) {
             self.reader_read_cut(cut);
-            return Got::Ready(Arc::new(FunctionResult::cut(cut))); // not stored
+            // the result is not stored, the cut is: a context walked before keeps its own status
+            if self.slots[ctx].result.is_none() {
+                self.slots[ctx].cut.get_or_insert(cut);
+            }
+            return Got::Ready(Arc::new(FunctionResult::cut(cut)));
         }
 
         self.heads.reset(ctx);
@@ -251,6 +255,16 @@ impl<'db> Solver<'db> {
         }
         if l.deadline.is_some_and(|d| self.started.elapsed() > d) {
             return Some(Cut::Deadline);
+        }
+        #[cfg(test)]
+        if self.opts.cancel_at_walk == Some(self.stats.walks) {
+            self.opts.cancel.cancel();
+        }
+        // `reason`, not `is_cancelled`: the `Cancel`'s own deadline is a deadline, not a cancel.
+        match self.opts.cancel.reason() {
+            Some(analyzer_core::graph::Cut::Deadline) => return Some(Cut::Deadline),
+            Some(_) => return Some(Cut::Cancelled),
+            None => {}
         }
         *n += 1;
         None

@@ -59,6 +59,7 @@ pub(crate) struct Cuts {
     pub contexts: u32,
     pub contexts_per_func: u32,
     pub deadline: u32,
+    pub cancelled: u32,
 }
 
 impl Cuts {
@@ -68,6 +69,7 @@ impl Cuts {
             Cut::Contexts => self.contexts += 1,
             Cut::ContextsPerFunc => self.contexts_per_func += 1,
             Cut::Deadline => self.deadline += 1,
+            Cut::Cancelled => self.cancelled += 1,
         }
     }
 }
@@ -104,6 +106,11 @@ pub(crate) struct Options {
     /// SPIKE, off by default: an `__init__`'s writes onto `self` are recorded in its summary and replayed at the construct site, and a
     /// method entry starts on an object its `__init__` has run on (the entry prologue). Part 04, step 3.
     pub constructor_effects: bool,
+    /// The caller's request to stop, and its own deadline. Checked before every walk, never inside one.
+    pub cancel: analyzer_core::solve::Cancel,
+    /// Tests only: fire `cancel` when this many walks have been made, so a test can stop a request at a known place without a thread.
+    #[cfg(test)]
+    pub cancel_at_walk: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -161,6 +168,9 @@ impl Default for Options {
             wire: WireStyle::default(),
             marker: MarkerStyle::docstring("ID"),
             constructor_effects: false,
+            cancel: analyzer_core::solve::Cancel::default(),
+            #[cfg(test)]
+            cancel_at_walk: None,
         }
     }
 }

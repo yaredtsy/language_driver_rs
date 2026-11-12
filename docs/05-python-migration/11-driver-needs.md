@@ -95,12 +95,20 @@ need an epoch. Python's `Project` already is the long-lived handle (it owns the 
 | | |
 |---|---|
 | The type | core's `analyzer_core::solve::Cancel` (an `Arc<AtomicBool>` and an optional deadline; `Debug`, `Clone`, `Default`; the default never fires). Python already depends on `analyzer-core` |
-| How it reaches the solver | a new field `Options::cancel: Cancel` (public `Options`, `lib.rs`), passed into `interp::Options`. Additive: a caller that builds `Options { .., ..Options::default() }` compiles unchanged |
-| Where it is checked | `Solver::cost_limit` (`interp/solver.rs`), next to the deadline, before every walk: `if self.opts.cancel.is_cancelled() { return Some(Cut::Cancelled) }` |
+| How it reaches the solver | a new field `Options::cancel: Cancel` (public `Options`, `lib.rs`), passed into `interp::Options`. Additive: a caller that builds `Options { .., ..Options::default() }` compiles unchanged. `lib.rs` re-exports `Cancel` (`pub use analyzer_core::solve::Cancel`), as TypeScript's does, so the driver names it from the analyzer |
+| Where it is checked | `Solver::cost_limit` (`interp/solver.rs`), after the deadline, before every walk, with core's `Cancel::reason()`: a cancel gives `Cut::Cancelled`, the `Cancel`'s own deadline (`with_deadline`) gives `Cut::Deadline`. **Not `is_cancelled()`**: it is true for the deadline too, and the cut would then say `cancelled` for a deadline |
 | What it gives | a new `interp::summary::Cut::Cancelled`, counted in `Stats.cuts` (`Cuts.cancelled`), mapped to core's existing `Cut::Cancelled` in `core_graph.rs` `cut`. The cut contexts are `Status::Incomplete(Cancelled)`: the wire marks them `incomplete`, as the deadline does |
 | What it never does | interrupt the engine. The check is between walks; one walk's engine queries finish. A cancelled request leaves nothing half-made behind: the solver lives for one request, and the engine's memoized answers are whole answers. After the last check the tree is still rendered and written as the wire (PY9.0: up to 36 ms cold, 12 ms warm); a cancel cannot stop that part, and the driver drops the answer anyway |
 
-`Limits::deadline` stays as it is. (Core's `Cancel` can carry a deadline too; using one mechanism for both is §10 claim 4.)
+`Limits::deadline` stays as it is (§10 claim 4): both deadlines cut the same way and are counted as `Deadline`; the driver may use either.
+
+**A fix this step needs (found while building PY9.1, 2026-11-13).** A context cut by `cost_limit` before its walk was never given the cut:
+`Solver::get` returns `FunctionResult::cut` without storing anything, so `core_graph.rs` `status` fell back to `Incomplete(Cancelled)` ("the
+limit is unknown") whatever the limit was: a stack, a context or a deadline cut all read `cancelled` on that context. So `get` records the
+cut on the slot (`slots[ctx].cut.get_or_insert(cut)`) **only when the slot has no result** (a context walked before keeps its own status),
+and `status` reads it. A later walk of the context clears it as today (`get`, `slots[ctx].cut = None`). The counters already told the cause;
+now the context does too. The wire does not change: core's renderer marks any `Incomplete(_)` as `incomplete`, whatever the cut. No
+snapshot shows a never-walked cut context today (none contains `Incomplete(Cancelled)`), so none moves.
 
 ## 4. Keeping the project open
 
@@ -181,7 +189,7 @@ nothing in `core/` (rule 5 is still checked: core's tests run).
 | | |
 |---|---|
 | Change | §3 |
-| Failing tests | `tests/api.rs`: (a) a `Cancel` fired before the request: the root context is `Incomplete(Cancelled)`, `Stats.cuts` has `cancelled` 1, the wire's root carries `incomplete`. (b) a `Cancel` fired from another thread after the first walk (a fixture with enough contexts; the thread waits on a channel the test controls, not on time): some contexts `Incomplete(Cancelled)`, none walked after the fire. (c) the next request with a fresh `Cancel` on the same `Project` gives the full tree, equal to a request on a fresh project. (d) `Options::default().cancel` never fires: every existing test unchanged |
+| Failing tests | `tests/api.rs`: (a) a `Cancel` fired before the request: the root context is `Incomplete(Cancelled)`, `Stats.cuts` has `Cancelled` 1, the wire's root carries `incomplete`. (a′) `Cancel::new().with_deadline(Instant::now())`: the cut is `Deadline`, not `Cancelled`. (c) the next request with a fresh `Cancel` on the same `Project` gives the full tree, equal to a request on a fresh project. **Unit** (`interp/fixture.rs`): (b) a cancel fired after walk *n*, through a test-only `interp::Options::cancel_at_walk: Option<u32>` (`#[cfg(test)]`; `cost_limit` fires the `Cancel` when `stats.walks` reaches it, then checks as usual): on `02-function-summaries/python/cuts.py` `main` with `n` = 2, exactly two walks, every cut is `Cancelled`, the root is `Incomplete(Cancelled)`. A second thread is not used: nothing in the public API tells a test that a walk has happened, so a thread could only wait on time; the flag crossing threads is core's `Arc<AtomicBool>`. (e) the fix of §3: `cuts.py` `main` with `max_stack` = 2: `b` and `mid` are cut before their walk and walked nowhere else, and read `Incomplete(MaxDepth)`; red before the fix (`Incomplete(Cancelled)`). (d) `Options::default().cancel` never fires: every existing test unchanged |
 | Snapshots | none moves |
 | Proof | `cargo test` in `languages/python`; clippy on `python-analysis`; `cd core && cargo test` |
 
@@ -219,8 +227,9 @@ Text for the vnoc agent, after PY9.4 is pushed and CI is green. Nothing here is 
    root (open on first use), calls `refresh()` and then `call_wire` for each request. Built with `std::thread::Builder::new().stack_size(…)`,
    the size from `ENGINE.md` (§6). Outline, `planIds`, `planFileId` stay as they are.
 2. **Cancel stops the work.** The per-request flag becomes an `analyzer_core::solve::Cancel`, stored in the in-flight map; `$/cancelRequest`
-   calls `cancel()`; the request passes it in `Options::cancel`. The answer of a cancelled request is still dropped (`-32800`). A request
-   still queued when it is cancelled is answered `-32800` without being run.
+   calls `cancel()`; the request passes it in `Options::cancel` (`python_analysis::Cancel`). The answer of a cancelled request is still
+   dropped (`-32800`). A request still queued when it is cancelled is answered `-32800` without being run. To count the time a request
+   waits in the queue against its deadline, build the `Cancel` with `with_deadline(received + 20 s)` when the request arrives (§10 claim 4).
 3. **`vnoc/environmentInputs { root }`** answers `Project::environment_inputs()`; capability `environmentInputs: true`.
 4. **The mark `likely`** (D28, from the last `rev`): add `CallMark::Likely` to the protocol (additive) and map `"likely"` to it, instead of
    dropping it. Until then the UI shows a likely call as a certain one.
@@ -244,7 +253,7 @@ Text for the vnoc agent, after PY9.4 is pushed and CI is green. Nothing here is 
 | 1 | `Project` is `Send` and not `Sync` (salsa's database keeps per-thread state) | PY9.2 (f) |
 | 2 | `Files::sync_all` also sees a file that did not exist when it was first looked up (the engine records a path it could not find, so a later creation bumps it) | PY9.2 (b). PY9.0 (c′) saw the case next to it only: a file **changed** after the first request is seen after `sync_all` (the new call is in the answer, 0.4 ms) and **not** without it (the old answer, from memory), so the refresh before each request is needed. A new file was not tried |
 | 3 | A warm request costs a small part of a cold one, so keeping the project is worth the memory it holds | PY9.0. **Holds.** Warm 5.7 / 9.5 / 2.5 ms against cold 86 / 175 / 94 ms (Jarvis, post, get_files: 15×, 18×, 37×), debug build. A kept project holds at most 60 / 78 / 62 MiB resident (the process starts at 6 MiB), and `sync_all` with nothing changed costs 0.05–2.3 ms and keeps it warm |
-| 4 | The deadline could move into `Options::cancel` (`Cancel::with_deadline`) and `Limits::deadline` go: one mechanism. Say whether anything is lost (the deadline is measured from the solver's start today, from the caller's clock with `Cancel`) | PY9.1 |
+| 4 | The deadline could move into `Options::cancel` (`Cancel::with_deadline`) and `Limits::deadline` go: one mechanism. Say whether anything is lost (the deadline is measured from the solver's start today, from the caller's clock with `Cancel`) | **Answered in the plan (2026-11-13), not yet built: keep both.** Nothing in the analysis is lost either way: `cost_limit` reads `Cancel::reason()`, so a `Cancel` deadline is a `Deadline` cut, as `Limits::deadline` is. They differ in the clock: `Limits::deadline` counts from the solver's start (not the open, the refresh or the queue), while a `Cancel` deadline is an `Instant` the caller picks and can include them, which suits the host's 30 s timeout. Removing `Limits::deadline` would break every caller that sets it (the V-NOC driver does), for no gain. The vnoc text (§8) says the driver may pass `with_deadline` |
 | 5 | One walk never runs long enough that a cancel between walks feels late (the longest single walk on the three projects) | PY9.0. **Holds.** Measured as the longest time between two `cost_limit` calls in one request (a walk recurses into its callees, so its own time includes theirs): cold 35 / 15 / 5 ms (Jarvis, post, get_files; one outlier each, 96 and 63 ms), warm 1.8 ms at most, debug build on a busy machine. After the last check, the render and the wire take up to 36 ms cold, 12 ms warm, and no check covers them |
 | 6 | The engine reads `.python-version` and a venv named in the config; the list of §5 is complete for the vendored engine | PY9.3 |
 
