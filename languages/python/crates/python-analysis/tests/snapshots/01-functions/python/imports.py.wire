@@ -1,57 +1,57 @@
 == direct
-imports.direct
-  util.helper @17:5
+imports.direct <imports.py:direct#0 Function>
+  util.helper <util.py:helper#0 Function> @17:5 in imports.py
 
 == direct (merged)
-imports.direct
-  util.helper @17:5
+imports.direct <imports.py:direct#0 Function>
+  util.helper <util.py:helper#0 Function> @17:5 in imports.py
 
 == via_module
-imports.via_module
-  util.helper @21:5
+imports.via_module <imports.py:via_module#0 Function>
+  util.helper <util.py:helper#0 Function> @21:5 in imports.py
 
 == via_module (merged)
-imports.via_module
-  util.helper @21:5
+imports.via_module <imports.py:via_module#0 Function>
+  util.helper <util.py:helper#0 Function> @21:5 in imports.py
 
 == via_alias
-imports.via_alias
-  util.helper @25:5
-  util.helper @26:5
+imports.via_alias <imports.py:via_alias#0 Function>
+  util.helper <util.py:helper#0 Function> @25:5 in imports.py
+  util.helper <util.py:helper#0 Function> @26:5 in imports.py
 
 == via_alias (merged)
-imports.via_alias
-  util.helper x2 @25:5
+imports.via_alias <imports.py:via_alias#0 Function>
+  util.helper <util.py:helper#0 Function> x2 @25:5 in imports.py
 
 == deep
-imports.deep
-  pkg.sub.mod.work @30:5
+imports.deep <imports.py:deep#0 Function>
+  pkg.sub.mod.work <pkg/sub/mod.py:work#0 Function> @30:5 in imports.py
 
 == deep (merged)
-imports.deep
-  pkg.sub.mod.work @30:5
+imports.deep <imports.py:deep#0 Function>
+  pkg.sub.mod.work <pkg/sub/mod.py:work#0 Function> @30:5 in imports.py
 
 == from_package
-imports.from_package
-  pkg.sub.mod.work @34:5
+imports.from_package <imports.py:from_package#0 Function>
+  pkg.sub.mod.work <pkg/sub/mod.py:work#0 Function> @34:5 in imports.py
 
 == from_package (merged)
-imports.from_package
-  pkg.sub.mod.work @34:5
+imports.from_package <imports.py:from_package#0 Function>
+  pkg.sub.mod.work <pkg/sub/mod.py:work#0 Function> @34:5 in imports.py
 
 == module_in_a_local
-imports.module_in_a_local
-  util.helper @39:5
+imports.module_in_a_local <imports.py:module_in_a_local#0 Function>
+  util.helper <util.py:helper#0 Function> @39:5 in imports.py
 
 == module_in_a_local (merged)
-imports.module_in_a_local
-  util.helper @39:5
+imports.module_in_a_local <imports.py:module_in_a_local#0 Function>
+  util.helper <util.py:helper#0 Function> @39:5 in imports.py
 
 == local_import
-imports.local_import
-  util.other @46:5
+imports.local_import <imports.py:local_import#0 Function>
+  util.other <util.py:other#0 Function> @46:5 in imports.py
 
 == local_import (merged)
-imports.local_import
-  util.other @46:5
+imports.local_import <imports.py:local_import#0 Function>
+  util.other <util.py:other#0 Function> @46:5 in imports.py
 

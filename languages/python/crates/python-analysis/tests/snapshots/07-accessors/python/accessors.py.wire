@@ -1,41 +1,42 @@
 == reads
-accessors.reads
-  accessors.Box @21:9
-  accessors.Box.h @22:5
+accessors.reads <accessors.py:reads#0 Function>
+  accessors.Box <accessors.py:Box#0 Class> @21:9 in accessors.py
+  accessors.Box.h <accessors.py:Box.h#0 Method> @22:5 in accessors.py
 
 == reads (merged)
-accessors.reads
-  accessors.Box @21:9
-  accessors.Box.h @22:5
+accessors.reads <accessors.py:reads#0 Function>
+  accessors.Box <accessors.py:Box#0 Class> @21:9 in accessors.py
+  accessors.Box.h <accessors.py:Box.h#0 Method> @22:5 in accessors.py
 
 == writes
-accessors.writes
-  accessors.Box @26:9
-  accessors.Box.h @27:5
+accessors.writes <accessors.py:writes#0 Function>
+  accessors.Box <accessors.py:Box#0 Class> @26:9 in accessors.py
+  accessors.Box.h <accessors.py:Box.h#1 Method> @27:5 in accessors.py
 
 == writes (merged)
-accessors.writes
-  accessors.Box @26:9
-  accessors.Box.h @27:5
+accessors.writes <accessors.py:writes#0 Function>
+  accessors.Box <accessors.py:Box#0 Class> @26:9 in accessors.py
+  accessors.Box.h <accessors.py:Box.h#1 Method> @27:5 in accessors.py
 
 == deletes
-accessors.deletes
-  accessors.Box @31:9
-  accessors.Box.h @32:9
+accessors.deletes <accessors.py:deletes#0 Function>
+  accessors.Box <accessors.py:Box#0 Class> @31:9 in accessors.py
+  accessors.Box.h <accessors.py:Box.h#0 Method> @32:9 in accessors.py
 
 == deletes (merged)
-accessors.deletes
-  accessors.Box @31:9
-  accessors.Box.h @32:9
+accessors.deletes <accessors.py:deletes#0 Function>
+  accessors.Box <accessors.py:Box#0 Class> @31:9 in accessors.py
+  accessors.Box.h <accessors.py:Box.h#0 Method> @32:9 in accessors.py
 
 == both
-accessors.both
-  accessors.Box @36:9
-  accessors.Box.h @37:5
-  accessors.Box.h @37:11
+accessors.both <accessors.py:both#0 Function>
+  accessors.Box <accessors.py:Box#0 Class> @36:9 in accessors.py
+  accessors.Box.h <accessors.py:Box.h#1 Method> @37:5 in accessors.py
+  accessors.Box.h <accessors.py:Box.h#0 Method> @37:11 in accessors.py
 
 == both (merged)
-accessors.both
-  accessors.Box @36:9
-  accessors.Box.h x2 @37:5
+accessors.both <accessors.py:both#0 Function>
+  accessors.Box <accessors.py:Box#0 Class> @36:9 in accessors.py
+  accessors.Box.h <accessors.py:Box.h#1 Method> @37:5 in accessors.py
+  accessors.Box.h <accessors.py:Box.h#0 Method> @37:11 in accessors.py
 

@@ -1030,7 +1030,26 @@ fn golden_wire_of_a_real_project() {
         let new = serde_json::to_value(&new).unwrap();
 
         let reference = renamed(read(&format!("pylspt-{name}")));
+        // pylspt's wire has not the fields that name a target by file, qualname, occurrence and kind (D20): this crate's own golden has them,
+        // and the comparison with pylspt is on what both have
+        fn without_target_names(v: &mut Value) {
+            if let Some(o) = v.as_object_mut() {
+                for key in [
+                    "target_file",
+                    "target_qualname",
+                    "target_occurrence",
+                    "target_kind",
+                    "call_site_file",
+                ] {
+                    o.remove(key);
+                }
+            }
+            if let Some(kids) = v.get_mut("children").and_then(Value::as_array_mut) {
+                kids.iter_mut().for_each(without_target_names);
+            }
+        }
         let mut stripped = new.clone();
+        without_target_names(&mut stripped);
         let mut removed = Vec::new();
         strip(&mut stripped, &accessors, &mut removed);
         let (mut a, mut b) = (reference.clone(), stripped);
@@ -1077,6 +1096,15 @@ fn wire_text(frame: &crate::wire::Frame) -> String {
     while let Some((f, depth)) = stack.pop() {
         out.push_str(&"  ".repeat(depth));
         out.push_str(&f.target_qname);
+        // what the frame says its target is: (file, outline qualname, occurrence) and the kind; nothing for an external or an unresolved leaf
+        if let Some(file) = &f.target_file {
+            out.push_str(&format!(
+                " <{file}:{}#{} {:?}>",
+                f.target_qualname,
+                f.target_occurrence,
+                f.target_kind.as_ref().expect("a row has a kind")
+            ));
+        }
         for m in &f.marks {
             out.push_str(&format!(" [{m}]"));
         }
@@ -1088,6 +1116,9 @@ fn wire_text(frame: &crate::wire::Frame) -> String {
         }
         if let Some(site) = f.call_site {
             out.push_str(&format!(" @{}:{}", site.start.0, site.start.1));
+        }
+        if let Some(file) = &f.call_site_file {
+            out.push_str(&format!(" in {file}"));
         }
         out.push('\n');
         stack.extend(f.children.iter().rev().map(|c| (c, depth + 1)));
@@ -1407,7 +1438,7 @@ fn dump_unresolved_sites(db: &ProjectDatabase, project: &str, graph: &analyzer_c
 }
 
 /// E1: every row of `graph.defs` names a def the outline of its file has: the `occurrence`th def with that `qualname`, and it is the same
-/// def (a class or not, and the same range). This is the one naming rule a request and an answer share (D20), so a row that is wrong is the bug.
+/// def (the same kind, as the outline says it, and the same range). This is the one naming rule a request and an answer share (D20), so a row that is wrong is the bug.
 #[test]
 fn every_def_row_of_every_graph_names_a_def_of_its_files_outline() {
     use crate::interp::call_graph;
@@ -1437,13 +1468,9 @@ fn every_def_row_of_every_graph_names_a_def_of_its_files_outline() {
                     same_name.len()
                 )
             });
-            // the outline says `Method` where `DefInfo::kind` says `Function` (core_graph::def_info knows a class and a function): so the
-            // kind is compared as "a class or not". Open for E2, which puts the kind on the wire.
-            let is_class =
-                |k: &analyzer_core::outline::DefKind| *k == analyzer_core::outline::DefKind::Class;
             assert_eq!(
-                (is_class(&o.kind), o.range),
-                (is_class(&d.kind), d.range),
+                (o.kind.clone(), o.range),
+                (d.kind.clone(), d.range),
                 "{fixture} {entry}: `{}` occurrence {} is another def than the row says",
                 d.qualname,
                 d.occurrence
@@ -1491,7 +1518,8 @@ fn occurrence_is_the_outlines_count_and_nth_is_the_older_count_by_the_name_witho
                 analyzer_core::graph::StableDef::Path { nth, .. } => nth,
                 other => panic!("no marker in the fixture, got {other:?}"),
             };
-            (sem.outline_name(def).unwrap(), nth)
+            let named = sem.outline_name(def).unwrap();
+            ((named.qualname, named.occurrence), nth)
         })
         .collect();
     assert_eq!(

@@ -1,24 +1,24 @@
 == main
-cuts.main [incomplete]
-  cuts.a [incomplete] @33:5
-    cuts.b [incomplete] @29:5
-      cuts.top @25:5
-        cuts.mid @21:12
-          cuts.leaf @17:12
-  cuts.top @34:5
-    cuts.mid @21:12
-      cuts.leaf @17:12
-  cuts.handler @34:5
+cuts.main <cuts.py:main#0 Function> [incomplete]
+  cuts.a <cuts.py:a#0 Function> [incomplete] @33:5 in cuts.py
+    cuts.b <cuts.py:b#0 Function> [incomplete] @29:5 in cuts.py
+      cuts.top <cuts.py:top#0 Function> @25:5 in cuts.py
+        cuts.mid <cuts.py:mid#0 Function> @21:12 in cuts.py
+          cuts.leaf <cuts.py:leaf#0 Function> @17:12 in cuts.py
+  cuts.top <cuts.py:top#0 Function> @34:5 in cuts.py
+    cuts.mid <cuts.py:mid#0 Function> @21:12 in cuts.py
+      cuts.leaf <cuts.py:leaf#0 Function> @17:12 in cuts.py
+  cuts.handler <cuts.py:handler#0 Function> @34:5 in cuts.py
 
 == main (merged)
-cuts.main [incomplete]
-  cuts.a [incomplete] @33:5
-    cuts.b [incomplete] @29:5
-      cuts.top @25:5
-        cuts.mid @21:12
-          cuts.leaf @17:12
-  cuts.top @34:5
-    cuts.mid @21:12
-      cuts.leaf @17:12
-  cuts.handler @34:5
+cuts.main <cuts.py:main#0 Function> [incomplete]
+  cuts.a <cuts.py:a#0 Function> [incomplete] @33:5 in cuts.py
+    cuts.b <cuts.py:b#0 Function> [incomplete] @29:5 in cuts.py
+      cuts.top <cuts.py:top#0 Function> @25:5 in cuts.py
+        cuts.mid <cuts.py:mid#0 Function> @21:12 in cuts.py
+          cuts.leaf <cuts.py:leaf#0 Function> @17:12 in cuts.py
+  cuts.top <cuts.py:top#0 Function> @34:5 in cuts.py
+    cuts.mid <cuts.py:mid#0 Function> @21:12 in cuts.py
+      cuts.leaf <cuts.py:leaf#0 Function> @17:12 in cuts.py
+  cuts.handler <cuts.py:handler#0 Function> @34:5 in cuts.py
 

@@ -1,5 +1,6 @@
 use crate::stable::{StableDef, StableType};
 use analyzer_core::edit::MarkerStyle;
+use analyzer_core::outline::DefKind;
 use ruff_db::files::{File, system_path_to_file};
 use ruff_db::parsed::{ParsedModuleRef, parsed_module};
 use ruff_db::source::source_text;
@@ -49,11 +50,21 @@ pub(crate) struct Sem<'db> {
     marker: MarkerStyle<'static>,
 }
 
-/// The outline's names for the defs of one file: the one naming rule a request and an answer share (D20).
+/// What the outline calls a def: the one naming rule a request and an answer share (D20).
+#[derive(Clone, Debug)]
+pub(crate) struct OutlineName {
+    pub qualname: String,
+    /// Which of the defs of the file with this qualname it is, 0-based, in source order.
+    pub occurrence: u16,
+    /// What the outline says it is: `Method` for a method, not `Function`.
+    pub kind: DefKind,
+}
+
+/// The outline's names for the defs of one file.
 #[derive(Default)]
 pub(crate) struct NamedDefs {
-    /// The start of a def's name to its `(qualname, occurrence)`.
-    by_name: FxHashMap<u32, (String, u16)>,
+    /// The start of a def's name to what the outline calls it.
+    by_name: FxHashMap<u32, OutlineName>,
 }
 
 impl NamedDefs {
@@ -63,9 +74,14 @@ impl NamedDefs {
         let mut named = NamedDefs::default();
         for def in &outline.defs {
             let n = seen.entry(def.qualname.as_str()).or_insert(0);
-            named
-                .by_name
-                .insert(def.name_range.start, (def.qualname.clone(), *n));
+            named.by_name.insert(
+                def.name_range.start,
+                OutlineName {
+                    qualname: def.qualname.clone(),
+                    occurrence: *n,
+                    kind: def.kind.clone(),
+                },
+            );
             *n += 1;
         }
         named
@@ -532,9 +548,9 @@ impl<'db> Sem<'db> {
         table
     }
 
-    /// The outline's `(qualname, occurrence)` for a def or class: `None` for any other kind of definition, or when the outline
+    /// The outline's name, occurrence and kind for a def or class: `None` for any other kind of definition, or when the outline
     /// has no def at the start of its name.
-    pub(crate) fn outline_name(&self, def: Definition<'db>) -> Option<(String, u16)> {
+    pub(crate) fn outline_name(&self, def: Definition<'db>) -> Option<OutlineName> {
         let parsed = self.parsed(def);
         let start = match def.kind(self.db) {
             DefinitionKind::Function(f) => f.node(&parsed).name.range().start(),

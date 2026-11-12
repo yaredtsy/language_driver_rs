@@ -1,26 +1,26 @@
 == main
-relevant.main
-  relevant.log_event @32:5
-    relevant.note @19:5
-  relevant.log_event @33:5
-    relevant.note @19:5
-  relevant.forward @34:5
-    relevant.on_ok @24:5
-  relevant.forward @35:5
-    relevant.on_err @24:5
-  relevant.keep @36:5
-  relevant.on_ok @36:5
-  relevant.keep @37:5
-  relevant.on_err @37:5
+relevant.main <relevant.py:main#0 Function>
+  relevant.log_event <relevant.py:log_event#0 Function> @32:5 in relevant.py
+    relevant.note <relevant.py:note#0 Function> @19:5 in relevant.py
+  relevant.log_event <relevant.py:log_event#0 Function> @33:5 in relevant.py
+    relevant.note <relevant.py:note#0 Function> @19:5 in relevant.py
+  relevant.forward <relevant.py:forward#0 Function> @34:5 in relevant.py
+    relevant.on_ok <relevant.py:on_ok#0 Function> @24:5 in relevant.py
+  relevant.forward <relevant.py:forward#0 Function> @35:5 in relevant.py
+    relevant.on_err <relevant.py:on_err#0 Function> @24:5 in relevant.py
+  relevant.keep <relevant.py:keep#0 Function> @36:5 in relevant.py
+  relevant.on_ok <relevant.py:on_ok#0 Function> @36:5 in relevant.py
+  relevant.keep <relevant.py:keep#0 Function> @37:5 in relevant.py
+  relevant.on_err <relevant.py:on_err#0 Function> @37:5 in relevant.py
 
 == main (merged)
-relevant.main
-  relevant.log_event x2 @32:5
-    relevant.note x2 @19:5
-  relevant.forward x2 @34:5
-    relevant.on_ok @24:5
-    relevant.on_err @24:5
-  relevant.keep x2 @36:5
-  relevant.on_ok @36:5
-  relevant.on_err @37:5
+relevant.main <relevant.py:main#0 Function>
+  relevant.log_event <relevant.py:log_event#0 Function> x2 @32:5 in relevant.py
+    relevant.note <relevant.py:note#0 Function> x2 @19:5 in relevant.py
+  relevant.forward <relevant.py:forward#0 Function> x2 @34:5 in relevant.py
+    relevant.on_ok <relevant.py:on_ok#0 Function> @24:5 in relevant.py
+    relevant.on_err <relevant.py:on_err#0 Function> @24:5 in relevant.py
+  relevant.keep <relevant.py:keep#0 Function> x2 @36:5 in relevant.py
+  relevant.on_ok <relevant.py:on_ok#0 Function> @36:5 in relevant.py
+  relevant.on_err <relevant.py:on_err#0 Function> @37:5 in relevant.py
 

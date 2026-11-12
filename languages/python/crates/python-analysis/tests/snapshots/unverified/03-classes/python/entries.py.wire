@@ -2,175 +2,175 @@
 # This pins what it says today so a change is noticed; it is not a right answer.
 
 == process
-entries.process
-  entries.Handler.handle @33:5
+entries.process <entries.py:process#0 Function>
+  entries.Handler.handle <entries.py:Handler.handle#0 Method> @33:5 in entries.py
 
 == process (merged)
-entries.process
-  entries.Handler.handle @33:5
+entries.process <entries.py:process#0 Function>
+  entries.Handler.handle <entries.py:Handler.handle#0 Method> @33:5 in entries.py
 
 == Svc.run
-entries.Svc.run
+entries.Svc.run <entries.py:Svc.run#0 Method>
 
 == Svc.run (merged)
-entries.Svc.run
+entries.Svc.run <entries.py:Svc.run#0 Method>
 
 == Child.go
-entries.Child.go
+entries.Child.go <entries.py:Child.go#0 Method>
 
 == Child.go (merged)
-entries.Child.go
+entries.Child.go <entries.py:Child.go#0 Method>
 
 == Job.run
-entries.Job.run
-  entries.A.go @77:9
-  entries.B.go @77:9
+entries.Job.run <entries.py:Job.run#0 Method>
+  entries.A.go <entries.py:A.go#0 Method> @77:9 in entries.py
+  entries.B.go <entries.py:B.go#0 Method> @77:9 in entries.py
 
 == Job.run (merged)
-entries.Job.run
-  entries.A.go @77:9
-  entries.B.go @77:9
+entries.Job.run <entries.py:Job.run#0 Method>
+  entries.A.go <entries.py:A.go#0 Method> @77:9 in entries.py
+  entries.B.go <entries.py:B.go#0 Method> @77:9 in entries.py
 
 == Reg.create
-entries.Reg.create
-  entries.Reg @86:9
-    entries.log @82:9
+entries.Reg.create <entries.py:Reg.create#0 Method>
+  entries.Reg <entries.py:Reg#0 Class> @86:9 in entries.py
+    entries.log <entries.py:log#0 Function> @82:9 in entries.py
 
 == Reg.create (merged)
-entries.Reg.create
-  entries.Reg @86:9
-    entries.log @82:9
+entries.Reg.create <entries.py:Reg.create#0 Method>
+  entries.Reg <entries.py:Reg#0 Class> @86:9 in entries.py
+    entries.log <entries.py:log#0 Function> @82:9 in entries.py
 
 == Reg.make
-entries.Reg.make
+entries.Reg.make <entries.py:Reg.make#0 Method>
 
 == Reg.make (merged)
-entries.Reg.make
+entries.Reg.make <entries.py:Reg.make#0 Method>
 
 == Box.h
-entries.Box.h
-  entries.JsonHandler.process @99:9
+entries.Box.h <entries.py:Box.h#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @99:9 in entries.py
 
 == Box.h (merged)
-entries.Box.h
-  entries.JsonHandler.process @99:9
+entries.Box.h <entries.py:Box.h#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @99:9 in entries.py
 
 == outer.inner
-entries.outer.inner
-  entries.A.go @107:9
-  entries.B.go @107:9
+entries.outer.inner <entries.py:outer.<locals>.inner#0 Function>
+  entries.A.go <entries.py:A.go#0 Method> @107:9 in entries.py
+  entries.B.go <entries.py:B.go#0 Method> @107:9 in entries.py
 
 == outer.inner (merged)
-entries.outer.inner
-  entries.A.go @107:9
-  entries.B.go @107:9
+entries.outer.inner <entries.py:outer.<locals>.inner#0 Function>
+  entries.A.go <entries.py:A.go#0 Method> @107:9 in entries.py
+  entries.B.go <entries.py:B.go#0 Method> @107:9 in entries.py
 
 == Svc.build.step
-entries.Svc.build.step
+entries.Svc.build.step <entries.py:Svc.build.<locals>.step#0 Function>
 
 == Svc.build.step (merged)
-entries.Svc.build.step
+entries.Svc.build.step <entries.py:Svc.build.<locals>.step#0 Function>
 
 == with_param.inner
-entries.with_param.inner
-  entries.Handler.handle @114:9
+entries.with_param.inner <entries.py:with_param.<locals>.inner#0 Function>
+  entries.Handler.handle <entries.py:Handler.handle#0 Method> @114:9 in entries.py
 
 == with_param.inner (merged)
-entries.with_param.inner
-  entries.Handler.handle @114:9
+entries.with_param.inner <entries.py:with_param.<locals>.inner#0 Function>
+  entries.Handler.handle <entries.py:Handler.handle#0 Method> @114:9 in entries.py
 
 == with_default.inner
-entries.with_default.inner
-  entries.A.go @121:9
+entries.with_default.inner <entries.py:with_default.<locals>.inner#0 Function>
+  entries.A.go <entries.py:A.go#0 Method> @121:9 in entries.py
 
 == with_default.inner (merged)
-entries.with_default.inner
-  entries.A.go @121:9
+entries.with_default.inner <entries.py:with_default.<locals>.inner#0 Function>
+  entries.A.go <entries.py:A.go#0 Method> @121:9 in entries.py
 
 == siblings.inner
-entries.siblings.inner
-  entries.siblings.helper @131:9
-    entries.log @128:9
+entries.siblings.inner <entries.py:siblings.<locals>.inner#0 Function>
+  entries.siblings.helper <entries.py:siblings.<locals>.helper#0 Function> @131:9 in entries.py
+    entries.log <entries.py:log#0 Function> @128:9 in entries.py
 
 == siblings.inner (merged)
-entries.siblings.inner
-  entries.siblings.helper @131:9
-    entries.log @128:9
+entries.siblings.inner <entries.py:siblings.<locals>.inner#0 Function>
+  entries.siblings.helper <entries.py:siblings.<locals>.helper#0 Function> @131:9 in entries.py
+    entries.log <entries.py:log#0 Function> @128:9 in entries.py
 
 == branches.inner
-entries.branches.inner
-  entries.A.go @141:9
-  entries.B.go @141:9
+entries.branches.inner <entries.py:branches.<locals>.inner#0 Function>
+  entries.A.go <entries.py:A.go#0 Method> @141:9 in entries.py
+  entries.B.go <entries.py:B.go#0 Method> @141:9 in entries.py
 
 == branches.inner (merged)
-entries.branches.inner
-  entries.A.go @141:9
-  entries.B.go @141:9
+entries.branches.inner <entries.py:branches.<locals>.inner#0 Function>
+  entries.A.go <entries.py:A.go#0 Method> @141:9 in entries.py
+  entries.B.go <entries.py:B.go#0 Method> @141:9 in entries.py
 
 == recursive.walk
-entries.recursive.walk
-  entries.log @146:9
-  entries.recursive.walk [recursive] @147:9
+entries.recursive.walk <entries.py:recursive.<locals>.walk#0 Function>
+  entries.log <entries.py:log#0 Function> @146:9 in entries.py
+  entries.recursive.walk <entries.py:recursive.<locals>.walk#0 Function> [recursive] @147:9 in entries.py
 
 == recursive.walk (merged)
-entries.recursive.walk
-  entries.log @146:9
-  entries.recursive.walk [recursive] @147:9
+entries.recursive.walk <entries.py:recursive.<locals>.walk#0 Function>
+  entries.log <entries.py:log#0 Function> @146:9 in entries.py
+  entries.recursive.walk <entries.py:recursive.<locals>.walk#0 Function> [recursive] @147:9 in entries.py
 
 == a.b.c
-entries.a.b.c
-  entries.A.go @157:13
-  entries.B.go @158:13
+entries.a.b.c <entries.py:a.<locals>.b.<locals>.c#0 Function>
+  entries.A.go <entries.py:A.go#0 Method> @157:13 in entries.py
+  entries.B.go <entries.py:B.go#0 Method> @158:13 in entries.py
 
 == a.b.c (merged)
-entries.a.b.c
-  entries.A.go @157:13
-  entries.B.go @158:13
+entries.a.b.c <entries.py:a.<locals>.b.<locals>.c#0 Function>
+  entries.A.go <entries.py:A.go#0 Method> @157:13 in entries.py
+  entries.B.go <entries.py:B.go#0 Method> @158:13 in entries.py
 
 == make.Local.run
-entries.make.Local.run
-  entries.JsonHandler.process @173:13
-  entries.JsonHandler.process @174:13
+entries.make.Local.run <entries.py:make.<locals>.Local.run#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @173:13 in entries.py
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @174:13 in entries.py
 
 == make.Local.run (merged)
-entries.make.Local.run
-  entries.JsonHandler.process x2 @173:13
+entries.make.Local.run <entries.py:make.<locals>.Local.run#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> x2 @173:13 in entries.py
 
 == Outer.Inner.m
-entries.Outer.Inner.m
-  entries.JsonHandler.process @188:13
+entries.Outer.Inner.m <entries.py:Outer.Inner.m#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @188:13 in entries.py
 
 == Outer.Inner.m (merged)
-entries.Outer.Inner.m
-  entries.JsonHandler.process @188:13
+entries.Outer.Inner.m <entries.py:Outer.Inner.m#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @188:13 in entries.py
 
 == Host.meth.Local.m
-entries.Host.meth.Local.m
-  entries.JsonHandler.process @200:17
+entries.Host.meth.Local.m <entries.py:Host.meth.<locals>.Local.m#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @200:17 in entries.py
 
 == Host.meth.Local.m (merged)
-entries.Host.meth.Local.m
-  entries.JsonHandler.process @200:17
+entries.Host.meth.Local.m <entries.py:Host.meth.<locals>.Local.m#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @200:17 in entries.py
 
 == fire
-entries.fire
-  entries.Holder @220:14
-  entries.setup @221:5
-    entries.A @210:9
-    entries.B @216:9
+entries.fire <entries.py:fire#0 Function>
+  entries.Holder <entries.py:Holder#0 Class> @220:14 in entries.py
+  entries.setup <entries.py:setup#0 Function> @221:5 in entries.py
+    entries.A <entries.py:A#0 Class> @210:9 in entries.py
+    entries.B <entries.py:B#0 Class> @216:9 in entries.py
 
 == fire (merged)
-entries.fire
-  entries.Holder @220:14
-  entries.setup @221:5
-    entries.A @210:9
-    entries.B @216:9
+entries.fire <entries.py:fire#0 Function>
+  entries.Holder <entries.py:Holder#0 Class> @220:14 in entries.py
+  entries.setup <entries.py:setup#0 Function> @221:5 in entries.py
+    entries.A <entries.py:A#0 Class> @210:9 in entries.py
+    entries.B <entries.py:B#0 Class> @216:9 in entries.py
 
 == Tree.walk
-entries.Tree.walk
-  entries.log @230:9
+entries.Tree.walk <entries.py:Tree.walk#0 Method>
+  entries.log <entries.py:log#0 Function> @230:9 in entries.py
 
 == Tree.walk (merged)
-entries.Tree.walk
-  entries.log @230:9
+entries.Tree.walk <entries.py:Tree.walk#0 Method>
+  entries.log <entries.py:log#0 Function> @230:9 in entries.py
 

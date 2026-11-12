@@ -1,131 +1,131 @@
 == main
-groups.main
-  groups.f @63:5
-    groups.g @19:12
-      groups.f [recursive] @24:16
-  groups.done @63:5
-  groups.b @64:5
-    groups.c @36:12
-      groups.a @40:12
-        groups.b [recursive] @31:16
-  groups.done @64:5
-  groups.parse_expr @65:5
-    groups.parse_atom @45:12
-      groups.parse_expr [recursive] @51:16
-    groups.combine @46:12
-      groups.parse_expr [recursive] @57:9
-  groups.num @65:5
-  groups.binop @65:5
+groups.main <groups.py:main#0 Function>
+  groups.f <groups.py:f#0 Function> @63:5 in groups.py
+    groups.g <groups.py:g#0 Function> @19:12 in groups.py
+      groups.f <groups.py:f#0 Function> [recursive] @24:16 in groups.py
+  groups.done <groups.py:done#0 Function> @63:5 in groups.py
+  groups.b <groups.py:b#0 Function> @64:5 in groups.py
+    groups.c <groups.py:c#0 Function> @36:12 in groups.py
+      groups.a <groups.py:a#0 Function> @40:12 in groups.py
+        groups.b <groups.py:b#0 Function> [recursive] @31:16 in groups.py
+  groups.done <groups.py:done#0 Function> @64:5 in groups.py
+  groups.parse_expr <groups.py:parse_expr#0 Function> @65:5 in groups.py
+    groups.parse_atom <groups.py:parse_atom#0 Function> @45:12 in groups.py
+      groups.parse_expr <groups.py:parse_expr#0 Function> [recursive] @51:16 in groups.py
+    groups.combine <groups.py:combine#0 Function> @46:12 in groups.py
+      groups.parse_expr <groups.py:parse_expr#0 Function> [recursive] @57:9 in groups.py
+  groups.num <groups.py:num#0 Function> @65:5 in groups.py
+  groups.binop <groups.py:binop#0 Function> @65:5 in groups.py
 
 == main (merged)
-groups.main
-  groups.f @63:5
-    groups.g @19:12
-      groups.f [recursive] @24:16
-  groups.done x2 @63:5
-  groups.b @64:5
-    groups.c @36:12
-      groups.a @40:12
-        groups.b [recursive] @31:16
-  groups.parse_expr @65:5
-    groups.parse_atom @45:12
-      groups.parse_expr [recursive] @51:16
-    groups.combine @46:12
-      groups.parse_expr [recursive] @57:9
-  groups.num @65:5
-  groups.binop @65:5
+groups.main <groups.py:main#0 Function>
+  groups.f <groups.py:f#0 Function> @63:5 in groups.py
+    groups.g <groups.py:g#0 Function> @19:12 in groups.py
+      groups.f <groups.py:f#0 Function> [recursive] @24:16 in groups.py
+  groups.done <groups.py:done#0 Function> x2 @63:5 in groups.py
+  groups.b <groups.py:b#0 Function> @64:5 in groups.py
+    groups.c <groups.py:c#0 Function> @36:12 in groups.py
+      groups.a <groups.py:a#0 Function> @40:12 in groups.py
+        groups.b <groups.py:b#0 Function> [recursive] @31:16 in groups.py
+  groups.parse_expr <groups.py:parse_expr#0 Function> @65:5 in groups.py
+    groups.parse_atom <groups.py:parse_atom#0 Function> @45:12 in groups.py
+      groups.parse_expr <groups.py:parse_expr#0 Function> [recursive] @51:16 in groups.py
+    groups.combine <groups.py:combine#0 Function> @46:12 in groups.py
+      groups.parse_expr <groups.py:parse_expr#0 Function> [recursive] @57:9 in groups.py
+  groups.num <groups.py:num#0 Function> @65:5 in groups.py
+  groups.binop <groups.py:binop#0 Function> @65:5 in groups.py
 
 == ping_entry
-groups.ping_entry
-  groups.ping @80:5
-    groups.pong @70:9
-      groups.ping [recursive] @76:12
-    groups.done @71:5
+groups.ping_entry <groups.py:ping_entry#0 Function>
+  groups.ping <groups.py:ping#0 Function> @80:5 in groups.py
+    groups.pong <groups.py:pong#0 Function> @70:9 in groups.py
+      groups.ping <groups.py:ping#0 Function> [recursive] @76:12 in groups.py
+    groups.done <groups.py:done#0 Function> @71:5 in groups.py
 
 == ping_entry (merged)
-groups.ping_entry
-  groups.ping @80:5
-    groups.pong @70:9
-      groups.ping [recursive] @76:12
-    groups.done @71:5
+groups.ping_entry <groups.py:ping_entry#0 Function>
+  groups.ping <groups.py:ping#0 Function> @80:5 in groups.py
+    groups.pong <groups.py:pong#0 Function> @70:9 in groups.py
+      groups.ping <groups.py:ping#0 Function> [recursive] @76:12 in groups.py
+    groups.done <groups.py:done#0 Function> @71:5 in groups.py
 
 == merge_entry
-groups.merge_entry
-  groups.outer @100:5
-    groups.x @85:12
-      groups.y @90:16
-        groups.x [recursive] @95:9
-        groups.outer [recursive] @96:12
+groups.merge_entry <groups.py:merge_entry#0 Function>
+  groups.outer <groups.py:outer#0 Function> @100:5 in groups.py
+    groups.x <groups.py:x#0 Function> @85:12 in groups.py
+      groups.y <groups.py:y#0 Function> @90:16 in groups.py
+        groups.x <groups.py:x#0 Function> [recursive] @95:9 in groups.py
+        groups.outer <groups.py:outer#0 Function> [recursive] @96:12 in groups.py
 
 == merge_entry (merged)
-groups.merge_entry
-  groups.outer @100:5
-    groups.x @85:12
-      groups.y @90:16
-        groups.x [recursive] @95:9
-        groups.outer [recursive] @96:12
+groups.merge_entry <groups.py:merge_entry#0 Function>
+  groups.outer <groups.py:outer#0 Function> @100:5 in groups.py
+    groups.x <groups.py:x#0 Function> @85:12 in groups.py
+      groups.y <groups.py:y#0 Function> @90:16 in groups.py
+        groups.x <groups.py:x#0 Function> [recursive] @95:9 in groups.py
+        groups.outer <groups.py:outer#0 Function> [recursive] @96:12 in groups.py
 
 == nested_entry
-groups.nested_entry
-  groups.nested_expr @142:5
-    groups.nested_atom @122:12
-      groups.nested_expr [recursive] @128:16
-    groups.nested_combine @123:12
-      groups.walk_list @134:9
-        groups.walk_list [recursive] @107:16
-      groups.walk_back @135:9
-        groups.walk_back [recursive] @114:13
-        groups.nested_expr [recursive] @115:13
-        groups.num @116:9
-        groups.binop @116:9
-      groups.nested_expr [recursive] @136:9
-  groups.num @142:5
-  groups.binop @142:5
+groups.nested_entry <groups.py:nested_entry#0 Function>
+  groups.nested_expr <groups.py:nested_expr#0 Function> @142:5 in groups.py
+    groups.nested_atom <groups.py:nested_atom#0 Function> @122:12 in groups.py
+      groups.nested_expr <groups.py:nested_expr#0 Function> [recursive] @128:16 in groups.py
+    groups.nested_combine <groups.py:nested_combine#0 Function> @123:12 in groups.py
+      groups.walk_list <groups.py:walk_list#0 Function> @134:9 in groups.py
+        groups.walk_list <groups.py:walk_list#0 Function> [recursive] @107:16 in groups.py
+      groups.walk_back <groups.py:walk_back#0 Function> @135:9 in groups.py
+        groups.walk_back <groups.py:walk_back#0 Function> [recursive] @114:13 in groups.py
+        groups.nested_expr <groups.py:nested_expr#0 Function> [recursive] @115:13 in groups.py
+        groups.num <groups.py:num#0 Function> @116:9 in groups.py
+        groups.binop <groups.py:binop#0 Function> @116:9 in groups.py
+      groups.nested_expr <groups.py:nested_expr#0 Function> [recursive] @136:9 in groups.py
+  groups.num <groups.py:num#0 Function> @142:5 in groups.py
+  groups.binop <groups.py:binop#0 Function> @142:5 in groups.py
 
 == nested_entry (merged)
-groups.nested_entry
-  groups.nested_expr @142:5
-    groups.nested_atom @122:12
-      groups.nested_expr [recursive] @128:16
-    groups.nested_combine @123:12
-      groups.walk_list @134:9
-        groups.walk_list [recursive] @107:16
-      groups.walk_back @135:9
-        groups.walk_back [recursive] @114:13
-        groups.nested_expr [recursive] @115:13
-        groups.num @116:9
-        groups.binop @116:9
-      groups.nested_expr [recursive] @136:9
-  groups.num @142:5
-  groups.binop @142:5
+groups.nested_entry <groups.py:nested_entry#0 Function>
+  groups.nested_expr <groups.py:nested_expr#0 Function> @142:5 in groups.py
+    groups.nested_atom <groups.py:nested_atom#0 Function> @122:12 in groups.py
+      groups.nested_expr <groups.py:nested_expr#0 Function> [recursive] @128:16 in groups.py
+    groups.nested_combine <groups.py:nested_combine#0 Function> @123:12 in groups.py
+      groups.walk_list <groups.py:walk_list#0 Function> @134:9 in groups.py
+        groups.walk_list <groups.py:walk_list#0 Function> [recursive] @107:16 in groups.py
+      groups.walk_back <groups.py:walk_back#0 Function> @135:9 in groups.py
+        groups.walk_back <groups.py:walk_back#0 Function> [recursive] @114:13 in groups.py
+        groups.nested_expr <groups.py:nested_expr#0 Function> [recursive] @115:13 in groups.py
+        groups.num <groups.py:num#0 Function> @116:9 in groups.py
+        groups.binop <groups.py:binop#0 Function> @116:9 in groups.py
+      groups.nested_expr <groups.py:nested_expr#0 Function> [recursive] @136:9 in groups.py
+  groups.num <groups.py:num#0 Function> @142:5 in groups.py
+  groups.binop <groups.py:binop#0 Function> @142:5 in groups.py
 
 == up_entry
-groups.up_entry
-  groups.up_expr @179:5
-    groups.up_atom @149:12
-      groups.up_expr [recursive] @155:16
-    groups.up_combine @150:12
-      groups.helper @161:9
-        groups.helper2 @168:16
-          groups.up_expr [recursive] @173:9
-          groups.num @174:5
-          groups.binop @174:5
-          groups.helper [recursive] @175:12
-  groups.num @179:5
-  groups.binop @179:5
+groups.up_entry <groups.py:up_entry#0 Function>
+  groups.up_expr <groups.py:up_expr#0 Function> @179:5 in groups.py
+    groups.up_atom <groups.py:up_atom#0 Function> @149:12 in groups.py
+      groups.up_expr <groups.py:up_expr#0 Function> [recursive] @155:16 in groups.py
+    groups.up_combine <groups.py:up_combine#0 Function> @150:12 in groups.py
+      groups.helper <groups.py:helper#0 Function> @161:9 in groups.py
+        groups.helper2 <groups.py:helper2#0 Function> @168:16 in groups.py
+          groups.up_expr <groups.py:up_expr#0 Function> [recursive] @173:9 in groups.py
+          groups.num <groups.py:num#0 Function> @174:5 in groups.py
+          groups.binop <groups.py:binop#0 Function> @174:5 in groups.py
+          groups.helper <groups.py:helper#0 Function> [recursive] @175:12 in groups.py
+  groups.num <groups.py:num#0 Function> @179:5 in groups.py
+  groups.binop <groups.py:binop#0 Function> @179:5 in groups.py
 
 == up_entry (merged)
-groups.up_entry
-  groups.up_expr @179:5
-    groups.up_atom @149:12
-      groups.up_expr [recursive] @155:16
-    groups.up_combine @150:12
-      groups.helper @161:9
-        groups.helper2 @168:16
-          groups.up_expr [recursive] @173:9
-          groups.num @174:5
-          groups.binop @174:5
-          groups.helper [recursive] @175:12
-  groups.num @179:5
-  groups.binop @179:5
+groups.up_entry <groups.py:up_entry#0 Function>
+  groups.up_expr <groups.py:up_expr#0 Function> @179:5 in groups.py
+    groups.up_atom <groups.py:up_atom#0 Function> @149:12 in groups.py
+      groups.up_expr <groups.py:up_expr#0 Function> [recursive] @155:16 in groups.py
+    groups.up_combine <groups.py:up_combine#0 Function> @150:12 in groups.py
+      groups.helper <groups.py:helper#0 Function> @161:9 in groups.py
+        groups.helper2 <groups.py:helper2#0 Function> @168:16 in groups.py
+          groups.up_expr <groups.py:up_expr#0 Function> [recursive] @173:9 in groups.py
+          groups.num <groups.py:num#0 Function> @174:5 in groups.py
+          groups.binop <groups.py:binop#0 Function> @174:5 in groups.py
+          groups.helper <groups.py:helper#0 Function> [recursive] @175:12 in groups.py
+  groups.num <groups.py:num#0 Function> @179:5 in groups.py
+  groups.binop <groups.py:binop#0 Function> @179:5 in groups.py
 

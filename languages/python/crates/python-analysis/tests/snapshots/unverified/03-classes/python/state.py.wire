@@ -2,51 +2,51 @@
 # This pins what it says today so a change is noticed; it is not a right answer.
 
 == main
-state.main
-  state.read_json @33:5
-    state.Pipeline @25:5
-    state.Pipeline.run @25:5
-    state.JsonHandler @25:14
-  state.read_csv @34:5
-    state.Pipeline @29:5
-    state.Pipeline.run @29:5
-    state.CsvHandler @29:14
+state.main <state.py:main#0 Function>
+  state.read_json <state.py:read_json#0 Function> @33:5 in state.py
+    state.Pipeline <state.py:Pipeline#0 Class> @25:5 in state.py
+    state.Pipeline.run <state.py:Pipeline.run#0 Method> @25:5 in state.py
+    state.JsonHandler <state.py:JsonHandler#0 Class> @25:14 in state.py
+  state.read_csv <state.py:read_csv#0 Function> @34:5 in state.py
+    state.Pipeline <state.py:Pipeline#0 Class> @29:5 in state.py
+    state.Pipeline.run <state.py:Pipeline.run#0 Method> @29:5 in state.py
+    state.CsvHandler <state.py:CsvHandler#0 Class> @29:14 in state.py
 
 == main (merged)
-state.main
-  state.read_json @33:5
-    state.Pipeline @25:5
-    state.Pipeline.run @25:5
-    state.JsonHandler @25:14
-  state.read_csv @34:5
-    state.Pipeline @29:5
-    state.Pipeline.run @29:5
-    state.CsvHandler @29:14
+state.main <state.py:main#0 Function>
+  state.read_json <state.py:read_json#0 Function> @33:5 in state.py
+    state.Pipeline <state.py:Pipeline#0 Class> @25:5 in state.py
+    state.Pipeline.run <state.py:Pipeline.run#0 Method> @25:5 in state.py
+    state.JsonHandler <state.py:JsonHandler#0 Class> @25:14 in state.py
+  state.read_csv <state.py:read_csv#0 Function> @34:5 in state.py
+    state.Pipeline <state.py:Pipeline#0 Class> @29:5 in state.py
+    state.Pipeline.run <state.py:Pipeline.run#0 Method> @29:5 in state.py
+    state.CsvHandler <state.py:CsvHandler#0 Class> @29:14 in state.py
 
 == via_factory
-state.via_factory
-  state.make @42:5
-    state.Pipeline @38:12
-  state.JsonHandler @42:10
+state.via_factory <state.py:via_factory#0 Function>
+  state.make <state.py:make#0 Function> @42:5 in state.py
+    state.Pipeline <state.py:Pipeline#0 Class> @38:12 in state.py
+  state.JsonHandler <state.py:JsonHandler#0 Class> @42:10 in state.py
 
 == via_factory (merged)
-state.via_factory
-  state.make @42:5
-    state.Pipeline @38:12
-  state.JsonHandler @42:10
+state.via_factory <state.py:via_factory#0 Function>
+  state.make <state.py:make#0 Function> @42:5 in state.py
+    state.Pipeline <state.py:Pipeline#0 Class> @38:12 in state.py
+  state.JsonHandler <state.py:JsonHandler#0 Class> @42:10 in state.py
 
 == either
-state.either
-  state.Pipeline @47:13
-  state.JsonHandler @47:22
-  state.Pipeline @49:13
-  state.CsvHandler @49:22
-  state.Pipeline.run @50:5
+state.either <state.py:either#0 Function>
+  state.Pipeline <state.py:Pipeline#0 Class> @47:13 in state.py
+  state.JsonHandler <state.py:JsonHandler#0 Class> @47:22 in state.py
+  state.Pipeline <state.py:Pipeline#0 Class> @49:13 in state.py
+  state.CsvHandler <state.py:CsvHandler#0 Class> @49:22 in state.py
+  state.Pipeline.run <state.py:Pipeline.run#0 Method> @50:5 in state.py
 
 == either (merged)
-state.either
-  state.Pipeline x2 @47:13
-  state.JsonHandler @47:22
-  state.CsvHandler @49:22
-  state.Pipeline.run @50:5
+state.either <state.py:either#0 Function>
+  state.Pipeline <state.py:Pipeline#0 Class> x2 @47:13 in state.py
+  state.JsonHandler <state.py:JsonHandler#0 Class> @47:22 in state.py
+  state.CsvHandler <state.py:CsvHandler#0 Class> @49:22 in state.py
+  state.Pipeline.run <state.py:Pipeline.run#0 Method> @50:5 in state.py
 

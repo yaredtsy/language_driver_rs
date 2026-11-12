@@ -65,10 +65,21 @@ pub struct Frame {
     /// The style's prefix of the node's kind and its marker text. Empty when the function has no marker, or none is written yet: the
     /// node is still here, named by `target_qname`.
     pub target_id: String,
+    /// The target's file, relative to the project root, with `/`. `None` when the graph has no row for it (external, unresolved).
+    pub target_file: Option<String>,
+    /// The outline's qualname of the target in `target_file`. Empty when `target_file` is `None`.
+    pub target_qualname: String,
+    /// Which of the defs of `target_file` with this qualname the target is, 0-based (D18).
+    pub target_occurrence: u16,
+    /// What the target is, as the outline says. `None` when the graph has no row for it.
+    pub target_kind: Option<DefKind>,
     /// 0 in an unmerged wire. In a merged one, the calls joined into this node, less one.
     pub call_count: u32,
     /// Where the call is. `None` for the root.
     pub call_site: Option<LineSpan>,
+    /// The file `call_site` is in, relative to the project root. `None` for the root. For a call made in an inherited constructor it is the
+    /// constructor's file, not the class's.
+    pub call_site_file: Option<String>,
     /// Which graph contexts this node shows.
     pub contexts: Vec<ContextId>,
     /// `recursive`, `cut`, `incomplete`, and with the options on, `external` and `unresolved`.
@@ -135,20 +146,30 @@ fn head(
     style: &WireStyle,
     positions: &mut Positions<'_>,
 ) -> Frame {
+    // The row of the function the call was made in: the file of the call site and the base of its offsets are the same row, so the file and the
+    // position cannot disagree.
+    let caller = caller.and_then(|c| graph.def(c));
     let call_site = (|| {
         let site = node.site?;
-        let caller = graph.def(caller?)?;
+        let caller = caller?;
         let mut at = |relative: u32| positions.at(&caller.file, caller.range.start + relative);
         Some(LineSpan {
             start: at(site.start)?,
             end: at(site.end)?,
         })
     })();
+    // The target's row: none for an external or an unresolved leaf, which the graph names by a display name only.
+    let target = graph.def(&node.func);
     Frame {
         target_qname: node.qname.clone(),
         target_id: target_id(graph, &node.func, style),
+        target_file: target.map(|d| d.file.clone()),
+        target_qualname: target.map(|d| d.qualname.clone()).unwrap_or_default(),
+        target_occurrence: target.map_or(0, |d| d.occurrence),
+        target_kind: target.map(|d| d.kind.clone()),
         call_count: 0,
         call_site,
+        call_site_file: node.site.and(caller).map(|c| c.file.clone()),
         contexts: node.contexts.clone(),
         marks: node
             .marks
@@ -205,12 +226,28 @@ pub fn wire(graph: &Graph, entry: &ContextId, sources: &dyn Sources, opts: &Wire
     if opts.merged { merge(frame) } else { frame }
 }
 
-/// Siblings with one `target_qname` become one node: `call_count` is the sum of theirs plus one for each node joined, `contexts` and
+/// Whether two sibling frames are one target. Project code is named by (file, outline qualname, occurrence), so two defs with one display name
+/// stay two nodes (B6); an external or an unresolved leaf has no row, and its display name decides, as it always did.
+fn same_target(a: &Frame, b: &Frame) -> bool {
+    (
+        &a.target_file,
+        &a.target_qualname,
+        a.target_occurrence,
+        &a.target_qname,
+    ) == (
+        &b.target_file,
+        &b.target_qualname,
+        b.target_occurrence,
+        &b.target_qname,
+    )
+}
+
+/// Siblings with one target (`same_target`) become one node: `call_count` is the sum of theirs plus one for each node joined, `contexts` and
 /// `marks` are unioned, and their children are concatenated (and merged the same way, one level down).
 fn group(kids: Vec<Frame>) -> Vec<Frame> {
     let mut out: Vec<Frame> = Vec::new();
     for mut c in kids {
-        match out.iter_mut().find(|m| m.target_qname == c.target_qname) {
+        match out.iter_mut().find(|m| same_target(m, &c)) {
             Some(m) => {
                 m.call_count += c.call_count + 1;
                 for id in std::mem::take(&mut c.contexts) {
@@ -512,6 +549,282 @@ mod tests {
         let merged = merge(deep);
         assert_eq!(depth(&merged), n as usize);
         drop(merged);
+    }
+
+    /// A row with a file, a qualname and an occurrence of its own.
+    fn row_in(
+        id: StableDef,
+        qname: &str,
+        (qualname, occurrence): (&str, u16),
+        kind: DefKind,
+        file: &str,
+        (start, end): (u32, u32),
+    ) -> DefInfo {
+        DefInfo::new(
+            id,
+            qname,
+            qualname,
+            occurrence,
+            kind,
+            file,
+            Span::new(start, end),
+        )
+    }
+
+    /// `main` calls `f` twice, at two sites, and the two `f`s are two defs of one file with one name (`if C: def f() ... else: def f() ...`).
+    fn twins() -> Graph {
+        Graph::new(
+            vec![ContextId::of(marked("main"))],
+            vec![
+                row_in(
+                    marked("main"),
+                    "m.main",
+                    ("main", 0),
+                    DefKind::Function,
+                    "m.py",
+                    (0, 60),
+                ),
+                row_in(
+                    marked("f0"),
+                    "m.f",
+                    ("f", 0),
+                    DefKind::Function,
+                    "m.py",
+                    (70, 90),
+                ),
+                row_in(
+                    marked("f1"),
+                    "m.f",
+                    ("f", 1),
+                    DefKind::Function,
+                    "m.py",
+                    (100, 120),
+                ),
+            ],
+            vec![
+                Context::new(ContextId::of(marked("main"))),
+                Context::new(ContextId::of(marked("f0"))),
+                Context::new(ContextId::of(marked("f1"))),
+            ],
+            vec![call("main", 0, "f0"), call("main", 10, "f1")],
+            Stats::default(),
+        )
+    }
+
+    #[test]
+    fn two_defs_with_one_name_are_two_nodes_in_a_merged_wire() {
+        // B6: the merge key was the display name, so the twins became one node with their children mixed
+        let entry = ContextId::of(marked("main"));
+        let merged = wire(&twins(), &entry, &files("x\n"), &opts(true));
+        let kids: Vec<_> = merged
+            .children
+            .iter()
+            .map(|c| (c.target_occurrence, c.call_count))
+            .collect();
+        assert_eq!(kids, [(0, 0), (1, 0)]);
+        // the same def called twice is still one node (`merging_joins_siblings_counts_them_and_keeps_the_id`): the call count is 1
+        let once = wire(&twice(), &entry, &files("x\n"), &opts(true));
+        assert_eq!(once.children.len(), 1);
+        assert_eq!(once.children[0].call_count, 1);
+    }
+
+    #[test]
+    fn a_frame_names_its_target_by_file_qualname_occurrence_and_kind() {
+        let entry = ContextId::of(marked("main"));
+        let frame = wire(&twins(), &entry, &files("x\n"), &opts(false));
+        // the root: named, and not a call
+        assert_eq!(
+            (
+                frame.target_file.as_deref(),
+                frame.target_qualname.as_str(),
+                frame.target_occurrence,
+                frame.target_kind.clone(),
+                frame.call_site_file.clone()
+            ),
+            (Some("m.py"), "main", 0, Some(DefKind::Function), None)
+        );
+        let second = &frame.children[1];
+        assert_eq!(
+            (second.target_qualname.as_str(), second.target_occurrence),
+            ("f", 1)
+        );
+        assert_eq!(second.call_site_file.as_deref(), Some("m.py"));
+    }
+
+    #[test]
+    fn a_call_in_an_inherited_constructor_is_in_the_constructors_file_not_the_classes() {
+        // B1: `class Child(Base): pass` in a.py, `Base.__init__` in b.py calling `helper`
+        let text_b = "def __init__(self):\n    helper()\n";
+        let site = text_b.find("helper").unwrap() as u32;
+        let child = marked("Child");
+        let init = ContextId::of(marked("Base.__init__"));
+        let graph = Graph::new(
+            vec![ContextId::of(marked("make"))],
+            vec![
+                row_in(
+                    marked("make"),
+                    "a.make",
+                    ("make", 0),
+                    DefKind::Function,
+                    "a.py",
+                    (0, 30),
+                ),
+                row_in(
+                    child.clone(),
+                    "a.Child",
+                    ("Child", 0),
+                    DefKind::Class,
+                    "a.py",
+                    (40, 60),
+                ),
+                row_in(
+                    marked("Base.__init__"),
+                    "b.Base.__init__",
+                    ("Base.__init__", 0),
+                    DefKind::Method,
+                    "b.py",
+                    (0, 40),
+                ),
+                row_in(
+                    marked("helper"),
+                    "b.helper",
+                    ("helper", 0),
+                    DefKind::Function,
+                    "b.py",
+                    (50, 70),
+                ),
+            ],
+            vec![
+                Context::new(ContextId::of(marked("make"))),
+                Context::new(init.clone()),
+                Context::new(ContextId::of(marked("helper"))),
+            ],
+            vec![
+                Edge {
+                    from: ContextId::of(marked("make")),
+                    site: Site::new(0, 7),
+                    to: EdgeTo::Construct {
+                        class: child,
+                        init: Some(init),
+                        basis: Basis::Name,
+                    },
+                },
+                Edge {
+                    from: ContextId::of(marked("Base.__init__")),
+                    site: Site::new(site, site + 8),
+                    to: EdgeTo::Context(ContextId::of(marked("helper")), Basis::Name),
+                },
+            ],
+            Stats::default(),
+        );
+        let sources = Files(HashMap::from([
+            ("a.py".to_owned(), "def make():\n    Child()\n".to_owned()),
+            ("b.py".to_owned(), text_b.to_owned()),
+        ]));
+        let frame = wire(
+            &graph,
+            &ContextId::of(marked("make")),
+            &sources,
+            &opts(false),
+        );
+        let class = &frame.children[0];
+        assert_eq!(
+            (
+                class.target_file.as_deref(),
+                class.target_kind.clone(),
+                class.call_site_file.as_deref()
+            ),
+            (Some("a.py"), Some(DefKind::Class), Some("a.py")),
+            "the construction is called from `make`, in a.py"
+        );
+        let helper = &class.children[0];
+        assert_eq!(helper.target_file.as_deref(), Some("b.py"));
+        assert_eq!(
+            helper.call_site_file.as_deref(),
+            Some("b.py"),
+            "the call to `helper` is in the constructor's file"
+        );
+        assert_eq!(
+            helper.call_site.unwrap().start,
+            (2, 5),
+            "and its line is in that file too"
+        );
+    }
+
+    #[test]
+    fn an_external_leaf_has_no_file_no_qualname_and_no_kind() {
+        let graph = Graph::new(
+            vec![ContextId::of(marked("main"))],
+            vec![row_in(
+                marked("main"),
+                "m.main",
+                ("main", 0),
+                DefKind::Function,
+                "m.py",
+                (0, 40),
+            )],
+            vec![Context::new(ContextId::of(marked("main")))],
+            vec![Edge {
+                from: ContextId::of(marked("main")),
+                site: Site::new(0, 3),
+                to: EdgeTo::External(
+                    crate::graph::External {
+                        package: "os".into(),
+                        name: "getcwd".into(),
+                    },
+                    Basis::Name,
+                ),
+            }],
+            Stats::default(),
+        );
+        let render = RenderOptions {
+            show_external: true,
+            ..RenderOptions::default()
+        };
+        let shown = WireOptions::new(WireStyle::default(), false, render);
+        let frame = wire(
+            &graph,
+            &ContextId::of(marked("main")),
+            &files("x\n"),
+            &shown,
+        );
+        let leaf = &frame.children[0];
+        assert_eq!(leaf.target_qname, "os.getcwd");
+        assert_eq!(
+            (
+                leaf.target_file.clone(),
+                leaf.target_qualname.as_str(),
+                leaf.target_occurrence,
+                leaf.target_kind.clone()
+            ),
+            (None, "", 0, None)
+        );
+    }
+
+    /// The names of the fields and how a `DefKind` is written are the contract with a driver: pinned as text, so they cannot drift.
+    #[test]
+    fn a_frame_as_json() {
+        let entry = ContextId::of(marked("main"));
+        let frame = wire(&twice(), &entry, &files("aaaa bbbb\n"), &opts(false));
+        let leaf = &frame.children[0];
+        let text = serde_json::to_string(leaf).unwrap();
+        assert_eq!(
+            text,
+            concat!(
+                r#"{"target_qname":"m.run","target_id":"F/run","target_file":"m.py","target_qualname":"m.run","#,
+                r#""target_occurrence":0,"target_kind":"Function","call_count":0,"#,
+                r#""call_site":{"start":[1,1],"end":[1,4]},"call_site_file":"m.py","#,
+                r#""contexts":[{"func":{"Marked":"run"},"digest":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}],"children":[{"#,
+                r#""target_qname":"m.leaf","target_id":"F/leaf","target_file":"m.py","target_qualname":"m.leaf","target_occurrence":0,"#,
+                r#""target_kind":"Function","call_count":0,"call_site":null,"call_site_file":"m.py","#,
+                r#""contexts":[{"func":{"Marked":"leaf"},"digest":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}],"children":[]}]}"#
+            )
+        );
+        // a class is written as a plain string too
+        assert_eq!(
+            serde_json::to_string(&DefKind::Class).unwrap(),
+            r#""Class""#
+        );
     }
 
     #[test]

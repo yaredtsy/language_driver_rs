@@ -92,14 +92,22 @@ The target is: **`calls --wire` on the Jarvis project has the content of `cli-wi
 |---|---|---|
 | `target_qname` | `DefInfo::qname` | **to confirm (§7)**: pylspt writes `jarvis.CallGraphGenerator.do_pass`, with the module. [`02-tree-rules/04`](../02-tree-rules/04-the-defs-table.md) §7 says Python's `qname` has no module |
 | `target_id` | `StableDef::Marked(id)` → prefix + id, the prefix chosen by `DefInfo::kind` (class or not). `Path` → `""` | yes, with V-NOC's two prefixes |
+| `target_file` | `DefInfo::file` of the target: relative to the project root, with `/`. `None` for an external or unresolved leaf (the graph has no row) | **new** (E2, D20). pylspt's (`c395dde`) is absolute |
+| `target_qualname` | `DefInfo::qualname`: the outline's name of the target in `target_file`. Empty when `target_file` is `None` | **new** |
+| `target_occurrence` | `DefInfo::occurrence`: 0-based (D18) | **new**. pylspt's `target_nth` is 1-based |
+| `target_kind` | `DefInfo::kind`: what the outline says (`Method` for a method). A plain string for `Function`, `Method` and `Class`; `None` with no row | **new** |
 | `call_count` | `0`; with `merged`, `Σ call_count + k − 1` over `k` merged siblings | yes |
 | `call_site` | `Site` + the def's `range.start` → line and column through `LineIndex` | yes: `[line, column]` pairs, both 1-based, the column counted in characters (what `sem.line_col` gives today) |
+| `call_site_file` | the file of the row of the function the call was made in, the same row `call_site`'s line is counted in. `None` for the root. For a call in an inherited constructor it is the constructor's file, not the class's | **new** (E2) |
 | `contexts` | `Node::contexts` | **one rename**: the JSON key `Node` is now `Marked` (`{"func": {"Marked": "…"}}`) |
 | `marks` | `Node::marks` | written in snake case as before (`recursive`, `cut`, `incomplete`); the two new marks only appear with `show_external` / `show_unresolved` |
 | `children` | `Node::children`, in site order | yes |
 
-The merge rule, unchanged from pylspt: siblings with one `target_qname` become one node; `contexts` and `marks` are unioned; the children
-are concatenated and merged the same way.
+The merge rule: siblings with one **target** become one node, `contexts` and `marks` are unioned, and the children are concatenated and merged
+the same way. The target is `(target_file, target_qualname, target_occurrence)` for project code, with `target_qname` beside them; an external or
+unresolved leaf has no row, and `target_qname` alone decides, as before. pylspt's rule was `target_qname` alone, which joined two different defs
+of one name (twins, or a property's getter and setter) into one node with their children mixed (B6). E2 changed the merged wire only there: on the
+fixtures a property's getter and setter are two nodes now (`accessors.py`, `special.py`), and Jarvis's merged wire did not change.
 
 ## 5. What changes in the plan, file by file
 

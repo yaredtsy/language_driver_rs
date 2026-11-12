@@ -13,7 +13,7 @@ entries and targets
 
 Written on 2026-11-12 from reading the code. **Nothing here was built or run when it was written.** Every `[check]` is a claim to verify before depending on it.
 
-**Status (2026-11-12):** E1 is done (`8fafd0f`). E2 to E5 are not started. Decisions of the owner while building: the kind on the wire is the outline's (`Method` for a Python method), made in E2; the TypeScript files are edited only after the TypeScript session has committed; EW is done locally and stays *unproven* until CI has run it.
+**Status (2026-11-12):** E1 is done (`8fafd0f`) and E2 is done (see its commit). E3 to E5 are not started. Decisions of the owner while building: the kind on the wire is the outline's (`Method` for a Python method), made in E2; the TypeScript files are edited only after the TypeScript session has committed; EW is done locally and stays *unproven* until CI has run it.
 
 Where it comes from: a review of the V-NOC Python driver found three bugs whose cause is in the analyzer, not in the driver. pylspt fixed part
 of them in `c395dde` ("wire names each target by file, qualname and occurrence; call_wire_at"). This repo was ported from `670ae79`, one

@@ -1,10 +1,10 @@
 == main
-render_cut.main [cut]
-  render_cut.a @20:5
-  render_cut.b @21:5
+render_cut.main <render_cut.py:main#0 Function> [cut]
+  render_cut.a <render_cut.py:a#0 Function> @20:5 in render_cut.py
+  render_cut.b <render_cut.py:b#0 Function> @21:5 in render_cut.py
 
 == main (merged)
-render_cut.main [cut]
-  render_cut.a @20:5
-  render_cut.b @21:5
+render_cut.main <render_cut.py:main#0 Function> [cut]
+  render_cut.a <render_cut.py:a#0 Function> @20:5 in render_cut.py
+  render_cut.b <render_cut.py:b#0 Function> @21:5 in render_cut.py
 

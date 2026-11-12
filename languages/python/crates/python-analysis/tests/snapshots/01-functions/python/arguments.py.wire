@@ -1,66 +1,66 @@
 == main
-arguments.main
-  arguments.run @60:5
-    arguments.on_ok @20:5
-  arguments.run @61:5
-    arguments.on_err @20:5
-  arguments.run_kw @62:5
-    arguments.on_ok @24:5
-  arguments.run_default @63:5
-    arguments.fallback @28:5
-  arguments.run_default @64:5
-    arguments.on_ok @28:5
-  arguments.outer @65:5
-    arguments.middle @32:5
-      arguments.inner @36:5
-        arguments.on_err @40:5
-  arguments.missing @66:5
-  arguments.with_module @67:5
-    util.helper @48:5
-  arguments.shadow @68:5
-    arguments.leak @52:5
+arguments.main <arguments.py:main#0 Function>
+  arguments.run <arguments.py:run#0 Function> @60:5 in arguments.py
+    arguments.on_ok <arguments.py:on_ok#0 Function> @20:5 in arguments.py
+  arguments.run <arguments.py:run#0 Function> @61:5 in arguments.py
+    arguments.on_err <arguments.py:on_err#0 Function> @20:5 in arguments.py
+  arguments.run_kw <arguments.py:run_kw#0 Function> @62:5 in arguments.py
+    arguments.on_ok <arguments.py:on_ok#0 Function> @24:5 in arguments.py
+  arguments.run_default <arguments.py:run_default#0 Function> @63:5 in arguments.py
+    arguments.fallback <arguments.py:fallback#0 Function> @28:5 in arguments.py
+  arguments.run_default <arguments.py:run_default#0 Function> @64:5 in arguments.py
+    arguments.on_ok <arguments.py:on_ok#0 Function> @28:5 in arguments.py
+  arguments.outer <arguments.py:outer#0 Function> @65:5 in arguments.py
+    arguments.middle <arguments.py:middle#0 Function> @32:5 in arguments.py
+      arguments.inner <arguments.py:inner#0 Function> @36:5 in arguments.py
+        arguments.on_err <arguments.py:on_err#0 Function> @40:5 in arguments.py
+  arguments.missing <arguments.py:missing#0 Function> @66:5 in arguments.py
+  arguments.with_module <arguments.py:with_module#0 Function> @67:5 in arguments.py
+    util.helper <util.py:helper#0 Function> @48:5 in arguments.py
+  arguments.shadow <arguments.py:shadow#0 Function> @68:5 in arguments.py
+    arguments.leak <arguments.py:leak#0 Function> @52:5 in arguments.py
 
 == main (merged)
-arguments.main
-  arguments.run x2 @60:5
-    arguments.on_ok @20:5
-    arguments.on_err @20:5
-  arguments.run_kw @62:5
-    arguments.on_ok @24:5
-  arguments.run_default x2 @63:5
-    arguments.fallback @28:5
-    arguments.on_ok @28:5
-  arguments.outer @65:5
-    arguments.middle @32:5
-      arguments.inner @36:5
-        arguments.on_err @40:5
-  arguments.missing @66:5
-  arguments.with_module @67:5
-    util.helper @48:5
-  arguments.shadow @68:5
-    arguments.leak @52:5
+arguments.main <arguments.py:main#0 Function>
+  arguments.run <arguments.py:run#0 Function> x2 @60:5 in arguments.py
+    arguments.on_ok <arguments.py:on_ok#0 Function> @20:5 in arguments.py
+    arguments.on_err <arguments.py:on_err#0 Function> @20:5 in arguments.py
+  arguments.run_kw <arguments.py:run_kw#0 Function> @62:5 in arguments.py
+    arguments.on_ok <arguments.py:on_ok#0 Function> @24:5 in arguments.py
+  arguments.run_default <arguments.py:run_default#0 Function> x2 @63:5 in arguments.py
+    arguments.fallback <arguments.py:fallback#0 Function> @28:5 in arguments.py
+    arguments.on_ok <arguments.py:on_ok#0 Function> @28:5 in arguments.py
+  arguments.outer <arguments.py:outer#0 Function> @65:5 in arguments.py
+    arguments.middle <arguments.py:middle#0 Function> @32:5 in arguments.py
+      arguments.inner <arguments.py:inner#0 Function> @36:5 in arguments.py
+        arguments.on_err <arguments.py:on_err#0 Function> @40:5 in arguments.py
+  arguments.missing <arguments.py:missing#0 Function> @66:5 in arguments.py
+  arguments.with_module <arguments.py:with_module#0 Function> @67:5 in arguments.py
+    util.helper <util.py:helper#0 Function> @48:5 in arguments.py
+  arguments.shadow <arguments.py:shadow#0 Function> @68:5 in arguments.py
+    arguments.leak <arguments.py:leak#0 Function> @52:5 in arguments.py
 
 == both
-arguments.both
-  arguments.read_ok @80:5
-    arguments.run @72:5
-      arguments.on_ok @20:5
-  arguments.read_err @81:5
-    arguments.run @76:5
-      arguments.on_err @20:5
+arguments.both <arguments.py:both#0 Function>
+  arguments.read_ok <arguments.py:read_ok#0 Function> @80:5 in arguments.py
+    arguments.run <arguments.py:run#0 Function> @72:5 in arguments.py
+      arguments.on_ok <arguments.py:on_ok#0 Function> @20:5 in arguments.py
+  arguments.read_err <arguments.py:read_err#0 Function> @81:5 in arguments.py
+    arguments.run <arguments.py:run#0 Function> @76:5 in arguments.py
+      arguments.on_err <arguments.py:on_err#0 Function> @20:5 in arguments.py
 
 == both (merged)
-arguments.both
-  arguments.read_ok @80:5
-    arguments.run @72:5
-      arguments.on_ok @20:5
-  arguments.read_err @81:5
-    arguments.run @76:5
-      arguments.on_err @20:5
+arguments.both <arguments.py:both#0 Function>
+  arguments.read_ok <arguments.py:read_ok#0 Function> @80:5 in arguments.py
+    arguments.run <arguments.py:run#0 Function> @72:5 in arguments.py
+      arguments.on_ok <arguments.py:on_ok#0 Function> @20:5 in arguments.py
+  arguments.read_err <arguments.py:read_err#0 Function> @81:5 in arguments.py
+    arguments.run <arguments.py:run#0 Function> @76:5 in arguments.py
+      arguments.on_err <arguments.py:on_err#0 Function> @20:5 in arguments.py
 
 == entry
-arguments.entry
+arguments.entry <arguments.py:entry#0 Function>
 
 == entry (merged)
-arguments.entry
+arguments.entry <arguments.py:entry#0 Function>
 

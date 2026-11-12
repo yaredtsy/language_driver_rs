@@ -1,22 +1,22 @@
 == main
-pending.main
-  pending.grow @27:5
-    pending.grow [recursive] @12:16
-  pending.done @27:5
-  pending.walk @28:5
-    pending.walk [recursive] @17:9
-    pending.done @18:5
-  pending.rec @29:5
-    pending.rec [recursive] @23:12
+pending.main <pending.py:main#0 Function>
+  pending.grow <pending.py:grow#0 Function> @27:5 in pending.py
+    pending.grow <pending.py:grow#0 Function> [recursive] @12:16 in pending.py
+  pending.done <pending.py:done#0 Function> @27:5 in pending.py
+  pending.walk <pending.py:walk#0 Function> @28:5 in pending.py
+    pending.walk <pending.py:walk#0 Function> [recursive] @17:9 in pending.py
+    pending.done <pending.py:done#0 Function> @18:5 in pending.py
+  pending.rec <pending.py:rec#0 Function> @29:5 in pending.py
+    pending.rec <pending.py:rec#0 Function> [recursive] @23:12 in pending.py
 
 == main (merged)
-pending.main
-  pending.grow @27:5
-    pending.grow [recursive] @12:16
-  pending.done @27:5
-  pending.walk @28:5
-    pending.walk [recursive] @17:9
-    pending.done @18:5
-  pending.rec @29:5
-    pending.rec [recursive] @23:12
+pending.main <pending.py:main#0 Function>
+  pending.grow <pending.py:grow#0 Function> @27:5 in pending.py
+    pending.grow <pending.py:grow#0 Function> [recursive] @12:16 in pending.py
+  pending.done <pending.py:done#0 Function> @27:5 in pending.py
+  pending.walk <pending.py:walk#0 Function> @28:5 in pending.py
+    pending.walk <pending.py:walk#0 Function> [recursive] @17:9 in pending.py
+    pending.done <pending.py:done#0 Function> @18:5 in pending.py
+  pending.rec <pending.py:rec#0 Function> @29:5 in pending.py
+    pending.rec <pending.py:rec#0 Function> [recursive] @23:12 in pending.py
 

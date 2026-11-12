@@ -1,6 +1,6 @@
 == no_submodule
-imports_partial.no_submodule
+imports_partial.no_submodule <imports_partial.py:no_submodule#0 Function>
 
 == no_submodule (merged)
-imports_partial.no_submodule
+imports_partial.no_submodule <imports_partial.py:no_submodule#0 Function>
 

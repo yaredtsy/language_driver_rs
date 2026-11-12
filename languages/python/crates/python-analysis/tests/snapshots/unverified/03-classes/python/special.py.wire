@@ -2,43 +2,44 @@
 # This pins what it says today so a change is noticed; it is not a right answer.
 
 == main
-special.main
-  special.Registry.make @47:5
-    special.on_ok @27:9
-  special.Registry.create @48:9
-    special.Registry @31:16
-  special.JsonHandler @48:25
+special.main <special.py:main#0 Function>
+  special.Registry.make <special.py:Registry.make#0 Method> @47:5 in special.py
+    special.on_ok <special.py:on_ok#0 Function> @27:9 in special.py
+  special.Registry.create <special.py:Registry.create#0 Method> @48:9 in special.py
+    special.Registry <special.py:Registry#0 Class> @31:16 in special.py
+  special.JsonHandler <special.py:JsonHandler#0 Class> @48:25 in special.py
 
 == main (merged)
-special.main
-  special.Registry.make @47:5
-    special.on_ok @27:9
-  special.Registry.create @48:9
-    special.Registry @31:16
-  special.JsonHandler @48:25
+special.main <special.py:main#0 Function>
+  special.Registry.make <special.py:Registry.make#0 Method> @47:5 in special.py
+    special.on_ok <special.py:on_ok#0 Function> @27:9 in special.py
+  special.Registry.create <special.py:Registry.create#0 Method> @48:9 in special.py
+    special.Registry <special.py:Registry#0 Class> @31:16 in special.py
+  special.JsonHandler <special.py:JsonHandler#0 Class> @48:25 in special.py
 
 == swap
-special.swap
-  special.Box @69:9
-  special.JsonHandler @69:13
-  special.Box.handler @70:5
-  special.CsvHandler @70:17
-  special.Box.handler @71:5
+special.swap <special.py:swap#0 Function>
+  special.Box <special.py:Box#0 Class> @69:9 in special.py
+  special.JsonHandler <special.py:JsonHandler#0 Class> @69:13 in special.py
+  special.Box.handler <special.py:Box.handler#1 Method> @70:5 in special.py
+  special.CsvHandler <special.py:CsvHandler#0 Class> @70:17 in special.py
+  special.Box.handler <special.py:Box.handler#0 Method> @71:5 in special.py
 
 == swap (merged)
-special.swap
-  special.Box @69:9
-  special.JsonHandler @69:13
-  special.Box.handler x2 @70:5
-  special.CsvHandler @70:17
+special.swap <special.py:swap#0 Function>
+  special.Box <special.py:Box#0 Class> @69:9 in special.py
+  special.JsonHandler <special.py:JsonHandler#0 Class> @69:13 in special.py
+  special.Box.handler <special.py:Box.handler#1 Method> @70:5 in special.py
+  special.CsvHandler <special.py:CsvHandler#0 Class> @70:17 in special.py
+  special.Box.handler <special.py:Box.handler#0 Method> @71:5 in special.py
 
 == lazy
-special.lazy
-  special.Lazy @84:5
-  special.JsonHandler @84:10
+special.lazy <special.py:lazy#0 Function>
+  special.Lazy <special.py:Lazy#0 Class> @84:5 in special.py
+  special.JsonHandler <special.py:JsonHandler#0 Class> @84:10 in special.py
 
 == lazy (merged)
-special.lazy
-  special.Lazy @84:5
-  special.JsonHandler @84:10
+special.lazy <special.py:lazy#0 Function>
+  special.Lazy <special.py:Lazy#0 Class> @84:5 in special.py
+  special.JsonHandler <special.py:JsonHandler#0 Class> @84:10 in special.py
 

@@ -2,7 +2,7 @@
 entries: accessors.reads#4fdaf6a7b2846792
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def accessors.Box = Box#0 Class accessors.py
-def accessors.Box.h = Box.h#0 Function accessors.py
+def accessors.Box.h = Box.h#0 Method accessors.py
 def accessors.reads = reads#0 Function accessors.py
 accessors.Box.h#143c6bc1f9a54b35 Finished
 accessors.reads#4fdaf6a7b2846792 Finished
@@ -13,7 +13,7 @@ accessors.reads#4fdaf6a7b2846792 Finished
 entries: accessors.writes#557df69d7b84d0d8
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def accessors.Box = Box#0 Class accessors.py
-def accessors.Box.h = Box.h#1 Function accessors.py
+def accessors.Box.h = Box.h#1 Method accessors.py
 def accessors.writes = writes#0 Function accessors.py
 accessors.Box.h#9bfdd2d87bad7b10 Finished
 accessors.writes#557df69d7b84d0d8 Finished
@@ -24,7 +24,7 @@ accessors.writes#557df69d7b84d0d8 Finished
 entries: accessors.deletes#1e3321dea9aefca9
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def accessors.Box = Box#0 Class accessors.py
-def accessors.Box.h = Box.h#0 Function accessors.py
+def accessors.Box.h = Box.h#0 Method accessors.py
 def accessors.deletes = deletes#0 Function accessors.py
 accessors.Box.h#143c6bc1f9a54b35 Finished
 accessors.deletes#1e3321dea9aefca9 Finished
@@ -35,8 +35,8 @@ accessors.deletes#1e3321dea9aefca9 Finished
 entries: accessors.both#39262addc95a313a
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def accessors.Box = Box#0 Class accessors.py
-def accessors.Box.h = Box.h#0 Function accessors.py
-def accessors.Box.h = Box.h#1 Function accessors.py
+def accessors.Box.h = Box.h#0 Method accessors.py
+def accessors.Box.h = Box.h#1 Method accessors.py
 def accessors.both = both#0 Function accessors.py
 accessors.Box.h#143c6bc1f9a54b35 Finished
 accessors.Box.h#9bfdd2d87bad7b10 Finished

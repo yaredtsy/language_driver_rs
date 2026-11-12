@@ -1,51 +1,51 @@
 == alias
-locals.alias
-  locals.a @20:5
+locals.alias <locals.py:alias#0 Function>
+  locals.a <locals.py:a#0 Function> @20:5 in locals.py
 
 == alias (merged)
-locals.alias
-  locals.a @20:5
+locals.alias <locals.py:alias#0 Function>
+  locals.a <locals.py:a#0 Function> @20:5 in locals.py
 
 == rebinding
-locals.rebinding
-  locals.a @25:5
-  locals.b @27:5
+locals.rebinding <locals.py:rebinding#0 Function>
+  locals.a <locals.py:a#0 Function> @25:5 in locals.py
+  locals.b <locals.py:b#0 Function> @27:5 in locals.py
 
 == rebinding (merged)
-locals.rebinding
-  locals.a @25:5
-  locals.b @27:5
+locals.rebinding <locals.py:rebinding#0 Function>
+  locals.a <locals.py:a#0 Function> @25:5 in locals.py
+  locals.b <locals.py:b#0 Function> @27:5 in locals.py
 
 == chained
-locals.chained
-  locals.b @32:5
+locals.chained <locals.py:chained#0 Function>
+  locals.b <locals.py:b#0 Function> @32:5 in locals.py
 
 == chained (merged)
-locals.chained
-  locals.b @32:5
+locals.chained <locals.py:chained#0 Function>
+  locals.b <locals.py:b#0 Function> @32:5 in locals.py
 
 == once
-locals.once
-  locals.pick @36:13
+locals.once <locals.py:once#0 Function>
+  locals.pick <locals.py:pick#0 Function> @36:13 in locals.py
 
 == once (merged)
-locals.once
-  locals.pick @36:13
+locals.once <locals.py:once#0 Function>
+  locals.pick <locals.py:pick#0 Function> @36:13 in locals.py
 
 == walrus
-locals.walrus
-  locals.b @40:5
-  locals.b @41:5
+locals.walrus <locals.py:walrus#0 Function>
+  locals.b <locals.py:b#0 Function> @40:5 in locals.py
+  locals.b <locals.py:b#0 Function> @41:5 in locals.py
 
 == walrus (merged)
-locals.walrus
-  locals.b x2 @40:5
+locals.walrus <locals.py:walrus#0 Function>
+  locals.b <locals.py:b#0 Function> x2 @40:5 in locals.py
 
 == unpack
-locals.unpack
-  locals.b @46:5
+locals.unpack <locals.py:unpack#0 Function>
+  locals.b <locals.py:b#0 Function> @46:5 in locals.py
 
 == unpack (merged)
-locals.unpack
-  locals.b @46:5
+locals.unpack <locals.py:unpack#0 Function>
+  locals.b <locals.py:b#0 Function> @46:5 in locals.py
 

@@ -1,37 +1,37 @@
 == main
-keys.main
-  keys.same_twice @44:5
-    keys.run @23:5
-      keys.a @15:5
-    keys.run @24:5
-      keys.a @15:5
-  keys.different @45:5
-    keys.run @28:5
-      keys.a @15:5
-    keys.run @29:5
-      keys.b @15:5
-  keys.literals @46:5
-    keys.note @33:5
-    keys.note @34:5
-    keys.note @35:5
-  keys.either @47:5
-    keys.run @40:5
-      keys.a @15:5
-      keys.b @15:5
+keys.main <keys.py:main#0 Function>
+  keys.same_twice <keys.py:same_twice#0 Function> @44:5 in keys.py
+    keys.run <keys.py:run#0 Function> @23:5 in keys.py
+      keys.a <keys.py:a#0 Function> @15:5 in keys.py
+    keys.run <keys.py:run#0 Function> @24:5 in keys.py
+      keys.a <keys.py:a#0 Function> @15:5 in keys.py
+  keys.different <keys.py:different#0 Function> @45:5 in keys.py
+    keys.run <keys.py:run#0 Function> @28:5 in keys.py
+      keys.a <keys.py:a#0 Function> @15:5 in keys.py
+    keys.run <keys.py:run#0 Function> @29:5 in keys.py
+      keys.b <keys.py:b#0 Function> @15:5 in keys.py
+  keys.literals <keys.py:literals#0 Function> @46:5 in keys.py
+    keys.note <keys.py:note#0 Function> @33:5 in keys.py
+    keys.note <keys.py:note#0 Function> @34:5 in keys.py
+    keys.note <keys.py:note#0 Function> @35:5 in keys.py
+  keys.either <keys.py:either#0 Function> @47:5 in keys.py
+    keys.run <keys.py:run#0 Function> @40:5 in keys.py
+      keys.a <keys.py:a#0 Function> @15:5 in keys.py
+      keys.b <keys.py:b#0 Function> @15:5 in keys.py
 
 == main (merged)
-keys.main
-  keys.same_twice @44:5
-    keys.run x2 @23:5
-      keys.a x2 @15:5
-  keys.different @45:5
-    keys.run x2 @28:5
-      keys.a @15:5
-      keys.b @15:5
-  keys.literals @46:5
-    keys.note x3 @33:5
-  keys.either @47:5
-    keys.run @40:5
-      keys.a @15:5
-      keys.b @15:5
+keys.main <keys.py:main#0 Function>
+  keys.same_twice <keys.py:same_twice#0 Function> @44:5 in keys.py
+    keys.run <keys.py:run#0 Function> x2 @23:5 in keys.py
+      keys.a <keys.py:a#0 Function> x2 @15:5 in keys.py
+  keys.different <keys.py:different#0 Function> @45:5 in keys.py
+    keys.run <keys.py:run#0 Function> x2 @28:5 in keys.py
+      keys.a <keys.py:a#0 Function> @15:5 in keys.py
+      keys.b <keys.py:b#0 Function> @15:5 in keys.py
+  keys.literals <keys.py:literals#0 Function> @46:5 in keys.py
+    keys.note <keys.py:note#0 Function> x3 @33:5 in keys.py
+  keys.either <keys.py:either#0 Function> @47:5 in keys.py
+    keys.run <keys.py:run#0 Function> @40:5 in keys.py
+      keys.a <keys.py:a#0 Function> @15:5 in keys.py
+      keys.b <keys.py:b#0 Function> @15:5 in keys.py
 

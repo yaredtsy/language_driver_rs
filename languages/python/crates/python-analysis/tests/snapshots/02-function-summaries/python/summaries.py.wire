@@ -1,25 +1,25 @@
 == main
-summaries.main
-  summaries.pick @32:5
-  summaries.a @32:5
-  summaries.b @32:5
-  summaries.chain @33:5
-    summaries.ident @24:12
-    summaries.ident @24:18
-  summaries.a @33:5
-  summaries.ident @34:5
-  summaries.a @34:5
-  summaries.b @34:5
-  summaries.pick @34:11
-  summaries.nothing @35:5
+summaries.main <summaries.py:main#0 Function>
+  summaries.pick <summaries.py:pick#0 Function> @32:5 in summaries.py
+  summaries.a <summaries.py:a#0 Function> @32:5 in summaries.py
+  summaries.b <summaries.py:b#0 Function> @32:5 in summaries.py
+  summaries.chain <summaries.py:chain#0 Function> @33:5 in summaries.py
+    summaries.ident <summaries.py:ident#0 Function> @24:12 in summaries.py
+    summaries.ident <summaries.py:ident#0 Function> @24:18 in summaries.py
+  summaries.a <summaries.py:a#0 Function> @33:5 in summaries.py
+  summaries.ident <summaries.py:ident#0 Function> @34:5 in summaries.py
+  summaries.a <summaries.py:a#0 Function> @34:5 in summaries.py
+  summaries.b <summaries.py:b#0 Function> @34:5 in summaries.py
+  summaries.pick <summaries.py:pick#0 Function> @34:11 in summaries.py
+  summaries.nothing <summaries.py:nothing#0 Function> @35:5 in summaries.py
 
 == main (merged)
-summaries.main
-  summaries.pick x2 @32:5
-  summaries.a x3 @32:5
-  summaries.b x2 @32:5
-  summaries.chain @33:5
-    summaries.ident x2 @24:12
-  summaries.ident @34:5
-  summaries.nothing @35:5
+summaries.main <summaries.py:main#0 Function>
+  summaries.pick <summaries.py:pick#0 Function> x2 @32:5 in summaries.py
+  summaries.a <summaries.py:a#0 Function> x3 @32:5 in summaries.py
+  summaries.b <summaries.py:b#0 Function> x2 @32:5 in summaries.py
+  summaries.chain <summaries.py:chain#0 Function> @33:5 in summaries.py
+    summaries.ident <summaries.py:ident#0 Function> x2 @24:12 in summaries.py
+  summaries.ident <summaries.py:ident#0 Function> @34:5 in summaries.py
+  summaries.nothing <summaries.py:nothing#0 Function> @35:5 in summaries.py
 

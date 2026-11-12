@@ -1,84 +1,84 @@
 == same_frame
-closures.same_frame
-  closures.same_frame.inner @24:5
-    closures.a @22:9
+closures.same_frame <closures.py:same_frame#0 Function>
+  closures.same_frame.inner <closures.py:same_frame.<locals>.inner#0 Function> @24:5 in closures.py
+    closures.a <closures.py:a#0 Function> @22:9 in closures.py
 
 == same_frame (merged)
-closures.same_frame
-  closures.same_frame.inner @24:5
-    closures.a @22:9
+closures.same_frame <closures.py:same_frame#0 Function>
+  closures.same_frame.inner <closures.py:same_frame.<locals>.inner#0 Function> @24:5 in closures.py
+    closures.a <closures.py:a#0 Function> @22:9 in closures.py
 
 == escaping
-closures.escaping
-  closures.make @35:9
-  closures.make.run @36:5
-    closures.b @29:9
+closures.escaping <closures.py:escaping#0 Function>
+  closures.make <closures.py:make#0 Function> @35:9 in closures.py
+  closures.make.run <closures.py:make.<locals>.run#0 Function> @36:5 in closures.py
+    closures.b <closures.py:b#0 Function> @29:9 in closures.py
 
 == escaping (merged)
-closures.escaping
-  closures.make @35:9
-  closures.make.run @36:5
-    closures.b @29:9
+closures.escaping <closures.py:escaping#0 Function>
+  closures.make <closures.py:make#0 Function> @35:9 in closures.py
+  closures.make.run <closures.py:make.<locals>.run#0 Function> @36:5 in closures.py
+    closures.b <closures.py:b#0 Function> @29:9 in closures.py
 
 == caller_has_same_name
-closures.caller_has_same_name
-  closures.make @41:9
-  closures.make.run @42:5
-    closures.b @29:9
+closures.caller_has_same_name <closures.py:caller_has_same_name#0 Function>
+  closures.make <closures.py:make#0 Function> @41:9 in closures.py
+  closures.make.run <closures.py:make.<locals>.run#0 Function> @42:5 in closures.py
+    closures.b <closures.py:b#0 Function> @29:9 in closures.py
 
 == caller_has_same_name (merged)
-closures.caller_has_same_name
-  closures.make @41:9
-  closures.make.run @42:5
-    closures.b @29:9
+closures.caller_has_same_name <closures.py:caller_has_same_name#0 Function>
+  closures.make <closures.py:make#0 Function> @41:9 in closures.py
+  closures.make.run <closures.py:make.<locals>.run#0 Function> @42:5 in closures.py
+    closures.b <closures.py:b#0 Function> @29:9 in closures.py
 
 == late
-closures.late
-  closures.late.run @52:5
-    closures.b @49:9
+closures.late <closures.py:late#0 Function>
+  closures.late.run <closures.py:late.<locals>.run#0 Function> @52:5 in closures.py
+    closures.b <closures.py:b#0 Function> @49:9 in closures.py
 
 == late (merged)
-closures.late
-  closures.late.run @52:5
-    closures.b @49:9
+closures.late <closures.py:late#0 Function>
+  closures.late.run <closures.py:late.<locals>.run#0 Function> @52:5 in closures.py
+    closures.b <closures.py:b#0 Function> @49:9 in closures.py
 
 == two_runs
-closures.two_runs
-  closures.make @56:9
-  closures.make @57:9
-  closures.make.run @58:5
-    closures.a @29:9
-  closures.make.run @59:5
-    closures.b @29:9
+closures.two_runs <closures.py:two_runs#0 Function>
+  closures.make <closures.py:make#0 Function> @56:9 in closures.py
+  closures.make <closures.py:make#0 Function> @57:9 in closures.py
+  closures.make.run <closures.py:make.<locals>.run#0 Function> @58:5 in closures.py
+    closures.a <closures.py:a#0 Function> @29:9 in closures.py
+  closures.make.run <closures.py:make.<locals>.run#0 Function> @59:5 in closures.py
+    closures.b <closures.py:b#0 Function> @29:9 in closures.py
 
 == two_runs (merged)
-closures.two_runs
-  closures.make x2 @56:9
-  closures.make.run x2 @58:5
-    closures.a @29:9
-    closures.b @29:9
+closures.two_runs <closures.py:two_runs#0 Function>
+  closures.make <closures.py:make#0 Function> x2 @56:9 in closures.py
+  closures.make.run <closures.py:make.<locals>.run#0 Function> x2 @58:5 in closures.py
+    closures.a <closures.py:a#0 Function> @29:9 in closures.py
+    closures.b <closures.py:b#0 Function> @29:9 in closures.py
 
 == setup
-closures.setup
-  closures.pick @63:20
-  closures.setup.handler @66:5
-    closures.a @64:9
+closures.setup <closures.py:setup#0 Function>
+  closures.pick <closures.py:pick#0 Function> @63:20 in closures.py
+  closures.setup.handler <closures.py:setup.<locals>.handler#0 Function> @66:5 in closures.py
+    closures.a <closures.py:a#0 Function> @64:9 in closures.py
 
 == setup (merged)
-closures.setup
-  closures.pick @63:20
-  closures.setup.handler @66:5
-    closures.a @64:9
+closures.setup <closures.py:setup#0 Function>
+  closures.pick <closures.py:pick#0 Function> @63:20 in closures.py
+  closures.setup.handler <closures.py:setup.<locals>.handler#0 Function> @66:5 in closures.py
+    closures.a <closures.py:a#0 Function> @64:9 in closures.py
 
 == entry_closure
-closures.entry_closure
-  closures.pick @70:9
-  closures.entry_closure.inner @75:5
-    closures.a @73:9
+closures.entry_closure <closures.py:entry_closure#0 Function>
+  closures.pick <closures.py:pick#0 Function> @70:9 in closures.py
+  closures.entry_closure.inner <closures.py:entry_closure.<locals>.inner#0 Function> @75:5 in closures.py
+    closures.a <closures.py:a#0 Function> @73:9 in closures.py
 
 == entry_closure (merged)
-closures.entry_closure
-  closures.pick @70:9
-  closures.entry_closure.inner @75:5
-    closures.a @73:9
+closures.entry_closure <closures.py:entry_closure#0 Function>
+  closures.pick <closures.py:pick#0 Function> @70:9 in closures.py
+  closures.entry_closure.inner <closures.py:entry_closure.<locals>.inner#0 Function> @75:5 in closures.py
+    closures.a <closures.py:a#0 Function> @73:9 in closures.py
 

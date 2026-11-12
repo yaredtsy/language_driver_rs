@@ -3,9 +3,9 @@ entries: special.main#45cf4468e015cb83
 stats: walks 5, contexts 5, reuse_hits 0, unresolved 4, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 4}
 def special.JsonHandler = JsonHandler#0 Class special.py
 def special.Registry = Registry#0 Class special.py
-def special.Registry.__init__ = Registry.__init__#0 Function special.py
-def special.Registry.create = Registry.create#0 Function special.py
-def special.Registry.make = Registry.make#0 Function special.py
+def special.Registry.__init__ = Registry.__init__#0 Method special.py
+def special.Registry.create = Registry.create#0 Method special.py
+def special.Registry.make = Registry.make#0 Method special.py
 def special.main = main#0 Function special.py
 def special.on_ok = on_ok#0 Function special.py
 special.Registry.__init__#63bab7ddc5509f58 Finished
@@ -27,9 +27,9 @@ special.on_ok#fb0f6cb50ab9ee12 Finished
 entries: special.swap#348fe6a531e46048
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
 def special.Box = Box#0 Class special.py
-def special.Box.__init__ = Box.__init__#0 Function special.py
-def special.Box.handler = Box.handler#0 Function special.py
-def special.Box.handler = Box.handler#1 Function special.py
+def special.Box.__init__ = Box.__init__#0 Method special.py
+def special.Box.handler = Box.handler#0 Method special.py
+def special.Box.handler = Box.handler#1 Method special.py
 def special.CsvHandler = CsvHandler#0 Class special.py
 def special.JsonHandler = JsonHandler#0 Class special.py
 def special.swap = swap#0 Function special.py
@@ -49,7 +49,7 @@ entries: special.lazy#8e30c6be79136b78
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
 def special.JsonHandler = JsonHandler#0 Class special.py
 def special.Lazy = Lazy#0 Class special.py
-def special.Lazy.__init__ = Lazy.__init__#0 Function special.py
+def special.Lazy.__init__ = Lazy.__init__#0 Method special.py
 def special.lazy = lazy#0 Function special.py
 special.Lazy.__init__#6bba01a680747fa4 Finished
 special.lazy#8e30c6be79136b78 Finished

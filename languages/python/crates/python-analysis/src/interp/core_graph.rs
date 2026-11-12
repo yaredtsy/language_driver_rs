@@ -20,13 +20,13 @@ use crate::stable::StableDef;
 
 fn def_info(s: &Solver<'_>, def: Definition<'_>) -> DefInfo {
     let range = s.sem.def_range(def);
-    let kind = if s.sem.is_class(def) {
-        DefKind::Class
-    } else {
-        DefKind::Function
+    // The outline names every def and class (D20): its qualname, its occurrence and its kind (`Method` for a method). With no outline def at the
+    // name there is an empty name, which no request can ask for, and the kind this crate knows, rather than a guess.
+    let (qualname, occurrence, kind) = match s.sem.outline_name(def) {
+        Some(named) => (named.qualname, named.occurrence, named.kind),
+        None if s.sem.is_class(def) => (String::new(), 0, DefKind::Class),
+        None => (String::new(), 0, DefKind::Function),
     };
-    // no outline def at the name: an empty name, which no request can ask for, rather than a guess
-    let (qualname, occurrence) = s.sem.outline_name(def).unwrap_or_default();
     DefInfo::new(
         s.sem.stable_def(def),
         s.sem.qname(def),

@@ -3,9 +3,9 @@ entries: chains.chain#1318eff240e6c49e
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
 def chains.LoudHandler = LoudHandler#0 Class chains.py
 def chains.Service = Service#0 Class chains.py
-def chains.Service.__init__ = Service.__init__#0 Function chains.py
+def chains.Service.__init__ = Service.__init__#0 Method chains.py
 def chains.Session = Session#0 Class chains.py
-def chains.Session.__init__ = Session.__init__#0 Function chains.py
+def chains.Session.__init__ = Session.__init__#0 Method chains.py
 def chains.chain = chain#0 Function chains.py
 chains.Service.__init__#a6c68eaa28ca8803 Finished
 chains.Session.__init__#6e278de738e8ec67 Finished
@@ -20,11 +20,11 @@ entries: chains.write_then_read#054c86945449a213
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def chains.Handler = Handler#0 Class chains.py
 def chains.LoudHandler = LoudHandler#0 Class chains.py
-def chains.LoudHandler.handle = LoudHandler.handle#0 Function chains.py
+def chains.LoudHandler.handle = LoudHandler.handle#0 Method chains.py
 def chains.Service = Service#0 Class chains.py
-def chains.Service.__init__ = Service.__init__#0 Function chains.py
+def chains.Service.__init__ = Service.__init__#0 Method chains.py
 def chains.Session = Session#0 Class chains.py
-def chains.Session.__init__ = Session.__init__#0 Function chains.py
+def chains.Session.__init__ = Session.__init__#0 Method chains.py
 def chains.write_then_read = write_then_read#0 Function chains.py
 chains.LoudHandler.handle#c8f27fe890b2ee3d Finished
 chains.Service.__init__#572656fa81e51aef Finished
@@ -46,10 +46,10 @@ chains.unknown_mid_chain#d4009b55d4f1ebfc Finished
 == inherited
 entries: chains.inherited#5d28ab87cc0d0897
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
-def chains.Base.__init__ = Base.__init__#0 Function chains.py
+def chains.Base.__init__ = Base.__init__#0 Method chains.py
 def chains.Child = Child#0 Class chains.py
-def chains.Child.__init__ = Child.__init__#0 Function chains.py
-def chains.Child.go = Child.go#0 Function chains.py
+def chains.Child.__init__ = Child.__init__#0 Method chains.py
+def chains.Child.go = Child.go#0 Method chains.py
 def chains.LoudHandler = LoudHandler#0 Class chains.py
 def chains.inherited = inherited#0 Function chains.py
 chains.Base.__init__#d21a485e3bd9b84a Finished
@@ -65,7 +65,7 @@ chains.inherited#5d28ab87cc0d0897 Finished
 == annotated
 entries: chains.annotated#61f40c5672d2ae8c
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
-def chains.Handler.handle = Handler.handle#0 Function chains.py
+def chains.Handler.handle = Handler.handle#0 Method chains.py
 def chains.annotated = annotated#0 Function chains.py
 chains.Handler.handle#1afb5238b96542fa Finished
 chains.annotated#61f40c5672d2ae8c Finished
@@ -74,8 +74,8 @@ chains.annotated#61f40c5672d2ae8c Finished
 == Service.call
 entries: chains.Service.call#879b5bd9dd2405a7
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
-def chains.Handler.handle = Handler.handle#0 Function chains.py
-def chains.Service.call = Service.call#0 Function chains.py
+def chains.Handler.handle = Handler.handle#0 Method chains.py
+def chains.Service.call = Service.call#0 Method chains.py
 chains.Handler.handle#1afb5238b96542fa Finished
 chains.Service.call#879b5bd9dd2405a7 Finished
   @24-45 -> chains.Handler.handle#1afb5238b96542fa Type
@@ -98,9 +98,9 @@ chains.separate#0fac4e732fd8597c Finished
 == via_super
 entries: chains.via_super#f0ce04bfb0446a48
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
-def chains.Maker.build = Maker.build#0 Function chains.py
+def chains.Maker.build = Maker.build#0 Method chains.py
 def chains.Special = Special#0 Class chains.py
-def chains.Special.make = Special.make#0 Function chains.py
+def chains.Special.make = Special.make#0 Method chains.py
 def chains.via_super = via_super#0 Function chains.py
 chains.Maker.build#596e3d7a52ad8189 Finished
   @41-46 -> ? unknown_callee
@@ -114,7 +114,7 @@ chains.via_super#f0ce04bfb0446a48 Finished
 entries: chains.fanout#836731de03e86d02
 stats: walks 10, contexts 10, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
 def chains.Box = Box#0 Class chains.py
-def chains.Box.__init__ = Box.__init__#0 Function chains.py
+def chains.Box.__init__ = Box.__init__#0 Method chains.py
 def chains.H1 = H1#0 Class chains.py
 def chains.H2 = H2#0 Class chains.py
 def chains.H3 = H3#0 Class chains.py

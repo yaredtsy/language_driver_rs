@@ -1,32 +1,32 @@
 == main
-construct.main
-  construct.Plain @47:5
-  construct.Pipeline @48:5
-    construct.setup @20:9
-  construct.Wrapper @49:5
-    construct.log @25:9
-  construct.Pipeline @49:13
-    construct.setup @20:9
-  construct.Child @50:5
-    construct.log @30:9
-  construct.make @51:5
-    construct.Pipeline @43:12
-      construct.setup @20:9
-  construct.Tree @52:5
-    construct.Tree [recursive] @39:9
+construct.main <construct.py:main#0 Function>
+  construct.Plain <construct.py:Plain#0 Class> @47:5 in construct.py
+  construct.Pipeline <construct.py:Pipeline#0 Class> @48:5 in construct.py
+    construct.setup <construct.py:setup#0 Function> @20:9 in construct.py
+  construct.Wrapper <construct.py:Wrapper#0 Class> @49:5 in construct.py
+    construct.log <construct.py:log#0 Function> @25:9 in construct.py
+  construct.Pipeline <construct.py:Pipeline#0 Class> @49:13 in construct.py
+    construct.setup <construct.py:setup#0 Function> @20:9 in construct.py
+  construct.Child <construct.py:Child#0 Class> @50:5 in construct.py
+    construct.log <construct.py:log#0 Function> @30:9 in construct.py
+  construct.make <construct.py:make#0 Function> @51:5 in construct.py
+    construct.Pipeline <construct.py:Pipeline#0 Class> @43:12 in construct.py
+      construct.setup <construct.py:setup#0 Function> @20:9 in construct.py
+  construct.Tree <construct.py:Tree#0 Class> @52:5 in construct.py
+    construct.Tree <construct.py:Tree#0 Class> [recursive] @39:9 in construct.py
 
 == main (merged)
-construct.main
-  construct.Plain @47:5
-  construct.Pipeline x2 @48:5
-    construct.setup x2 @20:9
-  construct.Wrapper @49:5
-    construct.log @25:9
-  construct.Child @50:5
-    construct.log @30:9
-  construct.make @51:5
-    construct.Pipeline @43:12
-      construct.setup @20:9
-  construct.Tree @52:5
-    construct.Tree [recursive] @39:9
+construct.main <construct.py:main#0 Function>
+  construct.Plain <construct.py:Plain#0 Class> @47:5 in construct.py
+  construct.Pipeline <construct.py:Pipeline#0 Class> x2 @48:5 in construct.py
+    construct.setup <construct.py:setup#0 Function> x2 @20:9 in construct.py
+  construct.Wrapper <construct.py:Wrapper#0 Class> @49:5 in construct.py
+    construct.log <construct.py:log#0 Function> @25:9 in construct.py
+  construct.Child <construct.py:Child#0 Class> @50:5 in construct.py
+    construct.log <construct.py:log#0 Function> @30:9 in construct.py
+  construct.make <construct.py:make#0 Function> @51:5 in construct.py
+    construct.Pipeline <construct.py:Pipeline#0 Class> @43:12 in construct.py
+      construct.setup <construct.py:setup#0 Function> @20:9 in construct.py
+  construct.Tree <construct.py:Tree#0 Class> @52:5 in construct.py
+    construct.Tree <construct.py:Tree#0 Class> [recursive] @39:9 in construct.py
 

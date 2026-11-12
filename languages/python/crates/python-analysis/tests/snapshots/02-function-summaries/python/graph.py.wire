@@ -1,26 +1,26 @@
 == main
-graph.main
-  graph.read_a @31:5
-    graph.run @18:5
-      graph.a @14:5
-  graph.read_b @32:5
-    graph.run @22:5
-      graph.b @14:5
-  graph.twice @33:5
-    graph.run @26:5
-      graph.a @14:5
-    graph.run @27:5
-      graph.a @14:5
+graph.main <graph.py:main#0 Function>
+  graph.read_a <graph.py:read_a#0 Function> @31:5 in graph.py
+    graph.run <graph.py:run#0 Function> @18:5 in graph.py
+      graph.a <graph.py:a#0 Function> @14:5 in graph.py
+  graph.read_b <graph.py:read_b#0 Function> @32:5 in graph.py
+    graph.run <graph.py:run#0 Function> @22:5 in graph.py
+      graph.b <graph.py:b#0 Function> @14:5 in graph.py
+  graph.twice <graph.py:twice#0 Function> @33:5 in graph.py
+    graph.run <graph.py:run#0 Function> @26:5 in graph.py
+      graph.a <graph.py:a#0 Function> @14:5 in graph.py
+    graph.run <graph.py:run#0 Function> @27:5 in graph.py
+      graph.a <graph.py:a#0 Function> @14:5 in graph.py
 
 == main (merged)
-graph.main
-  graph.read_a @31:5
-    graph.run @18:5
-      graph.a @14:5
-  graph.read_b @32:5
-    graph.run @22:5
-      graph.b @14:5
-  graph.twice @33:5
-    graph.run x2 @26:5
-      graph.a x2 @14:5
+graph.main <graph.py:main#0 Function>
+  graph.read_a <graph.py:read_a#0 Function> @31:5 in graph.py
+    graph.run <graph.py:run#0 Function> @18:5 in graph.py
+      graph.a <graph.py:a#0 Function> @14:5 in graph.py
+  graph.read_b <graph.py:read_b#0 Function> @32:5 in graph.py
+    graph.run <graph.py:run#0 Function> @22:5 in graph.py
+      graph.b <graph.py:b#0 Function> @14:5 in graph.py
+  graph.twice <graph.py:twice#0 Function> @33:5 in graph.py
+    graph.run <graph.py:run#0 Function> x2 @26:5 in graph.py
+      graph.a <graph.py:a#0 Function> x2 @14:5 in graph.py
 

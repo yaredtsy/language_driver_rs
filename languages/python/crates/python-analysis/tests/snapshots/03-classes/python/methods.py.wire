@@ -1,39 +1,39 @@
 == main
-methods.main
-  methods.Greeter @37:9
-  methods.Greeter.greet @38:5
-    methods.on_ok @15:9
-  methods.Greeter.greet @39:5
-    methods.on_err @15:9
-  methods.Greeter.twice @40:5
-    methods.Greeter.greet @18:9
-      methods.on_ok @15:9
-    methods.Greeter.greet @19:9
-      methods.on_ok @15:9
-  methods.Loud @41:5
-  methods.Greeter.greet @41:5
-    methods.on_err @15:9
-  methods.Quiet @42:5
-  methods.Quiet.greet @42:5
-  methods.Greeter.greet @44:5
-    methods.on_err @15:9
-  methods.Greeter.make @45:5
-    methods.on_ok @23:9
-    methods.Greeter @24:16
+methods.main <methods.py:main#0 Function>
+  methods.Greeter <methods.py:Greeter#0 Class> @37:9 in methods.py
+  methods.Greeter.greet <methods.py:Greeter.greet#0 Method> @38:5 in methods.py
+    methods.on_ok <methods.py:on_ok#0 Function> @15:9 in methods.py
+  methods.Greeter.greet <methods.py:Greeter.greet#0 Method> @39:5 in methods.py
+    methods.on_err <methods.py:on_err#0 Function> @15:9 in methods.py
+  methods.Greeter.twice <methods.py:Greeter.twice#0 Method> @40:5 in methods.py
+    methods.Greeter.greet <methods.py:Greeter.greet#0 Method> @18:9 in methods.py
+      methods.on_ok <methods.py:on_ok#0 Function> @15:9 in methods.py
+    methods.Greeter.greet <methods.py:Greeter.greet#0 Method> @19:9 in methods.py
+      methods.on_ok <methods.py:on_ok#0 Function> @15:9 in methods.py
+  methods.Loud <methods.py:Loud#0 Class> @41:5 in methods.py
+  methods.Greeter.greet <methods.py:Greeter.greet#0 Method> @41:5 in methods.py
+    methods.on_err <methods.py:on_err#0 Function> @15:9 in methods.py
+  methods.Quiet <methods.py:Quiet#0 Class> @42:5 in methods.py
+  methods.Quiet.greet <methods.py:Quiet.greet#0 Method> @42:5 in methods.py
+  methods.Greeter.greet <methods.py:Greeter.greet#0 Method> @44:5 in methods.py
+    methods.on_err <methods.py:on_err#0 Function> @15:9 in methods.py
+  methods.Greeter.make <methods.py:Greeter.make#0 Method> @45:5 in methods.py
+    methods.on_ok <methods.py:on_ok#0 Function> @23:9 in methods.py
+    methods.Greeter <methods.py:Greeter#0 Class> @24:16 in methods.py
 
 == main (merged)
-methods.main
-  methods.Greeter @37:9
-  methods.Greeter.greet x4 @38:5
-    methods.on_ok @15:9
-    methods.on_err x3 @15:9
-  methods.Greeter.twice @40:5
-    methods.Greeter.greet x2 @18:9
-      methods.on_ok x2 @15:9
-  methods.Loud @41:5
-  methods.Quiet @42:5
-  methods.Quiet.greet @42:5
-  methods.Greeter.make @45:5
-    methods.on_ok @23:9
-    methods.Greeter @24:16
+methods.main <methods.py:main#0 Function>
+  methods.Greeter <methods.py:Greeter#0 Class> @37:9 in methods.py
+  methods.Greeter.greet <methods.py:Greeter.greet#0 Method> x4 @38:5 in methods.py
+    methods.on_ok <methods.py:on_ok#0 Function> @15:9 in methods.py
+    methods.on_err <methods.py:on_err#0 Function> x3 @15:9 in methods.py
+  methods.Greeter.twice <methods.py:Greeter.twice#0 Method> @40:5 in methods.py
+    methods.Greeter.greet <methods.py:Greeter.greet#0 Method> x2 @18:9 in methods.py
+      methods.on_ok <methods.py:on_ok#0 Function> x2 @15:9 in methods.py
+  methods.Loud <methods.py:Loud#0 Class> @41:5 in methods.py
+  methods.Quiet <methods.py:Quiet#0 Class> @42:5 in methods.py
+  methods.Quiet.greet <methods.py:Quiet.greet#0 Method> @42:5 in methods.py
+  methods.Greeter.make <methods.py:Greeter.make#0 Method> @45:5 in methods.py
+    methods.on_ok <methods.py:on_ok#0 Function> @23:9 in methods.py
+    methods.Greeter <methods.py:Greeter#0 Class> @24:16 in methods.py
 

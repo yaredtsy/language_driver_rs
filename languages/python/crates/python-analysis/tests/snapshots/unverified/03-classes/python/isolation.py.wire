@@ -2,96 +2,96 @@
 # This pins what it says today so a change is noticed; it is not a right answer.
 
 == two_alive
-isolation.two_alive
-  isolation.Pipeline @59:9
-  isolation.JsonHandler @59:18
-  isolation.Pipeline @60:9
-  isolation.CsvHandler @60:18
-  isolation.Pipeline.run @61:5
-  isolation.Pipeline.run @62:5
+isolation.two_alive <isolation.py:two_alive#0 Function>
+  isolation.Pipeline <isolation.py:Pipeline#0 Class> @59:9 in isolation.py
+  isolation.JsonHandler <isolation.py:JsonHandler#0 Class> @59:18 in isolation.py
+  isolation.Pipeline <isolation.py:Pipeline#0 Class> @60:9 in isolation.py
+  isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @60:18 in isolation.py
+  isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @61:5 in isolation.py
+  isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @62:5 in isolation.py
 
 == two_alive (merged)
-isolation.two_alive
-  isolation.Pipeline x2 @59:9
-  isolation.JsonHandler @59:18
-  isolation.CsvHandler @60:18
-  isolation.Pipeline.run x2 @61:5
+isolation.two_alive <isolation.py:two_alive#0 Function>
+  isolation.Pipeline <isolation.py:Pipeline#0 Class> x2 @59:9 in isolation.py
+  isolation.JsonHandler <isolation.py:JsonHandler#0 Class> @59:18 in isolation.py
+  isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @60:18 in isolation.py
+  isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> x2 @61:5 in isolation.py
 
 == one_site
-isolation.one_site
-  isolation.make @70:9
-    isolation.Pipeline @66:12
-  isolation.JsonHandler @70:14
-  isolation.make @71:9
-    isolation.Pipeline @66:12
-  isolation.CsvHandler @71:14
+isolation.one_site <isolation.py:one_site#0 Function>
+  isolation.make <isolation.py:make#0 Function> @70:9 in isolation.py
+    isolation.Pipeline <isolation.py:Pipeline#0 Class> @66:12 in isolation.py
+  isolation.JsonHandler <isolation.py:JsonHandler#0 Class> @70:14 in isolation.py
+  isolation.make <isolation.py:make#0 Function> @71:9 in isolation.py
+    isolation.Pipeline <isolation.py:Pipeline#0 Class> @66:12 in isolation.py
+  isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @71:14 in isolation.py
 
 == one_site (merged)
-isolation.one_site
-  isolation.make x2 @70:9
-    isolation.Pipeline x2 @66:12
-  isolation.JsonHandler @70:14
-  isolation.CsvHandler @71:14
+isolation.one_site <isolation.py:one_site#0 Function>
+  isolation.make <isolation.py:make#0 Function> x2 @70:9 in isolation.py
+    isolation.Pipeline <isolation.py:Pipeline#0 Class> x2 @66:12 in isolation.py
+  isolation.JsonHandler <isolation.py:JsonHandler#0 Class> @70:14 in isolation.py
+  isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @71:14 in isolation.py
 
 == opaque
-isolation.opaque
-  isolation.FileHandler @77:21
-  isolation.Logger.emit @78:5
+isolation.opaque <isolation.py:opaque#0 Function>
+  isolation.FileHandler <isolation.py:FileHandler#0 Class> @77:21 in isolation.py
+  isolation.Logger.emit <isolation.py:Logger.emit#0 Method> @78:5 in isolation.py
 
 == opaque (merged)
-isolation.opaque
-  isolation.FileHandler @77:21
-  isolation.Logger.emit @78:5
+isolation.opaque <isolation.py:opaque#0 Function>
+  isolation.FileHandler <isolation.py:FileHandler#0 Class> @77:21 in isolation.py
+  isolation.Logger.emit <isolation.py:Logger.emit#0 Method> @78:5 in isolation.py
 
 == global_write
-isolation.global_write
-  isolation.FileHandler @82:21
-  isolation.Logger.emit @83:5
+isolation.global_write <isolation.py:global_write#0 Function>
+  isolation.FileHandler <isolation.py:FileHandler#0 Class> @82:21 in isolation.py
+  isolation.Logger.emit <isolation.py:Logger.emit#0 Method> @83:5 in isolation.py
 
 == global_write (merged)
-isolation.global_write
-  isolation.FileHandler @82:21
-  isolation.Logger.emit @83:5
+isolation.global_write <isolation.py:global_write#0 Function>
+  isolation.FileHandler <isolation.py:FileHandler#0 Class> @82:21 in isolation.py
+  isolation.Logger.emit <isolation.py:Logger.emit#0 Method> @83:5 in isolation.py
 
 == global_method
-isolation.global_method
-  isolation.Greeter.greet @87:5
-    isolation.on_ok @40:9
+isolation.global_method <isolation.py:global_method#0 Function>
+  isolation.Greeter.greet <isolation.py:Greeter.greet#0 Method> @87:5 in isolation.py
+    isolation.on_ok <isolation.py:on_ok#0 Function> @40:9 in isolation.py
 
 == global_method (merged)
-isolation.global_method
-  isolation.Greeter.greet @87:5
-    isolation.on_ok @40:9
+isolation.global_method <isolation.py:global_method#0 Function>
+  isolation.Greeter.greet <isolation.py:Greeter.greet#0 Method> @87:5 in isolation.py
+    isolation.on_ok <isolation.py:on_ok#0 Function> @40:9 in isolation.py
 
 == maybe_opaque
-isolation.maybe_opaque
-  isolation.Pipeline @91:9
-  isolation.JsonHandler @91:18
-  isolation.CsvHandler @96:17
-  isolation.Pipeline.run @97:5
-    isolation.CsvHandler.process @30:9
+isolation.maybe_opaque <isolation.py:maybe_opaque#0 Function>
+  isolation.Pipeline <isolation.py:Pipeline#0 Class> @91:9 in isolation.py
+  isolation.JsonHandler <isolation.py:JsonHandler#0 Class> @91:18 in isolation.py
+  isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @96:17 in isolation.py
+  isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @97:5 in isolation.py
+    isolation.CsvHandler.process <isolation.py:CsvHandler.process#0 Method> @30:9 in isolation.py
 
 == maybe_opaque (merged)
-isolation.maybe_opaque
-  isolation.Pipeline @91:9
-  isolation.JsonHandler @91:18
-  isolation.CsvHandler @96:17
-  isolation.Pipeline.run @97:5
-    isolation.CsvHandler.process @30:9
+isolation.maybe_opaque <isolation.py:maybe_opaque#0 Function>
+  isolation.Pipeline <isolation.py:Pipeline#0 Class> @91:9 in isolation.py
+  isolation.JsonHandler <isolation.py:JsonHandler#0 Class> @91:18 in isolation.py
+  isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @96:17 in isolation.py
+  isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @97:5 in isolation.py
+    isolation.CsvHandler.process <isolation.py:CsvHandler.process#0 Method> @30:9 in isolation.py
 
 == subclass_of
-isolation.subclass_of
-  isolation.Logger @101:5
+isolation.subclass_of <isolation.py:subclass_of#0 Function>
+  isolation.Logger <isolation.py:Logger#0 Class> @101:5 in isolation.py
 
 == subclass_of (merged)
-isolation.subclass_of
-  isolation.Logger @101:5
+isolation.subclass_of <isolation.py:subclass_of#0 Function>
+  isolation.Logger <isolation.py:Logger#0 Class> @101:5 in isolation.py
 
 == via_alias
-isolation.via_alias
-  isolation.JsonHandler.process @105:5
+isolation.via_alias <isolation.py:via_alias#0 Function>
+  isolation.JsonHandler.process <isolation.py:JsonHandler.process#0 Method> @105:5 in isolation.py
 
 == via_alias (merged)
-isolation.via_alias
-  isolation.JsonHandler.process @105:5
+isolation.via_alias <isolation.py:via_alias#0 Function>
+  isolation.JsonHandler.process <isolation.py:JsonHandler.process#0 Method> @105:5 in isolation.py
 

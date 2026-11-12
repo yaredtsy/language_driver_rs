@@ -2,84 +2,84 @@
 # This pins what it says today so a change is noticed; it is not a right answer.
 
 == outside
-writes.outside
-  writes.Pipeline @42:9
-  writes.CsvHandler @42:18
-  writes.JsonHandler @43:17
-  writes.Pipeline.run @44:5
-    writes.JsonHandler.process @21:9
+writes.outside <writes.py:outside#0 Function>
+  writes.Pipeline <writes.py:Pipeline#0 Class> @42:9 in writes.py
+  writes.CsvHandler <writes.py:CsvHandler#0 Class> @42:18 in writes.py
+  writes.JsonHandler <writes.py:JsonHandler#0 Class> @43:17 in writes.py
+  writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @44:5 in writes.py
+    writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @21:9 in writes.py
 
 == outside (merged)
-writes.outside
-  writes.Pipeline @42:9
-  writes.CsvHandler @42:18
-  writes.JsonHandler @43:17
-  writes.Pipeline.run @44:5
-    writes.JsonHandler.process @21:9
+writes.outside <writes.py:outside#0 Function>
+  writes.Pipeline <writes.py:Pipeline#0 Class> @42:9 in writes.py
+  writes.CsvHandler <writes.py:CsvHandler#0 Class> @42:18 in writes.py
+  writes.JsonHandler <writes.py:JsonHandler#0 Class> @43:17 in writes.py
+  writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @44:5 in writes.py
+    writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @21:9 in writes.py
 
 == in_another_method
-writes.in_another_method
-  writes.Controller @48:9
-  writes.Controller.setup @49:5
-    writes.JsonHandler @26:18
-  writes.Controller.go @50:5
-    writes.JsonHandler.process @29:9
+writes.in_another_method <writes.py:in_another_method#0 Function>
+  writes.Controller <writes.py:Controller#0 Class> @48:9 in writes.py
+  writes.Controller.setup <writes.py:Controller.setup#0 Method> @49:5 in writes.py
+    writes.JsonHandler <writes.py:JsonHandler#0 Class> @26:18 in writes.py
+  writes.Controller.go <writes.py:Controller.go#0 Method> @50:5 in writes.py
+    writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @29:9 in writes.py
 
 == in_another_method (merged)
-writes.in_another_method
-  writes.Controller @48:9
-  writes.Controller.setup @49:5
-    writes.JsonHandler @26:18
-  writes.Controller.go @50:5
-    writes.JsonHandler.process @29:9
+writes.in_another_method <writes.py:in_another_method#0 Function>
+  writes.Controller <writes.py:Controller#0 Class> @48:9 in writes.py
+  writes.Controller.setup <writes.py:Controller.setup#0 Method> @49:5 in writes.py
+    writes.JsonHandler <writes.py:JsonHandler#0 Class> @26:18 in writes.py
+  writes.Controller.go <writes.py:Controller.go#0 Method> @50:5 in writes.py
+    writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @29:9 in writes.py
 
 == through_a_function
-writes.through_a_function
-  writes.Pipeline @54:9
-  writes.CsvHandler @54:18
-  writes.install @55:5
-  writes.JsonHandler @55:16
-  writes.Pipeline.run @56:5
+writes.through_a_function <writes.py:through_a_function#0 Function>
+  writes.Pipeline <writes.py:Pipeline#0 Class> @54:9 in writes.py
+  writes.CsvHandler <writes.py:CsvHandler#0 Class> @54:18 in writes.py
+  writes.install <writes.py:install#0 Function> @55:5 in writes.py
+  writes.JsonHandler <writes.py:JsonHandler#0 Class> @55:16 in writes.py
+  writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @56:5 in writes.py
 
 == through_a_function (merged)
-writes.through_a_function
-  writes.Pipeline @54:9
-  writes.CsvHandler @54:18
-  writes.install @55:5
-  writes.JsonHandler @55:16
-  writes.Pipeline.run @56:5
+writes.through_a_function <writes.py:through_a_function#0 Function>
+  writes.Pipeline <writes.py:Pipeline#0 Class> @54:9 in writes.py
+  writes.CsvHandler <writes.py:CsvHandler#0 Class> @54:18 in writes.py
+  writes.install <writes.py:install#0 Function> @55:5 in writes.py
+  writes.JsonHandler <writes.py:JsonHandler#0 Class> @55:16 in writes.py
+  writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @56:5 in writes.py
 
 == on_one_path
-writes.on_one_path
-  writes.Pipeline @60:9
-  writes.CsvHandler @60:18
-  writes.maybe @61:5
-  writes.JsonHandler @61:14
-  writes.Pipeline.run @62:5
+writes.on_one_path <writes.py:on_one_path#0 Function>
+  writes.Pipeline <writes.py:Pipeline#0 Class> @60:9 in writes.py
+  writes.CsvHandler <writes.py:CsvHandler#0 Class> @60:18 in writes.py
+  writes.maybe <writes.py:maybe#0 Function> @61:5 in writes.py
+  writes.JsonHandler <writes.py:JsonHandler#0 Class> @61:14 in writes.py
+  writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @62:5 in writes.py
 
 == on_one_path (merged)
-writes.on_one_path
-  writes.Pipeline @60:9
-  writes.CsvHandler @60:18
-  writes.maybe @61:5
-  writes.JsonHandler @61:14
-  writes.Pipeline.run @62:5
+writes.on_one_path <writes.py:on_one_path#0 Function>
+  writes.Pipeline <writes.py:Pipeline#0 Class> @60:9 in writes.py
+  writes.CsvHandler <writes.py:CsvHandler#0 Class> @60:18 in writes.py
+  writes.maybe <writes.py:maybe#0 Function> @61:5 in writes.py
+  writes.JsonHandler <writes.py:JsonHandler#0 Class> @61:14 in writes.py
+  writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @62:5 in writes.py
 
 == two_candidates
-writes.two_candidates
-  writes.Pipeline @66:9
-  writes.CsvHandler @66:18
-  writes.Pipeline @67:9
-  writes.CsvHandler @67:18
-  writes.JsonHandler @69:17
-  writes.Pipeline.run @70:5
-    writes.JsonHandler.process @21:9
+writes.two_candidates <writes.py:two_candidates#0 Function>
+  writes.Pipeline <writes.py:Pipeline#0 Class> @66:9 in writes.py
+  writes.CsvHandler <writes.py:CsvHandler#0 Class> @66:18 in writes.py
+  writes.Pipeline <writes.py:Pipeline#0 Class> @67:9 in writes.py
+  writes.CsvHandler <writes.py:CsvHandler#0 Class> @67:18 in writes.py
+  writes.JsonHandler <writes.py:JsonHandler#0 Class> @69:17 in writes.py
+  writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @70:5 in writes.py
+    writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @21:9 in writes.py
 
 == two_candidates (merged)
-writes.two_candidates
-  writes.Pipeline x2 @66:9
-  writes.CsvHandler x2 @66:18
-  writes.JsonHandler @69:17
-  writes.Pipeline.run @70:5
-    writes.JsonHandler.process @21:9
+writes.two_candidates <writes.py:two_candidates#0 Function>
+  writes.Pipeline <writes.py:Pipeline#0 Class> x2 @66:9 in writes.py
+  writes.CsvHandler <writes.py:CsvHandler#0 Class> x2 @66:18 in writes.py
+  writes.JsonHandler <writes.py:JsonHandler#0 Class> @69:17 in writes.py
+  writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @70:5 in writes.py
+    writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @21:9 in writes.py
 

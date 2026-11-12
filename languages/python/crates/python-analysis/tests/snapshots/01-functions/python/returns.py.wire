@@ -1,49 +1,49 @@
 == main
-returns.main
-  returns.pick_a @60:5
-  returns.a @60:5
-  returns.pick @61:9
-  returns.a @62:5
-  returns.b @62:5
-  returns.ident @63:5
-  returns.b @63:5
-  returns.through @64:5
-    returns.ident @28:12
-  returns.a @64:5
-  returns.nothing @65:5
-  returns.log @66:5
-  returns.fail @66:9
-  returns.gen @67:9
+returns.main <returns.py:main#0 Function>
+  returns.pick_a <returns.py:pick_a#0 Function> @60:5 in returns.py
+  returns.a <returns.py:a#0 Function> @60:5 in returns.py
+  returns.pick <returns.py:pick#0 Function> @61:9 in returns.py
+  returns.a <returns.py:a#0 Function> @62:5 in returns.py
+  returns.b <returns.py:b#0 Function> @62:5 in returns.py
+  returns.ident <returns.py:ident#0 Function> @63:5 in returns.py
+  returns.b <returns.py:b#0 Function> @63:5 in returns.py
+  returns.through <returns.py:through#0 Function> @64:5 in returns.py
+    returns.ident <returns.py:ident#0 Function> @28:12 in returns.py
+  returns.a <returns.py:a#0 Function> @64:5 in returns.py
+  returns.nothing <returns.py:nothing#0 Function> @65:5 in returns.py
+  returns.log <returns.py:log#0 Function> @66:5 in returns.py
+  returns.fail <returns.py:fail#0 Function> @66:9 in returns.py
+  returns.gen <returns.py:gen#0 Function> @67:9 in returns.py
 
 == main (merged)
-returns.main
-  returns.pick_a @60:5
-  returns.a x3 @60:5
-  returns.pick @61:9
-  returns.b x2 @62:5
-  returns.ident @63:5
-  returns.through @64:5
-    returns.ident @28:12
-  returns.nothing @65:5
-  returns.log @66:5
-  returns.fail @66:9
-  returns.gen @67:9
+returns.main <returns.py:main#0 Function>
+  returns.pick_a <returns.py:pick_a#0 Function> @60:5 in returns.py
+  returns.a <returns.py:a#0 Function> x3 @60:5 in returns.py
+  returns.pick <returns.py:pick#0 Function> @61:9 in returns.py
+  returns.b <returns.py:b#0 Function> x2 @62:5 in returns.py
+  returns.ident <returns.py:ident#0 Function> @63:5 in returns.py
+  returns.through <returns.py:through#0 Function> @64:5 in returns.py
+    returns.ident <returns.py:ident#0 Function> @28:12 in returns.py
+  returns.nothing <returns.py:nothing#0 Function> @65:5 in returns.py
+  returns.log <returns.py:log#0 Function> @66:5 in returns.py
+  returns.fail <returns.py:fail#0 Function> @66:9 in returns.py
+  returns.gen <returns.py:gen#0 Function> @67:9 in returns.py
 
 == amain
-returns.amain
-  returns.a @72:5
-  returns.fetch @72:12
+returns.amain <returns.py:amain#0 Function>
+  returns.a <returns.py:a#0 Function> @72:5 in returns.py
+  returns.fetch <returns.py:fetch#0 Function> @72:12 in returns.py
 
 == amain (merged)
-returns.amain
-  returns.a @72:5
-  returns.fetch @72:12
+returns.amain <returns.py:amain#0 Function>
+  returns.a <returns.py:a#0 Function> @72:5 in returns.py
+  returns.fetch <returns.py:fetch#0 Function> @72:12 in returns.py
 
 == early
-returns.early
-  returns.b @56:5
+returns.early <returns.py:early#0 Function>
+  returns.b <returns.py:b#0 Function> @56:5 in returns.py
 
 == early (merged)
-returns.early
-  returns.b @56:5
+returns.early <returns.py:early#0 Function>
+  returns.b <returns.py:b#0 Function> @56:5 in returns.py
 

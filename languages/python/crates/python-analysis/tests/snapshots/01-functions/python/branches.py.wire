@@ -1,71 +1,71 @@
 == never_none
-branches.never_none
+branches.never_none <branches.py:never_none#0 Function>
 
 == never_none (merged)
-branches.never_none
+branches.never_none <branches.py:never_none#0 Function>
 
 == both_arms
-branches.both_arms
-  branches.a @35:5
-  branches.b @35:5
+branches.both_arms <branches.py:both_arms#0 Function>
+  branches.a <branches.py:a#0 Function> @35:5 in branches.py
+  branches.b <branches.py:b#0 Function> @35:5 in branches.py
 
 == both_arms (merged)
-branches.both_arms
-  branches.a @35:5
-  branches.b @35:5
+branches.both_arms <branches.py:both_arms#0 Function>
+  branches.a <branches.py:a#0 Function> @35:5 in branches.py
+  branches.b <branches.py:b#0 Function> @35:5 in branches.py
 
 == skipped
-branches.skipped
-  branches.a @42:5
-  branches.b @42:5
+branches.skipped <branches.py:skipped#0 Function>
+  branches.a <branches.py:a#0 Function> @42:5 in branches.py
+  branches.b <branches.py:b#0 Function> @42:5 in branches.py
 
 == skipped (merged)
-branches.skipped
-  branches.a @42:5
-  branches.b @42:5
+branches.skipped <branches.py:skipped#0 Function>
+  branches.a <branches.py:a#0 Function> @42:5 in branches.py
+  branches.b <branches.py:b#0 Function> @42:5 in branches.py
 
 == elif_chain
-branches.elif_chain
-  branches.a @52:5
-  branches.b @52:5
-  branches.c @52:5
+branches.elif_chain <branches.py:elif_chain#0 Function>
+  branches.a <branches.py:a#0 Function> @52:5 in branches.py
+  branches.b <branches.py:b#0 Function> @52:5 in branches.py
+  branches.c <branches.py:c#0 Function> @52:5 in branches.py
 
 == elif_chain (merged)
-branches.elif_chain
-  branches.a @52:5
-  branches.b @52:5
-  branches.c @52:5
+branches.elif_chain <branches.py:elif_chain#0 Function>
+  branches.a <branches.py:a#0 Function> @52:5 in branches.py
+  branches.b <branches.py:b#0 Function> @52:5 in branches.py
+  branches.c <branches.py:c#0 Function> @52:5 in branches.py
 
 == loop
-branches.loop
-  branches.a @58:9
-  branches.a @60:5
-  branches.b @60:5
+branches.loop <branches.py:loop#0 Function>
+  branches.a <branches.py:a#0 Function> @58:9 in branches.py
+  branches.a <branches.py:a#0 Function> @60:5 in branches.py
+  branches.b <branches.py:b#0 Function> @60:5 in branches.py
 
 == loop (merged)
-branches.loop
-  branches.a x2 @58:9
-  branches.b @60:5
+branches.loop <branches.py:loop#0 Function>
+  branches.a <branches.py:a#0 Function> x2 @58:9 in branches.py
+  branches.b <branches.py:b#0 Function> @60:5 in branches.py
 
 == while_loop
-branches.while_loop
-  branches.a @67:5
-  branches.b @67:5
+branches.while_loop <branches.py:while_loop#0 Function>
+  branches.a <branches.py:a#0 Function> @67:5 in branches.py
+  branches.b <branches.py:b#0 Function> @67:5 in branches.py
 
 == while_loop (merged)
-branches.while_loop
-  branches.a @67:5
-  branches.b @67:5
+branches.while_loop <branches.py:while_loop#0 Function>
+  branches.a <branches.py:a#0 Function> @67:5 in branches.py
+  branches.b <branches.py:b#0 Function> @67:5 in branches.py
 
 == try_except
-branches.try_except
-  branches.risky @74:9
-  branches.a @76:9
-  branches.b @76:9
+branches.try_except <branches.py:try_except#0 Function>
+  branches.risky <branches.py:risky#0 Function> @74:9 in branches.py
+  branches.a <branches.py:a#0 Function> @76:9 in branches.py
+  branches.b <branches.py:b#0 Function> @76:9 in branches.py
 
 == try_except (merged)
-branches.try_except
-  branches.risky @74:9
-  branches.a @76:9
-  branches.b @76:9
+branches.try_except <branches.py:try_except#0 Function>
+  branches.risky <branches.py:risky#0 Function> @74:9 in branches.py
+  branches.a <branches.py:a#0 Function> @76:9 in branches.py
+  branches.b <branches.py:b#0 Function> @76:9 in branches.py
 

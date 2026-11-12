@@ -2,124 +2,124 @@
 # This pins what it says today so a change is noticed; it is not a right answer.
 
 == chain
-chains.chain
-  chains.Session @43:9
-  chains.Service @43:17
-  chains.LoudHandler @43:25
+chains.chain <chains.py:chain#0 Function>
+  chains.Session <chains.py:Session#0 Class> @43:9 in chains.py
+  chains.Service <chains.py:Service#0 Class> @43:17 in chains.py
+  chains.LoudHandler <chains.py:LoudHandler#0 Class> @43:25 in chains.py
 
 == chain (merged)
-chains.chain
-  chains.Session @43:9
-  chains.Service @43:17
-  chains.LoudHandler @43:25
+chains.chain <chains.py:chain#0 Function>
+  chains.Session <chains.py:Session#0 Class> @43:9 in chains.py
+  chains.Service <chains.py:Service#0 Class> @43:17 in chains.py
+  chains.LoudHandler <chains.py:LoudHandler#0 Class> @43:25 in chains.py
 
 == write_then_read
-chains.write_then_read
-  chains.Session @48:9
-  chains.Service @48:17
-  chains.Handler @48:25
-  chains.LoudHandler @49:25
-  chains.LoudHandler.handle @50:5
+chains.write_then_read <chains.py:write_then_read#0 Function>
+  chains.Session <chains.py:Session#0 Class> @48:9 in chains.py
+  chains.Service <chains.py:Service#0 Class> @48:17 in chains.py
+  chains.Handler <chains.py:Handler#0 Class> @48:25 in chains.py
+  chains.LoudHandler <chains.py:LoudHandler#0 Class> @49:25 in chains.py
+  chains.LoudHandler.handle <chains.py:LoudHandler.handle#0 Method> @50:5 in chains.py
 
 == write_then_read (merged)
-chains.write_then_read
-  chains.Session @48:9
-  chains.Service @48:17
-  chains.Handler @48:25
-  chains.LoudHandler @49:25
-  chains.LoudHandler.handle @50:5
+chains.write_then_read <chains.py:write_then_read#0 Function>
+  chains.Session <chains.py:Session#0 Class> @48:9 in chains.py
+  chains.Service <chains.py:Service#0 Class> @48:17 in chains.py
+  chains.Handler <chains.py:Handler#0 Class> @48:25 in chains.py
+  chains.LoudHandler <chains.py:LoudHandler#0 Class> @49:25 in chains.py
+  chains.LoudHandler.handle <chains.py:LoudHandler.handle#0 Method> @50:5 in chains.py
 
 == unknown_mid_chain
-chains.unknown_mid_chain
+chains.unknown_mid_chain <chains.py:unknown_mid_chain#0 Function>
 
 == unknown_mid_chain (merged)
-chains.unknown_mid_chain
+chains.unknown_mid_chain <chains.py:unknown_mid_chain#0 Function>
 
 == inherited
-chains.inherited
-  chains.Child @58:5
-    chains.Base.__init__ @36:9
-  chains.Child.go @58:5
-  chains.LoudHandler @58:11
+chains.inherited <chains.py:inherited#0 Function>
+  chains.Child <chains.py:Child#0 Class> @58:5 in chains.py
+    chains.Base.__init__ <chains.py:Base.__init__#0 Method> @36:9 in chains.py
+  chains.Child.go <chains.py:Child.go#0 Method> @58:5 in chains.py
+  chains.LoudHandler <chains.py:LoudHandler#0 Class> @58:11 in chains.py
 
 == inherited (merged)
-chains.inherited
-  chains.Child @58:5
-    chains.Base.__init__ @36:9
-  chains.Child.go @58:5
-  chains.LoudHandler @58:11
+chains.inherited <chains.py:inherited#0 Function>
+  chains.Child <chains.py:Child#0 Class> @58:5 in chains.py
+    chains.Base.__init__ <chains.py:Base.__init__#0 Method> @36:9 in chains.py
+  chains.Child.go <chains.py:Child.go#0 Method> @58:5 in chains.py
+  chains.LoudHandler <chains.py:LoudHandler#0 Class> @58:11 in chains.py
 
 == annotated
-chains.annotated
-  chains.Handler.handle @62:5
+chains.annotated <chains.py:annotated#0 Function>
+  chains.Handler.handle <chains.py:Handler.handle#0 Method> @62:5 in chains.py
 
 == annotated (merged)
-chains.annotated
-  chains.Handler.handle @62:5
+chains.annotated <chains.py:annotated#0 Function>
+  chains.Handler.handle <chains.py:Handler.handle#0 Method> @62:5 in chains.py
 
 == Service.call
-chains.Service.call
-  chains.Handler.handle @21:9
+chains.Service.call <chains.py:Service.call#0 Method>
+  chains.Handler.handle <chains.py:Handler.handle#0 Method> @21:9 in chains.py
 
 == Service.call (merged)
-chains.Service.call
-  chains.Handler.handle @21:9
+chains.Service.call <chains.py:Service.call#0 Method>
+  chains.Handler.handle <chains.py:Handler.handle#0 Method> @21:9 in chains.py
 
 == separate
-chains.separate
-  chains.f @79:5
-    chains.A @71:11
-  chains.g @80:5
+chains.separate <chains.py:separate#0 Function>
+  chains.f <chains.py:f#0 Function> @79:5 in chains.py
+    chains.A <chains.py:A#0 Class> @71:11 in chains.py
+  chains.g <chains.py:g#0 Function> @80:5 in chains.py
 
 == separate (merged)
-chains.separate
-  chains.f @79:5
-    chains.A @71:11
-  chains.g @80:5
+chains.separate <chains.py:separate#0 Function>
+  chains.f <chains.py:f#0 Function> @79:5 in chains.py
+    chains.A <chains.py:A#0 Class> @71:11 in chains.py
+  chains.g <chains.py:g#0 Function> @80:5 in chains.py
 
 == via_super
-chains.via_super
-  chains.Special @95:5
-  chains.Special.make @95:5
-    chains.Maker.build @91:9
+chains.via_super <chains.py:via_super#0 Function>
+  chains.Special <chains.py:Special#0 Class> @95:5 in chains.py
+  chains.Special.make <chains.py:Special.make#0 Method> @95:5 in chains.py
+    chains.Maker.build <chains.py:Maker.build#0 Method> @91:9 in chains.py
 
 == via_super (merged)
-chains.via_super
-  chains.Special @95:5
-  chains.Special.make @95:5
-    chains.Maker.build @91:9
+chains.via_super <chains.py:via_super#0 Function>
+  chains.Special <chains.py:Special#0 Class> @95:5 in chains.py
+  chains.Special.make <chains.py:Special.make#0 Method> @95:5 in chains.py
+    chains.Maker.build <chains.py:Maker.build#0 Method> @91:9 in chains.py
 
 == fanout
-chains.fanout
-  chains.Box @142:13
-  chains.H9 @142:17
-  chains.Box @144:13
-  chains.H8 @144:17
-  chains.Box @146:13
-  chains.H7 @146:17
-  chains.Box @148:13
-  chains.H6 @148:17
-  chains.Box @150:13
-  chains.H5 @150:17
-  chains.Box @152:13
-  chains.H4 @152:17
-  chains.Box @154:13
-  chains.H3 @154:17
-  chains.Box @156:13
-  chains.H2 @156:17
-  chains.Box @158:13
-  chains.H1 @158:17
+chains.fanout <chains.py:fanout#0 Function>
+  chains.Box <chains.py:Box#0 Class> @142:13 in chains.py
+  chains.H9 <chains.py:H9#0 Class> @142:17 in chains.py
+  chains.Box <chains.py:Box#0 Class> @144:13 in chains.py
+  chains.H8 <chains.py:H8#0 Class> @144:17 in chains.py
+  chains.Box <chains.py:Box#0 Class> @146:13 in chains.py
+  chains.H7 <chains.py:H7#0 Class> @146:17 in chains.py
+  chains.Box <chains.py:Box#0 Class> @148:13 in chains.py
+  chains.H6 <chains.py:H6#0 Class> @148:17 in chains.py
+  chains.Box <chains.py:Box#0 Class> @150:13 in chains.py
+  chains.H5 <chains.py:H5#0 Class> @150:17 in chains.py
+  chains.Box <chains.py:Box#0 Class> @152:13 in chains.py
+  chains.H4 <chains.py:H4#0 Class> @152:17 in chains.py
+  chains.Box <chains.py:Box#0 Class> @154:13 in chains.py
+  chains.H3 <chains.py:H3#0 Class> @154:17 in chains.py
+  chains.Box <chains.py:Box#0 Class> @156:13 in chains.py
+  chains.H2 <chains.py:H2#0 Class> @156:17 in chains.py
+  chains.Box <chains.py:Box#0 Class> @158:13 in chains.py
+  chains.H1 <chains.py:H1#0 Class> @158:17 in chains.py
 
 == fanout (merged)
-chains.fanout
-  chains.Box x9 @142:13
-  chains.H9 @142:17
-  chains.H8 @144:17
-  chains.H7 @146:17
-  chains.H6 @148:17
-  chains.H5 @150:17
-  chains.H4 @152:17
-  chains.H3 @154:17
-  chains.H2 @156:17
-  chains.H1 @158:17
+chains.fanout <chains.py:fanout#0 Function>
+  chains.Box <chains.py:Box#0 Class> x9 @142:13 in chains.py
+  chains.H9 <chains.py:H9#0 Class> @142:17 in chains.py
+  chains.H8 <chains.py:H8#0 Class> @144:17 in chains.py
+  chains.H7 <chains.py:H7#0 Class> @146:17 in chains.py
+  chains.H6 <chains.py:H6#0 Class> @148:17 in chains.py
+  chains.H5 <chains.py:H5#0 Class> @150:17 in chains.py
+  chains.H4 <chains.py:H4#0 Class> @152:17 in chains.py
+  chains.H3 <chains.py:H3#0 Class> @154:17 in chains.py
+  chains.H2 <chains.py:H2#0 Class> @156:17 in chains.py
+  chains.H1 <chains.py:H1#0 Class> @158:17 in chains.py
 

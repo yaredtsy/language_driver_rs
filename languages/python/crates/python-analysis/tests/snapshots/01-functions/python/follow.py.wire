@@ -1,36 +1,36 @@
 == main
-follow.main
-  follow.top @22:5
-    follow.middle @17:5
-      follow.leaf @13:5
-    follow.leaf @18:5
-  follow.middle @23:5
-    follow.leaf @13:5
+follow.main <follow.py:main#0 Function>
+  follow.top <follow.py:top#0 Function> @22:5 in follow.py
+    follow.middle <follow.py:middle#0 Function> @17:5 in follow.py
+      follow.leaf <follow.py:leaf#0 Function> @13:5 in follow.py
+    follow.leaf <follow.py:leaf#0 Function> @18:5 in follow.py
+  follow.middle <follow.py:middle#0 Function> @23:5 in follow.py
+    follow.leaf <follow.py:leaf#0 Function> @13:5 in follow.py
 
 == main (merged)
-follow.main
-  follow.top @22:5
-    follow.middle @17:5
-      follow.leaf @13:5
-    follow.leaf @18:5
-  follow.middle @23:5
-    follow.leaf @13:5
+follow.main <follow.py:main#0 Function>
+  follow.top <follow.py:top#0 Function> @22:5 in follow.py
+    follow.middle <follow.py:middle#0 Function> @17:5 in follow.py
+      follow.leaf <follow.py:leaf#0 Function> @13:5 in follow.py
+    follow.leaf <follow.py:leaf#0 Function> @18:5 in follow.py
+  follow.middle <follow.py:middle#0 Function> @23:5 in follow.py
+    follow.leaf <follow.py:leaf#0 Function> @13:5 in follow.py
 
 == across_files
-follow.across_files
-  util.chain @27:5
-    util.helper @14:5
+follow.across_files <follow.py:across_files#0 Function>
+  util.chain <util.py:chain#0 Function> @27:5 in follow.py
+    util.helper <util.py:helper#0 Function> @14:5 in util.py
 
 == across_files (merged)
-follow.across_files
-  util.chain @27:5
-    util.helper @14:5
+follow.across_files <follow.py:across_files#0 Function>
+  util.chain <util.py:chain#0 Function> @27:5 in follow.py
+    util.helper <util.py:helper#0 Function> @14:5 in util.py
 
 == no_caller_scope
-follow.no_caller_scope
-  follow.reads_x @32:5
+follow.no_caller_scope <follow.py:no_caller_scope#0 Function>
+  follow.reads_x <follow.py:reads_x#0 Function> @32:5 in follow.py
 
 == no_caller_scope (merged)
-follow.no_caller_scope
-  follow.reads_x @32:5
+follow.no_caller_scope <follow.py:no_caller_scope#0 Function>
+  follow.reads_x <follow.py:reads_x#0 Function> @32:5 in follow.py
 

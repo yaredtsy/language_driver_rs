@@ -1,28 +1,28 @@
 == main
-stable_ids.main
-  stable_ids.read_a @18:5
-    stable_ids.done @10:5
-  stable_ids.read_b @19:5
-    stable_ids.done @14:5
+stable_ids.main <stable_ids.py:main#0 Function>
+  stable_ids.read_a <stable_ids.py:read_a#0 Function> @18:5 in stable_ids.py
+    stable_ids.done <stable_ids.py:done#0 Function> @10:5 in stable_ids.py
+  stable_ids.read_b <stable_ids.py:read_b#0 Function> @19:5 in stable_ids.py
+    stable_ids.done <stable_ids.py:done#0 Function> @14:5 in stable_ids.py
 
 == main (merged)
-stable_ids.main
-  stable_ids.read_a @18:5
-    stable_ids.done @10:5
-  stable_ids.read_b @19:5
-    stable_ids.done @14:5
+stable_ids.main <stable_ids.py:main#0 Function>
+  stable_ids.read_a <stable_ids.py:read_a#0 Function> @18:5 in stable_ids.py
+    stable_ids.done <stable_ids.py:done#0 Function> @10:5 in stable_ids.py
+  stable_ids.read_b <stable_ids.py:read_b#0 Function> @19:5 in stable_ids.py
+    stable_ids.done <stable_ids.py:done#0 Function> @14:5 in stable_ids.py
 
 == main2
-stable_ids.main2
-  stable_ids.read_b @23:5
-    stable_ids.done @14:5
-  stable_ids.read_a @24:5
-    stable_ids.done @10:5
+stable_ids.main2 <stable_ids.py:main2#0 Function>
+  stable_ids.read_b <stable_ids.py:read_b#0 Function> @23:5 in stable_ids.py
+    stable_ids.done <stable_ids.py:done#0 Function> @14:5 in stable_ids.py
+  stable_ids.read_a <stable_ids.py:read_a#0 Function> @24:5 in stable_ids.py
+    stable_ids.done <stable_ids.py:done#0 Function> @10:5 in stable_ids.py
 
 == main2 (merged)
-stable_ids.main2
-  stable_ids.read_b @23:5
-    stable_ids.done @14:5
-  stable_ids.read_a @24:5
-    stable_ids.done @10:5
+stable_ids.main2 <stable_ids.py:main2#0 Function>
+  stable_ids.read_b <stable_ids.py:read_b#0 Function> @23:5 in stable_ids.py
+    stable_ids.done <stable_ids.py:done#0 Function> @14:5 in stable_ids.py
+  stable_ids.read_a <stable_ids.py:read_a#0 Function> @24:5 in stable_ids.py
+    stable_ids.done <stable_ids.py:done#0 Function> @10:5 in stable_ids.py
 

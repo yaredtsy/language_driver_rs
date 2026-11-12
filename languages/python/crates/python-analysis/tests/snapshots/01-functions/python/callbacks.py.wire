@@ -1,68 +1,68 @@
 == main
-callbacks.main
-  callbacks.handle_ok @33:5
-    callbacks.run @25:5
-      callbacks.on_ok @21:5
-      callbacks.fetch @21:8
-  callbacks.handle_err @34:5
-    callbacks.run @29:5
-      callbacks.on_err @21:5
-      callbacks.fetch @21:8
+callbacks.main <callbacks.py:main#0 Function>
+  callbacks.handle_ok <callbacks.py:handle_ok#0 Function> @33:5 in callbacks.py
+    callbacks.run <callbacks.py:run#0 Function> @25:5 in callbacks.py
+      callbacks.on_ok <callbacks.py:on_ok#0 Function> @21:5 in callbacks.py
+      callbacks.fetch <callbacks.py:fetch#0 Function> @21:8 in callbacks.py
+  callbacks.handle_err <callbacks.py:handle_err#0 Function> @34:5 in callbacks.py
+    callbacks.run <callbacks.py:run#0 Function> @29:5 in callbacks.py
+      callbacks.on_err <callbacks.py:on_err#0 Function> @21:5 in callbacks.py
+      callbacks.fetch <callbacks.py:fetch#0 Function> @21:8 in callbacks.py
 
 == main (merged)
-callbacks.main
-  callbacks.handle_ok @33:5
-    callbacks.run @25:5
-      callbacks.on_ok @21:5
-      callbacks.fetch @21:8
-  callbacks.handle_err @34:5
-    callbacks.run @29:5
-      callbacks.on_err @21:5
-      callbacks.fetch @21:8
+callbacks.main <callbacks.py:main#0 Function>
+  callbacks.handle_ok <callbacks.py:handle_ok#0 Function> @33:5 in callbacks.py
+    callbacks.run <callbacks.py:run#0 Function> @25:5 in callbacks.py
+      callbacks.on_ok <callbacks.py:on_ok#0 Function> @21:5 in callbacks.py
+      callbacks.fetch <callbacks.py:fetch#0 Function> @21:8 in callbacks.py
+  callbacks.handle_err <callbacks.py:handle_err#0 Function> @34:5 in callbacks.py
+    callbacks.run <callbacks.py:run#0 Function> @29:5 in callbacks.py
+      callbacks.on_err <callbacks.py:on_err#0 Function> @21:5 in callbacks.py
+      callbacks.fetch <callbacks.py:fetch#0 Function> @21:8 in callbacks.py
 
 == two_levels
-callbacks.two_levels
-  callbacks.outer @46:5
-    callbacks.middle @38:5
-      callbacks.on_ok @42:5
+callbacks.two_levels <callbacks.py:two_levels#0 Function>
+  callbacks.outer <callbacks.py:outer#0 Function> @46:5 in callbacks.py
+    callbacks.middle <callbacks.py:middle#0 Function> @38:5 in callbacks.py
+      callbacks.on_ok <callbacks.py:on_ok#0 Function> @42:5 in callbacks.py
 
 == two_levels (merged)
-callbacks.two_levels
-  callbacks.outer @46:5
-    callbacks.middle @38:5
-      callbacks.on_ok @42:5
+callbacks.two_levels <callbacks.py:two_levels#0 Function>
+  callbacks.outer <callbacks.py:outer#0 Function> @46:5 in callbacks.py
+    callbacks.middle <callbacks.py:middle#0 Function> @38:5 in callbacks.py
+      callbacks.on_ok <callbacks.py:on_ok#0 Function> @42:5 in callbacks.py
 
 == from_a_factory
-callbacks.from_a_factory
-  callbacks.run @54:5
-    callbacks.on_ok @21:5
-    callbacks.fetch @21:8
-  callbacks.factory @54:16
+callbacks.from_a_factory <callbacks.py:from_a_factory#0 Function>
+  callbacks.run <callbacks.py:run#0 Function> @54:5 in callbacks.py
+    callbacks.on_ok <callbacks.py:on_ok#0 Function> @21:5 in callbacks.py
+    callbacks.fetch <callbacks.py:fetch#0 Function> @21:8 in callbacks.py
+  callbacks.factory <callbacks.py:factory#0 Function> @54:16 in callbacks.py
 
 == from_a_factory (merged)
-callbacks.from_a_factory
-  callbacks.run @54:5
-    callbacks.on_ok @21:5
-    callbacks.fetch @21:8
-  callbacks.factory @54:16
+callbacks.from_a_factory <callbacks.py:from_a_factory#0 Function>
+  callbacks.run <callbacks.py:run#0 Function> @54:5 in callbacks.py
+    callbacks.on_ok <callbacks.py:on_ok#0 Function> @21:5 in callbacks.py
+    callbacks.fetch <callbacks.py:fetch#0 Function> @21:8 in callbacks.py
+  callbacks.factory <callbacks.py:factory#0 Function> @54:16 in callbacks.py
 
 == uses_decorated
-callbacks.uses_decorated
-  callbacks.flaky @75:5
-    callbacks.on_ok @66:5
-  callbacks.flaky_with @76:5
-    callbacks.on_err @71:5
+callbacks.uses_decorated <callbacks.py:uses_decorated#0 Function>
+  callbacks.flaky <callbacks.py:flaky#0 Function> @75:5 in callbacks.py
+    callbacks.on_ok <callbacks.py:on_ok#0 Function> @66:5 in callbacks.py
+  callbacks.flaky_with <callbacks.py:flaky_with#0 Function> @76:5 in callbacks.py
+    callbacks.on_err <callbacks.py:on_err#0 Function> @71:5 in callbacks.py
 
 == uses_decorated (merged)
-callbacks.uses_decorated
-  callbacks.flaky @75:5
-    callbacks.on_ok @66:5
-  callbacks.flaky_with @76:5
-    callbacks.on_err @71:5
+callbacks.uses_decorated <callbacks.py:uses_decorated#0 Function>
+  callbacks.flaky <callbacks.py:flaky#0 Function> @75:5 in callbacks.py
+    callbacks.on_ok <callbacks.py:on_ok#0 Function> @66:5 in callbacks.py
+  callbacks.flaky_with <callbacks.py:flaky_with#0 Function> @76:5 in callbacks.py
+    callbacks.on_err <callbacks.py:on_err#0 Function> @71:5 in callbacks.py
 
 == uses_stdlib
-callbacks.uses_stdlib
+callbacks.uses_stdlib <callbacks.py:uses_stdlib#0 Function>
 
 == uses_stdlib (merged)
-callbacks.uses_stdlib
+callbacks.uses_stdlib <callbacks.py:uses_stdlib#0 Function>
 

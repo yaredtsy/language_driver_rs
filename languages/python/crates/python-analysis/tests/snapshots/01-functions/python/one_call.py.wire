@@ -1,11 +1,11 @@
 == main
-one_call.main
-  one_call.helper @17:5
-  one_call.other @18:14
-  one_call.helper @21:9
+one_call.main <one_call.py:main#0 Function>
+  one_call.helper <one_call.py:helper#0 Function> @17:5 in one_call.py
+  one_call.other <one_call.py:other#0 Function> @18:14 in one_call.py
+  one_call.helper <one_call.py:helper#0 Function> @21:9 in one_call.py
 
 == main (merged)
-one_call.main
-  one_call.helper x2 @17:5
-  one_call.other @18:14
+one_call.main <one_call.py:main#0 Function>
+  one_call.helper <one_call.py:helper#0 Function> x2 @17:5 in one_call.py
+  one_call.other <one_call.py:other#0 Function> @18:14 in one_call.py
 

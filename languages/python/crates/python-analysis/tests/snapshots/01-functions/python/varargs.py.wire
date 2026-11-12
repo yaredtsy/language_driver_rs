@@ -1,20 +1,20 @@
 == main
-varargs.main
-  varargs.collect @31:5
-  varargs.by_name @32:5
-  varargs.two @34:5
-  varargs.two @35:5
-    varargs.b @23:5
-  varargs.two @36:5
-  varargs.after_star @37:5
-    varargs.b @27:5
+varargs.main <varargs.py:main#0 Function>
+  varargs.collect <varargs.py:collect#0 Function> @31:5 in varargs.py
+  varargs.by_name <varargs.py:by_name#0 Function> @32:5 in varargs.py
+  varargs.two <varargs.py:two#0 Function> @34:5 in varargs.py
+  varargs.two <varargs.py:two#0 Function> @35:5 in varargs.py
+    varargs.b <varargs.py:b#0 Function> @23:5 in varargs.py
+  varargs.two <varargs.py:two#0 Function> @36:5 in varargs.py
+  varargs.after_star <varargs.py:after_star#0 Function> @37:5 in varargs.py
+    varargs.b <varargs.py:b#0 Function> @27:5 in varargs.py
 
 == main (merged)
-varargs.main
-  varargs.collect @31:5
-  varargs.by_name @32:5
-  varargs.two x3 @34:5
-    varargs.b @23:5
-  varargs.after_star @37:5
-    varargs.b @27:5
+varargs.main <varargs.py:main#0 Function>
+  varargs.collect <varargs.py:collect#0 Function> @31:5 in varargs.py
+  varargs.by_name <varargs.py:by_name#0 Function> @32:5 in varargs.py
+  varargs.two <varargs.py:two#0 Function> x3 @34:5 in varargs.py
+    varargs.b <varargs.py:b#0 Function> @23:5 in varargs.py
+  varargs.after_star <varargs.py:after_star#0 Function> @37:5 in varargs.py
+    varargs.b <varargs.py:b#0 Function> @27:5 in varargs.py
 
