@@ -1,6 +1,6 @@
 # Note: what runs when a class is constructed, and so what is under a `Construct`
 
-Status: **a design note, no code, for the owner to choose.** Written on 2026-11-12 after TS4 step 7a, from reading `core/analyzer-core/src/{graph,solve,render}.rs`,
+Status: **decided by the owner on 2026-11-12: option A at TS5, B1 as the design of record, built only when the counter reads above 0 (D25 in `07-decisions-and-questions.md`); definition-time sites get a counter, not an entry.** A design note, no code. Written on 2026-11-12 after TS4 step 7a, from reading `core/analyzer-core/src/{graph,solve,render}.rs`,
 `languages/typescript/ENGINE.md` and the policy snapshots. Two things were run, and are marked **[ran]**: a JavaScript program under node 22.17 for the order of what runs, and
 `ts.transpileModule` of TypeScript 5.8.3 (the copy in the V-NOC frontend's `node_modules`) for what the compiler emits. The rest is reading; every `[check]` is a claim to verify
 before building on it.
