@@ -202,8 +202,9 @@ impl Project {
     /// Brings the project up to date with the disk; call it before each request, because a request answers from what the project knows
     /// and does not look at the disk. It never fails.
     ///
-    /// The environment inputs ([`Project::environment_inputs`]) are compared with how they were at open. If one changed, appeared or went away, the project is opened again from the same root (D26: the root is
-    /// never rediscovered) and `reopened` is true: the next request is as slow as the first. Otherwise the engine re-reads the metadata
+    /// The environment inputs ([`Project::environment_inputs`]) are compared with how they were at open. If one changed, appeared or
+    /// went away, the project is opened again from the same root (D26: the root is never rediscovered) and `reopened` is true: the
+    /// next request is as slow as the first. Otherwise the engine re-reads the metadata
     /// of the files it has seen, and only what read a changed file is recomputed; this is cheap (milliseconds), and a file created
     /// after the first request is found too. If the project cannot be opened again (the root is gone), the old one is kept, synced, and
     /// `reopened` is false: requests then answer `None`.
