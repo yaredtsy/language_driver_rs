@@ -162,7 +162,7 @@ I read source; I built and ran nothing.
 - ❌ E3's proof said `grep -rn "struct Entry" languages` finds nothing. `typescript-syntax` has an unrelated private `struct Entry` in its outline builder; the grep is for `struct Entry<` over `languages core`.
 - ❌ That the Python `Walk` takes only a function: `Walk::new` and `frame_for` take any def, so a class entry needs no second path (E5, claim 5).
 - ✅ A class entry and a `Child()` call share one constructor context, with the same function and the same digest (E5, claim 7).
-- **Still open: Windows.** `plain` in `python-analysis/src/sem.rs` (EW) and its relative-path test are green on macOS only; this repo's CI on `windows-latest` is the proof, and it has not run.
+- **Windows: proven for Python.** `plain` in `python-analysis/src/sem.rs` (EW) and its relative-path test were green on macOS, and are proven on Windows by CI run #11 on `4aae76a` (`analysis (python, windows-latest)`, green).
 
 **Sizes.** Every S / M / L in these files is a guess. TS0 was S, as guessed (one working session). The spikes measure the engine, not our
 work, so TS1–TS4 stay guesses until TS1 is built; update [06](06-roadmap.md) §4 then.
