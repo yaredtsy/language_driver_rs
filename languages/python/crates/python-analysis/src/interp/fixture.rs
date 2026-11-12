@@ -1029,7 +1029,7 @@ fn a_weak_write_marks_what_it_may_have_dropped_and_a_strong_one_marks_nothing() 
 }
 
 /// The golden wire of a real project. Not run by default: it needs a project that is not in the repo and the files in `out/golden/`, and the
-/// prefixes are V-NOC's, which no crate may spell. Run it by hand:
+/// prefixes are the caller's, which no crate may spell. Run it by hand:
 ///
 /// `PYTHON_GOLDEN_PROJECT=<dir> PYTHON_GOLDEN_FILE=<file in it> PYTHON_GOLDEN_ENTRY=<entry> PYTHON_GOLDEN_DIR=<out/golden>
 ///  PYTHON_GOLDEN_PREFIXES=<function prefix>,<class prefix> cargo test -p python-analysis golden -- --ignored --nocapture`

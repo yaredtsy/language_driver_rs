@@ -1122,6 +1122,7 @@ dependencies = [
  "analyzer-core",
  "python-analysis",
  "python-syntax",
+ "serde_json",
 ]
 
 [[package]]

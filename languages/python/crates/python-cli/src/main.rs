@@ -1,8 +1,9 @@
 //! `python-cli`: try the analyzer by hand.
 //!
 //! - `outline <file> [--label <label>]`: the defs of one file.
-//! - `calls <dir> <file> --entry <qualname> [--occurrence <n> | --id <marker>] [--only-marked] [--timing] [--label <label>]`: the call tree
-//!   under a def, a blank line, then the counters. A qualname is not unique in a file (D15, D20): when it matches several defs they are
+//! - `calls <dir> <file> --entry <qualname> [--occurrence <n> | --id <marker>] [--graph | --wire [--merged] [--function-prefix <p>]
+//!   [--class-prefix <p>]] [--only-marked] [--timing] [--label <label>]`: the call tree under a def, a blank line, then the counters; with
+//!   `--graph` the graph, and with `--wire` the wire (D17), as JSON alone on stdout (the counters go to stderr, and the wire has none). A qualname is not unique in a file (D15, D20): when it matches several defs they are
 //!   listed and the exit code is 2, never the first one picked; `--occurrence` or `--id` says which.
 //!
 //! Exit codes: 0 done, 1 the thing asked for is not there, 2 the command line is wrong. stdout is the answer and nothing else;
@@ -14,11 +15,14 @@ use std::path::Path;
 use std::time::Instant;
 
 use analyzer_core::text::{Encoding, LineIndex};
-use python_analysis::{Entry, Options, Project, Stats, call_graph, render, to_text};
+use python_analysis::{
+    Entry, Options, Project, Stats, WireStyle, call_graph, call_wire, render, to_text,
+};
 use python_syntax::{MarkerStyle, outline};
 
 const USAGE: &str = "usage: python-cli outline <file> [--label <label>]
-       python-cli calls <dir> <file> --entry <qualname> [--occurrence <n> | --id <marker>] [--only-marked] [--timing] [--label <label>]";
+       python-cli calls <dir> <file> --entry <qualname> [--occurrence <n> | --id <marker>]
+                 [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--only-marked] [--timing] [--label <label>]";
 
 /// Remove `--name value` from `args` and return the value.
 fn take_value(args: &mut Vec<String>, name: &str) -> Option<String> {
@@ -44,6 +48,11 @@ fn main() -> ExitCode {
     let entry = take_value(&mut args, "--entry");
     let occurrence = take_value(&mut args, "--occurrence");
     let id = take_value(&mut args, "--id");
+    let graph = take_flag(&mut args, "--graph");
+    let wire = take_flag(&mut args, "--wire");
+    let merged = take_flag(&mut args, "--merged");
+    let function_prefix = take_value(&mut args, "--function-prefix");
+    let class_prefix = take_value(&mut args, "--class-prefix");
     let only_marked = take_flag(&mut args, "--only-marked");
     let timing = take_flag(&mut args, "--timing");
     match args
@@ -53,6 +62,15 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["outline", path] => print_outline(path, &label),
+        ["calls", ..]
+            if (graph && wire)
+                || (!wire && (merged || function_prefix.is_some() || class_prefix.is_some())) =>
+        {
+            eprintln!(
+                "--graph and --wire are two outputs, and --merged and the prefixes belong to --wire\n{USAGE}"
+            );
+            ExitCode::from(2)
+        }
         ["calls", dir, file] => {
             let Some(entry) = entry else {
                 eprintln!("calls needs --entry <qualname>\n{USAGE}");
@@ -80,6 +98,12 @@ fn main() -> ExitCode {
                     occurrence,
                     id: id.as_deref(),
                     label,
+                    graph,
+                    wire: wire.then(|| WireStyle {
+                        function_prefix: function_prefix.unwrap_or_default(),
+                        class_prefix: class_prefix.unwrap_or_default(),
+                    }),
+                    merged,
                     only_marked,
                     timing,
                 },
@@ -106,6 +130,10 @@ struct Calls<'a> {
     occurrence: Option<u16>,
     id: Option<&'a str>,
     label: String,
+    graph: bool,
+    /// `Some`: print the wire, with these prefixes for the ids.
+    wire: Option<WireStyle>,
+    merged: bool,
     only_marked: bool,
     timing: bool,
 }
@@ -219,20 +247,39 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
     let options = Options {
         marker: style,
         only_marked: ask.only_marked,
+        wire: ask.wire.clone().unwrap_or_default(),
         ..Options::default()
     };
     let solving = Instant::now();
+    let timing = |solving: Instant| {
+        if ask.timing {
+            eprintln!(
+                "open {} ms, solve {} ms",
+                opened.as_millis(),
+                solving.elapsed().as_millis()
+            );
+        }
+    };
+    if ask.wire.is_some() {
+        // the wire alone on stdout: JSON, so it can be read as it is. `call_wire` returns the frame only, so there are no counters
+        let Some(frame) = call_wire(&project, file, &entry, &options, ask.merged) else {
+            eprintln!("{file}: no def `{}`", ask.entry);
+            return ExitCode::from(1);
+        };
+        timing(solving);
+        return print_json(file, serde_json::to_string_pretty(&frame));
+    }
     let graph = call_graph(&project, file, &entry, &options);
     let Some(graph) = graph.filter(|g| !g.entries.is_empty()) else {
         eprintln!("{file}: no def `{}`", ask.entry);
         return ExitCode::from(1);
     };
-    if ask.timing {
-        eprintln!(
-            "open {} ms, solve {} ms",
-            opened.as_millis(),
-            solving.elapsed().as_millis()
-        );
+    timing(solving);
+    if ask.graph {
+        // the graph alone on stdout, so it can be read as it is; the counters go to stderr
+        let code = print_json(file, serde_json::to_string_pretty(&graph));
+        eprint!("{}", counters(&graph.stats));
+        return code;
     }
     print!(
         "{}",
@@ -245,6 +292,21 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
     println!();
     print!("{}", counters(&graph.stats));
     ExitCode::SUCCESS
+}
+
+/// The answer as pretty JSON on stdout. The graph's and the frame's maps are `BTreeMap`s and their lists are sorted, so the bytes are the
+/// same for the same input (rule 9).
+fn print_json(file: &str, json: serde_json::Result<String>) -> ExitCode {
+    match json {
+        Ok(json) => {
+            println!("{json}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{file}: the answer cannot be written: {e}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 fn print_outline(path: &str, label: &str) -> ExitCode {

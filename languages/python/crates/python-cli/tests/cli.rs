@@ -5,6 +5,8 @@
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
+use serde_json::Value;
+
 /// A fixture file of `python-analysis`, as a path the binary can open.
 fn fixture(project: &str, file: &str) -> String {
     let path: PathBuf = [
@@ -455,4 +457,158 @@ fn calls_twice_prints_the_same_bytes() {
     let dir = project("06-wire");
     let args = ["calls", &dir, "ids_and_classes.py", "--entry", "main"];
     assert_eq!(run(&args).stdout, run(&args).stdout);
+}
+
+// `calls --wire` and `calls --graph` (C3)
+
+/// The arguments of `calls` on `ids_and_classes.py`, entry `main`, then `more`.
+fn calls_main(more: &[&str]) -> Output {
+    let dir = project("06-wire");
+    let mut args = vec!["calls", &dir, "ids_and_classes.py", "--entry", "main"];
+    args.extend_from_slice(more);
+    run(&args)
+}
+
+/// stdout as JSON: the whole of it, so anything else on stdout fails here.
+fn json(out: &Output) -> Value {
+    serde_json::from_str(&stdout(out))
+        .unwrap_or_else(|e| panic!("stdout is not one JSON value: {e}\n{}", stdout(out)))
+}
+
+fn children(frame: &Value) -> &Vec<Value> {
+    frame["children"].as_array().expect("a frame has children")
+}
+
+#[test]
+fn wire_is_json_alone_with_the_ids_the_prefixes_make() {
+    let out = calls_main(&["--wire", "--function-prefix", "F/", "--class-prefix", "C/"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let frame = json(&out);
+    assert_eq!(frame["target_id"], "F/06000000-0003-0000-0000-000000000000");
+    let kids = children(&frame);
+    assert_eq!(kids.len(), 4, "one node per call site");
+    assert_eq!(
+        kids[0]["target_id"],
+        "C/06000000-0001-0000-0000-000000000000"
+    );
+    assert_eq!(stderr(&out), "", "no counters: the wire is the frame only");
+}
+
+#[test]
+fn wire_merged_joins_the_calls_of_one_target_and_counts_them() {
+    let out = calls_main(&[
+        "--wire",
+        "--merged",
+        "--function-prefix",
+        "F/",
+        "--class-prefix",
+        "C/",
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let frame = json(&out);
+    let kids = children(&frame);
+    assert_eq!(
+        kids.len(),
+        3,
+        "the two plain calls to `unmarked` are one node"
+    );
+    let unmarked = kids
+        .iter()
+        .find(|k| k["target_qname"] == "ids_and_classes.unmarked")
+        .expect("`unmarked` is a child of `main`");
+    assert_eq!(unmarked["call_count"], 1);
+}
+
+#[test]
+fn wire_without_prefixes_has_ids_with_none() {
+    let out = calls_main(&["--wire"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let frame = json(&out);
+    assert_eq!(frame["target_id"], "06000000-0003-0000-0000-000000000000");
+    assert_eq!(
+        children(&frame)[0]["target_id"],
+        "06000000-0001-0000-0000-000000000000"
+    );
+}
+
+#[test]
+fn graph_is_json_alone_and_the_counters_go_to_stderr() {
+    let out = calls_main(&["--graph"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let graph = json(&out);
+    for key in ["entries", "defs", "contexts", "edges"] {
+        assert!(graph[key].is_array(), "{key}: {}", stdout(&out));
+    }
+    assert!(
+        stderr(&out).starts_with("contexts 5, walks 5, reuse hits 2, unresolved 0\n"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn graph_and_wire_flags_that_do_not_go_together_are_exit_2() {
+    for more in [
+        &["--graph", "--wire"][..],
+        &["--merged"],
+        &["--function-prefix", "F/"],
+        &["--class-prefix", "C/"],
+        &["--graph", "--merged"],
+        &["--graph", "--class-prefix", "C/"],
+    ] {
+        let out = calls_main(more);
+        assert_eq!(out.status.code(), Some(2), "{more:?}: {}", stderr(&out));
+        assert!(
+            stderr(&out).contains("usage:"),
+            "{more:?}: {}",
+            stderr(&out)
+        );
+        assert_eq!(stdout(&out), "", "{more:?}");
+    }
+}
+
+#[test]
+fn every_output_prints_the_same_bytes_twice() {
+    for more in [
+        &[][..],
+        &["--graph"],
+        &["--wire"],
+        &["--wire", "--merged"],
+        &["--wire", "--function-prefix", "F/", "--class-prefix", "C/"],
+    ] {
+        let first = calls_main(more);
+        assert_eq!(first.status.code(), Some(0), "{more:?}: {}", stderr(&first));
+        assert!(!first.stdout.is_empty(), "{more:?}");
+        let second = calls_main(more);
+        assert_eq!(first.stdout, second.stdout, "{more:?}");
+        assert_eq!(first.stderr, second.stderr, "{more:?}");
+    }
+}
+
+#[test]
+fn wire_of_a_class_entry_names_the_file_of_a_call_made_in_an_inherited_constructor() {
+    let dir = project("08-entries");
+    let out = run(&["calls", &dir, "inherit_a.py", "--entry", "Child", "--wire"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let frame = json(&out);
+    // `helper` is called by `Base.__init__`, which is in `inherit_b.py`, not in the class's file
+    let helper = &children(&frame)[0];
+    assert_eq!(helper["target_qname"], "inherit_b.helper");
+    assert_eq!(helper["call_site_file"], "inherit_b.py");
+}
+
+#[test]
+fn timing_with_a_json_output_is_on_stderr_and_stdout_stays_json() {
+    for more in [&["--wire"][..], &["--graph"]] {
+        let plain = calls_main(more);
+        let args: Vec<&str> = more.iter().copied().chain(["--timing"]).collect();
+        let timed = calls_main(&args);
+        assert_eq!(timed.status.code(), Some(0), "{more:?}");
+        assert_eq!(stdout(&timed), stdout(&plain), "{more:?}");
+        assert!(
+            stderr(&timed).contains(" ms, solve "),
+            "{more:?}: {}",
+            stderr(&timed)
+        );
+    }
 }

@@ -12,3 +12,4 @@ workspace = true
 analyzer-core = { workspace = true }
 python-syntax = { workspace = true }
 python-analysis = { workspace = true }
+serde_json = { workspace = true }

@@ -78,7 +78,7 @@ pub fn call_graph(
     interp::call_graph(project.db(), project.file(file)?, entry, &opts.solver())
 }
 
-/// The wire of `entry`: the tree V-NOC stores, one node per call site, or with `merged` the siblings of one target joined and counted.
+/// The wire of `entry`: the stored tree, one node per call site, or with `merged` the siblings of one target joined and counted.
 /// `None` when there is no such file or no such def.
 pub fn call_wire(
     project: &Project,
