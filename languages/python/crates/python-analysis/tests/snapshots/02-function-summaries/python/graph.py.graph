@@ -4,18 +4,18 @@ stats: walks 8, contexts 8, reuse_hits 2, unresolved 0, cuts {}, language {"anno
 graph.a#dd3ee6817bfde871 Finished
 graph.b#45ae73e3a0b7b8d5 Finished
 graph.main#27fcd81216baf980 Finished
-  @16-24 -> graph.read_a#e820a24121fceb16 Type
-  @29-37 -> graph.read_b#fd408e8fd92a1a06 Type
-  @42-49 -> graph.twice#d2718359491ac639 Type
+  @16-24 -> graph.read_a#e820a24121fceb16 Name
+  @29-37 -> graph.read_b#fd408e8fd92a1a06 Name
+  @42-49 -> graph.twice#d2718359491ac639 Name
 graph.read_a#e820a24121fceb16 Finished
-  @18-24 -> graph.run#b78c5788963808e5 Type
+  @18-24 -> graph.run#b78c5788963808e5 Name
 graph.read_b#fd408e8fd92a1a06 Finished
-  @18-24 -> graph.run#8ce7f70ed8e97747 Type
+  @18-24 -> graph.run#8ce7f70ed8e97747 Name
 graph.run#8ce7f70ed8e97747 Finished
   @17-21 -> graph.b#45ae73e3a0b7b8d5 Type
 graph.run#b78c5788963808e5 Finished
   @17-21 -> graph.a#dd3ee6817bfde871 Type
 graph.twice#d2718359491ac639 Finished
-  @17-23 -> graph.run#b78c5788963808e5 Type
-  @28-34 -> graph.run#b78c5788963808e5 Type
+  @17-23 -> graph.run#b78c5788963808e5 Name
+  @28-34 -> graph.run#b78c5788963808e5 Name
 

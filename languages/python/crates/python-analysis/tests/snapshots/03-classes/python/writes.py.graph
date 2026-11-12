@@ -6,9 +6,9 @@ writes.Pipeline.__init__#940f8708ce0193fa Finished
 writes.Pipeline.run#e9a21ba1950e8645 Finished
   @23-45 -> writes.JsonHandler.process#ad17a16458f0bde5 Type
 writes.outside#ab284c6f346e90b8 Finished
-  @23-45 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Type
-  @32-44 -> new writes.CsvHandler init - Type
-  @62-75 -> new writes.JsonHandler init - Type
+  @23-45 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Name
+  @32-44 -> new writes.CsvHandler init - Name
+  @62-75 -> new writes.JsonHandler init - Name
   @104-111 -> writes.Pipeline.run#e9a21ba1950e8645 Path
 
 == in_another_method
@@ -17,10 +17,10 @@ stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"anno
 writes.Controller.go#7559cf3cc4a6df28 Finished
   @22-38 -> writes.JsonHandler.process#ad17a16458f0bde5 Type
 writes.Controller.setup#828f34b58d72569e Finished
-  @34-47 -> new writes.JsonHandler init - Type
+  @34-47 -> new writes.JsonHandler init - Name
 writes.JsonHandler.process#ad17a16458f0bde5 Finished
 writes.in_another_method#1672a2aa47f2e5c8 Finished
-  @33-45 -> new writes.Controller init - Type
+  @33-45 -> new writes.Controller init - Name
   @50-59 -> writes.Controller.setup#828f34b58d72569e Path
   @64-70 -> writes.Controller.go#7559cf3cc4a6df28 Path
 
@@ -32,10 +32,10 @@ writes.Pipeline.run#16e067b699668c83 Finished
   @23-45 -> ? unknown_callee
 writes.install#5e592b91c9749e3a Finished
 writes.through_a_function#53756446a216a726 Finished
-  @34-56 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Type
-  @43-55 -> new writes.CsvHandler init - Type
-  @61-86 -> writes.install#5e592b91c9749e3a Type
-  @72-85 -> new writes.JsonHandler init - Type
+  @34-56 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Name
+  @43-55 -> new writes.CsvHandler init - Name
+  @61-86 -> writes.install#5e592b91c9749e3a Name
+  @72-85 -> new writes.JsonHandler init - Name
   @91-98 -> writes.Pipeline.run#16e067b699668c83 Path
 
 == on_one_path
@@ -46,10 +46,10 @@ writes.Pipeline.run#16e067b699668c83 Finished
   @23-45 -> ? unknown_callee
 writes.maybe#6fa8d8f56df2faa0 Finished
 writes.on_one_path#0fde55f537b4a0d9 Finished
-  @28-50 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Type
-  @37-49 -> new writes.CsvHandler init - Type
-  @55-81 -> writes.maybe#6fa8d8f56df2faa0 Type
-  @64-77 -> new writes.JsonHandler init - Type
+  @28-50 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Name
+  @37-49 -> new writes.CsvHandler init - Name
+  @55-81 -> writes.maybe#6fa8d8f56df2faa0 Name
+  @64-77 -> new writes.JsonHandler init - Name
   @86-93 -> writes.Pipeline.run#16e067b699668c83 Path
 
 == two_candidates
@@ -61,10 +61,10 @@ writes.Pipeline.run#491a9d94fadd74d4 Finished
   @23-45 -> writes.JsonHandler.process#ad17a16458f0bde5 Type
   @23-45 -> ? unknown_callee
 writes.two_candidates#1344a6e8d804cb8b Finished
-  @31-53 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Type
-  @40-52 -> new writes.CsvHandler init - Type
-  @62-84 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Type
-  @71-83 -> new writes.CsvHandler init - Type
-  @123-136 -> new writes.JsonHandler init - Type
+  @31-53 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Name
+  @40-52 -> new writes.CsvHandler init - Name
+  @62-84 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Name
+  @71-83 -> new writes.CsvHandler init - Name
+  @123-136 -> new writes.JsonHandler init - Name
   @185-192 -> writes.Pipeline.run#491a9d94fadd74d4 Path
 

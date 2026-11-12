@@ -4,19 +4,19 @@ stats: walks 11, contexts 11, reuse_hits 6, unresolved 0, cuts {}, language {"an
 keys.a#6784e2d0feca9f6a Finished
 keys.b#f24b0c222be36ace Finished
 keys.different#56b2f2bd26d30436 Finished
-  @21-27 -> keys.run#7266e9badbd614a9 Type
-  @32-38 -> keys.run#e9e4acefcb502d2f Type
+  @21-27 -> keys.run#7266e9badbd614a9 Name
+  @32-38 -> keys.run#e9e4acefcb502d2f Name
 keys.either#7e37b2fe68ce976b Finished
-  @41-47 -> keys.run#51f5a2e2149fb0f4 Type
+  @41-47 -> keys.run#51f5a2e2149fb0f4 Name
 keys.literals#2d7d0b798bf015e1 Finished
-  @20-29 -> keys.note#4bd35c9f6b868e15 Type
-  @34-43 -> keys.note#4bd35c9f6b868e15 Type
-  @85-92 -> keys.note#4bd35c9f6b868e15 Type
+  @20-29 -> keys.note#4bd35c9f6b868e15 Name
+  @34-43 -> keys.note#4bd35c9f6b868e15 Name
+  @85-92 -> keys.note#4bd35c9f6b868e15 Name
 keys.main#45d56cf5a3c4d8a8 Finished
-  @16-28 -> keys.same_twice#90c1c856944a4f22 Type
-  @33-44 -> keys.different#56b2f2bd26d30436 Type
-  @49-59 -> keys.literals#2d7d0b798bf015e1 Type
-  @64-76 -> keys.either#7e37b2fe68ce976b Type
+  @16-28 -> keys.same_twice#90c1c856944a4f22 Name
+  @33-44 -> keys.different#56b2f2bd26d30436 Name
+  @49-59 -> keys.literals#2d7d0b798bf015e1 Name
+  @64-76 -> keys.either#7e37b2fe68ce976b Name
 keys.note#4bd35c9f6b868e15 Finished
 keys.run#51f5a2e2149fb0f4 Finished
   @17-21 -> keys.a#6784e2d0feca9f6a Type
@@ -26,6 +26,6 @@ keys.run#7266e9badbd614a9 Finished
 keys.run#e9e4acefcb502d2f Finished
   @17-21 -> keys.b#f24b0c222be36ace Type
 keys.same_twice#90c1c856944a4f22 Finished
-  @22-28 -> keys.run#7266e9badbd614a9 Type
-  @33-39 -> keys.run#7266e9badbd614a9 Type
+  @22-28 -> keys.run#7266e9badbd614a9 Name
+  @33-39 -> keys.run#7266e9badbd614a9 Name
 

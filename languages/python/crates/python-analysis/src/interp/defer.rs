@@ -32,6 +32,8 @@ pub(crate) enum DeferredOp<'db> {
         fallback: Values<'db>,
         /// The `CallEdge` pushed at this point of the walk, refilled by every replay.
         edge: usize,
+        /// The callee expression names a def or a class (`Basis::Name`).
+        named: bool,
     },
 }
 
@@ -82,6 +84,7 @@ impl<'db> Walk<'db> {
                     args,
                     fallback,
                     edge,
+                    named,
                 } => {
                     let now = self.now.as_ref().expect("set above");
                     let callee = substitute(&callee, now);
@@ -102,6 +105,7 @@ impl<'db> Walk<'db> {
                         None,
                         &fallback,
                         Some(edge),
+                        named,
                         &mut d.before.clone(),
                     )
                 }

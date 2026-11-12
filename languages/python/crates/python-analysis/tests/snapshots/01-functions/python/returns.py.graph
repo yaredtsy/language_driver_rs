@@ -4,32 +4,32 @@ stats: walks 12, contexts 12, reuse_hits 3, unresolved 2, cuts {}, language {"an
 returns.a#612f8b6cf054bb88 Finished
 returns.b#e68e057ed37122a2 Finished
 returns.fail#3b015905a80b50f9 Finished
-  @22-34 -> external builtins.ValueError Type
+  @22-34 -> external builtins.ValueError Name
 returns.gen#720f712513aba185 Finished
 returns.ident#2232be9c510f1c75 Finished
 returns.ident#c4230215a3cd67dd Finished
 returns.log#874f56745c61240d Finished
 returns.main#ce913e7726dfbcd4 Finished
-  @16-24 -> returns.pick_a#efaa545660cea94f Type
+  @16-24 -> returns.pick_a#efaa545660cea94f Name
   @16-26 -> returns.a#612f8b6cf054bb88 Type
-  @35-42 -> returns.pick#f0531052c150a5d0 Type
+  @35-42 -> returns.pick#f0531052c150a5d0 Name
   @47-50 -> returns.a#612f8b6cf054bb88 Type
   @47-50 -> returns.b#e68e057ed37122a2 Type
-  @55-63 -> returns.ident#2232be9c510f1c75 Type
+  @55-63 -> returns.ident#2232be9c510f1c75 Name
   @55-65 -> returns.b#e68e057ed37122a2 Type
-  @70-80 -> returns.through#32d1f08cf624b5f0 Type
+  @70-80 -> returns.through#32d1f08cf624b5f0 Name
   @70-82 -> returns.a#612f8b6cf054bb88 Type
-  @87-96 -> returns.nothing#25dc3872e36058a5 Type
+  @87-96 -> returns.nothing#25dc3872e36058a5 Name
   @87-98 -> ? unknown_callee
-  @103-114 -> returns.log#874f56745c61240d Type
-  @107-113 -> returns.fail#3b015905a80b50f9 Type
-  @123-128 -> returns.gen#720f712513aba185 Type
+  @103-114 -> returns.log#874f56745c61240d Name
+  @107-113 -> returns.fail#3b015905a80b50f9 Name
+  @123-128 -> returns.gen#720f712513aba185 Name
   @133-136 -> ? unknown_callee
 returns.nothing#25dc3872e36058a5 Finished
 returns.pick#f0531052c150a5d0 Finished
 returns.pick_a#efaa545660cea94f Finished
 returns.through#32d1f08cf624b5f0 Finished
-  @28-37 -> returns.ident#c4230215a3cd67dd Type
+  @28-37 -> returns.ident#c4230215a3cd67dd Name
 
 == amain
 entries: returns.amain#aa9cc113a676b5d6
@@ -37,7 +37,7 @@ stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"anno
 returns.a#612f8b6cf054bb88 Finished
 returns.amain#aa9cc113a676b5d6 Finished
   @23-40 -> returns.a#612f8b6cf054bb88 Type
-  @30-37 -> returns.fetch#fa84efcb2ff67b59 Type
+  @30-37 -> returns.fetch#fa84efcb2ff67b59 Name
 returns.fetch#fa84efcb2ff67b59 Finished
 
 == early
@@ -45,5 +45,5 @@ entries: returns.early#7f724feacb135452
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 returns.b#e68e057ed37122a2 Finished
 returns.early#7f724feacb135452 Finished
-  @67-70 -> returns.b#e68e057ed37122a2 Type
+  @67-70 -> returns.b#e68e057ed37122a2 Name
 

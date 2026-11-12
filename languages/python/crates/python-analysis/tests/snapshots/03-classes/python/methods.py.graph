@@ -13,13 +13,13 @@ methods.Greeter.twice#3db5abc9660d4bc8 Finished
   @52-66 -> methods.Greeter.greet#e9360c976c36e02b Type
 methods.Quiet.greet#cb68261d5c3d8dc4 Finished
 methods.main#979944f3663f24a5 Finished
-  @20-29 -> new methods.Greeter init - Type
+  @20-29 -> new methods.Greeter init - Name
   @34-48 -> methods.Greeter.greet#e9360c976c36e02b Path
-  @53-77 -> methods.Greeter.greet#f55f9d7c78193901 Type
+  @53-77 -> methods.Greeter.greet#f55f9d7c78193901 Name
   @122-136 -> methods.Greeter.twice#3db5abc9660d4bc8 Path
-  @141-147 -> new methods.Loud init - Type
+  @141-147 -> new methods.Loud init - Name
   @141-161 -> methods.Greeter.greet#f55f9d7c78193901 Path
-  @166-173 -> new methods.Quiet init - Type
+  @166-173 -> new methods.Quiet init - Name
   @166-186 -> methods.Quiet.greet#cb68261d5c3d8dc4 Path
   @207-216 -> methods.Greeter.greet#f55f9d7c78193901 Path
   @250-263 -> methods.Greeter.make#169651eefa2e5167 Type

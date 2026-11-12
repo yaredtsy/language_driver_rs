@@ -2,77 +2,77 @@
 entries: groups.main#d6e952a4f79f9d2c
 stats: walks 17, contexts 17, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 groups.a#3df25c229d8b2cf9 Finished
-  @35-39 -> groups.b#8f1ae5409bbbd366 Type
+  @35-39 -> groups.b#8f1ae5409bbbd366 Name
 groups.b#48b761e9e5e7f60f Finished
-  @21-25 -> groups.c#cb7eff2c06c3151e Type
+  @21-25 -> groups.c#cb7eff2c06c3151e Name
 groups.b#8f1ae5409bbbd366 Finished
-  @21-25 -> groups.c#bac5298e16da21a9 Type
+  @21-25 -> groups.c#bac5298e16da21a9 Name
 groups.binop#e9612107f6c23f94 Finished
 groups.c#bac5298e16da21a9 Finished
-  @21-29 -> groups.a#3df25c229d8b2cf9 Type
+  @21-29 -> groups.a#3df25c229d8b2cf9 Name
 groups.c#cb7eff2c06c3151e Finished
-  @21-29 -> groups.a#3df25c229d8b2cf9 Type
+  @21-29 -> groups.a#3df25c229d8b2cf9 Name
 groups.combine#c466e81f4da25c29 Finished
-  @40-53 -> groups.parse_expr#4f21a4ec8f27d3c0 Type
+  @40-53 -> groups.parse_expr#4f21a4ec8f27d3c0 Name
 groups.done#458d0f3446922f11 Finished
 groups.f#29ce2a8be816401e Finished
-  @21-25 -> groups.g#d1c84d223ae1bfaf Type
+  @21-25 -> groups.g#d1c84d223ae1bfaf Name
 groups.f#a41155348c5259b8 Finished
-  @21-25 -> groups.g#72e9f3b3292b17cd Type
+  @21-25 -> groups.g#72e9f3b3292b17cd Name
 groups.g#72e9f3b3292b17cd Finished
-  @35-43 -> groups.f#29ce2a8be816401e Type
+  @35-43 -> groups.f#29ce2a8be816401e Name
 groups.g#d1c84d223ae1bfaf Finished
-  @35-43 -> groups.f#29ce2a8be816401e Type
+  @35-43 -> groups.f#29ce2a8be816401e Name
 groups.main#d6e952a4f79f9d2c Finished
-  @16-20 -> groups.f#a41155348c5259b8 Type
+  @16-20 -> groups.f#a41155348c5259b8 Name
   @16-22 -> groups.done#458d0f3446922f11 Type
-  @27-31 -> groups.b#48b761e9e5e7f60f Type
+  @27-31 -> groups.b#48b761e9e5e7f60f Name
   @27-33 -> groups.done#458d0f3446922f11 Type
-  @38-51 -> groups.parse_expr#4f21a4ec8f27d3c0 Type
+  @38-51 -> groups.parse_expr#4f21a4ec8f27d3c0 Name
   @38-53 -> groups.binop#e9612107f6c23f94 Type
   @38-53 -> groups.num#66ed409495348e14 Type
 groups.num#66ed409495348e14 Finished
 groups.parse_atom#4bd7a55d068f661a Finished
-  @44-57 -> groups.parse_expr#4f21a4ec8f27d3c0 Type
+  @44-57 -> groups.parse_expr#4f21a4ec8f27d3c0 Name
 groups.parse_expr#4f21a4ec8f27d3c0 Finished
-  @30-43 -> groups.parse_atom#4bd7a55d068f661a Type
-  @55-71 -> groups.combine#c466e81f4da25c29 Type
+  @30-43 -> groups.parse_atom#4bd7a55d068f661a Name
+  @55-71 -> groups.combine#c466e81f4da25c29 Name
 
 == ping_entry
 entries: groups.ping_entry#1715d2527f02c715
 stats: walks 6, contexts 6, reuse_hits 2, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 groups.done#458d0f3446922f11 Finished
 groups.ping#83dba2be0bbd9028 Finished
-  @21-28 -> groups.pong#3f7595b0fccd1b41 Type
+  @21-28 -> groups.pong#3f7595b0fccd1b41 Name
   @33-36 -> groups.done#458d0f3446922f11 Type
 groups.ping#8dc4417a35c5db7d Finished
-  @21-28 -> groups.pong#6670eaaa03c5bb3a Type
+  @21-28 -> groups.pong#6670eaaa03c5bb3a Name
   @33-36 -> groups.done#458d0f3446922f11 Type
 groups.ping_entry#1715d2527f02c715 Finished
-  @22-29 -> groups.ping#8dc4417a35c5db7d Type
+  @22-29 -> groups.ping#8dc4417a35c5db7d Name
 groups.pong#3f7595b0fccd1b41 Finished
-  @24-35 -> groups.ping#83dba2be0bbd9028 Type
+  @24-35 -> groups.ping#83dba2be0bbd9028 Name
 groups.pong#6670eaaa03c5bb3a Finished
-  @24-35 -> groups.ping#83dba2be0bbd9028 Type
+  @24-35 -> groups.ping#83dba2be0bbd9028 Name
 
 == merge_entry
 entries: groups.merge_entry#8d4afd5bfc73dcd4
 stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 groups.merge_entry#8d4afd5bfc73dcd4 Finished
-  @23-31 -> groups.outer#7b23e445c42ad9a9 Type
+  @23-31 -> groups.outer#7b23e445c42ad9a9 Name
 groups.outer#2cf23c06000b6fbb Finished
-  @25-29 -> groups.x#594364c67542ed5d Type
+  @25-29 -> groups.x#594364c67542ed5d Name
 groups.outer#7b23e445c42ad9a9 Finished
-  @25-29 -> groups.x#7ada984c68144732 Type
+  @25-29 -> groups.x#7ada984c68144732 Name
 groups.x#594364c67542ed5d Finished
-  @35-39 -> groups.y#7fe55c592b2222d8 Type
+  @35-39 -> groups.y#7fe55c592b2222d8 Name
 groups.x#7ada984c68144732 Finished
-  @35-39 -> groups.y#50401206d01899d3 Type
+  @35-39 -> groups.y#50401206d01899d3 Name
 groups.y#50401206d01899d3 Finished
-  @18-26 -> groups.x#594364c67542ed5d Type
+  @18-26 -> groups.x#594364c67542ed5d Name
   @38-42 -> groups.outer#7b23e445c42ad9a9 Type
 groups.y#7fe55c592b2222d8 Finished
-  @18-26 -> groups.x#594364c67542ed5d Type
+  @18-26 -> groups.x#594364c67542ed5d Name
   @38-42 -> groups.outer#2cf23c06000b6fbb Type
 
 == nested_entry
@@ -80,48 +80,48 @@ entries: groups.nested_entry#5b51e0fcf9a49a76
 stats: walks 9, contexts 9, reuse_hits 5, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 groups.binop#e9612107f6c23f94 Finished
 groups.nested_atom#685cc2f7c7e954be Finished
-  @45-59 -> groups.nested_expr#6ff67ab3d17a2d2a Type
+  @45-59 -> groups.nested_expr#6ff67ab3d17a2d2a Name
 groups.nested_combine#41f262c8c8b0f49c Finished
-  @47-59 -> groups.walk_list#7f3c6e54f070eff2 Type
-  @68-80 -> groups.walk_back#d3d4a17e26224309 Type
-  @89-103 -> groups.nested_expr#6ff67ab3d17a2d2a Type
+  @47-59 -> groups.walk_list#7f3c6e54f070eff2 Name
+  @68-80 -> groups.walk_back#d3d4a17e26224309 Name
+  @89-103 -> groups.nested_expr#6ff67ab3d17a2d2a Name
 groups.nested_entry#5b51e0fcf9a49a76 Finished
-  @24-38 -> groups.nested_expr#6ff67ab3d17a2d2a Type
+  @24-38 -> groups.nested_expr#6ff67ab3d17a2d2a Name
   @24-40 -> groups.binop#e9612107f6c23f94 Type
   @24-40 -> groups.num#66ed409495348e14 Type
 groups.nested_expr#6ff67ab3d17a2d2a Finished
-  @31-45 -> groups.nested_atom#685cc2f7c7e954be Type
-  @57-80 -> groups.nested_combine#41f262c8c8b0f49c Type
+  @31-45 -> groups.nested_atom#685cc2f7c7e954be Name
+  @57-80 -> groups.nested_combine#41f262c8c8b0f49c Name
 groups.num#66ed409495348e14 Finished
 groups.walk_back#d3d4a17e26224309 Finished
-  @42-55 -> groups.walk_back#d3d4a17e26224309 Type
+  @42-55 -> groups.walk_back#d3d4a17e26224309 Name
   @101-106 -> groups.nested_expr#6ff67ab3d17a2d2a Type
   @171-174 -> groups.binop#e9612107f6c23f94 Type
   @171-174 -> groups.num#66ed409495348e14 Type
 groups.walk_list#7f3c6e54f070eff2 Finished
-  @45-58 -> groups.walk_list#7f3c6e54f070eff2 Type
+  @45-58 -> groups.walk_list#7f3c6e54f070eff2 Name
 
 == up_entry
 entries: groups.up_entry#4fef43774b44367d
 stats: walks 9, contexts 9, reuse_hits 4, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 groups.binop#e9612107f6c23f94 Finished
 groups.helper#25383809d2dd9ecc Finished
-  @40-50 -> groups.helper2#965f185dac6a7a0f Type
+  @40-50 -> groups.helper2#965f185dac6a7a0f Name
 groups.helper2#965f185dac6a7a0f Finished
-  @24-34 -> groups.up_expr#c81697929afd7ac4 Type
+  @24-34 -> groups.up_expr#c81697929afd7ac4 Name
   @80-83 -> groups.binop#e9612107f6c23f94 Type
   @80-83 -> groups.num#66ed409495348e14 Type
-  @118-127 -> groups.helper#25383809d2dd9ecc Type
+  @118-127 -> groups.helper#25383809d2dd9ecc Name
 groups.num#66ed409495348e14 Finished
 groups.up_atom#354e8d30a0d4b721 Finished
-  @41-51 -> groups.up_expr#c81697929afd7ac4 Type
+  @41-51 -> groups.up_expr#c81697929afd7ac4 Name
 groups.up_combine#6a9916be996df5d9 Finished
-  @43-52 -> groups.helper#25383809d2dd9ecc Type
+  @43-52 -> groups.helper#25383809d2dd9ecc Name
 groups.up_entry#4fef43774b44367d Finished
-  @20-30 -> groups.up_expr#c81697929afd7ac4 Type
+  @20-30 -> groups.up_expr#c81697929afd7ac4 Name
   @20-32 -> groups.binop#e9612107f6c23f94 Type
   @20-32 -> groups.num#66ed409495348e14 Type
 groups.up_expr#c81697929afd7ac4 Finished
-  @27-37 -> groups.up_atom#354e8d30a0d4b721 Type
-  @49-68 -> groups.up_combine#6a9916be996df5d9 Type
+  @27-37 -> groups.up_atom#354e8d30a0d4b721 Name
+  @49-68 -> groups.up_combine#6a9916be996df5d9 Name
 

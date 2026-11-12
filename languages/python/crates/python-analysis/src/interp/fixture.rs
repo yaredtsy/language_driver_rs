@@ -848,9 +848,11 @@ fn the_core_graph_of_every_fixture_keeps_core_s_invariants() {
     }
 }
 
-/// What an edge rests on. A method on an object the walk built **in that walk** is `Path`; a class, a def named in the code, a method on an
-/// object only ty typed, a method on an input object of the context (its `self`, an argument rebuilt from the key), and a library function
-/// are `Type`. An `Unresolved` edge has a reason, and the counter of that name counts the edges.
+/// What an edge rests on. `Name`: the callee expression names a def, a class or a closure (ty types it as the function or the class itself),
+/// project code or library. `Path`: a method on an object the walk built **in that walk**, and a closure called through a variable. `Type`:
+/// everything the engine answers through a type: a method on an object only ty typed, a method on an input object of the context (its
+/// `self`, an argument rebuilt from the key), a def that arrived as data (a parameter) and a decorated def. An `Unresolved` edge has a
+/// reason, and the counter of that name counts the edges.
 ///
 /// KNOWN LIMIT: an object a caller built and passed down is an input of the callee, so a method called on it there is `Type`, not `Path`
 /// (`Pipeline.run` calling `self.handler.process()` on a handler `outside` wrote; `with_default.inner` calling `x.go()` on a default `A()`
@@ -882,12 +884,23 @@ fn edges_say_what_they_rest_on() {
     assert_eq!(
         rows,
         [
-            "new state.Pipeline Type",
+            "new state.Pipeline Name",
             "state.Pipeline.run Path",
-            "new state.JsonHandler Type"
+            "new state.JsonHandler Name"
         ]
     );
-    // a classmethod entry holds its class in `cls`: `cls()` is a class named by the code, not an unknown callee
+    // a def named in the code is `Name`; a decorated def, whose name ty does not type as the def, is the engine's answer
+    let (rows, _) = edges("01-functions/python/callbacks.py", "main");
+    assert_eq!(
+        rows,
+        ["callbacks.handle_ok Name", "callbacks.handle_err Name"]
+    );
+    let (rows, _) = edges("01-functions/python/callbacks.py", "uses_decorated");
+    assert_eq!(rows, ["callbacks.flaky Type", "callbacks.flaky_with Type"]);
+    // a library function named by an import is `Name` as well
+    let (rows, _) = edges("01-functions/python/callbacks.py", "uses_stdlib");
+    assert_eq!(rows[0], "partial Name");
+    // a classmethod entry holds its class in `cls`: `cls()` is not an unknown callee, but `cls` is a `type[Self]`, not a class the code names
     let (rows, _) = edges("03-classes/python/entries.py", "Reg.create");
     assert_eq!(rows, ["new entries.Reg Type"]);
     let (rows, _) = edges("03-classes/python/chains.py", "annotated");

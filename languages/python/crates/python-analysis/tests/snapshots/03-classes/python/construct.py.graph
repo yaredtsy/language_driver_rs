@@ -2,24 +2,24 @@
 entries: construct.main#ae0bcb9eadc5b287
 stats: walks 8, contexts 8, reuse_hits 3, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 construct.Base.__init__#a8df39052e4df5db Finished
-  @28-33 -> construct.log#e91154806213b569 Type
+  @28-33 -> construct.log#e91154806213b569 Name
 construct.Pipeline.__init__#b79a637b9678ba81 Finished
-  @28-35 -> construct.setup#16b13aa909cefd9e Type
+  @28-35 -> construct.setup#16b13aa909cefd9e Name
 construct.Tree.__init__#32b4fbbaeae0ff43 Finished
-  @28-34 -> new construct.Tree init construct.Tree.__init__#32b4fbbaeae0ff43 Type
+  @28-34 -> new construct.Tree init construct.Tree.__init__#32b4fbbaeae0ff43 Name
 construct.Wrapper.__init__#d1ad003894d6a313 Finished
-  @35-40 -> construct.log#e91154806213b569 Type
+  @35-40 -> construct.log#e91154806213b569 Name
 construct.log#e91154806213b569 Finished
 construct.main#ae0bcb9eadc5b287 Finished
-  @16-23 -> new construct.Plain init - Type
-  @28-38 -> new construct.Pipeline init construct.Pipeline.__init__#b79a637b9678ba81 Type
-  @43-62 -> new construct.Wrapper init construct.Wrapper.__init__#d1ad003894d6a313 Type
-  @51-61 -> new construct.Pipeline init construct.Pipeline.__init__#b79a637b9678ba81 Type
-  @67-74 -> new construct.Child init construct.Base.__init__#a8df39052e4df5db Type
-  @79-85 -> construct.make#5b05c56f62e1fbe4 Type
-  @90-96 -> new construct.Tree init construct.Tree.__init__#32b4fbbaeae0ff43 Type
-  @101-107 -> external builtins.dict Type
+  @16-23 -> new construct.Plain init - Name
+  @28-38 -> new construct.Pipeline init construct.Pipeline.__init__#b79a637b9678ba81 Name
+  @43-62 -> new construct.Wrapper init construct.Wrapper.__init__#d1ad003894d6a313 Name
+  @51-61 -> new construct.Pipeline init construct.Pipeline.__init__#b79a637b9678ba81 Name
+  @67-74 -> new construct.Child init construct.Base.__init__#a8df39052e4df5db Name
+  @79-85 -> construct.make#5b05c56f62e1fbe4 Name
+  @90-96 -> new construct.Tree init construct.Tree.__init__#32b4fbbaeae0ff43 Name
+  @101-107 -> external builtins.dict Name
 construct.make#5b05c56f62e1fbe4 Finished
-  @23-33 -> new construct.Pipeline init construct.Pipeline.__init__#b79a637b9678ba81 Type
+  @23-33 -> new construct.Pipeline init construct.Pipeline.__init__#b79a637b9678ba81 Name
 construct.setup#16b13aa909cefd9e Finished
 

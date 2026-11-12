@@ -6,10 +6,10 @@ isolation.Pipeline.__init__#ed3c573b9a3ef18d Finished
 isolation.Pipeline.run#19a4033baa8a1bd6 Finished
   @29-55 -> ? unknown_callee
 isolation.two_alive#459ff191303b9127 Finished
-  @25-48 -> new isolation.Pipeline init isolation.Pipeline.__init__#ed3c573b9a3ef18d Type
-  @34-47 -> new isolation.JsonHandler init - Type
-  @57-79 -> new isolation.Pipeline init isolation.Pipeline.__init__#3e7078441b73d34d Type
-  @66-78 -> new isolation.CsvHandler init - Type
+  @25-48 -> new isolation.Pipeline init isolation.Pipeline.__init__#ed3c573b9a3ef18d Name
+  @34-47 -> new isolation.JsonHandler init - Name
+  @57-79 -> new isolation.Pipeline init isolation.Pipeline.__init__#3e7078441b73d34d Name
+  @66-78 -> new isolation.CsvHandler init - Name
   @84-92 -> isolation.Pipeline.run#19a4033baa8a1bd6 Path
   @97-105 -> isolation.Pipeline.run#19a4033baa8a1bd6 Path
 
@@ -19,14 +19,14 @@ stats: walks 5, contexts 5, reuse_hits 0, unresolved 2, cuts {}, language {"anno
 isolation.Pipeline.__init__#3e7078441b73d34d Finished
 isolation.Pipeline.__init__#ed3c573b9a3ef18d Finished
 isolation.make#0649cc3f1c74b217 Finished
-  @24-35 -> new isolation.Pipeline init isolation.Pipeline.__init__#ed3c573b9a3ef18d Type
+  @24-35 -> new isolation.Pipeline init isolation.Pipeline.__init__#ed3c573b9a3ef18d Name
 isolation.make#490e923a887007ff Finished
-  @24-35 -> new isolation.Pipeline init isolation.Pipeline.__init__#3e7078441b73d34d Type
+  @24-35 -> new isolation.Pipeline init isolation.Pipeline.__init__#3e7078441b73d34d Name
 isolation.one_site#645ae6ed164248bc Finished
-  @24-43 -> isolation.make#0649cc3f1c74b217 Type
-  @29-42 -> new isolation.JsonHandler init - Type
-  @52-70 -> isolation.make#490e923a887007ff Type
-  @57-69 -> new isolation.CsvHandler init - Type
+  @24-43 -> isolation.make#0649cc3f1c74b217 Name
+  @29-42 -> new isolation.JsonHandler init - Name
+  @52-70 -> isolation.make#490e923a887007ff Name
+  @57-69 -> new isolation.CsvHandler init - Name
   @75-83 -> ? unknown_callee
   @88-96 -> ? unknown_callee
 
@@ -36,7 +36,7 @@ stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"anno
 isolation.Logger.emit#13fe3e42a0044f53 Finished
   @24-44 -> ? unknown_callee
 isolation.opaque#73f48bf8eec378a7 Finished
-  @34-47 -> new isolation.FileHandler init - Type
+  @34-47 -> new isolation.FileHandler init - Name
   @85-97 -> isolation.Logger.emit#13fe3e42a0044f53 Type
 
 == global_write
@@ -45,7 +45,7 @@ stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"anno
 isolation.Logger.emit#13fe3e42a0044f53 Finished
   @24-44 -> ? unknown_callee
 isolation.global_write#459165ac923db10b Finished
-  @40-53 -> new isolation.FileHandler init - Type
+  @40-53 -> new isolation.FileHandler init - Name
   @58-70 -> isolation.Logger.emit#13fe3e42a0044f53 Type
 
 == global_method
@@ -66,9 +66,9 @@ isolation.Pipeline.run#bd715d5acbee1770 Finished
   @29-55 -> isolation.CsvHandler.process#e46adc730ea6551e Type
   @29-55 -> ? unknown_callee
 isolation.maybe_opaque#0c5d7adc4c5772ef Finished
-  @29-52 -> new isolation.Pipeline init isolation.Pipeline.__init__#ed3c573b9a3ef18d Type
-  @38-51 -> new isolation.JsonHandler init - Type
-  @120-132 -> new isolation.CsvHandler init - Type
+  @29-52 -> new isolation.Pipeline init isolation.Pipeline.__init__#ed3c573b9a3ef18d Name
+  @38-51 -> new isolation.JsonHandler init - Name
+  @120-132 -> new isolation.CsvHandler init - Name
   @195-203 -> isolation.Pipeline.run#bd715d5acbee1770 Path
 
 == subclass_of

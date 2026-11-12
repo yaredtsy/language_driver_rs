@@ -7,23 +7,23 @@ arguments.inner#b0e7c9e2e0c16df1 Finished
 arguments.leak#6657a8956d5863d8 Finished
   @16-20 -> ? unknown_callee
 arguments.main#a334cbae20fc2242 Finished
-  @16-26 -> arguments.run#ba0520d3c0a0ad2c Type
-  @31-42 -> arguments.run#b7ccb8d45ce47e55 Type
-  @47-81 -> arguments.run_kw#90f49ac15000c853 Type
-  @86-99 -> arguments.run_default#be224ebeece65b9a Type
-  @104-122 -> arguments.run_default#c63b33f3d99b0290 Type
-  @127-140 -> arguments.outer#687b7d9120a1fe68 Type
-  @145-154 -> arguments.missing#0ecb0d15c6f940ba Type
-  @159-176 -> arguments.with_module#252955084041998b Type
-  @181-194 -> arguments.shadow#b79cca7f852880fb Type
+  @16-26 -> arguments.run#ba0520d3c0a0ad2c Name
+  @31-42 -> arguments.run#b7ccb8d45ce47e55 Name
+  @47-81 -> arguments.run_kw#90f49ac15000c853 Name
+  @86-99 -> arguments.run_default#be224ebeece65b9a Name
+  @104-122 -> arguments.run_default#c63b33f3d99b0290 Name
+  @127-140 -> arguments.outer#687b7d9120a1fe68 Name
+  @145-154 -> arguments.missing#0ecb0d15c6f940ba Name
+  @159-176 -> arguments.with_module#252955084041998b Name
+  @181-194 -> arguments.shadow#b79cca7f852880fb Name
 arguments.middle#6c0682654ffe104a Finished
-  @20-29 -> arguments.inner#b0e7c9e2e0c16df1 Type
+  @20-29 -> arguments.inner#b0e7c9e2e0c16df1 Name
 arguments.missing#0ecb0d15c6f940ba Finished
   @21-25 -> ? unknown_callee
 arguments.on_err#7da838f8544fb8a0 Finished
 arguments.on_ok#c234b93fa51658b0 Finished
 arguments.outer#687b7d9120a1fe68 Finished
-  @19-29 -> arguments.middle#6c0682654ffe104a Type
+  @19-29 -> arguments.middle#6c0682654ffe104a Name
 arguments.run#b7ccb8d45ce47e55 Finished
   @17-21 -> arguments.on_err#7da838f8544fb8a0 Type
 arguments.run#ba0520d3c0a0ad2c Finished
@@ -35,7 +35,7 @@ arguments.run_default#c63b33f3d99b0290 Finished
 arguments.run_kw#90f49ac15000c853 Finished
   @31-39 -> arguments.on_ok#c234b93fa51658b0 Type
 arguments.shadow#b79cca7f852880fb Finished
-  @20-26 -> arguments.leak#6657a8956d5863d8 Type
+  @20-26 -> arguments.leak#6657a8956d5863d8 Name
 arguments.with_module#252955084041998b Finished
   @24-34 -> util.helper#14a4c5adcf961389 Type
 util.helper#14a4c5adcf961389 Finished
@@ -44,14 +44,14 @@ util.helper#14a4c5adcf961389 Finished
 entries: arguments.both#26b43b189b502abf
 stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 arguments.both#26b43b189b502abf Finished
-  @16-25 -> arguments.read_ok#4923b243824bbe58 Type
-  @30-40 -> arguments.read_err#9004c4b25d10753c Type
+  @16-25 -> arguments.read_ok#4923b243824bbe58 Name
+  @30-40 -> arguments.read_err#9004c4b25d10753c Name
 arguments.on_err#7da838f8544fb8a0 Finished
 arguments.on_ok#c234b93fa51658b0 Finished
 arguments.read_err#9004c4b25d10753c Finished
-  @20-31 -> arguments.run#b7ccb8d45ce47e55 Type
+  @20-31 -> arguments.run#b7ccb8d45ce47e55 Name
 arguments.read_ok#4923b243824bbe58 Finished
-  @19-29 -> arguments.run#ba0520d3c0a0ad2c Type
+  @19-29 -> arguments.run#ba0520d3c0a0ad2c Name
 arguments.run#b7ccb8d45ce47e55 Finished
   @17-21 -> arguments.on_err#7da838f8544fb8a0 Type
 arguments.run#ba0520d3c0a0ad2c Finished

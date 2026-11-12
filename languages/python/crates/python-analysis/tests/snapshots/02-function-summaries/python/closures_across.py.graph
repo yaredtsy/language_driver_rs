@@ -8,8 +8,8 @@ closures_across.make#fd513dded85f4cfc Finished
 closures_across.make.run#c05491ee4142edeb Finished
   @19-22 -> closures_across.a#151fcc7eb5fb7c50 Type
 closures_across.passed_along#850d4b4535e484a0 Finished
-  @24-40 -> closures_across.call_it#5918c402352f8e99 Type
-  @32-39 -> closures_across.make#fd513dded85f4cfc Type
+  @24-40 -> closures_across.call_it#5918c402352f8e99 Name
+  @32-39 -> closures_across.make#fd513dded85f4cfc Name
 
 == two_makers
 entries: closures_across.two_makers#d6c5aab6fb940921
@@ -27,10 +27,10 @@ closures_across.make.run#c05491ee4142edeb Finished
 closures_across.make.run#d262776c52eb25b4 Finished
   @19-22 -> closures_across.b#9f30f51ea5257cab Type
 closures_across.two_makers#d6c5aab6fb940921 Finished
-  @22-38 -> closures_across.call_it#5918c402352f8e99 Type
-  @30-37 -> closures_across.make#fd513dded85f4cfc Type
-  @43-59 -> closures_across.call_it#5e3cbe74740ac662 Type
-  @51-58 -> closures_across.make#d7a5a37a233702da Type
+  @22-38 -> closures_across.call_it#5918c402352f8e99 Name
+  @30-37 -> closures_across.make#fd513dded85f4cfc Name
+  @43-59 -> closures_across.call_it#5e3cbe74740ac662 Name
+  @51-58 -> closures_across.make#d7a5a37a233702da Name
 
 == two_levels
 entries: closures_across.two_levels#3df9cd7afb1c575d
@@ -40,27 +40,27 @@ closures_across.make#d7a5a37a233702da Finished
 closures_across.make.run#d262776c52eb25b4 Finished
   @19-22 -> closures_across.b#9f30f51ea5257cab Type
 closures_across.two_levels#3df9cd7afb1c575d Finished
-  @22-29 -> closures_across.wrap#a9d5589ff2d045e1 Type
+  @22-29 -> closures_across.wrap#a9d5589ff2d045e1 Name
   @22-31 -> closures_across.make.run#d262776c52eb25b4 Path
 closures_across.wrap#a9d5589ff2d045e1 Finished
-  @24-31 -> closures_across.make#d7a5a37a233702da Type
+  @24-31 -> closures_across.make#d7a5a37a233702da Name
 
 == outer
 entries: closures_across.outer#4e06254b666382ea
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 closures_across.outer#4e06254b666382ea Finished
-  @110-120 -> closures_across.outer.walk#8325b17f86bfb016 Path
+  @110-120 -> closures_across.outer.walk#8325b17f86bfb016 Name
 closures_across.outer.walk#8325b17f86bfb016 Finished
-  @21-28 -> closures_across.outer.walk#8325b17f86bfb016 Path
+  @21-28 -> closures_across.outer.walk#8325b17f86bfb016 Name
 
 == chained
 entries: closures_across.chained#706395a5c8d3138f
 stats: walks 7, contexts 7, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
 closures_across.a#151fcc7eb5fb7c50 Finished
 closures_across.chain#5df9d7c7d7072ab7 Finished
-  @36-48 -> closures_across.chain#ea9f5b15d3798d51 Type
+  @36-48 -> closures_across.chain#ea9f5b15d3798d51 Name
 closures_across.chain#ea9f5b15d3798d51 Finished
-  @36-48 -> closures_across.chain#ea9f5b15d3798d51 Type
+  @36-48 -> closures_across.chain#ea9f5b15d3798d51 Name
 closures_across.chain.g#5cfcd1b194d1a5da Finished
   @17-20 -> closures_across.a#151fcc7eb5fb7c50 Type
   @17-20 -> closures_across.chain.g#9e280189cb7f1ce4 Path
@@ -70,7 +70,7 @@ closures_across.chain.g#9e280189cb7f1ce4 Finished
   @17-20 -> closures_across.a#151fcc7eb5fb7c50 Type
   @17-20 -> closures_across.chain.g#69e3ffd04530b6d9 Path
 closures_across.chained#706395a5c8d3138f Finished
-  @19-27 -> closures_across.chain#5df9d7c7d7072ab7 Type
+  @19-27 -> closures_across.chain#5df9d7c7d7072ab7 Name
   @19-29 -> closures_across.chain.g#5cfcd1b194d1a5da Path
 
 == use_walker
@@ -78,9 +78,9 @@ entries: closures_across.use_walker#7cdf75c3262d57f1
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 closures_across.make_walker#edf13ce73ef3f5c1 Finished
 closures_across.make_walker.walk#001a1c3a6ccf3cc3 Finished
-  @21-28 -> closures_across.make_walker.walk#001a1c3a6ccf3cc3 Path
+  @21-28 -> closures_across.make_walker.walk#001a1c3a6ccf3cc3 Name
 closures_across.use_walker#7cdf75c3262d57f1 Finished
-  @22-35 -> closures_across.make_walker#edf13ce73ef3f5c1 Type
+  @22-35 -> closures_across.make_walker#edf13ce73ef3f5c1 Name
   @22-38 -> closures_across.make_walker.walk#001a1c3a6ccf3cc3 Path
 
 == use_default
@@ -88,10 +88,10 @@ entries: closures_across.use_default#7f741c85065f2fef
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 closures_across.a#151fcc7eb5fb7c50 Finished
 closures_across.use_default#7f741c85065f2fef Finished
-  @23-37 -> closures_across.with_default#ca04a076c21634ae Type
+  @23-37 -> closures_across.with_default#ca04a076c21634ae Name
   @23-40 -> closures_across.with_default.walk#93cc1ef414b03926 Path
 closures_across.with_default#ca04a076c21634ae Finished
 closures_across.with_default.walk#93cc1ef414b03926 Finished
   @27-31 -> closures_across.a#151fcc7eb5fb7c50 Type
-  @40-47 -> closures_across.with_default.walk#93cc1ef414b03926 Path
+  @40-47 -> closures_across.with_default.walk#93cc1ef414b03926 Name
 

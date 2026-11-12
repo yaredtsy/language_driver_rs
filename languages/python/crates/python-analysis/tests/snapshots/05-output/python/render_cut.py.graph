@@ -5,7 +5,7 @@ render_cut.a#dd561d2c2f93591d Finished
 render_cut.b#cccafe37bb9602bc Finished
 render_cut.c#cc8f71f02b442cf4 Finished
 render_cut.main#4b339971b9866b3f Finished
-  @16-19 -> render_cut.a#dd561d2c2f93591d Type
-  @24-27 -> render_cut.b#cccafe37bb9602bc Type
-  @32-35 -> render_cut.c#cc8f71f02b442cf4 Type
+  @16-19 -> render_cut.a#dd561d2c2f93591d Name
+  @24-27 -> render_cut.b#cccafe37bb9602bc Name
+  @32-35 -> render_cut.c#cc8f71f02b442cf4 Name
 

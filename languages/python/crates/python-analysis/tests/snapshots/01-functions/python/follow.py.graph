@@ -3,28 +3,28 @@ entries: follow.main#aca74f9d1aa0386b
 stats: walks 4, contexts 4, reuse_hits 2, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 follow.leaf#1c0ddff796503ba4 Finished
 follow.main#aca74f9d1aa0386b Finished
-  @16-21 -> follow.top#fbbdac06f15084e1 Type
-  @26-34 -> follow.middle#98514e4646322e90 Type
+  @16-21 -> follow.top#fbbdac06f15084e1 Name
+  @26-34 -> follow.middle#98514e4646322e90 Name
 follow.middle#98514e4646322e90 Finished
-  @18-24 -> follow.leaf#1c0ddff796503ba4 Type
+  @18-24 -> follow.leaf#1c0ddff796503ba4 Name
 follow.top#fbbdac06f15084e1 Finished
-  @15-23 -> follow.middle#98514e4646322e90 Type
-  @28-34 -> follow.leaf#1c0ddff796503ba4 Type
+  @15-23 -> follow.middle#98514e4646322e90 Name
+  @28-34 -> follow.leaf#1c0ddff796503ba4 Name
 
 == across_files
 entries: follow.across_files#1c4e0e52155ac550
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 follow.across_files#1c4e0e52155ac550 Finished
-  @24-36 -> util.chain#395be1e671c659a7 Type
+  @24-36 -> util.chain#395be1e671c659a7 Name
 util.chain#395be1e671c659a7 Finished
-  @74-82 -> util.helper#14a4c5adcf961389 Type
+  @74-82 -> util.helper#14a4c5adcf961389 Name
 util.helper#14a4c5adcf961389 Finished
 
 == no_caller_scope
 entries: follow.no_caller_scope#70bf2c6a6d20b9b7
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
 follow.no_caller_scope#70bf2c6a6d20b9b7 Finished
-  @40-49 -> follow.reads_x#c9316d7028ef4137 Type
+  @40-49 -> follow.reads_x#c9316d7028ef4137 Name
 follow.reads_x#c9316d7028ef4137 Finished
   @19-22 -> ? unknown_callee
 

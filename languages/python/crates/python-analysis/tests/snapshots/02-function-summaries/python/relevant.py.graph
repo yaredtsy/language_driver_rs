@@ -8,15 +8,15 @@ relevant.forward#91d31ef1d49e588e Finished
 relevant.keep#3a8ebdee43ef13f5 Finished
 relevant.keep#609ad250e65d0fb5 Finished
 relevant.log_event#fe2aa2c8afba6295 Finished
-  @34-44 -> relevant.note#fb272433d46510e8 Type
+  @34-44 -> relevant.note#fb272433d46510e8 Name
 relevant.main#c09be57b56a61b50 Finished
-  @16-41 -> relevant.log_event#fe2aa2c8afba6295 Type
-  @46-71 -> relevant.log_event#fe2aa2c8afba6295 Type
-  @114-128 -> relevant.forward#435656e15e898808 Type
-  @133-148 -> relevant.forward#91d31ef1d49e588e Type
-  @153-164 -> relevant.keep#3a8ebdee43ef13f5 Type
+  @16-41 -> relevant.log_event#fe2aa2c8afba6295 Name
+  @46-71 -> relevant.log_event#fe2aa2c8afba6295 Name
+  @114-128 -> relevant.forward#435656e15e898808 Name
+  @133-148 -> relevant.forward#91d31ef1d49e588e Name
+  @153-164 -> relevant.keep#3a8ebdee43ef13f5 Name
   @153-166 -> relevant.on_ok#56b98bef4b9a716b Type
-  @171-183 -> relevant.keep#609ad250e65d0fb5 Type
+  @171-183 -> relevant.keep#609ad250e65d0fb5 Name
   @171-185 -> relevant.on_err#f8221113e6044d2a Type
 relevant.note#fb272433d46510e8 Finished
 relevant.on_err#f8221113e6044d2a Finished

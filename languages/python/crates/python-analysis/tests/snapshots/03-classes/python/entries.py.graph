@@ -30,7 +30,7 @@ entries.Job.run#e9d1c91e4c425452 Finished
 entries: entries.Reg.create#862429178dc3a45a
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 entries.Reg.__init__#fe217727046e04ef Finished
-  @28-33 -> entries.log#3ddfaeaba6518404 Type
+  @28-33 -> entries.log#3ddfaeaba6518404 Name
 entries.Reg.create#862429178dc3a45a Finished
   @42-47 -> new entries.Reg init entries.Reg.__init__#fe217727046e04ef Type
 entries.log#3ddfaeaba6518404 Finished
@@ -82,9 +82,9 @@ entries: entries.siblings.inner#ecdfb3c356929e2c
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 entries.log#3ddfaeaba6518404 Finished
 entries.siblings.helper#b0364eb0ed9b1141 Finished
-  @22-27 -> entries.log#3ddfaeaba6518404 Type
+  @22-27 -> entries.log#3ddfaeaba6518404 Name
 entries.siblings.inner#ecdfb3c356929e2c Finished
-  @21-29 -> entries.siblings.helper#b0364eb0ed9b1141 Type
+  @21-29 -> entries.siblings.helper#b0364eb0ed9b1141 Name
 
 == branches.inner
 entries: entries.branches.inner#a5c70426bddc034a
@@ -100,8 +100,8 @@ entries: entries.recursive.walk#990d28f311c8fa5b
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 entries.log#3ddfaeaba6518404 Finished
 entries.recursive.walk#990d28f311c8fa5b Finished
-  @21-26 -> entries.log#3ddfaeaba6518404 Type
-  @35-42 -> entries.recursive.walk#990d28f311c8fa5b Type
+  @21-26 -> entries.log#3ddfaeaba6518404 Name
+  @35-42 -> entries.recursive.walk#990d28f311c8fa5b Name
 
 == a.b.c
 entries: entries.a.b.c#0c2eaf2f9ac543d5
@@ -138,17 +138,17 @@ entries.JsonHandler.process#c99109ae577d308d Finished
 entries: entries.fire#bf43c07c3bc9722a
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
 entries.fire#bf43c07c3bc9722a Finished
-  @82-90 -> new entries.Holder init - Type
-  @95-108 -> entries.setup#3dfa8fdc69d96d24 Type
+  @82-90 -> new entries.Holder init - Name
+  @95-108 -> entries.setup#3dfa8fdc69d96d24 Name
   @113-124 -> ? unknown_callee
 entries.setup#3dfa8fdc69d96d24 Finished
-  @27-30 -> new entries.A init - Type
-  @150-153 -> new entries.B init - Type
+  @27-30 -> new entries.A init - Name
+  @150-153 -> new entries.B init - Name
 
 == Tree.walk
 entries: entries.Tree.walk#facbccd487365f8b
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 entries.Tree.walk#facbccd487365f8b Finished
-  @24-29 -> entries.log#3ddfaeaba6518404 Type
+  @24-29 -> entries.log#3ddfaeaba6518404 Name
 entries.log#3ddfaeaba6518404 Finished
 

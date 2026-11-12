@@ -2,49 +2,49 @@
 entries: imports.direct#08934266a0905a38
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 imports.direct#08934266a0905a38 Finished
-  @18-26 -> util.helper#14a4c5adcf961389 Type
+  @18-26 -> util.helper#14a4c5adcf961389 Name
 util.helper#14a4c5adcf961389 Finished
 
 == via_module
 entries: imports.via_module#695a876aa1a44c37
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 imports.via_module#695a876aa1a44c37 Finished
-  @22-35 -> util.helper#14a4c5adcf961389 Type
+  @22-35 -> util.helper#14a4c5adcf961389 Name
 util.helper#14a4c5adcf961389 Finished
 
 == via_alias
 entries: imports.via_alias#0ee042f8efaabfec
 stats: walks 2, contexts 2, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 imports.via_alias#0ee042f8efaabfec Finished
-  @21-31 -> util.helper#14a4c5adcf961389 Type
-  @36-40 -> util.helper#14a4c5adcf961389 Type
+  @21-31 -> util.helper#14a4c5adcf961389 Name
+  @36-40 -> util.helper#14a4c5adcf961389 Name
 util.helper#14a4c5adcf961389 Finished
 
 == deep
 entries: imports.deep#5c0faaaf6470fcac
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 imports.deep#5c0faaaf6470fcac Finished
-  @16-34 -> pkg.sub.mod.work#4df85d66a63d160f Type
+  @16-34 -> pkg.sub.mod.work#4df85d66a63d160f Name
 pkg.sub.mod.work#4df85d66a63d160f Finished
 
 == from_package
 entries: imports.from_package#bd63d1accd5dcf08
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 imports.from_package#bd63d1accd5dcf08 Finished
-  @24-34 -> pkg.sub.mod.work#4df85d66a63d160f Type
+  @24-34 -> pkg.sub.mod.work#4df85d66a63d160f Name
 pkg.sub.mod.work#4df85d66a63d160f Finished
 
 == module_in_a_local
 entries: imports.module_in_a_local#5af2d0bcf1a6b7ed
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 imports.module_in_a_local#5af2d0bcf1a6b7ed Finished
-  @42-52 -> util.helper#14a4c5adcf961389 Type
+  @42-52 -> util.helper#14a4c5adcf961389 Name
 util.helper#14a4c5adcf961389 Finished
 
 == local_import
 entries: imports.local_import#0eeabd57cdc7f2dc
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 imports.local_import#0eeabd57cdc7f2dc Finished
-  @66-73 -> util.other#a6d9771e373630e4 Type
+  @66-73 -> util.other#a6d9771e373630e4 Name
 util.other#a6d9771e373630e4 Finished
 

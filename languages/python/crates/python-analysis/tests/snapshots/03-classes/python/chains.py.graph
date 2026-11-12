@@ -4,9 +4,9 @@ stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"anno
 chains.Service.__init__#a6c68eaa28ca8803 Finished
 chains.Session.__init__#6e278de738e8ec67 Finished
 chains.chain#1318eff240e6c49e Finished
-  @21-52 -> new chains.Session init chains.Session.__init__#6e278de738e8ec67 Type
-  @29-51 -> new chains.Service init chains.Service.__init__#a6c68eaa28ca8803 Type
-  @37-50 -> new chains.LoudHandler init - Type
+  @21-52 -> new chains.Session init chains.Session.__init__#6e278de738e8ec67 Name
+  @29-51 -> new chains.Service init chains.Service.__init__#a6c68eaa28ca8803 Name
+  @37-50 -> new chains.LoudHandler init - Name
   @57-83 -> ? unknown_callee
 
 == write_then_read
@@ -16,10 +16,10 @@ chains.LoudHandler.handle#c8f27fe890b2ee3d Finished
 chains.Service.__init__#572656fa81e51aef Finished
 chains.Session.__init__#6e278de738e8ec67 Finished
 chains.write_then_read#054c86945449a213 Finished
-  @31-58 -> new chains.Session init chains.Session.__init__#6e278de738e8ec67 Type
-  @39-57 -> new chains.Service init chains.Service.__init__#572656fa81e51aef Type
-  @47-56 -> new chains.Handler init - Type
-  @83-96 -> new chains.LoudHandler init - Type
+  @31-58 -> new chains.Session init chains.Session.__init__#6e278de738e8ec67 Name
+  @39-57 -> new chains.Service init chains.Service.__init__#572656fa81e51aef Name
+  @47-56 -> new chains.Handler init - Name
+  @83-96 -> new chains.LoudHandler init - Name
   @101-127 -> chains.LoudHandler.handle#c8f27fe890b2ee3d Type
 
 == unknown_mid_chain
@@ -37,9 +37,9 @@ chains.Child.__init__#564b4a0a28b7c03d Finished
 chains.Child.go#d455774e94ba4b1b Finished
   @22-37 -> ? unknown_callee
 chains.inherited#5d28ab87cc0d0897 Finished
-  @21-41 -> new chains.Child init chains.Child.__init__#564b4a0a28b7c03d Type
+  @21-41 -> new chains.Child init chains.Child.__init__#564b4a0a28b7c03d Name
   @21-46 -> chains.Child.go#d455774e94ba4b1b Path
-  @27-40 -> new chains.LoudHandler init - Type
+  @27-40 -> new chains.LoudHandler init - Name
 
 == annotated
 entries: chains.annotated#61f40c5672d2ae8c
@@ -59,12 +59,12 @@ chains.Service.call#879b5bd9dd2405a7 Finished
 entries: chains.separate#0fac4e732fd8597c
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
 chains.f#22a3fd5e1025eeb2 Finished
-  @29-32 -> new chains.A init - Type
+  @29-32 -> new chains.A init - Name
 chains.g#dea5ff7ac508091c Finished
   @23-31 -> ? unknown_callee
 chains.separate#0fac4e732fd8597c Finished
-  @24-28 -> chains.f#22a3fd5e1025eeb2 Type
-  @95-99 -> chains.g#dea5ff7ac508091c Type
+  @24-28 -> chains.f#22a3fd5e1025eeb2 Name
+  @95-99 -> chains.g#dea5ff7ac508091c Name
 
 == via_super
 entries: chains.via_super#f0ce04bfb0446a48
@@ -74,7 +74,7 @@ chains.Maker.build#596e3d7a52ad8189 Finished
 chains.Special.make#bd84ca23efb83a21 Finished
   @24-39 -> chains.Maker.build#596e3d7a52ad8189 Type
 chains.via_super#f0ce04bfb0446a48 Finished
-  @21-30 -> new chains.Special init - Type
+  @21-30 -> new chains.Special init - Name
   @21-37 -> chains.Special.make#bd84ca23efb83a21 Path
 
 == fanout
@@ -90,23 +90,23 @@ chains.Box.__init__#c7b9a89c7ea84b16 Finished
 chains.Box.__init__#da92caf4e21d59e7 Finished
 chains.Box.__init__#fe2c4231f6b00a76 Finished
 chains.fanout#836731de03e86d02 Finished
-  @42-51 -> new chains.Box init chains.Box.__init__#fe2c4231f6b00a76 Type
-  @46-50 -> new chains.H9 init - Type
-  @81-90 -> new chains.Box init chains.Box.__init__#b7d6915f35eec6b2 Type
-  @85-89 -> new chains.H8 init - Type
-  @120-129 -> new chains.Box init chains.Box.__init__#60bc1f383d8fc02d Type
-  @124-128 -> new chains.H7 init - Type
-  @159-168 -> new chains.Box init chains.Box.__init__#6906ef7911602f4c Type
-  @163-167 -> new chains.H6 init - Type
-  @198-207 -> new chains.Box init chains.Box.__init__#da92caf4e21d59e7 Type
-  @202-206 -> new chains.H5 init - Type
-  @237-246 -> new chains.Box init chains.Box.__init__#46ed8bf794fad01a Type
-  @241-245 -> new chains.H4 init - Type
-  @276-285 -> new chains.Box init chains.Box.__init__#4e092dafa7b828a6 Type
-  @280-284 -> new chains.H3 init - Type
-  @315-324 -> new chains.Box init chains.Box.__init__#c7b9a89c7ea84b16 Type
-  @319-323 -> new chains.H2 init - Type
-  @347-356 -> new chains.Box init chains.Box.__init__#b4af7b1bed11dd62 Type
-  @351-355 -> new chains.H1 init - Type
+  @42-51 -> new chains.Box init chains.Box.__init__#fe2c4231f6b00a76 Name
+  @46-50 -> new chains.H9 init - Name
+  @81-90 -> new chains.Box init chains.Box.__init__#b7d6915f35eec6b2 Name
+  @85-89 -> new chains.H8 init - Name
+  @120-129 -> new chains.Box init chains.Box.__init__#60bc1f383d8fc02d Name
+  @124-128 -> new chains.H7 init - Name
+  @159-168 -> new chains.Box init chains.Box.__init__#6906ef7911602f4c Name
+  @163-167 -> new chains.H6 init - Name
+  @198-207 -> new chains.Box init chains.Box.__init__#da92caf4e21d59e7 Name
+  @202-206 -> new chains.H5 init - Name
+  @237-246 -> new chains.Box init chains.Box.__init__#46ed8bf794fad01a Name
+  @241-245 -> new chains.H4 init - Name
+  @276-285 -> new chains.Box init chains.Box.__init__#4e092dafa7b828a6 Name
+  @280-284 -> new chains.H3 init - Name
+  @315-324 -> new chains.Box init chains.Box.__init__#c7b9a89c7ea84b16 Name
+  @319-323 -> new chains.H2 init - Name
+  @347-356 -> new chains.Box init chains.Box.__init__#b4af7b1bed11dd62 Name
+  @351-355 -> new chains.H1 init - Name
   @361-373 -> ? unknown_callee
 

@@ -10,8 +10,8 @@ stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"anno
 branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.both_arms#9af6e1a766223cac Finished
-  @76-79 -> branches.a#0d898a7a906b0aef Type
-  @76-79 -> branches.b#dcc794c809942e53 Type
+  @76-79 -> branches.a#0d898a7a906b0aef Name
+  @76-79 -> branches.b#dcc794c809942e53 Name
 
 == skipped
 entries: branches.skipped#be55261a27307247
@@ -19,8 +19,8 @@ stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"anno
 branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.skipped#be55261a27307247 Finished
-  @60-63 -> branches.a#0d898a7a906b0aef Type
-  @60-63 -> branches.b#dcc794c809942e53 Type
+  @60-63 -> branches.a#0d898a7a906b0aef Name
+  @60-63 -> branches.b#dcc794c809942e53 Name
 
 == elif_chain
 entries: branches.elif_chain#b6dbda29467cf803
@@ -29,9 +29,9 @@ branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.c#5a699b94025caf8d Finished
 branches.elif_chain#b6dbda29467cf803 Finished
-  @107-110 -> branches.a#0d898a7a906b0aef Type
-  @107-110 -> branches.b#dcc794c809942e53 Type
-  @107-110 -> branches.c#5a699b94025caf8d Type
+  @107-110 -> branches.a#0d898a7a906b0aef Name
+  @107-110 -> branches.b#dcc794c809942e53 Name
+  @107-110 -> branches.c#5a699b94025caf8d Name
 
 == loop
 entries: branches.loop#061923c1bfc93e99
@@ -39,9 +39,9 @@ stats: walks 3, contexts 3, reuse_hits 1, unresolved 0, cuts {}, language {"anno
 branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.loop#061923c1bfc93e99 Finished
-  @49-52 -> branches.a#0d898a7a906b0aef Type
-  @122-125 -> branches.a#0d898a7a906b0aef Type
-  @122-125 -> branches.b#dcc794c809942e53 Type
+  @49-52 -> branches.a#0d898a7a906b0aef Name
+  @122-125 -> branches.a#0d898a7a906b0aef Name
+  @122-125 -> branches.b#dcc794c809942e53 Name
 
 == while_loop
 entries: branches.while_loop#e308114068e896b1
@@ -49,8 +49,8 @@ stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"anno
 branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.while_loop#e308114068e896b1 Finished
-  @60-63 -> branches.a#0d898a7a906b0aef Type
-  @60-63 -> branches.b#dcc794c809942e53 Type
+  @60-63 -> branches.a#0d898a7a906b0aef Name
+  @60-63 -> branches.b#dcc794c809942e53 Name
 
 == try_except
 entries: branches.try_except#5b6557d02571cfd2
@@ -59,7 +59,7 @@ branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.risky#716f8b90981a1ef2 Finished
 branches.try_except#5b6557d02571cfd2 Finished
-  @59-66 -> branches.risky#716f8b90981a1ef2 Type
-  @98-101 -> branches.a#0d898a7a906b0aef Type
-  @98-101 -> branches.b#dcc794c809942e53 Type
+  @59-66 -> branches.risky#716f8b90981a1ef2 Name
+  @98-101 -> branches.a#0d898a7a906b0aef Name
+  @98-101 -> branches.b#dcc794c809942e53 Name
 

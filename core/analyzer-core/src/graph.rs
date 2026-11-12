@@ -165,8 +165,12 @@ pub struct External {
 pub enum Basis {
     /// Followed along a path the analyzer tracked: an object built in this walk, its attributes. Only Python builds it today.
     Path,
-    /// The engine's static type answered.
+    /// The engine's static type answered, and the answer depends on a type: a method found through the class of its receiver (a
+    /// subclass may override it), a callee the engine typed but the code did not name.
     Type,
+    /// The code's own names fixed it: a function or class the callee expression names (a def, an import, a closure, `Foo()`), with no
+    /// receiver's class in between. The one basis a reader may take as certain, short of rebinding the name.
+    Name,
 }
 
 /// Why an edge has no target. The same string as the `Stats.language` counter key, so a count is what the edges say. An owned

@@ -12,8 +12,9 @@ use crate::interp::value::{AbstractValue, Values};
 use crate::interp::value::{ActivationId, OriginKey};
 use crate::interp::walk::{Walk, contains_yield};
 use crate::sem::Definition;
+use crate::sem::Shape;
 use analyzer_core::graph::Basis;
-use ruff_python_ast::{ExprCall, ExprRef, StmtFunctionDef};
+use ruff_python_ast::{Expr, ExprCall, ExprRef, StmtFunctionDef};
 use ruff_text_size::{Ranged, TextRange};
 use smallvec::{SmallVec, smallvec};
 
@@ -34,6 +35,7 @@ impl<'db> Walk<'db> {
         let callees = self.eval(sol, &call.func, env);
         let args = self.eval_arguments(sol, &call.arguments, env);
         let site = SiteId::new(call.range(), self.frame.def_start);
+        let named = sol.opts.mode == Mode::Summary && self.names_a_def(sol, &call.func);
         if sol.opts.mode == Mode::Summary && self.needs_defer(sol, &callees, &args, env) {
             // It can't be keyed yet: record it, and find its value in the fixpoint.
             let ty = sol.sem.type_of(&self.frame.model, ExprRef::from(call));
@@ -50,6 +52,7 @@ impl<'db> Walk<'db> {
                     args,
                     fallback,
                     edge,
+                    named,
                 },
                 env,
             );
@@ -63,8 +66,21 @@ impl<'db> Walk<'db> {
             Some(call),
             &Values::new(),
             None,
+            named,
             env,
         )
+    }
+
+    /// Does the code name what this callee expression calls? ty says: its type is a function or a class (the `def` or `class` itself), or a
+    /// union of only those. A method through a receiver, a `type[X]`, a `Callable` and anything with an `Unknown` member do not name one.
+    fn names_a_def(&self, sol: &Solver<'db>, callee: &Expr) -> bool {
+        let file = self.frame.file;
+        let literal = |t| matches!(sol.sem.shape(t, file), Shape::Function(_) | Shape::Class(_));
+        let t = sol.sem.type_of(&self.frame.model, ExprRef::from(callee));
+        match sol.sem.shape(t, file) {
+            Shape::Union(members) => !members.is_empty() && members.into_iter().all(literal),
+            _ => literal(t),
+        }
     }
 
     /// Would keying these values meet a `Pending`? Looks exactly as far as `fingerprint`.
@@ -166,6 +182,7 @@ impl<'db> Walk<'db> {
         call: Option<&ExprCall>,
         fallback: &Values<'db>,
         edge: Option<usize>,
+        named: bool, // the callee expression names a def or a class: `Basis::Name` for what it calls
         env: &mut Env<'db>,
     ) -> Values<'db> {
         // One node per function, in definition order: the join order is an accident.
@@ -174,6 +191,7 @@ impl<'db> Walk<'db> {
         let mut classes: Vec<Definition<'db>> = Vec::new();
         let mut ask_ty = false;
         let mut externals: Vec<Definition<'db>> = Vec::new();
+        let mut named_externals: Vec<Definition<'db>> = Vec::new();
         let mut unresolved = callees.is_empty();
         for c in callees {
             match *c {
@@ -191,6 +209,9 @@ impl<'db> Walk<'db> {
                 AbstractValue::Function(d) | AbstractValue::Class(d) => {
                     ask_ty = true;
                     externals.push(d);
+                    if named {
+                        named_externals.push(d);
+                    }
                 }
                 AbstractValue::Closure { func, .. } | AbstractValue::BoundMethod { func, .. } => {
                     ask_ty = true;
@@ -228,9 +249,16 @@ impl<'db> Walk<'db> {
                     after.push(Some(e));
                     v
                 }
-                Mode::Summary => {
-                    self.call_project(sol, def, enclosing, None, args, &mut edge_targets, &*env)
-                }
+                Mode::Summary => self.call_project(
+                    sol,
+                    def,
+                    enclosing,
+                    None,
+                    args,
+                    named,
+                    &mut edge_targets,
+                    &*env,
+                ),
             };
             out.extend(v);
         }
@@ -256,6 +284,7 @@ impl<'db> Walk<'db> {
                     None,
                     Some(recv),
                     args,
+                    false,
                     &mut edge_targets,
                     &*env,
                 )),
@@ -274,6 +303,7 @@ impl<'db> Walk<'db> {
                     class,
                     range,
                     args,
+                    if named { Basis::Name } else { Basis::Type },
                     &mut edge_targets,
                     &*env,
                 )),
@@ -281,11 +311,14 @@ impl<'db> Walk<'db> {
         }
         if sol.opts.mode == Mode::Summary {
             // every call site gets an edge, even when nothing is walked
-            edge_targets.extend(
-                externals
-                    .into_iter()
-                    .map(|d| Target::External(d, Basis::Type)),
-            );
+            edge_targets.extend(externals.into_iter().map(|d| {
+                let basis = if named_externals.contains(&d) {
+                    Basis::Name
+                } else {
+                    Basis::Type
+                };
+                Target::External(d, basis)
+            }));
             if unresolved {
                 edge_targets.push(Target::Unresolved);
             }
@@ -490,6 +523,7 @@ impl<'db> Walk<'db> {
         enclosing: Option<ActivationId>,
         receiver: Option<AbstractValue<'db>>,
         args: &EvaluatedArgs<'db>,
+        named: bool, // a def or a closure the callee expression names (no receiver)
         targets: &mut SmallVec<[Target<'db>; 2]>,
         env: &Env<'db>,
     ) -> Values<'db> {
@@ -500,10 +534,12 @@ impl<'db> Walk<'db> {
         let runs = !args.has_empty();
         let bound = self.bind_for_callee(sol, def, node, receiver, args, enclosing);
         let ctx = sol.key(self, def, &bound, enclosing, env);
-        // Path when the walk itself holds what the call rests on: an object it built here or a closure it made. Everything else is the
-        // engine's answer: a def found by name, a method on an object ty typed, and a method on an input object of this context (`self`
-        // of a walked method, an argument), whose class the key gave.
+        // Name when the callee expression names the def or the closure. Path when the walk itself holds what the call rests on: an object it
+        // built here, or a closure it made and called through a variable. Everything else is the engine's answer through a type: a method on
+        // an object ty typed, and a method on an input object of this context (`self` of a walked method, an argument), whose class the key
+        // gave.
         let basis = match receiver {
+            None if named => Basis::Name,
             Some(AbstractValue::Instance { origin, .. })
                 if self.origins[origin].is_built_here() =>
             {
@@ -554,21 +590,35 @@ impl<'db> Walk<'db> {
                     args,
                     fallback: Values::new(), // a project callee never asks ty
                     edge,
+                    named: false, // a getter or setter is reached through a receiver
                 },
                 env,
             );
             return smallvec![AbstractValue::Pending(id)];
         }
-        self.call_values(sol, site, &callee, &args, None, &Values::new(), None, env)
+        self.call_values(
+            sol,
+            site,
+            &callee,
+            &args,
+            None,
+            &Values::new(),
+            None,
+            false,
+            env,
+        )
     }
 
     /// Summary mode: a new object here, and `__init__` keyed on it.
+    // the construct site's inputs: the class and its site, the arguments, what the class expression rests on, and the walk's state
+    #[allow(clippy::too_many_arguments)]
     fn construct_summary(
         &mut self,
         sol: &mut Solver<'db>,
         class: Definition<'db>,
         site: TextRange,
         args: &EvaluatedArgs<'db>,
+        basis: Basis, // `Name` when the class expression names the class
         targets: &mut SmallVec<[Target<'db>; 2]>,
         env: &Env<'db>,
     ) -> Values<'db> {
@@ -589,11 +639,7 @@ impl<'db> Walk<'db> {
                 sol.get(ctx); // its value is never used; its writes are effects (step 03)
                 Some(ctx)
             });
-        targets.push(Target::Construct {
-            class,
-            init,
-            basis: Basis::Type, // the class came from a name or a type: no value of ours says which class
-        });
+        targets.push(Target::Construct { class, init, basis });
         if args.has_empty() {
             Values::new()
         } else {

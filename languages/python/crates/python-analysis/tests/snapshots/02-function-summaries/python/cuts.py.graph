@@ -2,17 +2,17 @@
 entries: cuts.main#7e12d4900716ae98
 stats: walks 8, contexts 7, reuse_hits 0, unresolved 0, cuts {MaxDepth: 1}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 cuts.a#cc6b5cfb2ab656d1 Incomplete(MaxDepth)
-  @13-16 -> cuts.b#8f40f4d6e4353f39 Type
+  @13-16 -> cuts.b#8f40f4d6e4353f39 Name
 cuts.b#8f40f4d6e4353f39 Incomplete(MaxDepth)
-  @13-18 -> cuts.top#d05e48b8c126d636 Type
+  @13-18 -> cuts.top#d05e48b8c126d636 Name
 cuts.handler#73ec0412288169e9 Finished
 cuts.leaf#b5a8c8341510949b Finished
 cuts.main#7e12d4900716ae98 Incomplete(MaxDepth)
-  @16-19 -> cuts.a#cc6b5cfb2ab656d1 Type
-  @24-29 -> cuts.top#d05e48b8c126d636 Type
+  @16-19 -> cuts.a#cc6b5cfb2ab656d1 Name
+  @24-29 -> cuts.top#d05e48b8c126d636 Name
   @24-31 -> cuts.handler#73ec0412288169e9 Type
 cuts.mid#9ca5ebc21082d39b Finished
-  @22-28 -> cuts.leaf#b5a8c8341510949b Type
+  @22-28 -> cuts.leaf#b5a8c8341510949b Name
 cuts.top#d05e48b8c126d636 Finished
-  @22-27 -> cuts.mid#9ca5ebc21082d39b Type
+  @22-27 -> cuts.mid#9ca5ebc21082d39b Name
 
