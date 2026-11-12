@@ -11,10 +11,10 @@ use analyzer_core::outline::DefKind;
 use analyzer_core::text::Span;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::interp::Stats;
 use crate::interp::key::ContextId;
 use crate::interp::solver::Solver;
 use crate::interp::summary::{Cut, Target};
+use crate::interp::{EntryRoot, Stats};
 use crate::sem::Definition;
 use crate::stable::StableDef;
 
@@ -109,11 +109,18 @@ fn stats(old: &Stats, unresolved: u64) -> CStats {
     out
 }
 
-/// Everything `entries` reach through the final edges, as core's graph.
-pub(crate) fn core_graph(s: &Solver<'_>, entries: &[ContextId]) -> Graph {
+/// Everything `entries` reach through the final edges, as core's graph. A class entry reaches what its constructor reaches, and its row is
+/// always in the table, with or without a constructor.
+pub(crate) fn core_graph<'db>(s: &Solver<'db>, entries: &[EntryRoot<'db>]) -> Graph {
     // 1. what the entries reach, in no particular order
     let mut seen: FxHashSet<ContextId> = FxHashSet::default();
-    let mut stack: Vec<ContextId> = entries.to_vec();
+    let mut stack: Vec<ContextId> = entries
+        .iter()
+        .filter_map(|e| match *e {
+            EntryRoot::Context(c) => Some(c),
+            EntryRoot::Construct { init, .. } => init,
+        })
+        .collect();
     let mut reached = Vec::new();
     while let Some(c) = stack.pop() {
         if !seen.insert(c) {
@@ -134,6 +141,11 @@ pub(crate) fn core_graph(s: &Solver<'_>, entries: &[ContextId]) -> Graph {
     // 3. the rows; `Graph::new` sorts them and keeps one per definition
     let (mut defs, mut contexts, mut edges) = (Vec::new(), Vec::new(), Vec::new());
     let mut unresolved = 0u64;
+    for entry in entries {
+        if let EntryRoot::Construct { class, .. } = entry {
+            defs.push(def_info(s, *class));
+        }
+    }
     for &c in &reached {
         let func = s.contexts[c].func;
         defs.push(def_info(s, func));
@@ -177,7 +189,13 @@ pub(crate) fn core_graph(s: &Solver<'_>, entries: &[ContextId]) -> Graph {
     }
     let entry_ids = entries
         .iter()
-        .map(|e| Root::Context(ids[e].clone()))
+        .map(|e| match *e {
+            EntryRoot::Context(c) => Root::Context(ids[&c].clone()),
+            EntryRoot::Construct { class, init } => Root::Construct {
+                class: s.sem.stable_def(class),
+                init: init.map(|i| ids[&i].clone()),
+            },
+        })
         .collect();
     Graph::new(
         entry_ids,

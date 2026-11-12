@@ -176,9 +176,8 @@ fn a_def_inside_a_block_is_an_entry() {
 }
 
 #[test]
-fn every_function_of_the_outline_round_trips() {
+fn every_def_of_the_outline_round_trips() {
     use python_analysis::MarkerStyle;
-    use python_syntax::DefKind;
     let mut files: Vec<_> = std::fs::read_dir(ENTRIES)
         .unwrap()
         .map(|e| e.unwrap().path())
@@ -191,10 +190,6 @@ fn every_function_of_the_outline_round_trips() {
         let text = std::fs::read_to_string(&path).unwrap();
         let outline = python_syntax::outline(&text, MarkerStyle::docstring("ID"));
         for (i, def) in outline.defs.iter().enumerate() {
-            // classes join in E5: a class is not a function and has no tree of its own yet
-            if def.kind == DefKind::Class {
-                continue;
-            }
             let occurrence = outline.defs[..i]
                 .iter()
                 .filter(|d| d.qualname == def.qualname)
@@ -210,4 +205,136 @@ fn every_function_of_the_outline_round_trips() {
         }
     }
     assert!(asked > 15, "only {asked} defs were asked for");
+}
+
+/// A frame and everything under it, as the fields a driver reads: the target's name, where the call was made, and the marks. Not the contexts,
+/// which are the solver's.
+#[derive(Debug, PartialEq)]
+struct Shape {
+    target: (Option<String>, String, u16),
+    call_site: Option<(u32, u32)>,
+    call_site_file: Option<String>,
+    marks: Vec<String>,
+    children: Vec<Shape>,
+}
+
+fn shape(frame: &python_analysis::Frame) -> Shape {
+    Shape {
+        target: (
+            frame.target_file.clone(),
+            frame.target_qualname.clone(),
+            frame.target_occurrence,
+        ),
+        call_site: frame.call_site.map(|s| s.start),
+        call_site_file: frame.call_site_file.clone(),
+        marks: frame.marks.clone(),
+        children: frame.children.iter().map(shape).collect(),
+    }
+}
+
+#[test]
+fn a_class_is_an_entry_and_its_inherited_constructor_is_in_another_file() {
+    let frame = wire_of("inherit_a.py", "Child", 0).unwrap();
+    assert_eq!(
+        (
+            frame.target_kind.clone(),
+            frame.target_file.as_deref(),
+            frame.call_site_file.as_deref()
+        ),
+        (
+            Some(python_syntax::DefKind::Class),
+            Some("inherit_a.py"),
+            None
+        )
+    );
+    assert_eq!(child_names(&frame), ["helper"]);
+    let helper = &frame.children[0];
+    assert_eq!(helper.target_file.as_deref(), Some("inherit_b.py"));
+    assert_eq!(helper.call_site_file.as_deref(), Some("inherit_b.py"));
+    assert_eq!(
+        helper.call_site.unwrap().start.0,
+        7,
+        "the line of `helper()` in inherit_b.py"
+    );
+}
+
+#[test]
+fn an_entry_on_a_class_and_a_call_that_constructs_it_draw_the_same_subtree() {
+    let entry = wire_of("inherit_a.py", "Child", 0).unwrap();
+    let make = wire_of("inherit_a.py", "make", 0).unwrap();
+    assert_eq!(child_names(&make), ["Child"]);
+    let built = &make.children[0];
+    assert_eq!(built.call_site_file.as_deref(), Some("inherit_a.py"));
+    assert_eq!(
+        built.call_site.unwrap().start.0,
+        9,
+        "the line of `Child()` in inherit_a.py"
+    );
+    // the class itself is the same target; only how it was reached differs
+    assert_eq!(
+        (
+            &built.target_file,
+            &built.target_qualname,
+            built.target_occurrence
+        ),
+        (
+            &entry.target_file,
+            &entry.target_qualname,
+            entry.target_occurrence
+        )
+    );
+    let under = |f: &python_analysis::Frame| f.children.iter().map(shape).collect::<Vec<_>>();
+    assert_eq!(under(built), under(&entry));
+}
+
+#[test]
+fn a_class_with_no_project_constructor_is_an_entry_with_nothing_under_it() {
+    let frame = wire_of("no_init.py", "Plain", 0).unwrap();
+    assert!(
+        frame.children.is_empty() && frame.marks.is_empty(),
+        "{frame:?}"
+    );
+    assert_eq!(frame.target_qualname, "Plain");
+}
+
+#[test]
+fn twin_classes_are_asked_for_by_occurrence() {
+    let frame = wire_of("twins.py", "Impl", 1).unwrap();
+    assert!(frame.children.is_empty());
+    assert_eq!(frame.target_occurrence, 1);
+}
+
+#[test]
+fn the_constructor_context_of_a_class_entry_is_the_one_a_construction_has() {
+    use python_analysis::{EdgeTo, Root, call_graph};
+    let project = entries_project();
+    let opts = Options::default();
+    let ask = |qualname| {
+        let entry = Entry {
+            qualname,
+            occurrence: 0,
+        };
+        call_graph(&project, "inherit_a.py", &entry, &opts).unwrap()
+    };
+    let Root::Construct {
+        init: Some(root), ..
+    } = ask("Child").entries[0].clone()
+    else {
+        panic!("the class entry has no constructor context");
+    };
+    let make = ask("make");
+    let built = make
+        .edges
+        .iter()
+        .find_map(|e| match &e.to {
+            EdgeTo::Construct {
+                init: Some(init), ..
+            } => Some(init.clone()),
+            _ => None,
+        })
+        .expect("`make` constructs `Child`");
+    assert_eq!(
+        root, built,
+        "same function and same digest: one context, shared"
+    );
 }

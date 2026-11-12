@@ -551,15 +551,17 @@ impl<'db> Sem<'db> {
         StableDef::Path { module, qname, nth }
     }
 
+    /// The text of `file`, as the engine read it.
+    pub(crate) fn source_text(&self, file: File) -> String {
+        source_text(self.db, file).as_str().to_owned()
+    }
+
     /// The outline's names for the defs of `file`, read once.
     fn named_defs(&self, file: File) -> Rc<NamedDefs> {
         if let Some(found) = self.named.borrow().get(&file) {
             return found.clone();
         }
-        let table = Rc::new(NamedDefs::new(
-            source_text(self.db, file).as_str(),
-            self.marker,
-        ));
+        let table = Rc::new(NamedDefs::new(&self.source_text(file), self.marker));
         self.named.borrow_mut().insert(file, table.clone());
         table
     }

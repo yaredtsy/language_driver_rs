@@ -1,0 +1,9 @@
+== Child
+inherit_a.Child <inherit_a.py:Child#0 Class>
+  inherit_b.helper <inherit_b.py:helper#0 Function> @7:9 in inherit_b.py
+
+== make
+inherit_a.make <inherit_a.py:make#0 Function>
+  inherit_a.Child <inherit_a.py:Child#0 Class> @9:5 in inherit_a.py
+    inherit_b.helper <inherit_b.py:helper#0 Function> @7:9 in inherit_b.py
+

@@ -52,8 +52,9 @@ pub(super) fn expectations(source: &str) -> Vec<Expect> {
 /// the file whose qualname, with every `.<locals>` removed, is `dotted`, at occurrence 0 (the first def with its qualname). The fixtures and
 /// their snapshot headers keep the dotted names; `Sem` takes only the outline's (D20).
 fn entry_named(db: &ProjectDatabase, file: ruff_db::files::File, dotted: &str) -> Option<String> {
-    let text = ruff_db::source::source_text(db, file);
-    let outline = python_syntax::outline(text.as_str(), Options::default().marker);
+    let marker = Options::default().marker;
+    let text = Sem::new(db, marker).source_text(file);
+    let outline = python_syntax::outline(&text, marker);
     outline
         .defs
         .iter()
@@ -71,7 +72,7 @@ pub(super) fn solve<'db>(
     opts: &Options,
 ) -> Option<(
     crate::interp::solver::Solver<'db>,
-    crate::interp::key::ContextId,
+    crate::interp::EntryRoot<'db>,
 )> {
     let qualname = entry_named(db, file, dotted)?;
     crate::interp::solve(
@@ -1277,6 +1278,21 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
         let path = std::path::Path::new(&dir).join(format!("{fixture}.wire"));
         analyzer_testkit::expect_file(&path, &text);
     }
+}
+
+/// A class as the entry and a function that constructs it, side by side: `Child` inherits `__init__` from another file, so the root's subtree
+/// is in `inherit_b.py` and its call site says so (`in inherit_b.py`). Under `make`, the node `Child` has the same subtree and a call site in
+/// `inherit_a.py`. `tests/snapshots/08-entries/python/inherit_a.wire`; reviewed, not just blessed.
+#[test]
+fn the_wire_of_a_class_entry_and_of_its_construction_side_by_side() {
+    let (db, file) = open_fixture("08-entries/python/inherit_a.py");
+    let mut text = String::new();
+    for entry in ["Child", "make"] {
+        let (frame, _) = call_frame(&db, file, entry, &summary(), false).unwrap();
+        text.push_str(&format!("== {entry}\n{}\n", wire_text(&frame)));
+    }
+    let path = std::path::Path::new("tests/snapshots/08-entries/python/inherit_a.wire");
+    analyzer_testkit::expect_file(path, &text);
 }
 
 /// A graph as reviewed text: every def row with the outline's name for it (D20), then each context with its digest, and under it every edge

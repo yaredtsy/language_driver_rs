@@ -34,6 +34,17 @@ use crate::{
     sem::Sem,
 };
 
+/// What `solve` started from: the entry's own context, or a class and its constructor's context (D20). `core_graph` turns it into core's `Root`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum EntryRoot<'db> {
+    Context(ContextId),
+    /// `init` is `None` when the class has no constructor function in project code.
+    Construct {
+        class: crate::sem::Definition<'db>,
+        init: Option<ContextId>,
+    },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
     /// Follow every call into the callee's body (parts 01 and 03).
@@ -245,9 +256,12 @@ pub(crate) fn solve<'db>(
     file: File,
     entry: &Entry<'_>,
     opts: &Options,
-) -> Option<(Solver<'db>, ContextId)> {
+) -> Option<(Solver<'db>, EntryRoot<'db>)> {
     let sem = Sem::new(db, opts.marker);
     let def = sem.entry(file, entry)?;
+    if sem.is_class(def) {
+        return Some(solve_class(sem, def, opts));
+    }
     let parsed = sem.parsed(def);
     let node = sem.function_node(def, &parsed)?;
     let mut s = Solver::new(sem, opts.clone());
@@ -289,9 +303,39 @@ pub(crate) fn solve<'db>(
     );
     let root_ctx = s.key(&w, def, &bound, None, &env);
     s.get(root_ctx);
-    Some((s, root_ctx))
+    Some((s, EntryRoot::Context(root_ctx)))
 }
 
+/// A class as the entry: what a `Class()` call site runs, with no arguments and no caller. It is `construct_summary`, the function the call
+/// site goes through, so the MRO lookup of `__init__`, the "project code only" filter and the binding of `self` are shared, not copied.
+/// `Basis::Type`: the root is not an edge, so it rests on nothing.
+fn solve_class<'db>(
+    sem: Sem<'db>,
+    class: crate::sem::Definition<'db>,
+    opts: &Options,
+) -> (Solver<'db>, EntryRoot<'db>) {
+    let mut s = Solver::new(sem, opts.clone());
+    let mut w = Walk::new(&s, class);
+    let mut env = env::Env::default();
+    let mut targets = smallvec::SmallVec::new();
+    let site = s.sem.def_range(class);
+    w.construct_summary(
+        &mut s,
+        class,
+        site,
+        &bind::EvaluatedArgs::default(),
+        analyzer_core::graph::Basis::Type,
+        &mut targets,
+        &mut env,
+    );
+    let init = targets.iter().find_map(|t| match t {
+        summary::Target::Construct { init, .. } => *init,
+        _ => None,
+    });
+    (s, EntryRoot::Construct { class, init })
+}
+
+// A class entry has no function node, so this gives `None` for one: no fixture asks for a class in inline mode.
 #[allow(dead_code)] // inline mode is the fixture suite's cross-check and is not reachable from the public API
 fn inline_tree(
     db: &ProjectDatabase,
