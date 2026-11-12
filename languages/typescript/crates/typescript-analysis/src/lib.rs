@@ -84,8 +84,9 @@ impl Project {
     }
 
     /// What, if it changes, means "load this project again": globs for the config, package and lock files, then the exact config files that fed
-    /// this program and no glob covers (an `extends` target such as `config/shared.json`, or a config skipped for a syntax error). Relative to the
-    /// root. The repo's own `.d.ts` files are not here: they are [`Project::declaration_files`].
+    /// this program and no glob covers (an `extends` target such as `config/shared.json`, or a config skipped for a syntax error). An entry is
+    /// relative to the root with `/`, or, for a config outside the root (`"extends": "../base.json"`), the engine's absolute path with `/`.
+    /// The repo's own `.d.ts` files are not here: they are [`Project::declaration_files`].
     pub fn environment_inputs(&self) -> Vec<String> {
         let mut inputs: Vec<String> = ENVIRONMENT_GLOBS
             .iter()
