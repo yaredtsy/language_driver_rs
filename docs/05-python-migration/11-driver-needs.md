@@ -155,14 +155,23 @@ and keep running on their own threads.
 (the contract's `vnoc/environmentInputs`). The core hashes them and drops cached trees when the hash changes; `refresh` uses the same list
 for its stamps.
 
-| Input | Why | [check] |
-|---|---|---|
-| `pyproject.toml`, `ty.toml` in the root only | the configuration; a parent's is never read (D26) | |
-| `.python-version` | the Python version | does the vendored engine read it |
-| `.venv/pyvenv.cfg` | the project's virtual environment (`ty_site_packages`: `<root>/.venv` when `VIRTUAL_ENV` is not set) | a venv elsewhere, set by `[tool.ty.environment] python`: add that path when the config names one |
-| `uv.lock`, `poetry.lock`, `Pipfile.lock`, `requirements*.txt` | a stand-in for "the installed packages changed", as TypeScript lists lock files | whether a `pip install` into `.venv` without a lock change is seen (the `site-packages` folder itself is not listed: thousands of files) |
+Rewritten 2026-11-13 after reading the vendored engine (`ty_project/src/metadata/options.rs` `to_program_settings` and
+`python_environment`; `ty_site_packages/src/lib.rs` `PythonEnvironment::discover` and `new`). PY9.3 confirms it.
 
-`VIRTUAL_ENV` and `CONDA_PREFIX` are environment variables of the driver process: fixed for its life, so not inputs.
+| Input | Why |
+|---|---|
+| `pyproject.toml`, `ty.toml` in the root only | the configuration; a parent's is never read (D26) |
+| `<sys.prefix>/pyvenv.cfg` of **the environment the engine uses** | its Python version and its `site-packages`. Found with the engine's own functions, in the engine's order: the config's `environment.python` (`PythonEnvironment::new` on it), else `PythonEnvironment::discover(root)`, which tries `VIRTUAL_ENV`, a child `CONDA_PREFIX`, `<root>/.venv`, a base conda, then `python3` / `python` on `PATH`. Listed when the config names it (even if it is broken: the user may fix it), or when the discovered environment has a `pyvenv.cfg`. Relative to the root when under it, **absolute** otherwise |
+| `.venv/pyvenv.cfg`, always | creating a `.venv` later changes what `discover` picks when no config or `VIRTUAL_ENV` names one. Listed once if it is also the line above |
+| `uv.lock`, `poetry.lock`, `Pipfile.lock`, `requirements*.txt` | a stand-in for "the installed packages changed", as TypeScript lists lock files. A `pip install` without a lock change is **not** listed (the `site-packages` folder is thousands of files); a module the engine had looked up and not found is still seen by `refresh` (`sync_all`, claim 2) |
+
+**Not inputs:** `.python-version` (the vendored engine never reads a file of that name: only the `environment.python-version` option and
+`requires-python`, both in the config); `VIRTUAL_ENV`, `CONDA_PREFIX`, `PATH` and `TY_UV` (environment variables of the driver process, fixed
+for its life; the engine calls `uv` only when `TY_UV` is set, and `open_project` refuses any root but the folder asked for, so D26 holds
+either way).
+
+The list is computed **once**, at open and at each reopen, and kept in the `Project`: `discover` looks up `python3` on `PATH`, which is not
+worth doing before every request. `refresh`'s stamps use the kept list. The order is sorted (rule 9).
 
 ## 6. The stack
 
@@ -207,8 +216,8 @@ nothing in `core/` (rule 5 is still checked: core's tests run).
 
 | | |
 |---|---|
-| Change | §5: `Project::environment_inputs`, the list PY9.2's stamps already use, made public; §10 claim 6 checked, and the list fixed if the engine reads more |
-| Failing tests | on `tests/fixtures/09-root/…` and a fixture with a `.venv/pyvenv.cfg`: the list, in a fixed order (rule 9); a config named by the project (`[tool.ty.environment] python`) adds its path |
+| Change | §5: `Project::environment_inputs`, computed at open and reopen and kept; `refresh`'s stamps use it (PY9.2's private constant goes, `.python-version` leaves the list); §10 claim 6 |
+| Failing tests | **unit** (`sem/project.rs`): the list from a root and the environment's `sys.prefix`, a pure function: none; one under the root; `<root>/.venv` itself (listed once); one outside the root (absolute). **`tests/api.rs`**, on projects the test writes (as PY9.2): (a) no config: the list holds the fixed entries and `.venv/pyvenv.cfg`, and anything else in it is absolute (the test process may have `VIRTUAL_ENV` set, or a Python on `PATH`: the test must not depend on the machine). (b) a `ty.toml` with `[environment] python = "env"` and an `env/pyvenv.cfg`: `env/pyvenv.cfg` is in the list (the config wins over `VIRTUAL_ENV`, so this is the same on every machine). (c) the same, `env/pyvenv.cfg` rewritten: `refresh` reopens. (d) `python` naming a folder outside the root: its `pyvenv.cfg` is in the list as an absolute path. (e) sorted |
 | Proof | as PY9.1 |
 
 ### PY9.4. The CLI shows it
@@ -232,7 +241,9 @@ Text for the vnoc agent, after PY9.4 is pushed and CI is green. Nothing here is 
    calls `cancel()`; the request passes it in `Options::cancel` (`python_analysis::Cancel`). The answer of a cancelled request is still
    dropped (`-32800`). A request still queued when it is cancelled is answered `-32800` without being run. To count the time a request
    waits in the queue against its deadline, build the `Cancel` with `with_deadline(received + 20 s)` when the request arrives (§10 claim 4).
-3. **`vnoc/environmentInputs { root }`** answers `Project::environment_inputs()`; capability `environmentInputs: true`.
+3. **`vnoc/environmentInputs { root }`** answers `Project::environment_inputs()`; capability `environmentInputs: true`. An entry is a path
+   or a glob relative to the root, **or an absolute path** when the environment lives outside the root (§5): check that the core's hashing
+   accepts one.
 4. **The mark `likely`** (D28, from the last `rev`): add `CallMark::Likely` to the protocol (additive) and map `"likely"` to it, instead of
    dropping it. Until then the UI shows a likely call as a certain one.
 5. **After TypeScript's TS5 step 2**, the wire version the driver reports is 3; Python's wire has no `more` field with default options.
@@ -257,6 +268,6 @@ Text for the vnoc agent, after PY9.4 is pushed and CI is green. Nothing here is 
 | 3 | A warm request costs a small part of a cold one, so keeping the project is worth the memory it holds | PY9.0. **Holds.** Warm 5.7 / 9.5 / 2.5 ms against cold 86 / 175 / 94 ms (Jarvis, post, get_files: 15×, 18×, 37×), debug build. A kept project holds at most 60 / 78 / 62 MiB resident (the process starts at 6 MiB), and `sync_all` with nothing changed costs 0.05–2.3 ms and keeps it warm |
 | 4 | The deadline could move into `Options::cancel` (`Cancel::with_deadline`) and `Limits::deadline` go: one mechanism. Say whether anything is lost (the deadline is measured from the solver's start today, from the caller's clock with `Cancel`) | **Answered in the plan (2026-11-13), not yet built: keep both.** Nothing in the analysis is lost either way: `cost_limit` reads `Cancel::reason()`, so a `Cancel` deadline is a `Deadline` cut, as `Limits::deadline` is. They differ in the clock: `Limits::deadline` counts from the solver's start (not the open, the refresh or the queue), while a `Cancel` deadline is an `Instant` the caller picks and can include them, which suits the host's 30 s timeout. Removing `Limits::deadline` would break every caller that sets it (the V-NOC driver does), for no gain. The vnoc text (§8) says the driver may pass `with_deadline` |
 | 5 | One walk never runs long enough that a cancel between walks feels late (the longest single walk on the three projects) | PY9.0. **Holds.** Measured as the longest time between two `cost_limit` calls in one request (a walk recurses into its callees, so its own time includes theirs): cold 35 / 15 / 5 ms (Jarvis, post, get_files; one outlier each, 96 and 63 ms), warm 1.8 ms at most, debug build on a busy machine. After the last check, the render and the wire take up to 36 ms cold, 12 ms warm, and no check covers them |
-| 6 | The engine reads `.python-version` and a venv named in the config; the list of §5 is complete for the vendored engine | PY9.3 |
+| 6 | The engine reads `.python-version` and a venv named in the config; the list of §5 is complete for the vendored engine | PY9.3. **Half wrong, as the planner read it; confirmed 2026-11-13.** The engine reads a venv named in the config (`environment.python`, before `VIRTUAL_ENV`: `options.rs:214` and `315-340`) but **not** `.python-version`. `grep -rnE '"\.python-version"\|join\("\.python-version\|\.python-version"'` over `ty_project`, `ty_site_packages`, `ty_python_semantic`, `ty_module_resolver`, `ruff_db`, `ty_static` (`*.rs`): 0 hits; `grep -rln '\.python-version'` finds only `ty_project/src/metadata.rs`, `metadata/options.rs`, `metadata/pyproject.rs`, all the TOML key `environment.python-version` in messages. Tests: a venv named by the config is listed and a rewrite of its `pyvenv.cfg` reopens the project; one outside the root is listed as a canonical absolute path and a rewrite of it reopens too. `languages/python/ENGINE.md` has the order with file and line |
 
 Next: [`../06-roadmap.md`](../06-roadmap.md)

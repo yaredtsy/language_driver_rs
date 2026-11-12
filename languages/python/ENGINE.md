@@ -193,6 +193,31 @@ which no check covers). These runs were about twice as slow overall as the ones 
 
 A cancel checked in `cost_limit` would be seen within about 0.1 s at worst on a cold project, and within 2 ms on a warm one, plus the render.
 
+## Environment inputs (PY9.3)
+
+`Project::environment_inputs` lists the files whose change means "answers may differ" (`docs/05-python-migration/11-driver-needs.md` §5).
+The environment among them is the one **the engine uses**, found with the engine's own functions (paths in `vendor/ruff/crates/`):
+
+1. The config's `environment.python`, if any (`ty_project/src/metadata/options.rs` `to_program_settings`, line 214 is the `Ok(None)` arm that
+   falls through to step 2). `MergedOptions::python_environment` (`metadata.rs:654`, public) makes the path absolute with
+   `RelativePathBuf::absolute` (`metadata/value.rs:65`: against the config's folder, `~` and `$VAR` expanded) and calls
+   `PythonEnvironment::new` (`options.rs:315-340`). We call that function, not a copy. If `new` fails (no `pyvenv.cfg`, a bad one), the
+   engine continues without an environment; we still list the configured path, made absolute the same way.
+2. Else `PythonEnvironment::discover(Some(root), system)` (`ty_site_packages/src/lib.rs:286`): `VIRTUAL_ENV` (299), a child `CONDA_PREFIX`
+   (308), `<root>/.venv` (315), a base conda (335), then `python3` / `python` on `PATH` (340). We list the result only if
+   `<sys_prefix>/pyvenv.cfg` is a file: a system Python has none.
+3. `sys_prefix()` (`lib.rs:374`) is canonical, so an entry outside the root is the canonical path (on macOS `/private/var/...`, not `/var/...`).
+
+**`.python-version` is not read.** `grep` for `.python-version` as a file name in `ty_project`, `ty_site_packages`, `ty_python_semantic`,
+`ty_module_resolver`, `ruff_db` finds nothing: the only hits are the TOML key `environment.python-version` in messages and tests. The Python
+version comes from that key, from `requires-python`, or from the environment's `pyvenv.cfg`.
+
+**`TY_UV` is off unless set** (`ty_project/src/uv.rs:49`: only `1`, `true` or `scripts` turn it on). `discover` takes the setting from the
+process environment, and `open_project` accepts no root but the one asked for, so D26 holds either way. `VIRTUAL_ENV`, `CONDA_PREFIX`,
+`PATH` and `TY_UV` are variables of the driver's process, fixed for its life: not inputs.
+
+The list is computed at open and at each reopen, not per request: `discover` looks `python3` up on `PATH`.
+
 ## A def found past an unknown base (D28)
 
 The engine writes "found past a base it cannot see" as an intersection (`Type::Intersection`) whose positive parts are the def it found and

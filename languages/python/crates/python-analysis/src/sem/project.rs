@@ -1,12 +1,13 @@
 use ruff_db::files::{File, Files, system_path_to_file};
 use ruff_db::source::source_text;
-use ruff_db::system::{OsSystem, SystemPath};
+use ruff_db::system::{OsSystem, System, SystemPath, SystemPathBuf};
 
 use ty_project::{Db as _, ProjectDatabase, ProjectMetadata};
 #[cfg(test)]
 use ty_python_core::ProgramFile;
 #[cfg(test)]
 use ty_python_semantic::Db as _;
+use ty_python_semantic::PythonEnvironment;
 
 /// The text of the project's files, for the wire: a call site is bytes relative to its function, and the wire wants a line and a column.
 pub(crate) struct DbSources<'db>(pub &'db ProjectDatabase);
@@ -23,7 +24,9 @@ impl crate::wire::Sources for DbSources<'_> {
 /// [`Project::refresh`] is the one thing that changes it.
 pub struct Project {
     db: ProjectDatabase,
-    /// The environment inputs as they were when the project was opened or last reopened: `refresh` compares against them.
+    /// The environment inputs (see [`input_list`]) as they were when the project was opened or last reopened.
+    inputs: Vec<String>,
+    /// The state of those inputs at that time: `refresh` compares against it.
     stamps: Stamps,
 }
 
@@ -36,36 +39,99 @@ pub struct Refreshed {
     pub reopened: bool,
 }
 
-/// The files that decide the search paths, the Python version or the rules, relative to the root. `requirements*.txt` is not here: it
-/// is a pattern, read from the root folder by [`stamps`].
-const ENVIRONMENT_INPUTS: [&str; 7] = [
+/// The files that decide the search paths, the Python version or the rules, relative to the root, whatever the machine has.
+/// `requirements*.txt` is a pattern: [`stamps`] reads the root folder for it. `.venv/pyvenv.cfg` is here even when no environment uses
+/// it yet: creating a `.venv` later changes what the engine picks when nothing else names one.
+const FIXED_INPUTS: [&str; 7] = [
     "pyproject.toml",
     "ty.toml",
-    ".python-version",
     ".venv/pyvenv.cfg",
     "uv.lock",
     "poetry.lock",
     "Pipfile.lock",
+    "requirements*.txt",
 ];
 
-/// For each input that exists: its path relative to the root, its size and its modified time. Sorted by path (rule 9).
+/// The inputs of a project rooted at `root` whose `sys.prefix` is `environment` (`None`: no environment with a `pyvenv.cfg`): the fixed
+/// entries and `<environment>/pyvenv.cfg`. An entry is relative to `root`, written with `/` on every OS, when it is under it, and absolute
+/// otherwise. Sorted and without duplicates (rule 9).
+///
+/// It takes plain paths and asks the engine nothing, so it is tested with any made-up root and environment: the part that asks the
+/// engine is [`environment_prefix`].
+fn input_list(root: &SystemPath, environment: Option<&SystemPath>) -> Vec<String> {
+    let mut list: Vec<String> = FIXED_INPUTS.iter().map(|e| (*e).to_owned()).collect();
+    if let Some(environment) = environment {
+        let cfg = environment.join("pyvenv.cfg");
+        list.push(match cfg.strip_prefix(root) {
+            Ok(relative) => relative
+                .components()
+                .map(|c| c.as_str())
+                .collect::<Vec<_>>()
+                .join("/"),
+            Err(_) => cfg.as_str().to_owned(),
+        });
+    }
+    list.sort();
+    list.dedup();
+    list
+}
+
+/// The `sys.prefix` of the environment the engine uses for `metadata`, found with the engine's own functions in its order
+/// (`to_program_settings`): the `environment.python` of the config, else `PythonEnvironment::discover`.
+///
+/// When the config names one, the answer is its `sys.prefix` if the engine can open it, and the configured path itself (absolute, as
+/// the engine makes it) if not: the config names it even when it is broken, and the user may fix it. When it is discovered, the answer is
+/// there only if the environment has a `pyvenv.cfg`: a system Python has none to watch. A failure is `None`, never an error (rule 8).
+fn environment_prefix(
+    metadata: &ProjectMetadata,
+    root: &SystemPath,
+    system: &dyn System,
+) -> Option<SystemPathBuf> {
+    let merged = metadata.to_merged_options();
+    let configured = merged
+        .options()
+        .environment
+        .as_ref()
+        .and_then(|environment| environment.python.as_ref());
+    if let Some(python) = configured {
+        return Some(match merged.python_environment(system) {
+            Ok(Some(environment)) => environment.sys_prefix().to_path_buf(),
+            _ => python.absolute(root, system),
+        });
+    }
+    let environment = PythonEnvironment::discover(Some(root), system).ok()??;
+    let prefix = environment.sys_prefix().to_path_buf();
+    system.is_file(&prefix.join("pyvenv.cfg")).then_some(prefix)
+}
+
+/// For each input that exists: its path (as the list has it, or the file's name for a match of a pattern), its size and its modified
+/// time. Sorted by path (rule 9).
 type Stamps = Vec<(String, u64, Option<std::time::SystemTime>)>;
 
-/// The stamps of the inputs under `root`. Reading metadata does not write (rule 2). A file that cannot be read is absent, never an error.
-fn stamps(root: &std::path::Path) -> Stamps {
-    let mut names: Vec<String> = ENVIRONMENT_INPUTS.iter().map(|n| (*n).to_owned()).collect();
-    if let Ok(entries) = std::fs::read_dir(root) {
-        names.extend(
-            entries
-                .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
-                .filter(|name| name.starts_with("requirements") && name.ends_with(".txt")),
-        );
+/// The stamps of `inputs` under `root`. An entry with a `*` is a pattern for the names in the root folder; an absolute entry is
+/// stamped as it is. Reading metadata does not write (rule 2). A file that cannot be read is absent, never an error.
+fn stamps(root: &std::path::Path, inputs: &[String]) -> Stamps {
+    let mut names = Vec::new();
+    for input in inputs {
+        match input.split_once('*') {
+            Some((prefix, suffix)) => {
+                if let Ok(entries) = std::fs::read_dir(root) {
+                    names.extend(
+                        entries
+                            .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+                            .filter(|name| name.starts_with(prefix) && name.ends_with(suffix)),
+                    );
+                }
+            }
+            None => names.push(input.clone()),
+        }
     }
     names.sort();
     names.dedup();
     names
         .into_iter()
         .filter_map(|name| {
+            // `join` of an absolute path is that path
             let meta = std::fs::metadata(root.join(&name)).ok()?;
             meta.is_file()
                 .then(|| (name, meta.len(), meta.modified().ok()))
@@ -128,18 +194,15 @@ impl Project {
         let root = SystemPath::from_std_path(&absolute)
             .filter(|_| absolute.is_dir())
             .ok_or_else(not)?;
-        let db = open_project(root).map_err(|_| not())?;
-        Ok(Project {
-            db,
-            stamps: stamps(&absolute),
-        })
+        let (db, inputs) = open_with_inputs(root).map_err(|_| not())?;
+        let stamps = stamps(&absolute, &inputs);
+        Ok(Project { db, inputs, stamps })
     }
 
     /// Brings the project up to date with the disk; call it before each request, because a request answers from what the project knows
     /// and does not look at the disk. It never fails.
     ///
-    /// The environment inputs (a config, `.python-version`, the virtual environment, a lock file, `requirements*.txt`) are compared with
-    /// how they were at open. If one changed, appeared or went away, the project is opened again from the same root (D26: the root is
+    /// The environment inputs ([`Project::environment_inputs`]) are compared with how they were at open. If one changed, appeared or went away, the project is opened again from the same root (D26: the root is
     /// never rediscovered) and `reopened` is true: the next request is as slow as the first. Otherwise the engine re-reads the metadata
     /// of the files it has seen, and only what read a changed file is recomputed; this is cheap (milliseconds), and a file created
     /// after the first request is found too. If the project cannot be opened again (the root is gone), the old one is kept, synced, and
@@ -148,14 +211,15 @@ impl Project {
     /// It takes `&mut self`, so no request can be running: the compiler checks that.
     pub fn refresh(&mut self) -> Refreshed {
         let root = self.db.project().root(&self.db).to_path_buf();
-        let current = stamps(root.as_std_path());
+        let current = stamps(root.as_std_path(), &self.inputs);
         let mut reopened = false;
         if current != self.stamps
             && root.as_std_path().is_dir()
-            && let Ok(db) = open_project(&root)
+            && let Ok((db, inputs)) = open_with_inputs(&root)
         {
+            self.stamps = stamps(root.as_std_path(), &inputs);
+            self.inputs = inputs;
             self.db = db;
-            self.stamps = current;
             reopened = true;
         }
         if !reopened {
@@ -163,6 +227,14 @@ impl Project {
             Files::sync_all(&mut self.db);
         }
         Refreshed { reopened }
+    }
+
+    /// The files whose change means "answers may differ": the host hashes them and drops what it cached when the hash changes. An entry is a
+    /// path, or the glob `requirements*.txt`, relative to the root with `/`, or an absolute path when the environment the engine uses
+    /// lives outside the root. The list was computed when the project was opened or last reopened by [`Project::refresh`], not on each call:
+    /// finding the environment looks at `PATH`. It is sorted.
+    pub fn environment_inputs(&self) -> Vec<String> {
+        self.inputs.clone()
     }
 
     pub(crate) fn db(&self) -> &ProjectDatabase {
@@ -182,13 +254,12 @@ impl Project {
     }
 }
 
-/// The project rooted at `dir` (D26). `ProjectMetadata::discover` walks up through the parent folders and lets a config file there
-/// move the root, so its answer is used only when the root is `dir` itself. When it is a parent, `dir` gets the engine's own "no
+/// The metadata of the project rooted at `dir` (D26). `ProjectMetadata::discover` walks up through the parent folders and lets a config file
+/// there move the root, so its answer is used only when the root is `dir` itself. When it is a parent, `dir` gets the engine's own "no
 /// config" project, which is what `discover` returns when no folder has a config.
-pub(crate) fn open_project(dir: &SystemPath) -> anyhow::Result<ProjectDatabase> {
-    let system = OsSystem::new(dir);
+fn metadata_for(dir: &SystemPath, system: &OsSystem) -> ProjectMetadata {
     let here = || ProjectMetadata::new(dir.file_name().unwrap_or("root"), dir.to_path_buf());
-    let metadata = match ProjectMetadata::discover(dir, &system) {
+    match ProjectMetadata::discover(dir, system) {
         // The root is `dir` or one of its parents, cut from the same text, so it is spelled as `dir` is: no `canonicalize` needed.
         Ok(m) if m.root() == dir => m,
         Ok(_) => here(),
@@ -196,8 +267,25 @@ pub(crate) fn open_project(dir: &SystemPath) -> anyhow::Result<ProjectDatabase> 
             // Broken config must never take the analyser down (quirk 13).
             here()
         }
-    };
+    }
+}
+
+/// The project rooted at `dir` (D26), for the tests that need only the database.
+#[cfg(test)]
+pub(crate) fn open_project(dir: &SystemPath) -> anyhow::Result<ProjectDatabase> {
+    let system = OsSystem::new(dir);
+    let metadata = metadata_for(dir, &system);
     Ok(ProjectDatabase::use_defaults(metadata, system))
+}
+
+/// [`open_project`], and the environment inputs of the project it opened. Only the public [`Project`] needs them, so the tests that open
+/// a database do not look for a Python on `PATH`.
+fn open_with_inputs(dir: &SystemPath) -> anyhow::Result<(ProjectDatabase, Vec<String>)> {
+    let system = OsSystem::new(dir);
+    let metadata = metadata_for(dir, &system);
+    let prefix = environment_prefix(&metadata, dir, &system);
+    let inputs = input_list(dir, prefix.as_deref());
+    Ok((ProjectDatabase::use_defaults(metadata, system), inputs))
 }
 
 /// Open `path`, returning both handles.
@@ -256,5 +344,61 @@ mod plain_paths {
         bytes.push(0xff);
         let path = PathBuf::from(std::ffi::OsString::from_vec(bytes));
         assert_eq!(plain(path.clone()), path);
+    }
+}
+
+#[cfg(test)]
+mod input_lists {
+    use super::input_list;
+    use ruff_db::system::SystemPath;
+
+    /// The entries every list has, sorted.
+    const FIXED: [&str; 7] = [
+        ".venv/pyvenv.cfg",
+        "Pipfile.lock",
+        "poetry.lock",
+        "pyproject.toml",
+        "requirements*.txt",
+        "ty.toml",
+        "uv.lock",
+    ];
+
+    fn list(environment: Option<&str>) -> Vec<String> {
+        input_list(SystemPath::new("/proj"), environment.map(SystemPath::new))
+    }
+
+    fn sorted(list: &[String]) -> bool {
+        list.windows(2).all(|w| w[0] <= w[1])
+    }
+
+    #[test]
+    fn without_an_environment_it_is_the_fixed_entries() {
+        let l = list(None);
+        assert_eq!(l, FIXED);
+        assert!(sorted(&l));
+    }
+
+    #[test]
+    fn an_environment_under_the_root_is_relative() {
+        let l = list(Some("/proj/env"));
+        let mut expected: Vec<String> = FIXED.iter().map(|s| (*s).to_owned()).collect();
+        expected.push("env/pyvenv.cfg".to_owned());
+        expected.sort();
+        assert_eq!(l, expected);
+        assert!(sorted(&l));
+    }
+
+    #[test]
+    fn the_project_s_own_venv_is_listed_once() {
+        let l = list(Some("/proj/.venv"));
+        assert_eq!(l, FIXED);
+    }
+
+    #[test]
+    fn an_environment_outside_the_root_is_absolute() {
+        let l = list(Some("/elsewhere/env"));
+        assert!(l.contains(&"/elsewhere/env/pyvenv.cfg".to_owned()), "{l:?}");
+        assert_eq!(l.len(), FIXED.len() + 1);
+        assert!(sorted(&l));
     }
 }

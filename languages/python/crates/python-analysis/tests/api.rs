@@ -919,3 +919,125 @@ fn a_refresh_after_the_root_is_removed_does_not_panic_and_requests_answer_none()
     assert!(!project.refresh().reopened);
     assert!(call_graph(&project, "main.py", &first("main"), &Options::default()).is_none());
 }
+
+// ---- PY9.3: `Project::environment_inputs` ----
+
+/// The entries every project lists, whatever the machine has: the config, the lock files and `.venv/pyvenv.cfg`. Sorted.
+const FIXED_INPUTS: [&str; 7] = [
+    ".venv/pyvenv.cfg",
+    "Pipfile.lock",
+    "poetry.lock",
+    "pyproject.toml",
+    "requirements*.txt",
+    "ty.toml",
+    "uv.lock",
+];
+
+/// The smallest `pyvenv.cfg` the engine accepts: it needs the `home` key. A `home` that is not a folder is tolerated (a warning in the
+/// engine) unless `include-system-site-packages` is true.
+const PYVENV_CFG: &str = "home = /usr/bin\nversion = 3.12.0\n";
+
+fn assert_sorted(list: &[String]) {
+    let mut sorted = list.to_vec();
+    sorted.sort();
+    assert_eq!(list, sorted, "the list is in a fixed order (rule 9)");
+}
+
+#[test]
+fn without_a_config_the_list_has_the_fixed_entries_and_what_else_is_absolute() {
+    let dir = Scratch::new("inputs-none");
+    write_small_project(&dir, "");
+    let project = Project::open(&dir.str("")).unwrap();
+    let list = project.environment_inputs();
+    // On a machine with `VIRTUAL_ENV` set or a Python with a `pyvenv.cfg` found by the engine, one more entry is here, and it is absolute.
+    println!("environment_inputs, no config: {list:?}");
+    for fixed in FIXED_INPUTS {
+        assert!(
+            list.iter().any(|e| e == fixed),
+            "{fixed} is missing: {list:?}"
+        );
+    }
+    for other in list.iter().filter(|e| !FIXED_INPUTS.contains(&e.as_str())) {
+        assert!(std::path::Path::new(other).is_absolute(), "{other}");
+    }
+    assert_sorted(&list);
+}
+
+fn write_configured_env(dir: &Scratch, python: &str, cfg_at: &str) {
+    write_small_project(dir, "");
+    dir.write(
+        "ty.toml",
+        &format!("[environment]\npython = \"{python}\"\n"),
+    );
+    dir.write(cfg_at, PYVENV_CFG);
+}
+
+#[test]
+fn an_environment_named_by_the_config_is_in_the_list_under_the_root() {
+    let dir = Scratch::new("inputs-config");
+    write_configured_env(&dir, "env", "env/pyvenv.cfg");
+    let project = Project::open(&dir.str("")).unwrap();
+    let list = project.environment_inputs();
+    assert!(list.iter().any(|e| e == "env/pyvenv.cfg"), "{list:?}");
+    assert_sorted(&list);
+}
+
+#[test]
+fn a_rewritten_pyvenv_cfg_of_the_environment_reopens_the_project() {
+    let dir = Scratch::new("inputs-reopen");
+    write_configured_env(&dir, "env", "env/pyvenv.cfg");
+    let mut project = Project::open(&dir.str("")).unwrap();
+    assert!(!project.refresh().reopened, "nothing changed");
+
+    dir.write(
+        "env/pyvenv.cfg",
+        &format!("{PYVENV_CFG}implementation = CPython\n"),
+    );
+    assert!(project.refresh().reopened);
+    assert!(!project.refresh().reopened, "nothing changed since");
+}
+
+#[test]
+fn an_environment_outside_the_root_is_in_the_list_as_an_absolute_path() {
+    let dir = Scratch::new("inputs-outside");
+    write_small_project(&dir, "proj/");
+    dir.write("outside/pyvenv.cfg", PYVENV_CFG);
+    let outside = dir.str("outside");
+    dir.write(
+        "proj/ty.toml",
+        &format!("[environment]\npython = '{outside}'\n"),
+    );
+    let mut project = Project::open(&dir.str("proj")).unwrap();
+    let list = project.environment_inputs();
+    // the engine's `sys_prefix` is canonical (on macOS the temp dir is behind a symlink), so the entry is the canonical path
+    let expected = std::fs::canonicalize(dir.path("outside"))
+        .unwrap()
+        .join("pyvenv.cfg");
+    let expected = expected.to_str().unwrap();
+    assert!(
+        list.iter().any(|e| e == expected),
+        "{expected} not in {list:?}"
+    );
+    assert!(std::path::Path::new(expected).is_absolute());
+    assert_sorted(&list);
+
+    // an absolute entry is stamped too
+    assert!(!project.refresh().reopened);
+    dir.write(
+        "outside/pyvenv.cfg",
+        &format!("{PYVENV_CFG}implementation = CPython\n"),
+    );
+    assert!(project.refresh().reopened);
+}
+
+#[test]
+fn a_configured_environment_that_is_broken_is_still_in_the_list() {
+    let dir = Scratch::new("inputs-broken");
+    write_small_project(&dir, "");
+    // `env` is a folder with no `pyvenv.cfg`: not a virtual environment the engine can use, but the config names it and the user may fix it
+    dir.write("ty.toml", "[environment]\npython = \"env\"\n");
+    std::fs::create_dir_all(dir.path("env")).unwrap();
+    let project = Project::open(&dir.str("")).unwrap();
+    let list = project.environment_inputs();
+    assert!(list.iter().any(|e| e == "env/pyvenv.cfg"), "{list:?}");
+}
