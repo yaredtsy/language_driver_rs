@@ -740,3 +740,182 @@ fn an_untyped_receiver_stays_unresolved() {
     assert_eq!(edges_of_entry(&graph), ["unresolved unknown_callee"]);
     assert_eq!(likely_count(&graph), None);
 }
+
+// ---- PY9.2: `Project::refresh` ----
+
+use std::io::Write as _;
+
+/// A fresh folder for one test under the temp dir, named after the test and the process, emptied first in case a run before panicked.
+struct Scratch(std::path::PathBuf);
+
+impl Scratch {
+    fn new(test: &str) -> Scratch {
+        let dir = std::env::temp_dir().join(format!("py92-{test}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        Scratch(dir)
+    }
+
+    fn path(&self, relative: &str) -> std::path::PathBuf {
+        self.0.join(relative)
+    }
+
+    fn str(&self, relative: &str) -> String {
+        self.path(relative).to_str().unwrap().to_owned()
+    }
+
+    /// Writes `text` and moves the modified time a few seconds forward: the engine sees a change only through that time, and on a
+    /// coarse clock a file rewritten right after it was read could keep the same one.
+    fn write(&self, relative: &str, text: &str) {
+        let path = self.path(relative);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // A `File` and `write_all`: `check-all.sh` greps the one-call form in a crate's folder, tests included; this writes only a test's own scratch folder
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(text.as_bytes()).unwrap();
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+        file.set_modified(later).unwrap();
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+const MAIN_PY: &str = "from helper import work\ndef main():\n    work()\n";
+const HELPER_PY: &str = "def first(): pass\ndef second(): pass\ndef work():\n    first()\n";
+
+/// `main` and `work` in `helper.py`, written into `dir` (a project root, or a folder in one).
+fn write_small_project(dir: &Scratch, prefix: &str) {
+    dir.write(&format!("{prefix}main.py"), MAIN_PY);
+    dir.write(&format!("{prefix}helper.py"), HELPER_PY);
+}
+
+/// The edges out of `entry` of `file`, as `edges_of_entry` writes them.
+fn edges_of(project: &Project, file: &str, entry: &str) -> Vec<String> {
+    let graph = call_graph(project, file, &first(entry), &Options::default()).unwrap();
+    edges_of_entry(&graph)
+}
+
+/// The edges out of `work`, which calls what `helper.py` says it calls.
+fn work_edges(project: &Project) -> Vec<String> {
+    edges_of(project, "helper.py", "work")
+}
+
+#[test]
+fn a_refresh_shows_a_rewritten_file_and_without_it_the_old_answer_stays() {
+    let dir = Scratch::new("rewrite");
+    write_small_project(&dir, "");
+    let mut project = Project::open(&dir.str("")).unwrap();
+    assert_eq!(
+        work_edges(&project),
+        ["helper.first Name"].map(String::from)
+    );
+
+    dir.write(
+        "helper.py",
+        &HELPER_PY.replace("    first()", "    second()"),
+    );
+    // not refreshed: the answer comes from memory
+    assert_eq!(
+        work_edges(&project),
+        ["helper.first Name"].map(String::from)
+    );
+    assert!(!project.refresh().reopened);
+    assert_eq!(
+        work_edges(&project),
+        ["helper.second Name"].map(String::from)
+    );
+}
+
+#[test]
+fn a_refresh_finds_a_module_that_did_not_exist_at_the_first_request() {
+    let dir = Scratch::new("new-module");
+    dir.write("main.py", "import extra\ndef main():\n    extra.run()\n");
+    let mut project = Project::open(&dir.str("")).unwrap();
+    let before = edges_of(&project, "main.py", "main");
+    assert_eq!(before.len(), 1);
+    assert!(before[0].starts_with("unresolved"), "{before:?}");
+
+    dir.write("extra.py", "def run(): pass\n");
+    assert!(!project.refresh().reopened);
+    let after = edges_of(&project, "main.py", "main");
+    assert_eq!(after.len(), 1);
+    assert!(after[0].starts_with("extra.run "), "{after:?}");
+}
+
+#[test]
+fn a_refresh_after_a_file_is_deleted_leaves_the_call_unresolved() {
+    let dir = Scratch::new("deleted");
+    write_small_project(&dir, "");
+    let mut project = Project::open(&dir.str("")).unwrap();
+    assert_eq!(
+        edges_of(&project, "main.py", "main"),
+        ["helper.work Name"].map(String::from)
+    );
+
+    std::fs::remove_file(dir.path("helper.py")).unwrap();
+    assert!(!project.refresh().reopened);
+    let after = edges_of(&project, "main.py", "main");
+    assert_eq!(after.len(), 1);
+    assert!(after[0].starts_with("unresolved"), "{after:?}");
+}
+
+#[test]
+fn a_new_config_opens_the_project_again_and_the_answer_is_the_same() {
+    let dir = Scratch::new("config");
+    write_small_project(&dir, "");
+    let mut project = Project::open(&dir.str("")).unwrap();
+    let before = work_edges(&project);
+    let tree = |p: &Project| {
+        let graph = call_graph(p, "main.py", &first("main"), &Options::default()).unwrap();
+        tree_of(&graph)
+    };
+    let tree_before = tree(&project);
+
+    dir.write("ty.toml", ""); // an empty file is a valid `ty.toml`
+    assert!(project.refresh().reopened);
+    assert!(!project.refresh().reopened, "nothing changed since");
+    assert_eq!(work_edges(&project), before);
+    assert_eq!(tree(&project), tree_before);
+}
+
+#[test]
+fn a_config_added_above_the_root_after_open_does_not_move_it() {
+    let dir = Scratch::new("parent");
+    write_small_project(&dir, "proj/");
+    let mut project = Project::open(&dir.str("proj")).unwrap();
+    let opts = Options::default();
+    let wire = |p: &Project| call_wire(p, "main.py", &first("main"), &opts, false).unwrap();
+    let before = wire(&project);
+
+    // as in `09-root/above-pyproject`: a project table above, which discovery would take as the root
+    dir.write("pyproject.toml", "[project]\nname = \"outer\"\n");
+    assert!(!project.refresh().reopened);
+    let after = wire(&project);
+    assert_eq!(after, before);
+    assert_eq!(after.target_file.as_deref(), Some("main.py"));
+    assert_eq!(after.children[0].target_file.as_deref(), Some("helper.py"));
+}
+
+#[test]
+fn a_project_can_be_moved_to_another_thread() {
+    fn send<T: Send>() {}
+    send::<Project>();
+    // `Project` is `Send`; it is not `Sync`, because salsa's `ZalsaLocal` (in the database's storage) holds a `RefCell<QueryStack>` and
+    // an `UnsafeCell` map, state of the current thread (`sync::<Project>()` fails with E0277, tried 2026-11-13). So the driver may move
+    // a project to the thread that serves it, but must not share `&Project` across threads: one owner, or a mutex around it.
+}
+
+#[test]
+fn a_refresh_after_the_root_is_removed_does_not_panic_and_requests_answer_none() {
+    let dir = Scratch::new("gone");
+    write_small_project(&dir, "proj/");
+    let mut project = Project::open(&dir.str("proj")).unwrap();
+    assert!(call_graph(&project, "main.py", &first("main"), &Options::default()).is_some());
+
+    std::fs::remove_dir_all(dir.path("proj")).unwrap();
+    assert!(!project.refresh().reopened);
+    assert!(call_graph(&project, "main.py", &first("main"), &Options::default()).is_none());
+}

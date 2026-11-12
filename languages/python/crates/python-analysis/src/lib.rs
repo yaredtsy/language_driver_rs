@@ -23,7 +23,7 @@ pub use analyzer_core::graph::{
 pub use analyzer_core::render::{Mark, Node, RenderOptions, render, to_text};
 pub use analyzer_core::solve::Cancel;
 pub use interp::Limits;
-pub use sem::{OpenError, Project};
+pub use sem::{OpenError, Project, Refreshed};
 pub use wire::{Frame, LineSpan, Sources, WireOptions, WireStyle, merge, wire};
 
 /// What a request is asked with.

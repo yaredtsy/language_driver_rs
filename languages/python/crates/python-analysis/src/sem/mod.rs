@@ -27,7 +27,7 @@ mod scope;
 
 use defs::NamedDefs;
 pub(crate) use project::DbSources;
-pub use project::{OpenError, Project};
+pub use project::{OpenError, Project, Refreshed};
 #[cfg(test)]
 pub(crate) use project::{open, open_project};
 #[cfg(test)]

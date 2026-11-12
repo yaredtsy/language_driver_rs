@@ -1,4 +1,4 @@
-use ruff_db::files::{File, system_path_to_file};
+use ruff_db::files::{File, Files, system_path_to_file};
 use ruff_db::source::source_text;
 use ruff_db::system::{OsSystem, SystemPath};
 
@@ -19,9 +19,58 @@ impl crate::wire::Sources for DbSources<'_> {
     }
 }
 
-/// A loaded project: the one handle of the public API, so no engine type is in it. Requests read from it and it is not changed by them.
+/// A loaded project: the one handle of the public API, so no engine type is in it. Requests read from it and it is not changed by them;
+/// [`Project::refresh`] is the one thing that changes it.
 pub struct Project {
     db: ProjectDatabase,
+    /// The environment inputs as they were when the project was opened or last reopened: `refresh` compares against them.
+    stamps: Stamps,
+}
+
+/// What a refresh did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Refreshed {
+    /// An environment input changed (a config, the Python version, the virtual environment, a lock file), so the project was opened again
+    /// from the same root: the next request is as slow as the first one.
+    pub reopened: bool,
+}
+
+/// The files that decide the search paths, the Python version or the rules, relative to the root. `requirements*.txt` is not here: it
+/// is a pattern, read from the root folder by [`stamps`].
+const ENVIRONMENT_INPUTS: [&str; 7] = [
+    "pyproject.toml",
+    "ty.toml",
+    ".python-version",
+    ".venv/pyvenv.cfg",
+    "uv.lock",
+    "poetry.lock",
+    "Pipfile.lock",
+];
+
+/// For each input that exists: its path relative to the root, its size and its modified time. Sorted by path (rule 9).
+type Stamps = Vec<(String, u64, Option<std::time::SystemTime>)>;
+
+/// The stamps of the inputs under `root`. Reading metadata does not write (rule 2). A file that cannot be read is absent, never an error.
+fn stamps(root: &std::path::Path) -> Stamps {
+    let mut names: Vec<String> = ENVIRONMENT_INPUTS.iter().map(|n| (*n).to_owned()).collect();
+    if let Ok(entries) = std::fs::read_dir(root) {
+        names.extend(
+            entries
+                .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+                .filter(|name| name.starts_with("requirements") && name.ends_with(".txt")),
+        );
+    }
+    names.sort();
+    names.dedup();
+    names
+        .into_iter()
+        .filter_map(|name| {
+            let meta = std::fs::metadata(root.join(&name)).ok()?;
+            meta.is_file()
+                .then(|| (name, meta.len(), meta.modified().ok()))
+        })
+        .collect()
 }
 
 /// Why a project could not be opened.
@@ -80,7 +129,40 @@ impl Project {
             .filter(|_| absolute.is_dir())
             .ok_or_else(not)?;
         let db = open_project(root).map_err(|_| not())?;
-        Ok(Project { db })
+        Ok(Project {
+            db,
+            stamps: stamps(&absolute),
+        })
+    }
+
+    /// Brings the project up to date with the disk; call it before each request, because a request answers from what the project knows
+    /// and does not look at the disk. It never fails.
+    ///
+    /// The environment inputs (a config, `.python-version`, the virtual environment, a lock file, `requirements*.txt`) are compared with
+    /// how they were at open. If one changed, appeared or went away, the project is opened again from the same root (D26: the root is
+    /// never rediscovered) and `reopened` is true: the next request is as slow as the first. Otherwise the engine re-reads the metadata
+    /// of the files it has seen, and only what read a changed file is recomputed; this is cheap (milliseconds), and a file created
+    /// after the first request is found too. If the project cannot be opened again (the root is gone), the old one is kept, synced, and
+    /// `reopened` is false: requests then answer `None`.
+    ///
+    /// It takes `&mut self`, so no request can be running: the compiler checks that.
+    pub fn refresh(&mut self) -> Refreshed {
+        let root = self.db.project().root(&self.db).to_path_buf();
+        let current = stamps(root.as_std_path());
+        let mut reopened = false;
+        if current != self.stamps
+            && root.as_std_path().is_dir()
+            && let Ok(db) = open_project(&root)
+        {
+            self.db = db;
+            self.stamps = current;
+            reopened = true;
+        }
+        if !reopened {
+            // Never `ChangeEvent::Rescan`: it discovers the project again from the closest config and can take a parent's (D26).
+            Files::sync_all(&mut self.db);
+        }
+        Refreshed { reopened }
     }
 
     pub(crate) fn db(&self) -> &ProjectDatabase {
