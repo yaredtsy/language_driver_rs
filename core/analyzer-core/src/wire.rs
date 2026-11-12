@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use crate::graph::{ContextId, Graph, Root, StableDef};
 use crate::outline::DefKind;
-use crate::render::{Node, RenderOptions, render};
+use crate::render::{Mark, Node, RenderOptions, render};
 use crate::text::LineIndex;
 use serde::Serialize;
 
@@ -95,7 +95,7 @@ pub struct Frame {
     pub passed: bool,
     /// Which graph contexts this node shows.
     pub contexts: Vec<ContextId>,
-    /// `recursive`, `cut`, `incomplete`, and with the options on, `external` and `unresolved`.
+    /// `recursive`, `cut`, `incomplete`, `likely` (D28), and with the options on, `external` and `unresolved`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub marks: Vec<String>,
     pub children: Vec<Frame>,
@@ -240,9 +240,17 @@ pub fn wire(graph: &Graph, root: &Root, sources: &dyn Sources, opts: &WireOption
     if opts.merged { merge(frame) } else { frame }
 }
 
+/// Whether a frame's edge was `Basis::Likely` (D28): the wire has it as the mark, not as a field of its own.
+fn is_likely(f: &Frame) -> bool {
+    f.marks
+        .iter()
+        .any(|m| m.eq_ignore_ascii_case(Mark::Likely.as_str()))
+}
+
 /// Whether two sibling frames are one target, reached the same way. Project code is named by (file, outline qualname, occurrence), so two defs with
 /// one display name stay two nodes (B6); an external or an unresolved leaf has no row, and its display name decides, as it always did. **Called or
 /// passed is part of the key (D22)**: a def called at one site and handed over at another is two nodes, so a hand-over is never counted as a call.
+/// **So is likely (D28)**: a call the engine found past something it could not see is never counted with a certain call of the same def.
 fn same_target(a: &Frame, b: &Frame) -> bool {
     (
         &a.target_file,
@@ -250,12 +258,14 @@ fn same_target(a: &Frame, b: &Frame) -> bool {
         a.target_occurrence,
         &a.target_qname,
         a.passed,
+        is_likely(a),
     ) == (
         &b.target_file,
         &b.target_qualname,
         b.target_occurrence,
         &b.target_qname,
         b.passed,
+        is_likely(b),
     )
 }
 
@@ -1013,5 +1023,77 @@ mod tests {
         // 1: through E3. 2: `passed`. A change to this constant is a change to what a node means: it comes with a line in its doc and in
         // `docs/03-typescript/07-ts5-driver-needs.md` §8.
         assert_eq!(WIRE_FORMAT_VERSION, 2);
+    }
+
+    // D28
+
+    fn call_with(from: &str, at: u32, to: &str, basis: Basis) -> Edge {
+        Edge::new(
+            ContextId::of(marked(from)),
+            Site::new(at, at + 3),
+            EdgeTo::Context(ContextId::of(marked(to)), basis),
+        )
+    }
+
+    /// `main` calls `run` at 0 and at 10, with the given bases; `run` calls `leaf`.
+    fn run_twice(first: Basis, second: Basis) -> Graph {
+        let g = twice();
+        Graph::new(
+            g.entries.clone(),
+            g.defs.clone(),
+            g.contexts.clone(),
+            vec![
+                call_with("main", 0, "run", first),
+                call_with("main", 10, "run", second),
+                call("run", 0, "leaf"),
+            ],
+            Stats::default(),
+        )
+    }
+
+    fn wire_of(g: &Graph, merged: bool) -> Frame {
+        let entry = Root::Context(ContextId::of(marked("main")));
+        wire(g, &entry, &files("x\n"), &opts(merged))
+    }
+
+    #[test]
+    fn d28_a_likely_frame_has_the_mark_and_what_is_under_it_does_not() {
+        let g = run_twice(Basis::Likely, Basis::Type);
+        let frame = wire_of(&g, false);
+        // marks go on the wire lowercased, as `recursive` and `cut` do
+        assert_eq!(frame.children[0].marks, ["likely"]);
+        assert!(frame.children[1].marks.is_empty());
+        assert!(frame.children[0].children[0].marks.is_empty(), "leaf");
+        let json = serde_json::to_value(&frame.children[0]).unwrap();
+        assert_eq!(json["marks"], serde_json::json!(["likely"]));
+    }
+
+    #[test]
+    fn d28_a_likely_call_and_a_certain_call_of_one_def_are_two_merged_frames() {
+        let g = run_twice(Basis::Likely, Basis::Type);
+        let merged = wire_of(&g, true);
+        let shape: Vec<_> = merged
+            .children
+            .iter()
+            .map(|c| (c.marks.clone(), c.call_count))
+            .collect();
+        assert_eq!(shape, [(vec!["likely".to_owned()], 0), (vec![], 0)]);
+        // the other order too: the key does not depend on which is first
+        let merged = wire_of(&run_twice(Basis::Type, Basis::Likely), true);
+        assert_eq!(merged.children.len(), 2);
+    }
+
+    #[test]
+    fn d28_two_likely_calls_of_one_def_are_one_merged_frame_and_keep_the_mark() {
+        let g = run_twice(Basis::Likely, Basis::Likely);
+        let merged = wire_of(&g, true);
+        assert_eq!(merged.children.len(), 1);
+        assert_eq!(merged.children[0].call_count, 1);
+        assert_eq!(merged.children[0].marks, ["likely"]);
+        assert_eq!(
+            merge(merged.clone()),
+            merged,
+            "merging twice changes nothing"
+        );
     }
 }

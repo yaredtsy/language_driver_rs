@@ -179,6 +179,10 @@ pub enum Basis {
     /// The code's own names fixed it: a function or class the callee expression names (a def, an import, a closure, `Foo()`), with no
     /// receiver's class in between. The one basis a reader may take as certain, short of rebinding the name.
     Name,
+    /// The engine named this def, and said it could not see everything that may be in front of it (an intersection with an unknown type):
+    /// a method found after a base class that is not resolvable. The def is the engine's; that it is the one called is likely, not certain
+    /// (D28). Written last, so the derived order of the three others does not move.
+    Likely,
 }
 
 /// Why an edge has no target. The same string as the `Stats.language` counter key, so a count is what the edges say. An owned

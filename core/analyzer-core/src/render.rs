@@ -9,7 +9,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use crate::graph::{ContextId, Edge, EdgeTo, Graph, Root, Site, StableDef, Status};
+use crate::graph::{Basis, ContextId, Edge, EdgeTo, Graph, Root, Site, StableDef, Status};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[non_exhaustive]
@@ -24,6 +24,9 @@ pub enum Mark {
     External,
     /// A call with no known target.
     Unresolved,
+    /// The edge to this node has `Basis::Likely` (D28): the def is the engine's, that it is the one called is likely and not certain. On that
+    /// node only, not on what is under it. Last, so a node's marks sort as they did.
+    Likely,
 }
 
 impl Mark {
@@ -34,6 +37,7 @@ impl Mark {
             Mark::Incomplete => "Incomplete",
             Mark::External => "External",
             Mark::Unresolved => "Unresolved",
+            Mark::Likely => "Likely",
         }
     }
 }
@@ -113,6 +117,15 @@ struct Child<'g> {
     kind: Kind,
     /// Handed over at `site`, not called (`Edge::passed`). Only project code can be.
     passed: bool,
+    /// An edge of the group has `Basis::Likely` (D28): the node carries `Mark::Likely`.
+    likely: bool,
+}
+
+impl Child<'_> {
+    /// The marks the edge itself puts on the node, before the node's own (cut, incomplete): today only `Likely` (D28).
+    fn edge_marks(&self) -> Vec<Mark> {
+        self.likely.then_some(Mark::Likely).into_iter().collect()
+    }
 }
 
 /// A node being built, and the children it has not visited yet.
@@ -139,7 +152,16 @@ pub fn render(graph: &Graph, root: &Root, opts: &RenderOptions) -> Node {
     let contexts: Vec<&ContextId> = root.context().into_iter().collect();
     // Functions on the path from the root to the node being built (rule 8 asks "is it on the path?").
     let mut path: HashSet<StableDef> = HashSet::from([func.clone()]);
-    let mut stack = vec![r.open(func, qname, None, false, contexts, 0)];
+    let head = Node {
+        func,
+        qname,
+        site: None,
+        passed: false,
+        contexts: Vec::new(),
+        marks: Vec::new(),
+        children: Vec::new(),
+    };
+    let mut stack = vec![r.open(head, contexts, 0)];
 
     loop {
         let top = stack.last_mut().expect("the root frame is popped last");
@@ -171,65 +193,54 @@ pub fn render(graph: &Graph, root: &Root, opts: &RenderOptions) -> Node {
             Kind::Code => {
                 path.insert(child.func.clone());
                 let depth = stack.len() as u32;
-                stack.push(r.open(
-                    child.func,
-                    child.qname,
+                let head = Node {
+                    marks: child.edge_marks(),
+                    func: child.func,
+                    qname: child.qname,
                     site,
-                    child.passed,
-                    child.contexts,
-                    depth,
-                ));
+                    passed: child.passed,
+                    contexts: Vec::new(),
+                    children: Vec::new(),
+                };
+                stack.push(r.open(head, child.contexts, depth));
             }
         }
     }
 }
 
 fn leaf(c: Child<'_>, mark: Mark) -> Node {
+    let mut marks = vec![mark];
+    marks.extend(c.edge_marks());
     Node {
         func: c.func,
         qname: c.qname,
         site: Some(c.site),
         passed: c.passed,
         contexts: c.contexts.into_iter().cloned().collect(),
-        marks: vec![mark],
+        marks,
         children: Vec::new(),
     }
 }
 
 impl<'g> Renderer<'g> {
-    fn open(
-        &self,
-        func: StableDef,
-        qname: String,
-        site: Option<Site>,
-        passed: bool,
-        contexts: Vec<&'g ContextId>,
-        depth: u32,
-    ) -> Frame<'g> {
-        let mut marks = Vec::new();
+    /// `head` is the node as its edge makes it (name, site, passed, the edge's marks); this adds its contexts and the marks of the node's own
+    /// state (incomplete, cut), and its children to visit.
+    fn open(&self, mut head: Node, contexts: Vec<&'g ContextId>, depth: u32) -> Frame<'g> {
         if contexts.iter().any(|id| {
             self.graph
                 .context(id)
                 .is_some_and(|c| matches!(c.status, Status::Incomplete(_)))
         }) {
-            marks.push(Mark::Incomplete);
+            head.marks.push(Mark::Incomplete);
         }
         let mut groups = self.children_of(&contexts);
         if !groups.is_empty() && self.opts.max_depth.is_some_and(|limit| depth >= limit) {
-            marks.push(Mark::Cut);
+            head.marks.push(Mark::Cut);
             groups.clear();
         }
-        let node = Node {
-            func,
-            qname,
-            site,
-            passed,
-            contexts: contexts.into_iter().cloned().collect(),
-            marks,
-            children: Vec::new(),
-        };
+        head.contexts = contexts.into_iter().cloned().collect();
         Frame {
-            node,
+            node: head,
             kids: groups.into_iter(),
         }
     }
@@ -244,6 +255,8 @@ impl<'g> Renderer<'g> {
                 };
                 match groups.entry((edge.site, child.func.clone(), child.order.0, child.passed)) {
                     std::collections::btree_map::Entry::Occupied(mut o) => {
+                        // Edges of one group are one node; if one of them is doubtful the node says so (D28).
+                        o.get_mut().likely |= child.likely;
                         for id in child.contexts {
                             if !o.get().contexts.contains(&id) {
                                 o.get_mut().contexts.push(id);
@@ -269,9 +282,11 @@ impl<'g> Renderer<'g> {
     fn child(&self, edge: &'g Edge) -> Option<Child<'g>> {
         let site = edge.site;
         match &edge.to {
-            EdgeTo::Context(id, _) => self.code(site, id, edge.passed),
-            EdgeTo::Construct { class, init, .. } => self.class(site, class, init.as_ref()),
-            EdgeTo::External(ext, _) => self.opts.show_external.then(|| Child {
+            EdgeTo::Context(id, basis) => self.code(site, id, edge.passed, *basis == Basis::Likely),
+            EdgeTo::Construct { class, init, basis } => {
+                self.class(site, class, init.as_ref(), *basis == Basis::Likely)
+            }
+            EdgeTo::External(ext, basis) => self.opts.show_external.then(|| Child {
                 site,
                 order: (1, "", 0),
                 func: StableDef::Path {
@@ -287,6 +302,7 @@ impl<'g> Renderer<'g> {
                 contexts: Vec::new(),
                 kind: Kind::External,
                 passed: false,
+                likely: *basis == Basis::Likely,
             }),
             EdgeTo::Unresolved(_) => self.opts.show_unresolved.then(|| Child {
                 site,
@@ -300,11 +316,12 @@ impl<'g> Renderer<'g> {
                 contexts: Vec::new(),
                 kind: Kind::Unresolved,
                 passed: false,
+                likely: false,
             }),
         }
     }
 
-    fn code(&self, site: Site, id: &'g ContextId, passed: bool) -> Option<Child<'g>> {
+    fn code(&self, site: Site, id: &'g ContextId, passed: bool, likely: bool) -> Option<Child<'g>> {
         if self.opts.only_marked && !id.func.is_marked() {
             return None;
         }
@@ -317,6 +334,7 @@ impl<'g> Renderer<'g> {
             contexts: vec![id],
             kind: Kind::Code,
             passed,
+            likely,
         })
     }
 
@@ -327,6 +345,7 @@ impl<'g> Renderer<'g> {
         site: Site,
         class: &'g StableDef,
         init: Option<&'g ContextId>,
+        likely: bool,
     ) -> Option<Child<'g>> {
         if self.opts.only_marked && !class.is_marked() {
             return None;
@@ -340,6 +359,7 @@ impl<'g> Renderer<'g> {
             contexts: init.into_iter().collect(),
             kind: Kind::Code,
             passed: false,
+            likely,
         })
     }
 
@@ -1022,5 +1042,71 @@ mod tests {
             text(&g, "main", &RenderOptions::default()),
             "main\n  a [Passed]\n"
         );
+    }
+
+    // D28
+
+    /// `g` with the basis of every edge that points at `to` set to `basis`.
+    fn with_basis(g: &Graph, to: &str, basis: Basis) -> Graph {
+        let edges = g
+            .edges
+            .iter()
+            .cloned()
+            .map(|mut e| {
+                match &mut e.to {
+                    EdgeTo::Context(id, b) if *id == cid(to) => *b = basis,
+                    EdgeTo::Construct {
+                        class, basis: b, ..
+                    } if *class == marked(to) => *b = basis,
+                    _ => {}
+                }
+                e
+            })
+            .collect();
+        with_edges(g, edges)
+    }
+
+    #[test]
+    fn d28_a_likely_call_is_a_node_with_the_mark_and_nothing_under_it_has_it() {
+        let g = with_basis(&graph(&["main: a", "a: b", "b:"]), "a", Basis::Likely);
+        let tree = render(&g, &Root::Context(cid("main")), &RenderOptions::default());
+        assert_eq!(tree.children[0].marks, [Mark::Likely]);
+        assert!(tree.children[0].children[0].marks.is_empty());
+        assert!(tree.marks.is_empty(), "not the parent either");
+    }
+
+    #[test]
+    fn d28_a_likely_construction_is_a_class_node_with_the_mark() {
+        let g = with_basis(&construct_graph(), "Foo", Basis::Likely);
+        let tree = render(&g, &Root::Context(cid("main")), &RenderOptions::default());
+        assert_eq!(
+            (tree.children[0].qname.as_str(), &tree.children[0].marks[..]),
+            ("Foo", &[Mark::Likely][..])
+        );
+        assert!(tree.children[0].children[0].marks.is_empty(), "helper");
+        assert!(tree.children[1].marks.is_empty(), "Bar is certain");
+    }
+
+    #[test]
+    fn d28_the_text_form_draws_the_likely_mark_like_the_others() {
+        let g = with_basis(&graph(&["main: a b", "a: b", "b:"]), "a", Basis::Likely);
+        assert_eq!(
+            text(&g, "main", &RenderOptions::default()),
+            "main\n  a [Likely]\n    b\n  b\n"
+        );
+        // with another mark on the same node, `Likely` is last (the order of `Mark`)
+        let g = with_basis(&graph(&["f: f"]), "f", Basis::Likely);
+        assert_eq!(
+            text(&g, "f", &RenderOptions::default()),
+            "f\n  f [Recursive] [Likely]\n"
+        );
+    }
+
+    #[test]
+    fn d28_a_certain_edge_draws_what_it_drew() {
+        let g = graph(&["main: a", "a:"]);
+        let tree = render(&g, &Root::Context(cid("main")), &RenderOptions::default());
+        assert!(tree.children[0].marks.is_empty());
+        assert_eq!(text(&g, "main", &RenderOptions::default()), "main\n  a\n");
     }
 }
