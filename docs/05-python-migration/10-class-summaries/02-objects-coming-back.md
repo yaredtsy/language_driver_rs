@@ -135,6 +135,12 @@ without them a replay cannot follow a `Ref`. pylspt adds these fields in its ste
 
 `call_project` takes `env: &Env` today. It becomes `&mut Env` for `apply`: the write is the caller's.
 
+Built as `CallSite`, `Plan`, `resolve` and `apply` in `summary.rs`, next to `resolve_in`. Three things the text above did not say:
+
+- **A replay has no env to write into.** The env of a deferred operation is dropped after it, so `apply` also records a new object's attributes in `Walk.replay_attrs` while replaying; `replay_env` puts them back in the env of every later operation, and `describe_objects` reads them for the walk's own summary. A new object has one origin per call site, callee and `j`, so each round writes the same keys again.
+- **`t` counts the project callees of a site** (functions, closures, then methods, each in definition order), so `h.make()` on `A | B` gives `A.make`'s `Box` and `B.make`'s `Box` two origins.
+- **`set_current` compares `objects` as well as `returns`** (`same_objects`), so a cycle whose returned object's attributes change between rounds does not stop early. No fixture's walk or `reuse_hits` count moved because of it (measured: the blessed snapshots are identical with and without it); no fixture needs it yet.
+
 **Rust note: the borrow checker enforces phase 1.** `resolve` takes `before: &Env`, a shared borrow. It cannot write to the env even by
 mistake; only `apply`, which takes `&mut Env`, can. `before` is a clone taken once per call expression, after the arguments are evaluated:
 the env is built on `rpds` persistent maps, so the clone copies a pointer, not the maps.
@@ -153,6 +159,10 @@ the env is built on `rpds` persistent maps, so the clone copies a pointer, not t
 
 `state.py` and `special.py` still need effects (step 3) for their other entries: they stay inline-only `check` until step 3's gate.
 
+After CS2b `via_factory` has `Pipeline.run` and not yet `JsonHandler.process` under it: that needs `__init__`'s `self.handler = h`, an effect (CS3). The same holds for the `run` and `go` children of `isolation.py one_site` and `split.py main`, and for `special.py main`'s `r.active.handle()`.
+
+`two_callees.py` is checked by its two blocks and by a graph test. The tree cannot tell the mix from the answer: core's renderer joins the siblings of one def at a site, so summary mode draws both handlers under one `Box.run` (`# expect summary:`), where inline mode draws two (`# expect inline:`). `p04_02_two_callees_each_run_sees_only_its_own_handler` reads the graph: two `Box.run` contexts, each calling only its own handler.
+
 ## 6. The commits
 
 ### CS2a. Objects in summaries
@@ -169,7 +179,7 @@ the env is built on `rpds` persistent maps, so the clone copies a pointer, not t
 |---|---|
 | Change | §4.3, `t` in `OriginKey::New`, `DeferredOp::Apply`'s new fields |
 | Failing tests | `p04_02_coming_back`: `check_both("04-class-summaries/python/coming_back.py")`, red because `Ref` and `Obj` resolve to nothing. `two_callees.py` with `check_both` |
-| Snapshots | the moves expected: `unverified/03-classes/python/state.py.wire` gains `Pipeline.run > JsonHandler.process` under `via_factory`; `special.py.wire` gains the getters. **Any verified snapshot that moves is read and explained in the report** (the likely cause: a D27 `Type` edge becoming a `Path` edge) |
+| Snapshots | the moves expected: `unverified/03-classes/python/state.py.wire` gains `Pipeline.run` under `via_factory` (not its `JsonHandler.process` child: that is CS3); `special.py.wire` gains the getters, `fire` and the second `make`; `isolation.py` and `split.py` gain `Pipeline.run` and `Job.go`. `coming_back.py`'s wire moves to the verified snapshots. Every `.graph` snapshot loses its `ref_unresolved` line, and a context id changes where a key held `Unknown` for an object it now holds. **Any verified snapshot that moves is read and explained in the report** (the likely cause: a D27 `Type` edge becoming a `Path` edge) |
 | Gap test | the two `special.py` lines go (if their getters now run); nothing is added |
 | Proof | `cargo test` in `languages/python`; clippy on `python-analysis`; the three real projects (README §5 rule 10): the golden either still holds, or every difference is listed and explained before it is regenerated |
 
@@ -179,8 +189,8 @@ the env is built on `rpds` persistent maps, so the clone copies a pointer, not t
 |---|---|---|
 | 1 | `walk_context` leaves the joined exit env at `activations[frame.act]` for every walk, so `finish` can read final attributes there | CS2a. **Holds**, with one case that does not matter. `walk_context` joins `frame.exits` (every `return` and the fall off the end) into `activations[frame.act]`; nothing after it writes that slot (a replay runs operations, not statements). Test `the_state_a_summary_reads_is_every_exit_joined`: two `return`s that left a `JsonHandler` and a `CsvHandler` on one object give both on its attribute. When every path raises there is no exit, the join is `None`, and the slot keeps the env at the start of the last statement walked; such a walk returns nothing, so `finish` reads no attribute from it |
 | 2 | Objects reached only through a closure's free value (returned closure that captured a new object) are numbered and described too | CS2a, a unit test. **Holds.** `an_object_only_a_returned_closure_holds_is_numbered_and_described` (`closure_holds_object.py`): `make_getter` returns `Closure { get, free: [b: [Obj(0)]] }`, and `objects` holds the `Box` (`handler: [Obj(1)]`) and the `Handler`. The closure's free value reaches `to_svals` through `lookup_in`, which reads the same exit env |
-| 3 | In this step every `Ref` path is at most `fp_depth` steps and resolves in the caller's `before` state: the key took those attributes from it. `ref_unresolved` stays 0 on every fixture | CS2b |
-| 4 | The basis of a call on an `Obj(j)` object is `Path` (`is_built_here` is true for its `New` origin), and on a `Ref` object whatever the caller's object gives | CS2b, a test in `tests/api.rs` on `coming_back.py` |
-| 5 | No `debug_assert` fires in `fp_one`'s pending arm on the whole suite | CS2b |
+| 3 | In this step every `Ref` path is at most `fp_depth` steps and resolves in the caller's `before` state: the key took those attributes from it. `ref_unresolved` stays 0 on every fixture | CS2b. **Holds.** The `ref_unresolved` entry CS2a added to eight `.graph` snapshots is gone from all eight, and `tests/api.rs` asserts it absent on `coming_back.py`. On the three real projects it was 3 (Flask `post`) and 14 (FastAPI `include_router`) before and is 0 after; Jarvis never had one |
+| 4 | The basis of a call on an `Obj(j)` object is `Path` (`is_built_here` is true for its `New` origin), and on a `Ref` object whatever the caller's object gives | CS2b, a test in `tests/api.rs` on `coming_back.py`. **Holds.** `a_method_on_an_object_a_callee_built_rests_on_the_path`: `built_inside` and `built_with_arg` call `Box.run` with `Path`. A `Ref` object is the caller's own, so its edge has the basis of the caller's object (`identity`: `b` is built there, `Path`) |
+| 5 | No `debug_assert` fires in `fp_one`'s pending arm on the whole suite | CS2b. **Holds.** The suite runs with debug assertions on; none fired, and `reaches_pending` still covers every operation `fp_one` reads |
 
 Next: [`03-effects.md`](03-effects.md)

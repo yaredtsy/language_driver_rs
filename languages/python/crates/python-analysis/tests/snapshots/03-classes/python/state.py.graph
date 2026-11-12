@@ -27,18 +27,21 @@ state.read_json#362dace93a857048 Finished
 
 == via_factory
 entries: state.via_factory#dfd9ec0caec38803
-stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 1, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
 def state.JsonHandler = JsonHandler#0 Class state.py
 def state.Pipeline = Pipeline#0 Class state.py
 def state.Pipeline.__init__ = Pipeline.__init__#0 Method state.py
+def state.Pipeline.run = Pipeline.run#0 Method state.py
 def state.make = make#0 Function state.py
 def state.via_factory = via_factory#0 Function state.py
 state.Pipeline.__init__#7e53331b70101703 Finished
+state.Pipeline.run#29b767300dff846b Finished
+  @29-55 -> ? unknown_callee
 state.make#96ccbe70db1c69a2 Finished
   @24-35 -> new state.Pipeline init state.Pipeline.__init__#7e53331b70101703 Name
 state.via_factory#dfd9ec0caec38803 Finished
   @23-42 -> state.make#96ccbe70db1c69a2 Name
-  @23-49 -> ? unknown_callee
+  @23-49 -> state.Pipeline.run#29b767300dff846b Path
   @28-41 -> new state.JsonHandler init - Name
 
 == either

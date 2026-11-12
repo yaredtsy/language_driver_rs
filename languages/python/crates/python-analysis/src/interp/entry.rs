@@ -4,7 +4,7 @@
 use crate::interp::bind::EvaluatedArgs;
 use crate::interp::env::Env;
 use crate::interp::solver::Solver;
-use crate::interp::value::{AbstractValue, ActivationId, OriginKey};
+use crate::interp::value::{AbstractValue, ActivationId, Made, OriginKey};
 use crate::interp::walk::Walk;
 use crate::sem::{Definition, EntryKind, Scope};
 
@@ -79,6 +79,8 @@ impl<'db> Walk<'db> {
         let origin = self.origins.intern(OriginKey::New {
             site,
             act: self.frame.act,
+            t: 0,
+            made: Made::Here,
         });
         let obj = AbstractValue::Instance { class, origin };
         if let Some(init) = sol.sem.init_of(class).filter(|&i| sol.sem.is_project(i)) {

@@ -25,6 +25,8 @@ isolation.one_site <isolation.py:one_site#0 Function>
   isolation.make <isolation.py:make#0 Function> @71:9 in isolation.py
     isolation.Pipeline <isolation.py:Pipeline#0 Class> @66:12 in isolation.py
   isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @71:14 in isolation.py
+  isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @72:5 in isolation.py
+  isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @73:5 in isolation.py
 
 == one_site (merged)
 isolation.one_site <isolation.py:one_site#0 Function>
@@ -32,6 +34,7 @@ isolation.one_site <isolation.py:one_site#0 Function>
     isolation.Pipeline <isolation.py:Pipeline#0 Class> x2 @66:12 in isolation.py
   isolation.JsonHandler <isolation.py:JsonHandler#0 Class> @70:14 in isolation.py
   isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @71:14 in isolation.py
+  isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> x2 @72:5 in isolation.py
 
 == opaque
 isolation.opaque <isolation.py:opaque#0 Function>

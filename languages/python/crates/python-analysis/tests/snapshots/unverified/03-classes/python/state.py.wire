@@ -27,12 +27,14 @@ state.main <state.py:main#0 Function>
 state.via_factory <state.py:via_factory#0 Function>
   state.make <state.py:make#0 Function> @42:5 in state.py
     state.Pipeline <state.py:Pipeline#0 Class> @38:12 in state.py
+  state.Pipeline.run <state.py:Pipeline.run#0 Method> @42:5 in state.py
   state.JsonHandler <state.py:JsonHandler#0 Class> @42:10 in state.py
 
 == via_factory (merged)
 state.via_factory <state.py:via_factory#0 Function>
   state.make <state.py:make#0 Function> @42:5 in state.py
     state.Pipeline <state.py:Pipeline#0 Class> @38:12 in state.py
+  state.Pipeline.run <state.py:Pipeline.run#0 Method> @42:5 in state.py
   state.JsonHandler <state.py:JsonHandler#0 Class> @42:10 in state.py
 
 == either

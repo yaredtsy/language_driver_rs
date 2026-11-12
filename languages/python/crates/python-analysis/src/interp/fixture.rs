@@ -802,10 +802,47 @@ fn p04_01_in_keys() {
     assert_eq!((st.walks, st.reuse_hits), (3, 1));
 }
 
-/// Inline mode only until CS2 (objects coming back).
 #[test]
 fn p04_02_coming_back() {
-    check("04-class-summaries/python/coming_back.py");
+    check_both("04-class-summaries/python/coming_back.py");
+}
+
+/// A site with two callees: each callee's new objects stay apart (the `t` in `OriginKey::New`).
+#[test]
+fn p04_02_two_callees() {
+    check_both("04-class-summaries/python/two_callees.py");
+}
+
+/// The tree cannot say it (the renderer joins the siblings of one def at a site into one node, so summary mode draws both handlers under
+/// one `Box.run`), the graph can: two `Box.run` contexts, each with its own handler and no other. Built with the callee index left out
+/// of `OriginKey::New`, the second callee's `Box` replaces the first's and one context is lost.
+#[test]
+fn p04_02_two_callees_each_run_sees_only_its_own_handler() {
+    let g = graph_for("04-class-summaries/python/two_callees.py", "main");
+    let name = |f: &analyzer_core::graph::StableDef| g.def(f).map(|d| d.qname.clone()).unwrap();
+    let mut runs: Vec<Vec<String>> = g
+        .contexts
+        .iter()
+        .filter(|c| name(&c.id.func) == "two_callees.Box.run")
+        .map(|c| {
+            g.edges_from(&c.id)
+                .iter()
+                .map(|e| match &e.to {
+                    analyzer_core::graph::EdgeTo::Context(to, _) => name(&to.func),
+                    other => panic!("unexpected edge {other:?}"),
+                })
+                .collect()
+        })
+        .collect();
+    runs.sort();
+    assert_eq!(
+        runs,
+        [
+            ["two_callees.CsvHandler.process"],
+            ["two_callees.JsonHandler.process"]
+        ]
+    );
+    assert_eq!(g.stats.language.get("ref_unresolved"), None);
 }
 
 /// Inline mode only until CS3 (effects).
@@ -1375,13 +1412,13 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
             _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 29 programs are verified in both modes and 13 only inline (six of `03-classes/`, seven of `04-class-summaries/`); 42 are run at
-    // all; 43 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
+    // 31 programs are verified in both modes and 12 only inline (six of `03-classes/`, six of `04-class-summaries/`); 43 are run at
+    // all; 44 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
     // `every_entry` skips it)
     let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
     assert_eq!(
         (verified, by_fixture.len() - verified),
-        (29, 13),
+        (31, 12),
         "a program was added or lost"
     );
     for (fixture, verified, text) in by_fixture {
@@ -1797,7 +1834,7 @@ fn the_graph_of_every_fixture_equals_its_snapshot() {
     }
     assert_eq!(
         (by_fixture.len(), entries),
-        (42, 149),
+        (43, 150),
         "an entry was added or lost"
     );
     for (fixture, text) in by_fixture {
@@ -2067,24 +2104,23 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
         total.extra
     );
     assert_eq!((entries, failing), (48, 21));
-    assert_eq!(total.missing, 44, "nodes inline finds and summary does not");
-    assert_eq!(total.highest_missing, 36, "the topmost of them");
+    assert_eq!(total.missing, 35, "nodes inline finds and summary does not");
+    assert_eq!(total.highest_missing, 33, "the topmost of them");
     assert_eq!(
-        total.at_unresolved, 33,
+        total.at_unresolved, 32,
         "topmost missing nodes at a call site the graph marks Unresolved"
     );
     assert_eq!(
         (total.nodes_at_unresolved, total.nodes_elsewhere),
-        (40, 4),
+        (33, 2),
         "of the missing nodes: under an Unresolved call site, and elsewhere"
     );
-    assert_eq!(total.missing, 40 + 4);
+    assert_eq!(total.missing, 33 + 2);
 
-    // The claim "every missing node is under an Unresolved call site" is false, and these three are why. Property accessors: summary mode
-    // makes the call when it knows the receiver (`Box.handler` in `swap` is back), but not here: `r` comes from a classmethod that
-    // returns an object, which summary mode cannot follow (step 2 of part 04), so the getter has no receiver to run on and there is no
-    // edge. `either`: inline lists one Pipeline.run per object, summary joins them (rule 7), so it is not lost information. A fix removes
-    // lines from this list; a regression adds one.
+    // The claim "every missing node is under an Unresolved call site" is false, and this is why. `either`: inline lists one Pipeline.run
+    // per object, summary joins them (rule 7), so it is not lost information. (Two property getters of `special.py` `main` were on this
+    // list until CS2: `r` comes from a classmethod that returns an object, which summary mode could not follow, so the getter had no
+    // receiver to run on.) A fix removes lines from this list; a regression adds one.
     //
     // Weak writes used to be on it (`maybe_opaque`, `two_candidates`): a write that may be on one of several objects, onto an attribute
     // this path holds nothing for, kept only the written handler and dropped the other with no mark. `bind_attr` now joins `Unknown`, so
@@ -2097,11 +2133,7 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
     // an absent attribute the exception.
     assert_eq!(
         total.not_at_unresolved,
-        [
-            "03-classes/python/special.py main -> special.Registry.active",
-            "03-classes/python/special.py main -> special.Registry.get_h",
-            "03-classes/python/state.py either -> state.Pipeline.run",
-        ]
+        ["03-classes/python/state.py either -> state.Pipeline.run"]
     );
     // Edges summary mode has and inline mode does not. All come from ty's static type, the union of every assignment in the class (`Job.h`
     // is A in __init__ and B in configure) or in the function (`outer`'s h is A, then B), used where the receiver was not tracked along
@@ -2164,10 +2196,10 @@ fn what_summary_mode_gives_on_the_part_04_programs_against_their_blocks() {
     }
     assert_eq!(
         (fixtures.len(), blocks),
-        (7, 20),
+        (6, 16),
         "the part 04 programs checked inline only, and their summary-mode blocks"
     );
-    // 20 blocks are summary mode's; these 16 fail. The four that pass: `aliases.py nested` (its summary block is the known limit),
+    // 16 blocks are summary mode's; these 12 fail. (`coming_back.py` is verified in both modes since CS2b.) The four that pass: `aliases.py nested` (its summary block is the known limit),
     // `recursion_objects.py` identity_limit and tree_fill (their blocks pin known limits), and `recursion_objects.py` visitor, whose
     // `Report.emit` comes from ty's type of `v.found` (a `Type` edge), not from the walk.
     assert_eq!(
@@ -2175,10 +2207,6 @@ fn what_summary_mode_gives_on_the_part_04_programs_against_their_blocks() {
         [
             "04-class-summaries/python/aliases.py same",
             "04-class-summaries/python/aliases.py different",
-            "04-class-summaries/python/coming_back.py identity",
-            "04-class-summaries/python/coming_back.py built_inside",
-            "04-class-summaries/python/coming_back.py built_with_arg",
-            "04-class-summaries/python/coming_back.py two_from_one_site",
             "04-class-summaries/python/deep_write.py main",
             "04-class-summaries/python/effects.py ctor",
             "04-class-summaries/python/effects.py installed",

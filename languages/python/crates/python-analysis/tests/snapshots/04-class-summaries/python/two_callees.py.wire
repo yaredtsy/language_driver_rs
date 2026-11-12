@@ -1,0 +1,28 @@
+== main
+two_callees.main <two_callees.py:main#0 Function>
+  two_callees.A <two_callees.py:A#0 Class> @35:9 in two_callees.py
+  two_callees.B <two_callees.py:B#0 Class> @35:23 in two_callees.py
+  two_callees.A.make <two_callees.py:A.make#0 Method> @36:5 in two_callees.py
+    two_callees.Box <two_callees.py:Box#0 Class> @22:13 in two_callees.py
+    two_callees.JsonHandler <two_callees.py:JsonHandler#0 Class> @23:21 in two_callees.py
+  two_callees.B.make <two_callees.py:B.make#0 Method> @36:5 in two_callees.py
+    two_callees.Box <two_callees.py:Box#0 Class> @29:13 in two_callees.py
+    two_callees.CsvHandler <two_callees.py:CsvHandler#0 Class> @30:21 in two_callees.py
+  two_callees.Box.run <two_callees.py:Box.run#0 Method> @36:5 in two_callees.py
+    two_callees.JsonHandler.process <two_callees.py:JsonHandler.process#0 Method> @17:9 in two_callees.py
+    two_callees.CsvHandler.process <two_callees.py:CsvHandler.process#0 Method> @17:9 in two_callees.py
+
+== main (merged)
+two_callees.main <two_callees.py:main#0 Function>
+  two_callees.A <two_callees.py:A#0 Class> @35:9 in two_callees.py
+  two_callees.B <two_callees.py:B#0 Class> @35:23 in two_callees.py
+  two_callees.A.make <two_callees.py:A.make#0 Method> @36:5 in two_callees.py
+    two_callees.Box <two_callees.py:Box#0 Class> @22:13 in two_callees.py
+    two_callees.JsonHandler <two_callees.py:JsonHandler#0 Class> @23:21 in two_callees.py
+  two_callees.B.make <two_callees.py:B.make#0 Method> @36:5 in two_callees.py
+    two_callees.Box <two_callees.py:Box#0 Class> @29:13 in two_callees.py
+    two_callees.CsvHandler <two_callees.py:CsvHandler#0 Class> @30:21 in two_callees.py
+  two_callees.Box.run <two_callees.py:Box.run#0 Method> @36:5 in two_callees.py
+    two_callees.JsonHandler.process <two_callees.py:JsonHandler.process#0 Method> @17:9 in two_callees.py
+    two_callees.CsvHandler.process <two_callees.py:CsvHandler.process#0 Method> @17:9 in two_callees.py
+

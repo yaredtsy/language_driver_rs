@@ -3,12 +3,15 @@ use analyzer_core::graph::Basis;
 use ruff_text_size::{TextRange, TextSize};
 use smallvec::{SmallVec, smallvec};
 
+use crate::interp::bind::Bound;
 use crate::interp::env::Env;
 use crate::interp::key::ClosureStack;
 use crate::interp::key::ContextId;
 use crate::interp::solver::Solver;
 use crate::interp::value::ActivationId;
-use crate::interp::value::{AbstractValue, DeferId, OriginId, OriginKey, Path, Values, dedup};
+use crate::interp::value::{
+    AbstractValue, DeferId, Made, OriginId, OriginKey, Path, Root, Step, Values, dedup,
+};
 use crate::interp::walk::Walk;
 use crate::sem::{Definition, Name, Type};
 use ruff_index::IndexVec;
@@ -260,7 +263,10 @@ impl<'db> Walk<'db> {
         resolved: &IndexVec<DeferId, Values<'db>>,
         numbering: &mut ObjectNumbering<'db>,
     ) -> Vec<NewObject<'db>> {
-        let end = &self.activations[self.frame.act];
+        let mut end = self.activations[self.frame.act].clone();
+        for (key, vals) in self.replay_attrs.iter() {
+            end.attrs.insert_mut(key.clone(), vals.clone()); // the objects deferred calls applied
+        }
         let mut objects = Vec::new();
         while let Some(&(origin, class, site)) = numbering.reached.get(objects.len()) {
             let attrs = end
@@ -492,10 +498,144 @@ impl<'db> Walk<'db> {
         )
     }
 
-    /// The caller's own values for a callee's returns. `Ref` and `Obj` are not resolved yet (CS2b): each is `Unknown`, as every object was
-    /// before a summary could name one, and is counted `ref_unresolved`. An empty answer would say "Python never makes this call".
-    pub(crate) fn resolve(&mut self, sol: &mut Solver<'db>, returns: &SVals<'db>) -> Values<'db> {
-        self.resolve_in(sol, returns, &mut Vec::new())
+    /// Phase 1 of applying a summary: the caller's own values for what a callee returns, and for the new objects it built. Reads
+    /// `before`, the env as it was when the call began, and writes nothing in it (it is a shared borrow); `apply` writes.
+    pub(crate) fn resolve(
+        &mut self,
+        sol: &mut Solver<'db>,
+        res: &FunctionResult<'db>,
+        call: &CallSite<'_, 'db>,
+        before: &Env<'db>,
+    ) -> Plan<'db> {
+        let objects: Vec<(OriginId, Definition<'db>)> = res
+            .objects
+            .iter()
+            .enumerate()
+            .map(|(j, o)| {
+                let made = Made::Obj(u16::try_from(j).unwrap_or(u16::MAX));
+                let origin = self.origins.intern(OriginKey::New {
+                    site: call.site,
+                    act: self.frame.act,
+                    t: call.t,
+                    made,
+                });
+                (origin, o.class)
+            })
+            .collect();
+        let cx = Resolving {
+            call,
+            before,
+            objects: &objects,
+        };
+        let returns = self.resolve_in(sol, &res.returns, &mut Vec::new(), &cx);
+        let attrs = res
+            .objects
+            .iter()
+            .zip(&objects)
+            .map(|(o, &(origin, _))| {
+                let attrs = o
+                    .attrs
+                    .iter()
+                    .map(|(name, vals)| {
+                        (
+                            name.clone(),
+                            self.resolve_in(sol, vals, &mut Vec::new(), &cx),
+                        )
+                    })
+                    .collect();
+                (origin, attrs)
+            })
+            .collect();
+        Plan {
+            returns,
+            objects: attrs,
+        }
+    }
+
+    /// Phase 2: write what `resolve` found into the caller's env, and give the call's value. A new object has nothing to keep, so its
+    /// attributes are written strong. In a replay the env is dropped after the operation: the writes are also kept in `replay_attrs`.
+    pub(crate) fn apply(&mut self, plan: Plan<'db>, env: &mut Env<'db>) -> Values<'db> {
+        for (origin, attrs) in plan.objects {
+            for (name, vals) in attrs {
+                if self.replaying {
+                    self.replay_attrs
+                        .insert_mut((origin, name.clone()), vals.clone());
+                }
+                env.bind_attr(origin, &name, vals, true);
+            }
+        }
+        plan.returns
+    }
+
+    /// `before` as an operation of a replay sees it: the env at that point of the walk, and the new objects earlier operations applied.
+    pub(crate) fn replay_env(&self, before: &Env<'db>) -> Env<'db> {
+        let mut env = before.clone();
+        for (key, vals) in self.replay_attrs.iter() {
+            env.attrs.insert_mut(key.clone(), vals.clone());
+        }
+        env
+    }
+
+    /// The caller's objects at the end of `path`, as `before` held them: from the call's own arguments (or the closure being called),
+    /// then step by step. State only: an attribute is what `before.attrs` holds, never a property or the class side, so nothing runs.
+    fn follow(&self, sol: &Solver<'db>, path: &Path, cx: &Resolving<'_, 'db>) -> Values<'db> {
+        let key = &sol.contexts[cx.call.ctx];
+        let mut cur: Values<'db> = match (path.root, cx.call.enclosing) {
+            (Root::Param(i), _) => cx
+                .call
+                .bound
+                .slots
+                .get(i as usize)
+                .cloned()
+                .unwrap_or_default(),
+            (Root::Free(i), Some(act)) => key
+                .free
+                .get(i as usize)
+                .map(|(name, _)| self.lookup_in(sol, key.func, act, name))
+                .unwrap_or_default(),
+            (Root::Default(i), Some(act)) => self
+                .defaults
+                .get(&(key.func, act))
+                .and_then(|d| d.get(i as usize))
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default(),
+            (Root::Free(_) | Root::Default(_), None) => Values::new(),
+        };
+        for step in &path.steps {
+            let mut next = Values::new();
+            for v in cur {
+                match (step, v) {
+                    (Step::Attr(name), AbstractValue::Instance { origin, .. })
+                        if origin.holds_state() =>
+                    {
+                        if let Some(vals) = cx.before.attrs.get(&(origin, name.clone())) {
+                            next.extend(vals.iter().copied());
+                        }
+                    }
+                    (Step::Free(n), AbstractValue::Closure { func, activation }) => {
+                        if let Some(name) = sol.sem.free_variables(func).get(*n as usize) {
+                            next.extend(self.lookup_in(sol, func, activation, name));
+                        }
+                    }
+                    (Step::Default(n), AbstractValue::Closure { func, activation }) => {
+                        if let Some((_, vals)) = self
+                            .defaults
+                            .get(&(func, activation))
+                            .and_then(|d| d.get(*n as usize))
+                        {
+                            next.extend(vals.iter().copied());
+                        }
+                    }
+                    (Step::Recv, AbstractValue::BoundMethod { receiver, .. }) => {
+                        next.push(self.values[receiver]);
+                    }
+                    _ => {}
+                }
+            }
+            dedup(&mut next);
+            cur = next;
+        }
+        cur
     }
 
     /// `cl`: the closures being rebuilt, innermost last. `Back(k)` is the k-th from the top.
@@ -504,6 +644,7 @@ impl<'db> Walk<'db> {
         sol: &mut Solver<'db>,
         vals: &SVals<'db>,
         cl: &mut Vec<(Definition<'db>, ActivationId)>,
+        cx: &Resolving<'_, 'db>,
     ) -> Values<'db> {
         let mut out = Values::new();
         for sv in vals {
@@ -517,12 +658,24 @@ impl<'db> Walk<'db> {
                     origin: OriginId::OPAQUE,
                 }),
                 SVal::Plain(PlainVal::Unknown) => out.push(AbstractValue::Unknown),
-                SVal::Ref(_) | SVal::Obj(_) => {
-                    sol.stats.ref_unresolved += 1;
-                    out.push(AbstractValue::Unknown);
+                SVal::Ref(path) => {
+                    let found = self.follow(sol, path, cx);
+                    if found.is_empty() {
+                        // Never an empty answer: it would say "Python never makes this call" and drop what the engine finds.
+                        sol.stats.ref_unresolved += 1;
+                        out.push(AbstractValue::Unknown);
+                    }
+                    out.extend(found);
                 }
+                SVal::Obj(j) => match cx.objects.get(*j as usize) {
+                    Some(&(origin, class)) => out.push(AbstractValue::Instance { class, origin }),
+                    None => {
+                        sol.stats.ref_unresolved += 1;
+                        out.push(AbstractValue::Unknown);
+                    }
+                },
                 SVal::Bound { func, recv } => {
-                    let recvs = self.resolve_in(sol, &smallvec![(**recv).clone()], cl);
+                    let recvs = self.resolve_in(sol, &smallvec![(**recv).clone()], cl, cx);
                     for r in recvs {
                         out.push(AbstractValue::BoundMethod {
                             func: *func,
@@ -543,12 +696,12 @@ impl<'db> Walk<'db> {
                     cl.push((*func, activation)); // 2. so a Back inside can reach it
                     for (name, vals) in free.iter() {
                         // 3. its values
-                        let v = self.resolve_in(sol, vals, cl);
+                        let v = self.resolve_in(sol, vals, cl, cx);
                         self.activations[activation].bind(name, v);
                     }
                     let d = defaults
                         .iter()
-                        .map(|(n, v)| (n.clone(), self.resolve_in(sol, v, cl)))
+                        .map(|(n, v)| (n.clone(), self.resolve_in(sol, v, cl, cx)))
                         .collect();
                     self.defaults.insert((*func, activation), d);
                     cl.pop(); // 4.
@@ -559,9 +712,36 @@ impl<'db> Walk<'db> {
                 }
             }
         }
-        dedup(&mut out); // two objects that cannot be resolved yet are one `Unknown`, as they were
+        dedup(&mut out);
         out
     }
+}
+
+/// What resolving a callee's summary needs from the call.
+pub(crate) struct CallSite<'a, 'db> {
+    /// The callee's context: its closure's free and default names.
+    pub ctx: ContextId,
+    /// The call expression, in the file: new objects are named by it.
+    pub site: TextRange,
+    /// The callee's index at the site (the project callees, in the order `call_values` walks them).
+    pub t: u8,
+    /// The slots: `Param(i)` is `bound.slots[i]`.
+    pub bound: &'a Bound<'db>,
+    /// The closure's own run, for `Free(i)` and `Default(i)`.
+    pub enclosing: Option<ActivationId>,
+}
+
+/// What `resolve` found: the call's value, and the state of each new object, to be written by `apply`.
+pub(crate) struct Plan<'db> {
+    pub returns: Values<'db>,
+    pub objects: Vec<(OriginId, Vec<(Name, Values<'db>)>)>,
+}
+
+struct Resolving<'a, 'db> {
+    call: &'a CallSite<'a, 'db>,
+    before: &'a Env<'db>,
+    /// `objects[j]` of the summary: its origin here and its class.
+    objects: &'a [(OriginId, Definition<'db>)],
 }
 
 fn plain(v: AbstractValue<'_>) -> PlainVal<'_> {
@@ -590,6 +770,14 @@ pub(crate) fn same_sval<'db>(x: &SVal<'db>, y: &SVal<'db>) -> bool {
         ) => f == g && same_named(a, b) && same_named(da, db),
         _ => x == y,
     }
+}
+
+/// The objects of two rounds of one walk: numbered in the order `finish` reaches them, so they are compared by number.
+pub(crate) fn same_objects<'db>(a: &[NewObject<'db>], b: &[NewObject<'db>]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(x, y)| x.class == y.class && x.site == y.site && same_named(&x.attrs, &y.attrs))
 }
 
 /// Both lists come in a fixed order: free variables sorted, defaults in parameter order.

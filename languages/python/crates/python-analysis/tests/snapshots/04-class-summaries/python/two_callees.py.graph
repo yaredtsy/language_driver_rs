@@ -1,0 +1,34 @@
+== main
+entries: two_callees.main#1af12af335cebbe2
+stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def two_callees.A = A#0 Class two_callees.py
+def two_callees.A.make = A.make#0 Method two_callees.py
+def two_callees.B = B#0 Class two_callees.py
+def two_callees.B.make = B.make#0 Method two_callees.py
+def two_callees.Box = Box#0 Class two_callees.py
+def two_callees.Box.run = Box.run#0 Method two_callees.py
+def two_callees.CsvHandler = CsvHandler#0 Class two_callees.py
+def two_callees.CsvHandler.process = CsvHandler.process#0 Method two_callees.py
+def two_callees.JsonHandler = JsonHandler#0 Class two_callees.py
+def two_callees.JsonHandler.process = JsonHandler.process#0 Method two_callees.py
+def two_callees.main = main#0 Function two_callees.py
+two_callees.A.make#ef3ede3f6bf27c79 Finished
+  @28-33 -> new two_callees.Box init - Name
+  @54-67 -> new two_callees.JsonHandler init - Name
+two_callees.B.make#78f7a91760ee9482 Finished
+  @28-33 -> new two_callees.Box init - Name
+  @54-66 -> new two_callees.CsvHandler init - Name
+two_callees.Box.run#4356128382a660ef Finished
+  @23-45 -> two_callees.JsonHandler.process#01655cf0a30118f3 Type
+two_callees.Box.run#8f9d329b569309f7 Finished
+  @23-45 -> two_callees.CsvHandler.process#9e1ab8e3b9ac22ab Type
+two_callees.CsvHandler.process#9e1ab8e3b9ac22ab Finished
+two_callees.JsonHandler.process#01655cf0a30118f3 Finished
+two_callees.main#1af12af335cebbe2 Finished
+  @21-24 -> new two_callees.A init - Name
+  @35-38 -> new two_callees.B init - Name
+  @43-51 -> two_callees.A.make#ef3ede3f6bf27c79 Path
+  @43-51 -> two_callees.B.make#78f7a91760ee9482 Path
+  @43-57 -> two_callees.Box.run#4356128382a660ef Path
+  @43-57 -> two_callees.Box.run#8f9d329b569309f7 Path
+

@@ -1043,3 +1043,39 @@ fn a_configured_environment_that_is_broken_is_still_in_the_list() {
     let list = project.environment_inputs();
     assert!(list.iter().any(|e| e == "env/pyvenv.cfg"), "{list:?}");
 }
+
+const CLASS_SUMMARIES: &str = "tests/fixtures/04-class-summaries/python";
+
+/// The edges out of `entry` of `coming_back.py` (class summaries, CS2).
+fn coming_back_edges(entry: &str) -> Vec<String> {
+    let project = Project::open(CLASS_SUMMARIES).unwrap();
+    let graph = call_graph(
+        &project,
+        "coming_back.py",
+        &first(entry),
+        &Options::default(),
+    )
+    .unwrap();
+    assert_eq!(graph.stats.language.get("ref_unresolved"), None, "{entry}");
+    edges_of_entry(&graph)
+}
+
+/// A method called on an object a callee built and handed back is a call on an object the caller's walk holds as one of its own `New`
+/// origins (`is_built_here`): its basis is `Path`, not the engine's type (02 §7 claim 4).
+#[test]
+fn a_method_on_an_object_a_callee_built_rests_on_the_path() {
+    assert_eq!(
+        coming_back_edges("built_inside"),
+        ["coming_back.make_json Name", "coming_back.Box.run Path"].map(String::from)
+    );
+    // `make_box` stores its argument in the new object; the handler it hands back is the caller's own
+    assert_eq!(
+        coming_back_edges("built_with_arg"),
+        [
+            "coming_back.make_box Name",
+            "coming_back.Box.run Path",
+            "new coming_back.CsvHandler Name init=-"
+        ]
+        .map(String::from)
+    );
+}

@@ -21,15 +21,18 @@ isolation.two_alive#459ff191303b9127 Finished
 
 == one_site
 entries: isolation.one_site#645ae6ed164248bc
-stats: walks 5, contexts 5, reuse_hits 0, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 2, "types_dropped": 0, "unknown_callee": 2}
+stats: walks 6, contexts 6, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
 def isolation.CsvHandler = CsvHandler#0 Class isolation.py
 def isolation.JsonHandler = JsonHandler#0 Class isolation.py
 def isolation.Pipeline = Pipeline#0 Class isolation.py
 def isolation.Pipeline.__init__ = Pipeline.__init__#0 Method isolation.py
+def isolation.Pipeline.run = Pipeline.run#0 Method isolation.py
 def isolation.make = make#0 Function isolation.py
 def isolation.one_site = one_site#0 Function isolation.py
 isolation.Pipeline.__init__#3e7078441b73d34d Finished
 isolation.Pipeline.__init__#ed3c573b9a3ef18d Finished
+isolation.Pipeline.run#19a4033baa8a1bd6 Finished
+  @29-55 -> ? unknown_callee
 isolation.make#0649cc3f1c74b217 Finished
   @24-35 -> new isolation.Pipeline init isolation.Pipeline.__init__#ed3c573b9a3ef18d Name
 isolation.make#490e923a887007ff Finished
@@ -39,8 +42,8 @@ isolation.one_site#645ae6ed164248bc Finished
   @29-42 -> new isolation.JsonHandler init - Name
   @52-70 -> isolation.make#490e923a887007ff Name
   @57-69 -> new isolation.CsvHandler init - Name
-  @75-83 -> ? unknown_callee
-  @88-96 -> ? unknown_callee
+  @75-83 -> isolation.Pipeline.run#19a4033baa8a1bd6 Path
+  @88-96 -> isolation.Pipeline.run#19a4033baa8a1bd6 Path
 
 == opaque
 entries: isolation.opaque#73f48bf8eec378a7

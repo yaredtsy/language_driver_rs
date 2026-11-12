@@ -42,8 +42,21 @@ pub(crate) enum OriginKey {
     Opaque,
     /// An input object, named by where it sits among the inputs. One per path per run.
     Entry { act: ActivationId, path: Path },
-    /// An object built in this walk, at this site, in this run of its body.
-    New { site: TextRange, act: ActivationId },
+    /// An object built in this walk, in this run of its body: by a construct expression at `site` (`Made::Here`), or the `j`-th new
+    /// object a callee's summary describes (`Made::Obj(j)`), for the callee at index `t` of the call site `site`. Two callees of one site
+    /// build their objects apart.
+    New {
+        site: TextRange,
+        act: ActivationId,
+        t: u8,
+        made: Made,
+    },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) enum Made {
+    Here,
+    Obj(u16),
 }
 
 impl OriginKey {

@@ -8,14 +8,24 @@ special.main <special.py:main#0 Function>
   special.Registry.create <special.py:Registry.create#0 Method> @48:9 in special.py
     special.Registry <special.py:Registry#0 Class> @31:16 in special.py
   special.JsonHandler <special.py:JsonHandler#0 Class> @48:25 in special.py
+  special.Registry.active <special.py:Registry.active#0 Method> @49:5 in special.py
+  special.Registry.fire <special.py:Registry.fire#0 Method> @50:5 in special.py
+    special.Registry.active <special.py:Registry.active#0 Method> @38:9 in special.py
+  special.Registry.make <special.py:Registry.make#0 Method> @51:5 in special.py
+    special.on_ok <special.py:on_ok#0 Function> @27:9 in special.py
+  special.Registry.get_h <special.py:Registry.get_h#0 Method> @52:5 in special.py
 
 == main (merged)
 special.main <special.py:main#0 Function>
-  special.Registry.make <special.py:Registry.make#0 Method> @47:5 in special.py
-    special.on_ok <special.py:on_ok#0 Function> @27:9 in special.py
+  special.Registry.make <special.py:Registry.make#0 Method> x2 @47:5 in special.py
+    special.on_ok <special.py:on_ok#0 Function> x2 @27:9 in special.py
   special.Registry.create <special.py:Registry.create#0 Method> @48:9 in special.py
     special.Registry <special.py:Registry#0 Class> @31:16 in special.py
   special.JsonHandler <special.py:JsonHandler#0 Class> @48:25 in special.py
+  special.Registry.active <special.py:Registry.active#0 Method> @49:5 in special.py
+  special.Registry.fire <special.py:Registry.fire#0 Method> @50:5 in special.py
+    special.Registry.active <special.py:Registry.active#0 Method> @38:9 in special.py
+  special.Registry.get_h <special.py:Registry.get_h#0 Method> @52:5 in special.py
 
 == swap
 special.swap <special.py:swap#0 Function>

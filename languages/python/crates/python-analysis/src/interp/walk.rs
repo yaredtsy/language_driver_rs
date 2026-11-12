@@ -41,6 +41,10 @@ pub(crate) struct Walk<'db> {
     pub inputs: Vec<Values<'db>>,
     /// What each object held when the body began (the attributes the key gave it).
     pub start_attrs: rpds::HashTrieMap<(OriginId, Name), Values<'db>>,
+    /// What the new objects a deferred call applied hold, written during replays. A replay's env is dropped after each operation, so
+    /// this is where the next operation, and `finish_round`, read them. A new object has one origin per call site and callee: each round
+    /// writes the same keys again.
+    pub replay_attrs: rpds::HashTrieMap<(OriginId, Name), Values<'db>>,
 }
 
 /// The body being walked now.
@@ -92,6 +96,7 @@ impl<'db> Walk<'db> {
             generator: false,
             inputs: Vec::new(),
             start_attrs: Default::default(),
+            replay_attrs: Default::default(),
         }
     }
     pub(crate) fn new_frame(&mut self, sol: &Solver<'db>, func: Definition<'db>) -> Frame<'db> {

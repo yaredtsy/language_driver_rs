@@ -8,7 +8,7 @@ use ruff_index::{Idx, IndexVec};
 
 use crate::interp::defer::{DeferredOp, no_values};
 use crate::interp::key::{Context, ContextId, Fp, FpId, Interner};
-use crate::interp::summary::{Cut, FunctionResult, Gaps, Status, same_svals};
+use crate::interp::summary::{Cut, FunctionResult, Gaps, Status, same_objects, same_svals};
 use crate::interp::walk::{Walk, contains_yield};
 use crate::interp::{Options, Stats};
 use crate::sem::{Definition, Sem};
@@ -66,10 +66,9 @@ impl<'db> Slot<'db> {
 
     /// Store the round's summary. True when what a caller reads changed.
     fn set_current(&mut self, next: FunctionResult<'db>) -> bool {
-        let changed = self
-            .current
-            .as_ref()
-            .is_none_or(|c| !same_svals(&c.returns, &next.returns));
+        let changed = self.current.as_ref().is_none_or(|c| {
+            !same_svals(&c.returns, &next.returns) || !same_objects(&c.objects, &next.objects)
+        });
         self.current = Some(Arc::new(next));
         changed
     }
@@ -462,7 +461,7 @@ impl<'db> Solver<'db> {
         let group = self.heads.find(members[0]);
         for &m in members {
             for d in &self.slots[m].walk.as_ref().unwrap().deferred {
-                if let DeferredOp::Apply { ctx } = d.op {
+                if let DeferredOp::Apply { ctx, .. } = d.op {
                     debug_assert_eq!(
                         self.heads.find(ctx),
                         group,

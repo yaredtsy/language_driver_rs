@@ -5,11 +5,13 @@ use crate::interp::bind::{Bound, EvaluatedArgs};
 use crate::interp::defer::DeferredOp;
 use crate::interp::env::Env;
 use crate::interp::solver::{Got, Solver};
-use crate::interp::summary::{CallEdge, EffectValue, FunctionResult, PlainVal, SiteId, Target};
+use crate::interp::summary::{
+    CallEdge, CallSite, EffectValue, FunctionResult, PlainVal, SiteId, Target,
+};
 use crate::interp::tree::Node;
 use crate::interp::value::dedup;
 use crate::interp::value::{AbstractValue, Values};
-use crate::interp::value::{ActivationId, OriginId, OriginKey};
+use crate::interp::value::{ActivationId, Made, OriginId, OriginKey};
 use crate::interp::walk::{Walk, contains_yield};
 use crate::sem::Definition;
 use crate::sem::Shape;
@@ -331,6 +333,13 @@ impl<'db> Walk<'db> {
         // Callees at one site are alternatives: each starts from the state before the call.
         let before = env.clone();
         let mut after: Vec<Option<Env<'db>>> = Vec::new();
+        // The project callees at this site, numbered as they are walked: one origin per callee for the objects its summary builds.
+        let mut callee = 0usize;
+        let mut next_t = || {
+            let t = u8::try_from(callee).unwrap_or(u8::MAX);
+            callee += 1;
+            t
+        };
         for (def, enclosing) in targets {
             let v = match sol.opts.mode {
                 Mode::Inline => {
@@ -347,8 +356,11 @@ impl<'db> Walk<'db> {
                     None,
                     args,
                     how,
+                    self.site_range(site),
+                    next_t(),
                     &mut edge_targets,
-                    &*env,
+                    env,
+                    &before,
                 ),
             };
             out.extend(v);
@@ -381,8 +393,11 @@ impl<'db> Walk<'db> {
                     } else {
                         How::Typed
                     },
+                    self.site_range(site),
+                    next_t(),
                     &mut edge_targets,
-                    &*env,
+                    env,
+                    &before,
                 )),
             }
         }
@@ -518,6 +533,8 @@ impl<'db> Walk<'db> {
         let origin = self.origins.intern(OriginKey::New {
             site,
             act: self.frame.act,
+            t: 0,
+            made: Made::Here,
         });
         let obj = AbstractValue::Instance { class, origin };
         let name = sol.sem.qname(class);
@@ -626,8 +643,11 @@ impl<'db> Walk<'db> {
         receiver: Option<AbstractValue<'db>>,
         args: &EvaluatedArgs<'db>,
         how: How, // `Named`: a def or a closure the callee expression names (no receiver)
+        site: TextRange, // the call expression, in the file
+        t: u8,    // the callee's index at the site
         targets: &mut SmallVec<[Target<'db>; 2]>,
-        env: &Env<'db>,
+        env: &mut Env<'db>,
+        before: &Env<'db>, // the env when the call began: what a `Ref` reads
     ) -> Values<'db> {
         let parsed = sol.sem.parsed(def);
         let Some(node) = sol.sem.function_node(def, &parsed) else {
@@ -655,10 +675,27 @@ impl<'db> Walk<'db> {
         targets.push(Target::Call(ctx, basis)); // recorded now, whatever `get` answers
         match sol.get(ctx) {
             _ if !runs => Values::new(), // Python never makes this call, whatever `get` answered
-            Got::Ready(res) => self.resolve(sol, &res.returns),
+            Got::Ready(res) => {
+                let call = CallSite {
+                    ctx,
+                    site,
+                    t,
+                    bound: &bound,
+                    enclosing,
+                };
+                let plan = self.resolve(sol, &res, &call, before);
+                self.apply(plan, env)
+            }
             Got::Pending if self.replaying => Values::new(), // the solver flagged the reader
             Got::Pending => {
-                let id = self.defer(DeferredOp::Apply { ctx }, env);
+                let op = DeferredOp::Apply {
+                    ctx,
+                    site,
+                    t,
+                    bound,
+                    enclosing,
+                };
+                let id = self.defer(op, env);
                 smallvec![AbstractValue::Pending(id)]
             }
         }
@@ -730,6 +767,8 @@ impl<'db> Walk<'db> {
         let origin = self.origins.intern(OriginKey::New {
             site,
             act: self.frame.act,
+            t: 0,
+            made: Made::Here,
         });
         let obj = AbstractValue::Instance { class, origin };
         let mut init = None;

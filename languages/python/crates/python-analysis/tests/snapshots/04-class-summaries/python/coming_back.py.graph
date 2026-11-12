@@ -1,60 +1,79 @@
 == identity
 entries: coming_back.identity#c0e3d12af271551b
-stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 1, "types_dropped": 0, "unknown_callee": 0}
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def coming_back.Box = Box#0 Class coming_back.py
 def coming_back.Box.run = Box.run#0 Method coming_back.py
 def coming_back.CsvHandler = CsvHandler#0 Class coming_back.py
-def coming_back.CsvHandler.process = CsvHandler.process#0 Method coming_back.py
 def coming_back.JsonHandler = JsonHandler#0 Class coming_back.py
+def coming_back.JsonHandler.process = JsonHandler.process#0 Method coming_back.py
 def coming_back.ident = ident#0 Function coming_back.py
 def coming_back.identity = identity#0 Function coming_back.py
-coming_back.Box.run#cd1266c049dbb62e Finished
-  @23-45 -> coming_back.CsvHandler.process#e55b93cc37f9266a Type
-coming_back.CsvHandler.process#e55b93cc37f9266a Finished
+coming_back.Box.run#4c399e608a4361e4 Finished
+  @23-45 -> coming_back.JsonHandler.process#cd1255d90ebe55af Type
+coming_back.JsonHandler.process#cd1255d90ebe55af Finished
 coming_back.ident#d457e7f5412342e3 Finished
 coming_back.identity#c0e3d12af271551b Finished
   @24-29 -> new coming_back.Box init - Name
   @46-58 -> new coming_back.CsvHandler init - Name
   @67-75 -> coming_back.ident#d457e7f5412342e3 Name
   @92-105 -> new coming_back.JsonHandler init - Name
-  @142-149 -> coming_back.Box.run#cd1266c049dbb62e Path
+  @142-149 -> coming_back.Box.run#4c399e608a4361e4 Path
 
 == built_inside
 entries: coming_back.built_inside#29e47e0ca8e184c5
-stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 1, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def coming_back.Box = Box#0 Class coming_back.py
+def coming_back.Box.run = Box.run#0 Method coming_back.py
 def coming_back.JsonHandler = JsonHandler#0 Class coming_back.py
+def coming_back.JsonHandler.process = JsonHandler.process#0 Method coming_back.py
 def coming_back.built_inside = built_inside#0 Function coming_back.py
 def coming_back.make_json = make_json#0 Function coming_back.py
+coming_back.Box.run#4c399e608a4361e4 Finished
+  @23-45 -> coming_back.JsonHandler.process#cd1255d90ebe55af Type
+coming_back.JsonHandler.process#cd1255d90ebe55af Finished
 coming_back.built_inside#29e47e0ca8e184c5 Finished
   @24-35 -> coming_back.make_json#79b2a6ec581d2e48 Name
-  @24-41 -> ? unknown_callee
+  @24-41 -> coming_back.Box.run#4c399e608a4361e4 Path
 coming_back.make_json#79b2a6ec581d2e48 Finished
   @25-30 -> new coming_back.Box init - Name
   @47-60 -> new coming_back.JsonHandler init - Name
 
 == built_with_arg
 entries: coming_back.built_with_arg#90d3a0cce1f9c938
-stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 1, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def coming_back.Box = Box#0 Class coming_back.py
+def coming_back.Box.run = Box.run#0 Method coming_back.py
 def coming_back.CsvHandler = CsvHandler#0 Class coming_back.py
+def coming_back.CsvHandler.process = CsvHandler.process#0 Method coming_back.py
 def coming_back.built_with_arg = built_with_arg#0 Function coming_back.py
 def coming_back.make_box = make_box#0 Function coming_back.py
+coming_back.Box.run#cd1266c049dbb62e Finished
+  @23-45 -> coming_back.CsvHandler.process#e55b93cc37f9266a Type
+coming_back.CsvHandler.process#e55b93cc37f9266a Finished
 coming_back.built_with_arg#90d3a0cce1f9c938 Finished
   @26-48 -> coming_back.make_box#3909621be9d4664d Name
-  @26-54 -> ? unknown_callee
+  @26-54 -> coming_back.Box.run#cd1266c049dbb62e Path
   @35-47 -> new coming_back.CsvHandler init - Name
 coming_back.make_box#3909621be9d4664d Finished
   @25-30 -> new coming_back.Box init - Name
 
 == two_from_one_site
 entries: coming_back.two_from_one_site#c7a4d2b51496b3e0
-stats: walks 3, contexts 3, reuse_hits 0, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 2, "types_dropped": 0, "unknown_callee": 2}
+stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def coming_back.Box = Box#0 Class coming_back.py
+def coming_back.Box.run = Box.run#0 Method coming_back.py
 def coming_back.CsvHandler = CsvHandler#0 Class coming_back.py
+def coming_back.CsvHandler.process = CsvHandler.process#0 Method coming_back.py
 def coming_back.JsonHandler = JsonHandler#0 Class coming_back.py
+def coming_back.JsonHandler.process = JsonHandler.process#0 Method coming_back.py
 def coming_back.make_box = make_box#0 Function coming_back.py
 def coming_back.two_from_one_site = two_from_one_site#0 Function coming_back.py
+coming_back.Box.run#4c399e608a4361e4 Finished
+  @23-45 -> coming_back.JsonHandler.process#cd1255d90ebe55af Type
+coming_back.Box.run#cd1266c049dbb62e Finished
+  @23-45 -> coming_back.CsvHandler.process#e55b93cc37f9266a Type
+coming_back.CsvHandler.process#e55b93cc37f9266a Finished
+coming_back.JsonHandler.process#cd1255d90ebe55af Finished
 coming_back.make_box#1f9e5e577a459212 Finished
   @25-30 -> new coming_back.Box init - Name
 coming_back.make_box#3909621be9d4664d Finished
@@ -64,6 +83,6 @@ coming_back.two_from_one_site#c7a4d2b51496b3e0 Finished
   @42-55 -> new coming_back.JsonHandler init - Name
   @65-87 -> coming_back.make_box#3909621be9d4664d Name
   @74-86 -> new coming_back.CsvHandler init - Name
-  @92-99 -> ? unknown_callee
-  @104-111 -> ? unknown_callee
+  @92-99 -> coming_back.Box.run#4c399e608a4361e4 Path
+  @104-111 -> coming_back.Box.run#cd1266c049dbb62e Path
 

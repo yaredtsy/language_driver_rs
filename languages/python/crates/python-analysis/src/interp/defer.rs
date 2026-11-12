@@ -2,14 +2,15 @@
 use ruff_index::IndexVec;
 use smallvec::smallvec;
 
-use crate::interp::bind::EvaluatedArgs;
+use crate::interp::bind::{Bound, EvaluatedArgs};
 use crate::interp::call::How;
 use crate::interp::env::Env;
 use crate::interp::key::ContextId;
 use crate::interp::solver::{Got, Solver};
-use crate::interp::summary::SiteId;
-use crate::interp::value::{AbstractValue, DeferId, Values, dedup};
+use crate::interp::summary::{CallSite, SiteId};
+use crate::interp::value::{AbstractValue, ActivationId, DeferId, Values, dedup};
 use crate::interp::walk::Walk;
+use ruff_text_size::TextRange;
 
 #[derive(Clone)]
 pub(crate) struct Deferred<'db> {
@@ -22,7 +23,14 @@ pub(crate) struct Deferred<'db> {
 #[derive(Clone)]
 pub(crate) enum DeferredOp<'db> {
     /// A call to a context that is still running. Its value is that context's returns.
-    Apply { ctx: ContextId },
+    Apply {
+        ctx: ContextId,
+        /// What `resolve` needs to follow a `Ref` and to name the callee's new objects: see `CallSite`.
+        site: TextRange,
+        t: u8,
+        bound: Bound<'db>,
+        enclosing: Option<ActivationId>,
+    },
     /// A call whose callee, or an argument a key would read, is pending.
     /// It can't be keyed now. It is keyed in the fixpoint.
     Call {
@@ -75,8 +83,25 @@ impl<'db> Walk<'db> {
         for id in ids {
             let d = self.deferred[id].clone();
             let v = match d.op {
-                DeferredOp::Apply { ctx } => match sol.get(ctx) {
-                    Got::Ready(res) => self.resolve(sol, &res.returns),
+                DeferredOp::Apply {
+                    ctx,
+                    site,
+                    t,
+                    bound,
+                    enclosing,
+                } => match sol.get(ctx) {
+                    Got::Ready(res) => {
+                        let mut env = self.replay_env(&d.before);
+                        let call = CallSite {
+                            ctx,
+                            site,
+                            t,
+                            bound: &bound,
+                            enclosing,
+                        };
+                        let plan = self.resolve(sol, &res, &call, &env);
+                        self.apply(plan, &mut env)
+                    }
                     Got::Pending => Values::new(), // the solver flagged it: the round is abandoned
                 },
                 DeferredOp::Call {
@@ -98,6 +123,7 @@ impl<'db> Walk<'db> {
                             .collect(),
                         has_splat: args.has_splat,
                     };
+                    let mut env = self.replay_env(&d.before);
                     self.call_values(
                         sol,
                         site,
@@ -107,7 +133,7 @@ impl<'db> Walk<'db> {
                         &fallback,
                         Some(edge),
                         how,
-                        &mut d.before.clone(),
+                        &mut env,
                     )
                 }
             };

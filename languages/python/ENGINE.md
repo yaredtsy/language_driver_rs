@@ -239,6 +239,22 @@ The engine writes "found past a base it cannot see" as an intersection (`Type::I
 `pub(crate)`, so negative parts cannot be read from here: they are ignored. A method the class defines itself, before the unknown base,
 is typed exactly (`bound method Model.own() -> Unknown`).
 
+## Class summaries, CS2: objects coming back
+
+Measured 2026-11-13 with the debug CLI, before = `99c60b3` (CS2a) and after = CS2b, the second of two runs, `--graph --timing`; nodes are the
+unmerged wire's. Jarvis is `CallGraphGenerator.do_pass`, Flask is `FilesResource.post` in `app/api/file.py`, FastAPI is `APIRouter.include_router`
+in `fastapi/routing.py`.
+
+| Project | nodes | contexts | walks | unresolved | `ref_unresolved` | solve ms |
+|---|---|---|---|---|---|---|
+| Jarvis | 207 → 207 | 55 → 55 | 55 → 55 | 30 → 30 | 0 → 0 | 89 → 88 |
+| Flask service | 266 → 266 | 70 → 70 | 70 → 70 | 81 → 81 | 3 → 0 | 170 → 170 |
+| FastAPI | 436 → 458 | 68 → 70 | 68 → 70 | 27 → 29 | 14 → 0 | 138 → 132 |
+
+The golden of Jarvis is `equal`. All 22 nodes FastAPI gains are one getter, `fastapi._compat.v2.ModelField.type_`, under callers that were already in the
+tree. `create_model_field` builds a v1 or a v2 `ModelField` by a version switch the walk does not narrow, so a v2 object reaches
+`fastapi._compat.v1.is_pv1_scalar_field`. Probably an edge Python never takes there; not checked against inline mode (the CLI has none).
+
 ## Toolchain
 
 `vendor/ruff/rust-toolchain.toml` says 1.98.0 and ruff's `rust-version` is 1.96. It is ignored here (the repo root's `rust-toolchain.toml` decides,

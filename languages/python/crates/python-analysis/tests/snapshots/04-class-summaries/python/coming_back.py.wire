@@ -1,6 +1,3 @@
-# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
-# This pins what it says today so a change is noticed; it is not a right answer.
-
 == identity
 coming_back.identity <coming_back.py:identity#0 Function>
   coming_back.Box <coming_back.py:Box#0 Class> @38:9 in coming_back.py
@@ -8,7 +5,7 @@ coming_back.identity <coming_back.py:identity#0 Function>
   coming_back.ident <coming_back.py:ident#0 Function> @40:9 in coming_back.py
   coming_back.JsonHandler <coming_back.py:JsonHandler#0 Class> @41:17 in coming_back.py
   coming_back.Box.run <coming_back.py:Box.run#0 Method> @42:5 in coming_back.py
-    coming_back.CsvHandler.process <coming_back.py:CsvHandler.process#0 Method> @18:9 in coming_back.py
+    coming_back.JsonHandler.process <coming_back.py:JsonHandler.process#0 Method> @18:9 in coming_back.py
 
 == identity (merged)
 coming_back.identity <coming_back.py:identity#0 Function>
@@ -17,30 +14,38 @@ coming_back.identity <coming_back.py:identity#0 Function>
   coming_back.ident <coming_back.py:ident#0 Function> @40:9 in coming_back.py
   coming_back.JsonHandler <coming_back.py:JsonHandler#0 Class> @41:17 in coming_back.py
   coming_back.Box.run <coming_back.py:Box.run#0 Method> @42:5 in coming_back.py
-    coming_back.CsvHandler.process <coming_back.py:CsvHandler.process#0 Method> @18:9 in coming_back.py
+    coming_back.JsonHandler.process <coming_back.py:JsonHandler.process#0 Method> @18:9 in coming_back.py
 
 == built_inside
 coming_back.built_inside <coming_back.py:built_inside#0 Function>
   coming_back.make_json <coming_back.py:make_json#0 Function> @46:5 in coming_back.py
     coming_back.Box <coming_back.py:Box#0 Class> @32:9 in coming_back.py
     coming_back.JsonHandler <coming_back.py:JsonHandler#0 Class> @33:17 in coming_back.py
+  coming_back.Box.run <coming_back.py:Box.run#0 Method> @46:5 in coming_back.py
+    coming_back.JsonHandler.process <coming_back.py:JsonHandler.process#0 Method> @18:9 in coming_back.py
 
 == built_inside (merged)
 coming_back.built_inside <coming_back.py:built_inside#0 Function>
   coming_back.make_json <coming_back.py:make_json#0 Function> @46:5 in coming_back.py
     coming_back.Box <coming_back.py:Box#0 Class> @32:9 in coming_back.py
     coming_back.JsonHandler <coming_back.py:JsonHandler#0 Class> @33:17 in coming_back.py
+  coming_back.Box.run <coming_back.py:Box.run#0 Method> @46:5 in coming_back.py
+    coming_back.JsonHandler.process <coming_back.py:JsonHandler.process#0 Method> @18:9 in coming_back.py
 
 == built_with_arg
 coming_back.built_with_arg <coming_back.py:built_with_arg#0 Function>
   coming_back.make_box <coming_back.py:make_box#0 Function> @50:5 in coming_back.py
     coming_back.Box <coming_back.py:Box#0 Class> @26:9 in coming_back.py
+  coming_back.Box.run <coming_back.py:Box.run#0 Method> @50:5 in coming_back.py
+    coming_back.CsvHandler.process <coming_back.py:CsvHandler.process#0 Method> @18:9 in coming_back.py
   coming_back.CsvHandler <coming_back.py:CsvHandler#0 Class> @50:14 in coming_back.py
 
 == built_with_arg (merged)
 coming_back.built_with_arg <coming_back.py:built_with_arg#0 Function>
   coming_back.make_box <coming_back.py:make_box#0 Function> @50:5 in coming_back.py
     coming_back.Box <coming_back.py:Box#0 Class> @26:9 in coming_back.py
+  coming_back.Box.run <coming_back.py:Box.run#0 Method> @50:5 in coming_back.py
+    coming_back.CsvHandler.process <coming_back.py:CsvHandler.process#0 Method> @18:9 in coming_back.py
   coming_back.CsvHandler <coming_back.py:CsvHandler#0 Class> @50:14 in coming_back.py
 
 == two_from_one_site
@@ -51,6 +56,10 @@ coming_back.two_from_one_site <coming_back.py:two_from_one_site#0 Function>
   coming_back.make_box <coming_back.py:make_box#0 Function> @55:9 in coming_back.py
     coming_back.Box <coming_back.py:Box#0 Class> @26:9 in coming_back.py
   coming_back.CsvHandler <coming_back.py:CsvHandler#0 Class> @55:18 in coming_back.py
+  coming_back.Box.run <coming_back.py:Box.run#0 Method> @56:5 in coming_back.py
+    coming_back.JsonHandler.process <coming_back.py:JsonHandler.process#0 Method> @18:9 in coming_back.py
+  coming_back.Box.run <coming_back.py:Box.run#0 Method> @57:5 in coming_back.py
+    coming_back.CsvHandler.process <coming_back.py:CsvHandler.process#0 Method> @18:9 in coming_back.py
 
 == two_from_one_site (merged)
 coming_back.two_from_one_site <coming_back.py:two_from_one_site#0 Function>
@@ -58,4 +67,7 @@ coming_back.two_from_one_site <coming_back.py:two_from_one_site#0 Function>
     coming_back.Box <coming_back.py:Box#0 Class> x2 @26:9 in coming_back.py
   coming_back.JsonHandler <coming_back.py:JsonHandler#0 Class> @54:18 in coming_back.py
   coming_back.CsvHandler <coming_back.py:CsvHandler#0 Class> @55:18 in coming_back.py
+  coming_back.Box.run <coming_back.py:Box.run#0 Method> x2 @56:5 in coming_back.py
+    coming_back.JsonHandler.process <coming_back.py:JsonHandler.process#0 Method> @18:9 in coming_back.py
+    coming_back.CsvHandler.process <coming_back.py:CsvHandler.process#0 Method> @18:9 in coming_back.py
 

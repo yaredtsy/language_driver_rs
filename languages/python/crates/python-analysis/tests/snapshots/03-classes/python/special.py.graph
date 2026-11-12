@@ -1,25 +1,35 @@
 == main
 entries: special.main#45cf4468e015cb83
-stats: walks 5, contexts 5, reuse_hits 0, unresolved 4, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 1, "types_dropped": 0, "unknown_callee": 4}
+stats: walks 8, contexts 8, reuse_hits 2, unresolved 3, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 3}
 def special.JsonHandler = JsonHandler#0 Class special.py
 def special.Registry = Registry#0 Class special.py
 def special.Registry.__init__ = Registry.__init__#0 Method special.py
+def special.Registry.active = Registry.active#0 Method special.py
 def special.Registry.create = Registry.create#0 Method special.py
+def special.Registry.fire = Registry.fire#0 Method special.py
+def special.Registry.get_h = Registry.get_h#0 Method special.py
 def special.Registry.make = Registry.make#0 Method special.py
 def special.main = main#0 Function special.py
 def special.on_ok = on_ok#0 Function special.py
 special.Registry.__init__#63bab7ddc5509f58 Finished
+special.Registry.active#8578b5af6ea81323 Finished
 special.Registry.create#cc5214c8ba215f48 Finished
   @52-58 -> new special.Registry init special.Registry.__init__#63bab7ddc5509f58 Type
+special.Registry.fire#198c65b041dd8459 Finished
+  @24-35 -> special.Registry.active#8578b5af6ea81323 Type
+  @24-44 -> ? unknown_callee
+special.Registry.get_h#bd24240793c3b150 Finished
 special.Registry.make#b22582d478919ba4 Finished
   @40-44 -> special.on_ok#fb0f6cb50ab9ee12 Type
 special.main#45cf4468e015cb83 Finished
   @16-36 -> special.Registry.make#b22582d478919ba4 Name
   @73-103 -> special.Registry.create#cc5214c8ba215f48 Type
   @89-102 -> new special.JsonHandler init - Name
+  @127-135 -> special.Registry.active#8578b5af6ea81323 Path
   @127-144 -> ? unknown_callee
-  @187-195 -> ? unknown_callee
-  @200-213 -> ? unknown_callee
+  @187-195 -> special.Registry.fire#198c65b041dd8459 Path
+  @200-213 -> special.Registry.make#b22582d478919ba4 Type
+  @275-284 -> special.Registry.get_h#bd24240793c3b150 Path
   @275-293 -> ? unknown_callee
 special.on_ok#fb0f6cb50ab9ee12 Finished
 
