@@ -632,3 +632,58 @@ fn the_marker_fixtures_plan_and_refuse() {
     assert_eq!(count("UnsafeDocComment"), 3, "{tally:?}");
     assert_eq!(count("FileCommentAbove"), 1, "{tally:?}");
 }
+
+// D21: an arrow held by a property of a `const` object literal is a def, and its marker is a JSDoc block above the property.
+
+#[test]
+fn a_property_arrow_without_a_block_gets_a_new_block_above_the_property_at_its_indent() {
+    let text = "const api = {\n  load: () => {},\n};\n";
+    assert_eq!(
+        mark(text, "api.load").unwrap(),
+        "const api = {\n  /** ID: m1 */\n  load: () => {},\n};\n"
+    );
+}
+
+#[test]
+fn a_property_arrow_with_a_block_gets_the_line_before_the_first_tag() {
+    let text = "const api = {\n  /**\n   * Saves.\n   * @param x the thing\n   */\n  save: (x: number) => {},\n};\n";
+    assert_eq!(
+        mark(text, "api.save").unwrap(),
+        "const api = {\n  /**\n   * Saves.\n   * ID: m1\n   * @param x the thing\n   */\n  save: (x: number) => {},\n};\n"
+    );
+}
+
+#[test]
+fn an_async_property_arrow_in_a_nested_wrapped_literal_is_marked_above_its_property() {
+    let text = "const api = {\n  tasks: {\n    update: async () => {},\n  },\n} as const;\n";
+    assert_eq!(
+        mark(text, "api.tasks.update").unwrap(),
+        "const api = {\n  tasks: {\n    /** ID: m1 */\n    update: async () => {},\n  },\n} as const;\n"
+    );
+}
+
+#[test]
+fn a_marker_on_a_property_arrow_does_not_touch_its_neighbours_or_the_names_inside_it() {
+    let text =
+        "const api = {\n  load: () => {\n    function inner() {}\n  },\n  other: () => {},\n};\n";
+    let marked = mark(text, "api.load").unwrap();
+    let before: Vec<String> = outline(text, Dialect::Ts, STYLE)
+        .defs
+        .iter()
+        .map(|d| d.qualname.clone())
+        .collect();
+    let after: Vec<String> = outline(&marked, Dialect::Ts, STYLE)
+        .defs
+        .iter()
+        .map(|d| d.qualname.clone())
+        .collect();
+    assert_eq!(before, after);
+    assert_eq!(before, ["api.load", "api.inner", "api.other"]);
+    // the neighbour has no marker
+    let other = outline(&marked, Dialect::Ts, STYLE)
+        .defs
+        .into_iter()
+        .find(|d| d.qualname == "api.other")
+        .unwrap();
+    assert_eq!(other.marker, None);
+}

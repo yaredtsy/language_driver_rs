@@ -1,0 +1,31 @@
+Function register [216..260] name [233..241] (o)
+Function create [261..318] name [278..284] (init)
+Method api.load [409..423] name [409..413]
+Method api.save [427..451] name [433..437] (x)
+Method api.fetchAll [455..489] name [455..463] (id)
+Method api.run [493..512] name [493..496]
+Method api."quoted-key" [516..538] name [516..528]
+Method api."not valid" [542..563] name [542..553]
+Function api.step [626..644] name [635..639]
+Method tree.tasks.update [754..770] name [754..760]
+Method tree.tasks.deeper.remove [792..814] name [792..798]
+Method exported.e [860..871] name [860..861]
+Function holder [877..954] name [886..892]
+  Method holder.<locals>.local.l [919..930] name [919..920]
+Method asConst.a [1073..1084] name [1073..1074]
+Method satisfying.a [1118..1129] name [1118..1119]
+Method parenthesised.a [1195..1206] name [1195..1196]
+Method asserted.a [1237..1248] name [1237..1238]
+Method both.a [1268..1279] name [1268..1269]
+Method m [1456..1462] name [1456..1457]
+Method wrappedMixed.a [1466..1477] name [1466..1467]
+Method wrappedMixed.nested.b [1491..1502] name [1491..1492]
+Method documented.load [1607..1621] name [1607..1611]
+Method documented.save [1673..1696] name [1673..1677] (x)
+Method withInner.load [1810..1946] name [1810..1814]
+Function withInner.inner [1828..1847] name [1837..1842]
+Function withInner.helper [1852..1876] name [1858..1864]
+Class withInner.Local [1881..1895] name [1887..1892]
+Method withInner.made [1909..1918] name [1909..1913]
+Class Holder [2083..2137] name [2089..2095]
+Function build [2173..2222] name [2182..2187]

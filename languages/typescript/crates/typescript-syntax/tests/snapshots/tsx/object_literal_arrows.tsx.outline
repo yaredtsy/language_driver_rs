@@ -1,0 +1,4 @@
+Method handlers.onSave [129..145] name [129..135]
+Method handlers.nested.onClose [159..182] name [159..166]
+Function Panel [190..336] name [206..211]
+  Method Panel.<locals>.local.onClick [234..251] name [234..241]

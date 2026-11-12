@@ -110,16 +110,22 @@ impl Walker<'_, '_> {
     /// Push a def (before its children, so the list is pre-order: parents first, in source order) and open its frame.
     fn enter(&mut self, e: Entry) {
         let qualname = self.qualname_of(&e.name);
-        let mut def = Def::new(qualname.clone(), e.name, e.kind, e.range, e.name_range);
+        let is_function = e.is_function;
+        self.add(e, qualname.clone());
+        self.stack.push(Frame {
+            qualname,
+            index: Some(self.defs.len() - 1),
+            is_function,
+        });
+    }
+
+    /// Push a def under `qualname`, with no frame: what is inside it is named as if it were not a def (`property_arrow`).
+    fn add(&mut self, e: Entry, qualname: String) {
+        let mut def = Def::new(qualname, e.name, e.kind, e.range, e.name_range);
         def.parent = self.stack.iter().rev().find_map(|f| f.index);
         def.params = e.params;
         self.defs.push(def);
         self.nodes.push(e.node);
-        self.stack.push(Frame {
-            qualname,
-            index: Some(self.defs.len() - 1),
-            is_function: e.is_function,
-        });
     }
 
     /// Open a name that is not a def, so that what is inside is named under it: `api` in `const api = { load() {} }`.
@@ -168,7 +174,7 @@ impl Walker<'_, '_> {
             NodeKind::ClassDeclaration | NodeKind::ClassExpression => self.class(n),
             NodeKind::FunctionExpression => self.function_expression(n),
             NodeKind::VariableStatement => self.variable_statement(n),
-            NodeKind::ObjectLiteral => self.object_literal(n, None),
+            NodeKind::ObjectLiteral => self.object_literal(n, None, None),
             NodeKind::InterfaceDeclaration => self.interface(n),
             NodeKind::EnumDeclaration => self.leaf(n, DefKind::Enum),
             NodeKind::TypeAliasDeclaration => self.leaf(n, DefKind::Type),
@@ -176,7 +182,7 @@ impl Walker<'_, '_> {
             NodeKind::ExportAssignment => match self.p.expression(n) {
                 // `export default { load() {} }`: the literal is named like a default function
                 Some(e) if self.p.kind(e) == NodeKind::ObjectLiteral => {
-                    self.object_literal(e, Some("default".to_owned()));
+                    self.object_literal(e, Some("default".to_owned()), None);
                 }
                 Some(e) => self.visit(e),
                 None => {}
@@ -473,7 +479,18 @@ impl Walker<'_, '_> {
                 }
                 (Some(init), _) if self.p.kind(init) == NodeKind::ObjectLiteral => {
                     let name = name.and_then(|nm| self.name_text(nm));
-                    self.object_literal(init, name);
+                    // only a `const` gives its literal's arrows a stable name (D21)
+                    let scope = name
+                        .as_ref()
+                        .filter(|_| self.p.is_const(d))
+                        .map(|name| self.qualname_of(name));
+                    self.object_literal(init, name, scope);
+                }
+                // `const api = { … } as const`: its methods are named without the variable, as they always were (frozen); its arrows are named with it
+                (Some(init), Some(nm)) if self.p.is_const(d) && self.wraps_object_literal(init) => {
+                    let literal = self.unwrapped(init);
+                    let scope = self.name_text(nm).map(|name| self.qualname_of(&name));
+                    self.object_literal(literal, None, scope);
                 }
                 (Some(init), _) => self.visit(init),
                 (None, _) => {}
@@ -498,15 +515,17 @@ impl Walker<'_, '_> {
             }
             _ if self.p.kind(init) == NodeKind::ObjectLiteral => {
                 let name = self.p.name(n).and_then(|nm| self.name_text(nm));
-                self.object_literal(init, name);
+                self.object_literal(init, name, None);
             }
             _ => self.visit(init),
         }
     }
 
     /// The methods and accessors of an object literal are defs (the engine resolves calls to them). The literal is named by the variable
-    /// or property that holds it, so `api.load`; an anonymous one adds nothing. A property holding an arrow or function is not a def, for now.
-    fn object_literal(&mut self, n: RawNode, name: Option<String>) {
+    /// or property that holds it, so `api.load`; an anonymous one adds nothing. `scope` is where its arrow and function properties are defs
+    /// (D21): the qualname of the literal, when it is the initializer of a `const` or nested in one, and `None` everywhere else, where a property
+    /// holding an arrow is not a def.
+    fn object_literal(&mut self, n: RawNode, name: Option<String>, scope: Option<String>) {
         if let Some(name) = &name {
             self.enter_container(name);
         }
@@ -516,7 +535,7 @@ impl Walker<'_, '_> {
                     self.method_group(&[m]);
                 }
                 NodeKind::GetAccessor | NodeKind::SetAccessor => self.accessor(m),
-                NodeKind::PropertyAssignment => self.property_assignment(m),
+                NodeKind::PropertyAssignment => self.property_assignment(m, scope.as_deref()),
                 _ => self.visit(m),
             }
         }
@@ -525,17 +544,95 @@ impl Walker<'_, '_> {
         }
     }
 
-    /// `key: value` in an object literal: a nested literal is named by the key; anything else is searched for named expressions.
-    fn property_assignment(&mut self, n: RawNode) {
+    /// `key: value` in an object literal: a nested literal is named by the key; an arrow or function expression is a def when the literal has a
+    /// `scope`; anything else is searched for named expressions.
+    fn property_assignment(&mut self, n: RawNode, scope: Option<&str>) {
         let Some(init) = self.p.initializer(n) else {
             return;
         };
+        let key = self.p.name(n);
+        let key_text = key.and_then(|k| self.name_text(k));
+        // a nested literal's arrows are named under this key; a computed key has no stable name, so nothing under it is a def
+        let nested_scope = scope
+            .zip(key_text.as_deref())
+            .filter(|_| key.is_some_and(|k| self.names_a_def(k)))
+            .map(|(scope, key)| format!("{scope}.{key}"));
         if self.p.kind(init) == NodeKind::ObjectLiteral {
-            let name = self.p.name(n).and_then(|nm| self.name_text(nm));
-            self.object_literal(init, name);
+            self.object_literal(init, key_text, nested_scope);
+        } else if let Some(scope) = scope
+            && let Some(key) = key.filter(|&k| self.names_a_def(k))
+            && self.is_function_value(init)
+        {
+            self.property_arrow(n, key, init, scope);
+        } else if nested_scope.is_some() && self.wraps_object_literal(init) {
+            // a wrapped nested literal: its methods are named as they always were, anonymously
+            self.object_literal(self.unwrapped(init), None, nested_scope);
         } else {
             self.visit(init);
         }
+    }
+
+    /// `load: () => {}` in an object literal that has a scope (D21): a method, named under the literal. It opens **no frame**: what is inside the
+    /// arrow (a named function, a class, a method of a literal it returns) keeps the name and the parent it had before the arrow was a def, because
+    /// a name is frozen once published.
+    fn property_arrow(&mut self, n: RawNode, key: RawNode, init: RawNode, scope: &str) {
+        let Some(text) = self.name_text(key) else {
+            return;
+        };
+        let qualname = format!("{scope}.{text}");
+        self.add(
+            Entry {
+                name: text,
+                kind: DefKind::Method,
+                is_function: true,
+                range: self.p.span(n),
+                name_range: self.p.span(key),
+                params: self.p.params(init),
+                node: self.p.span(init),
+            },
+            qualname,
+        );
+        self.visit(init);
+    }
+
+    /// An arrow or a function expression with no name of its own: what a property can hold as a def. A named function expression is a def
+    /// under its own name already, and a class expression is not a function.
+    fn is_function_value(&self, n: RawNode) -> bool {
+        matches!(
+            self.p.kind(n),
+            NodeKind::ArrowFunction | NodeKind::FunctionExpression
+        ) && self.p.name(n).is_none()
+    }
+
+    /// A key that names a def: an identifier or a string literal. Not a computed key, a number or a private name.
+    fn names_a_def(&self, key: RawNode) -> bool {
+        matches!(
+            self.p.kind(key),
+            NodeKind::Identifier | NodeKind::StringLiteral
+        )
+    }
+
+    /// The expression under `as T`, `as const`, `satisfies T`, `<T>x` and parentheses, however many.
+    fn unwrapped(&self, mut n: RawNode) -> RawNode {
+        while matches!(
+            self.p.kind(n),
+            NodeKind::AsExpression
+                | NodeKind::SatisfiesExpression
+                | NodeKind::TypeAssertion
+                | NodeKind::ParenthesizedExpression
+        ) {
+            match self.p.expression(n) {
+                Some(inner) => n = inner,
+                None => break,
+            }
+        }
+        n
+    }
+
+    /// An object literal under at least one wrapper.
+    fn wraps_object_literal(&self, n: RawNode) -> bool {
+        let inner = self.unwrapped(n);
+        inner != n && self.p.kind(inner) == NodeKind::ObjectLiteral
     }
 
     /// A def with nothing to look inside: an enum, a type alias.
