@@ -44,7 +44,7 @@ Toolchain: 1.99.1 (`rust-toolchain.toml`). Run `cargo fmt` and `cargo clippy -p 
    parameter (`MarkerStyle`).
 2. **Text in, data out.** A library crate never writes a file and never invents an ID. No `fs::write`, no `uuid` outside `*-cli`.
 3. **Chosen public API.** Modules are private; `lib.rs` exports by name. Returned structs and enums are `#[non_exhaustive]`.
-4. **One engine module per crate.** Only `sem.rs` imports the engine (`tsrs_*`, `ruff_*`, `ty_*`, `ra_ap_*`). Everything else calls `sem`.
+4. **One engine module per crate.** Only the `sem` module (`sem.rs`, or a `sem/` folder: its files are one module) imports the engine (`tsrs_*`, `ruff_*`, `ty_*`, `ra_ap_*`), and no engine type leaves it. Everything else calls `sem`.
    Exception, Python only: `interp/` may *name* engine types that `sem` re-exports, and may not call engine functions.
 5. **`core/` stays engine-free and small.** Code moves into `core/` only when two languages have it, written and tested (the rule of two).
    A change in `core/` must keep every language's tests green.

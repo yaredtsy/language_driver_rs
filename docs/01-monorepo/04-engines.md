@@ -154,10 +154,10 @@ impl Sem {
 }
 ```
 
-> **🦀 Rust note: a newtype as a wall.** `Func` wraps an engine type in a struct with a private field. Outside `sem.rs`, code can copy a `Func`,
+> **🦀 Rust note: a newtype as a wall.** `Func` wraps an engine type in a struct with a private field. Outside the `sem` module (`sem.rs`, or a `sem/` folder), code can copy a `Func`,
 > compare two, and put one in a `HashMap`, because of the derives. It cannot look inside, because the field is private to the module. So the rest
 > of the crate *cannot* call an engine method on it, even by accident: the compiler enforces rule 7. `scripts/check-all.sh` adds a belt to the
-> braces: `grep -l "tsrs_" crates/*/src/*.rs` must print only `sem.rs`.
+> braces: `grep -rl "tsrs_" crates/*/src` must print only `sem.rs` or files under `sem/`.
 
 The cost of the facade is a little duplication (a `sem` function that forwards to one engine call). The gain is that an engine bump is a diff of
 one file per crate, and that the context-sensitive upgrade later has one clear place where "ask the engine" lives

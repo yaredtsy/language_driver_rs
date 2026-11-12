@@ -101,7 +101,7 @@ Read every difference before fixing it. There are three possible outcomes for ea
 - [ ] `vnoc/drivers/python/Cargo.toml` names `python-syntax` (and later `python-analysis`) from `language_driver_rs`, and no ruff crate.
 - [ ] `grep -ri "vnoc\|schema/\|/Users/" languages/python/crates languages/python/scripts` finds nothing.
 - [ ] No `uuid` and no `fs::write` in `python-syntax` or `python-analysis`.
-- [ ] `grep -l "ruff_\|ty_" languages/python/crates/*/src/*.rs` prints only `sem.rs` files (and `interp/` files that hold ty handles in
+- [ ] `grep -rl "ruff_\|ty_" languages/python/crates/*/src` prints only `sem.rs` files or files under `sem/` (and `interp/` files that hold ty handles in
       values: see §5, last row).
 - [ ] The Python CI rows are green on Linux, macOS and Windows.
 - [ ] The 41 fixture tests pass, rendered by the core. The scenarios pass at `Level::Precise`.

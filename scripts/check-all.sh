@@ -19,10 +19,10 @@ rs() { grep -rn --include='*.rs' --exclude-dir=target --exclude-dir=vendor "$@" 
 rs_files() { grep -rl --include='*.rs' --exclude-dir=target --exclude-dir=vendor "$@" 2>/dev/null || true; }
 crates=(languages/*/crates)
 
-# rule 4: only sem.rs names an engine (Python's interp/ may name types sem re-exports); core names none
+# rule 4: only the sem module (sem.rs, or the files of a sem/ folder) names an engine (Python's interp/ may name types sem re-exports); core names none
 engine='(^|[^A-Za-z0-9_])(tsrs_|ruff_|ty_|ra_ap_)[a-z]'
-none "an engine is named outside sem.rs (rule 4)" \
-  "$(rs_files -E "$engine" "${crates[@]}" | grep -v '/sem\.rs$' | grep -v '^languages/python/crates/python-analysis/src/interp/' || true)"
+none "an engine is named outside the sem module (rule 4)" \
+  "$(rs_files -E "$engine" "${crates[@]}" | grep -vE '/sem(\.rs|/.*\.rs)$' | grep -v '^languages/python/crates/python-analysis/src/interp/' || true)"
 none "core names an engine (rule 5)" "$(rs -E "$engine" core)"
 
 # rule 1: no product words in code
@@ -42,11 +42,11 @@ lints() { awk '/^\[workspace\.lints/{p=1} /^\[profile/{p=0} p' "$1" | grep -v -e
 for f in languages/*/Cargo.toml; do
   [ "$f" = languages/_template/Cargo.toml ] && continue
   [ "$(lints "$f")" = "$(lints languages/_template/Cargo.toml)" ] || bad "$f: [workspace.lints] differs from the template's"
-  # `deny` (not `forbid`) is the one allowed difference: it lets sem.rs, and only sem.rs, say #[allow(unsafe_code)]
+  # `deny` (not `forbid`) is the one allowed difference: it lets the sem module, and only it, say #[allow(unsafe_code)]
   grep -qE '^unsafe_code = "(forbid|deny)"' "$f" || bad "$f: unsafe_code must be \"forbid\" or \"deny\""
 done
-none "unsafe_code is allowed outside sem.rs (rule 4)" \
-  "$(rs_files -E 'allow\(unsafe_code\)' core "${crates[@]}" | grep -v '/sem\.rs$' || true)"
+none "unsafe_code is allowed outside the sem module (rule 4)" \
+  "$(rs_files -E 'allow\(unsafe_code\)' core "${crates[@]}" | grep -vE '/sem(\.rs|/.*\.rs)$' || true)"
 
 # there is no Cargo.toml at the root, on purpose
 [ ! -e Cargo.toml ] || bad "a Cargo.toml at the repo root (ruff and rust-analyzer pin different salsa)"
