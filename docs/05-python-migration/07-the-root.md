@@ -132,7 +132,7 @@ engine said there:
 | Pattern | Example | What the engine says | Today |
 |---|---|---|---|
 | a method found after a base class that is not resolvable | `File.get_multiple_by_owner(…)`, `class File(SAModel, OwnedResourceMixin)`, the method is the mixin's | `(bound method <class 'File'>.get_multiple_by_owner…) & Unknown` | `Unresolved` ("a type that names no def") |
-| a call through what a decorator returns | `require_session(self._post_common_logic)(…)`, `def require_session(func: F) -> F` | the bound method, a def of the project | `Unresolved` |
+| a call through what a decorator returns | `require_session(self._post_common_logic)(…)`, `def require_session(func: F) -> F` | the bound method, a def of the project | R3: [`08-the-engines-callee.md`](08-the-engines-callee.md) (`Unresolved` before it) |
 | a def under `functools.wraps` | `File.acreate(…)` | `_Wrapped[…]` | `Unresolved` |
 | a method of an untyped value | `row.split(…)` | `Unknown` | `Unresolved`; a library call, not in the tree anyway |
 
@@ -146,9 +146,9 @@ resolvable `[check]`: the fix is in what the analyzer does with the engine's ans
 
 | # | Claim | Checked in |
 |---|---|---|
-| 1 | `metadata.root()` equals the `dir` given to `open_project`, spelled the same, when the config is in `dir` or nowhere | R1 tests (a) on `own-config`, and every existing test (their folders have no config) |
-| 2 | An empty `ty.toml` is a valid config and makes its folder the engine's root | R1, `above-ty`: red before the fix |
+| 1 | `metadata.root()` equals the `dir` given to `open_project`, spelled the same, when the config is in `dir` or nowhere | R1, done: `root()` is one of the `ancestors()` of the `dir` given, cut from the same text, so it is equal to `dir` when it is `dir` (`SystemPath` compares by components: a trailing separator does not matter); a parent is never equal to the longer path, so no `canonicalize` in `open_project`. `own-config` and every existing test pass |
+| 2 | An empty `ty.toml` is a valid config and makes its folder the engine's root | R1, done: it is valid and makes its folder the root. `above-ty` was red before the fix and green after |
 | 3 | The engine has a public way to set the environment's path on a `ProjectMetadata` made with `new` (an option, or `apply_override_options`) | R1b; if not, stop and report |
-| 4 | A file given by an absolute path that is under the opened folder is still found after R1 (`a_file_may_be_given_by_its_absolute_path`) | R1, the existing test |
+| 4 | A file given by an absolute path that is under the opened folder is still found after R1 (`a_file_may_be_given_by_its_absolute_path`) | R1, done: `a_file_may_be_given_by_its_absolute_path` passes |
 
-Next: [`../06-roadmap.md`](../06-roadmap.md)
+Next: [`08-the-engines-callee.md`](08-the-engines-callee.md)

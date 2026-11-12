@@ -2,8 +2,8 @@
 //! something that is not in `lib.rs`'s list, the surface is wrong, not this file.
 
 use python_analysis::{
-    Entry, MarkerStyle, OpenError, Options, Project, WireStyle, call_graph, call_wire, render,
-    to_text,
+    EdgeTo, Entry, Graph, MarkerStyle, OpenError, Options, Project, StableDef, WireStyle,
+    call_graph, call_wire, render, to_text,
 };
 
 const DIR: &str = "tests/fixtures/06-wire/python";
@@ -479,4 +479,121 @@ fn the_sibling_files_of_a_parent_are_not_project_code_and_a_folder_with_its_own_
     )
     .unwrap();
     assert_eq!(frame.target_file.as_deref(), Some("inner/app.py"));
+}
+
+const ENGINE_CALLEE: &str = "tests/fixtures/10-engine-callee/python";
+
+/// The graph of `run` (or the entry `qualname`) of `file` in the `10-engine-callee` project.
+fn engine_graph(file: &str, qualname: &str) -> Graph {
+    let project = Project::open(ENGINE_CALLEE).unwrap();
+    call_graph(&project, file, &first(qualname), &Options::default()).unwrap()
+}
+
+/// What each edge out of the entry's context says, in site order: the target's qualified name and basis, or the reason it has none.
+fn edges_of_entry(graph: &Graph) -> Vec<String> {
+    let entry = graph.entries[0].context().unwrap();
+    let name = |id: &StableDef| graph.def(id).map_or("?".to_owned(), |d| d.qname.clone());
+    graph
+        .edges_from(entry)
+        .iter()
+        .map(|edge| match &edge.to {
+            EdgeTo::Context(id, basis) => format!("{} {basis:?}", name(&id.func)),
+            EdgeTo::Construct { class, init, basis } => format!(
+                "new {} {basis:?} init={}",
+                name(class),
+                init.as_ref().map_or("-".to_owned(), |i| name(&i.func))
+            ),
+            EdgeTo::External(external, basis) => format!("external {} {basis:?}", external.name),
+            EdgeTo::Unresolved(reason) => format!("unresolved {}", reason.as_str()),
+            _ => "other".to_owned(),
+        })
+        .collect()
+}
+
+fn tree_of(graph: &Graph) -> String {
+    to_text(&render(
+        graph,
+        &graph.entries[0],
+        &Options::default().render_options(),
+    ))
+}
+
+#[test]
+fn a_bound_method_the_engine_solved_for_is_called() {
+    let graph = engine_graph("method.py", "Service.run");
+    assert_eq!(
+        edges_of_entry(&graph),
+        ["wrap.passthrough Name", "method.Service.work Type"].map(String::from)
+    );
+    assert_eq!(graph.stats.unresolved, 0);
+    assert_eq!(
+        tree_of(&graph),
+        "method.Service.run\n  wrap.passthrough\n  method.Service.work\n    wrap.leaf\n"
+    );
+}
+
+#[test]
+fn a_function_the_engine_solved_for_is_called() {
+    let graph = engine_graph("function.py", "run");
+    assert_eq!(
+        edges_of_entry(&graph),
+        ["wrap.passthrough Name", "function.helper Name"].map(String::from)
+    );
+    assert_eq!(graph.stats.unresolved, 0);
+}
+
+#[test]
+fn a_function_held_in_a_variable_is_called() {
+    let graph = engine_graph("variable.py", "run");
+    assert_eq!(
+        edges_of_entry(&graph),
+        ["wrap.passthrough Name", "variable.helper Name"].map(String::from)
+    );
+    assert_eq!(graph.stats.unresolved, 0);
+}
+
+#[test]
+fn a_class_the_engine_solved_for_is_constructed() {
+    let graph = engine_graph("klass.py", "run");
+    assert_eq!(
+        edges_of_entry(&graph),
+        [
+            "wrap.passthrough Name",
+            "new klass.Thing Name init=klass.Thing.__init__"
+        ]
+        .map(String::from)
+    );
+    assert_eq!(graph.stats.unresolved, 0);
+}
+
+#[test]
+fn a_union_of_defs_the_engine_solved_for_is_two_edges_at_one_site() {
+    let graph = engine_graph("either.py", "run");
+    assert_eq!(
+        edges_of_entry(&graph),
+        ["wrap.passthrough Name", "either.a Name", "either.b Name"].map(String::from)
+    );
+    assert_eq!(graph.stats.unresolved, 0);
+}
+
+#[test]
+fn a_callable_parameter_stays_unresolved() {
+    let graph = engine_graph("callback.py", "run");
+    assert_eq!(edges_of_entry(&graph), ["unresolved unknown_callee"]);
+}
+
+#[test]
+fn a_def_with_unknown_beside_it_stays_unresolved() {
+    let graph = engine_graph("unknown_beside.py", "run");
+    let edges = edges_of_entry(&graph);
+    assert!(
+        edges.contains(&"unresolved unknown_callee".to_owned()),
+        "{edges:?}"
+    );
+    assert!(
+        edges
+            .iter()
+            .all(|e| !e.starts_with("unknown_beside.helper")),
+        "{edges:?}"
+    );
 }

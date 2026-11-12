@@ -33,6 +33,7 @@ impl<'db> Walk<'db> {
         env: &mut Env<'db>,
     ) -> Values<'db> {
         let callees = self.eval(sol, &call.func, env);
+        let callees = self.or_engine_callee(sol, &call.func, callees);
         let args = self.eval_arguments(sol, &call.arguments, env);
         let site = SiteId::new(call.range(), self.frame.def_start);
         let named = sol.opts.mode == Mode::Summary && self.names_a_def(sol, &call.func);
@@ -71,8 +72,53 @@ impl<'db> Walk<'db> {
         )
     }
 
+    /// Where the walk holds a callee value it cannot call, the engine's own answer for the callee expression (D27). A value cannot be called
+    /// when it is `Unknown`, or a `Ty` with no def (`callee_definition` is `None`): the two arms of `call_values` that set `unresolved`. This
+    /// is what a call through `passthrough(f)(x)` holds, where `passthrough` returns its type variable `F`: the walk carries `F` out of the
+    /// generic body, and ty has solved it for this call.
+    ///
+    /// The engine's type is taken only when it is exact: a function, a bound method or a class (`Function`, `BoundMethod`, `Class`), or a
+    /// union of only those. Anything else (a `Callable`, a type variable, `Unknown` or a union with it) leaves `walked` as it is, so the site
+    /// stays `Unresolved`. Values the walk can call are kept, and the engine is not asked when there are none to replace.
+    fn or_engine_callee(
+        &mut self,
+        sol: &mut Solver<'db>,
+        callee: &Expr,
+        walked: Values<'db>,
+    ) -> Values<'db> {
+        let file = self.frame.file;
+        let cannot_call = |v: &AbstractValue<'db>| match *v {
+            AbstractValue::Unknown => true,
+            AbstractValue::Ty(t) => sol.sem.callee_definition(t, file).is_none(),
+            _ => false,
+        };
+        if !walked.iter().any(cannot_call) {
+            return walked;
+        }
+        let t = sol.sem.type_of(&self.frame.model, ExprRef::from(callee));
+        let exact = |t| {
+            matches!(
+                sol.sem.shape(t, file),
+                Shape::Function(_) | Shape::BoundMethod { .. } | Shape::Class(_)
+            )
+        };
+        let all_exact = match sol.sem.shape(t, file) {
+            Shape::Union(members) => !members.is_empty() && members.into_iter().all(exact),
+            _ => exact(t),
+        };
+        if !all_exact {
+            return walked;
+        }
+        // `cannot_call` and `exact` read `sol`; `lift` needs it mutably, so they are finished with before it.
+        let mut out: Values<'db> = walked.into_iter().filter(|v| !cannot_call(v)).collect();
+        out.extend(self.lift(sol, t));
+        dedup(&mut out);
+        out
+    }
+
     /// Does the code name what this callee expression calls? ty says: its type is a function or a class (the `def` or `class` itself), or a
-    /// union of only those. A method through a receiver, a `type[X]`, a `Callable` and anything with an `Unknown` member do not name one.
+    /// union of only those (`Function`, `Class`). A method through a receiver (`BoundMethod`), a `type[X]`, a `Callable` and anything with an
+    /// `Unknown` member do not name one. `or_engine_callee` also accepts a `BoundMethod`: it needs an exact def, not a name.
     fn names_a_def(&self, sol: &Solver<'db>, callee: &Expr) -> bool {
         let file = self.frame.file;
         let literal = |t| matches!(sol.sem.shape(t, file), Shape::Function(_) | Shape::Class(_));

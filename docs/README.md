@@ -78,7 +78,8 @@ language_driver_rs
 │   ├── the wire                   a fix: the wire is an output, merged on request ── 04-the-wire.md
 │   ├── entries and targets        a fix: one name for a def, in and out; class entry ─ 05-entries-and-targets.md
 │   ├── python-cli                 PY7: outline and calls, the script, the golden run ─ 06-python-cli.md
-│   └── the root                   a fix: the root is the folder asked for (D26) ───── 07-the-root.md
+│   ├── the root                   a fix: the root is the folder asked for (D26) ───── 07-the-root.md
+│   └── the engine's callee        a fix: where the walk cannot call, the engine's def (D27) ─ 08-the-engines-callee.md
 │
 ├── THE ROADMAP ───────────────────────────────────── 06-roadmap.md
 │   └── B0 bootstrap, then three tracks; what blocks what
