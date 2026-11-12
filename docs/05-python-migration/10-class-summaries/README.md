@@ -163,7 +163,7 @@ The rows where this repo already decided something else. Each step file has its 
 ## 6. The steps, in the order to build them
 
 ```
-CS0  baseline: the eight programs never run, run once and pinned ─────── no solver change
+CS0  baseline: seven programs run once, pinned (33d65ca) ──────────────── DONE
 CS1  objects in keys ─────────────────────────────────────────────────── DONE
 CS2  objects coming back, and the resolve → plan → apply seam ────────── 02
 CS3  effects: every write onto an input, the one prologue ────────────── 03   ← replaces the spike

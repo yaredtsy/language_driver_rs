@@ -67,7 +67,7 @@ and the engine's declared type `Sink` lifts to `Instance { Sink, OPAQUE }`: an o
 
 | Fixture | Expected |
 |---|---|
-| `04-class-summaries/python/deep_write.py` (pylspt's, never run) | `main` shows `JsonHandler.process` only |
+| `04-class-summaries/python/deep_write.py` (CS0: inline passes; summary fails `main`, `JsonHandler.process` missing) | `main` shows `JsonHandler.process` only |
 | `04-class-summaries/python/deep_write_capped.py` (`# limits: max_path=2`; today `fixture_limits` panics on the key) | `main` keeps `CsvHandler.process`, gains nothing, `rewire` is marked; `deep_write` is 1 |
 | **new**, `deep_write_two_levels.py` | `def outer(svc): rewire(svc)`: `main` calls `outer`, and the effect reaches it through two summaries (§3, row 4) |
 

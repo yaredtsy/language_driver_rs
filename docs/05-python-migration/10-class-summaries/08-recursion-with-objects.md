@@ -60,7 +60,7 @@ caps, objects by decision 3. `max_rounds` stays as the safety net, and hitting i
 
 | Fixture | Expected |
 |---|---|
-| `04-class-summaries/python/recursion_objects.py` (pylspt's, never run) | `walk`: `Handle.close` (summary finds it, inline does not: a mode-specific block); `visitor`: `Report.emit`; `identity_limit`: nothing (pinned); `tree_fill`: nothing (pinned, both modes) |
+| `04-class-summaries/python/recursion_objects.py` (CS0: inline passes; summary fails only `use_walk`, `Handle.close` missing. `visitor` already passes, on the engine's type of `v.found`, a `Type` edge, not on the walk) | `walk`: `Handle.close` (summary finds it, inline does not: a mode-specific block); `visitor`: `Report.emit`; `identity_limit`: nothing (pinned); `tree_fill`: nothing (pinned, both modes) |
 | `02-function-summaries/python/groups.py` | unchanged as a tree (after CS6 the parser's `combine` splits per type) |
 | CS3's `cycle_effect.py` | the write is carried, weakly; `effects_in_cycle` is gone |
 

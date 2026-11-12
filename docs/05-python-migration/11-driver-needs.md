@@ -43,8 +43,10 @@ Python driver (`vnoc/drivers/python/src/`), `python-analysis`, and the vendored 
 
 `open` is cheap: the engine is lazy. The cost is in `solve`, and most of it is the engine's own work (parsing, resolving imports, inferring
 types) done **again on every request**, because every request starts a new database. A database kept open keeps those answers (salsa
-memoizes them). How much a second request on a kept project costs is not measured: TypeScript's went from 40 ms to 1 ms
-([`../03-typescript/07-ts5-driver-needs.md`](../03-typescript/07-ts5-driver-needs.md) §0). Step PY9.0 measures it.
+memoizes them). TypeScript's second request went from 40 ms to 1 ms
+([`../03-typescript/07-ts5-driver-needs.md`](../03-typescript/07-ts5-driver-needs.md) §0). Step PY9.0 measured Python's: **a request on a kept
+project costs 2.5–10 ms against 85–175 ms cold** (15× to 37× less; debug build, the same three entries;
+[`languages/python/ENGINE.md`](../../languages/python/ENGINE.md), "Keeping the project open (PY9.0)").
 
 ## 1. What the contract asks, and what it does not
 
@@ -155,9 +157,11 @@ for its stamps.
 ## 6. The stack
 
 The solver recurses: a walk that calls a callee walks it before returning, to `max_stack` (256) deep. The driver's request threads have
-Rust's default 2 MB. Step PY9.0 measures how much stack one level takes, on a fixture that reaches `max_stack` and on the real projects, and
-the number goes to `languages/python/ENGINE.md` with the stack size the driver must ask for (`std::thread::Builder::stack_size`). Making the
-solver iterative is not in this file.
+Rust's default 2 MB. Step PY9.0 measured it (debug build, `languages/python/ENGINE.md`, "Keeping the project open (PY9.0)"): one level takes
+about 7.5 KB, a chain that reaches `max_stack` needs **2052 KB** (it overflows at 2048 KB, so it would abort the driver on a default thread),
+and the real entries need at most 288 KB. **The driver asks for 8 MiB** (`std::thread::Builder::stack_size(8 << 20)`): the 2 MiB needed,
+rounded up to the next power of two (4 MiB), and doubled for a margin, because a level of real code can be larger than the chain's one-line
+body. Making the solver iterative is not in this file.
 
 ## 7. The steps
 
@@ -238,10 +242,10 @@ Text for the vnoc agent, after PY9.4 is pushed and CI is green. Nothing here is 
 | # | Claim | Checked in |
 |---|---|---|
 | 1 | `Project` is `Send` and not `Sync` (salsa's database keeps per-thread state) | PY9.2 (f) |
-| 2 | `Files::sync_all` also sees a file that did not exist when it was first looked up (the engine records a path it could not find, so a later creation bumps it) | PY9.2 (b) |
-| 3 | A warm request costs a small part of a cold one, so keeping the project is worth the memory it holds | PY9.0 |
+| 2 | `Files::sync_all` also sees a file that did not exist when it was first looked up (the engine records a path it could not find, so a later creation bumps it) | PY9.2 (b). PY9.0 (c′) saw the case next to it only: a file **changed** after the first request is seen after `sync_all` (the new call is in the answer, 0.4 ms) and **not** without it (the old answer, from memory), so the refresh before each request is needed. A new file was not tried |
+| 3 | A warm request costs a small part of a cold one, so keeping the project is worth the memory it holds | PY9.0. **Holds.** Warm 5.7 / 9.5 / 2.5 ms against cold 86 / 175 / 94 ms (Jarvis, post, get_files: 15×, 18×, 37×), debug build. A kept project holds at most 60 / 78 / 62 MiB resident (the process starts at 6 MiB), and `sync_all` with nothing changed costs 0.05–2.3 ms and keeps it warm |
 | 4 | The deadline could move into `Options::cancel` (`Cancel::with_deadline`) and `Limits::deadline` go: one mechanism. Say whether anything is lost (the deadline is measured from the solver's start today, from the caller's clock with `Cancel`) | PY9.1 |
-| 5 | One walk never runs long enough that a cancel between walks feels late (the longest single walk on the three projects) | PY9.0 |
+| 5 | One walk never runs long enough that a cancel between walks feels late (the longest single walk on the three projects) | PY9.0. **Holds.** Measured as the longest time between two `cost_limit` calls in one request (a walk recurses into its callees, so its own time includes theirs): cold 35 / 15 / 5 ms (Jarvis, post, get_files; one outlier each, 96 and 63 ms), warm 1.8 ms at most, debug build on a busy machine. After the last check, the render and the wire take up to 36 ms cold, 12 ms warm, and no check covers them |
 | 6 | The engine reads `.python-version` and a venv named in the config; the list of §5 is complete for the vendored engine | PY9.3 |
 
 Next: [`../06-roadmap.md`](../06-roadmap.md)

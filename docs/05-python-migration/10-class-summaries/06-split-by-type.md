@@ -73,7 +73,7 @@ would start to cut, and a cut is a mark in the tree.
 
 | Fixture | Expected |
 |---|---|
-| `04-class-summaries/python/split.py` (pylspt's, never run) | summary: `Json.process > JsonKey.encode` and `Csv.process > CsvKey.encode`, nothing else; inline: all four, a mode-specific block |
+| `04-class-summaries/python/split.py` (CS0: inline passes; summary fails `main`: `Job.go` and all under it missing) | summary: `Json.process > JsonKey.encode` and `Csv.process > CsvKey.encode`, nothing else; inline: all four, a mode-specific block |
 | `03-classes/python/state.py` `either` | each `Pipeline.run` with its own handler (the join rule 7 made, now split) [check] |
 | **new**, `split_cap.py` | a call with five relevant combinations: one context with unions, `cpa_collapses` 1 |
 

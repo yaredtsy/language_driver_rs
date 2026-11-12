@@ -99,6 +99,100 @@ or `discover` fails, it uses `ProjectMetadata::new(<name of dir>, dir)`: the pro
   (and unset) is off. Off, `discover` runs no `uv` process. On, it runs `uv` once per `discover`, and the V-NOC driver opens the project on every
   request. A uv workspace root above `dir` is a parent root, so it is ignored like any other. Read, not run.
 
+## Keeping the project open (PY9.0)
+
+Measured 2026-11-12 at `33d65ca`, **debug build** (the `dev` profile: `opt-level = 1` for this workspace's crates, `opt-level = 3` for every
+dependency, so the vendored engine is optimized and our own frames are not). A temporary `#[ignore]` test in the sem module
+(`docs/05-python-migration/11-driver-needs.md` §7, PY9.0), run from the built test binary, each run twice and the second run kept (the OS
+file cache warm); deleted after. Times in ms. "Jarvis" is `CallGraphGenerator.do_pass` in `jarvis.py`; "post" and "get_files" are
+`FilesResource.post` and `get_files` in `app/api/file.py` of the Flask service. One request is `call_wire(&project, file, &entry,
+&Options::default(), false)`.
+
+**(a) Cold: a new `Project` for each request**, as the V-NOC driver does today.
+
+| Entry | open 1 / 2 / 3 | solve 1 / 2 / 3 |
+|---|---|---|
+| Jarvis | 1.3 / 0.8 / 0.8 | 88.9 / 85.9 / 84.5 |
+| post | 1.2 / 0.9 / 0.9 | 185.7 / 174.5 / 173.4 |
+| get_files | 1.4 / 0.9 / 0.9 | 107.4 / 94.0 / 119.5 |
+
+**(b) Warm: one `Project`, three requests.** The three answers are equal (the serialized frames compared byte for byte).
+
+| Entry | solve 1 / 2 / 3 | wire bytes | cold (median) ÷ warm (2 and 3) |
+|---|---|---|---|
+| Jarvis | 85.6 / 5.8 / 5.6 | 99 837 | ≈ 15× |
+| post | 229.0 / 9.1 / 9.9 | 131 379 | ≈ 18× |
+| get_files | 101.2 / 2.6 / 2.5 | 5 300 | ≈ 37× |
+
+The first request on a kept project costs what a cold one does: what is saved is the engine's memoized work (parsing, imports, types),
+and that exists only after one request.
+
+**(c) The refresh, nothing changed:** `Files::sync_all` on the warm project of (b), three times, then one more request.
+
+| Entry | `sync_all` 1 / 2 / 3 | the request after it | its answer |
+|---|---|---|---|
+| Jarvis | 0.10 / 0.05 / 0.05 | 5.7 | equal to (b) |
+| post | 2.21 / 1.33 / 1.28 | 9.3 | equal to (b) |
+| get_files | 2.30 / 1.63 / 1.50 | 2.8 | equal to (b) |
+
+The project stays warm after `sync_all`. It costs more on the Flask service, which has more files the engine has looked up (its cost is one
+`stat` per path the engine knows, `ruff_db/src/files.rs`); the number of paths was not printed.
+
+**(c′) The refresh after one change**, on a copy of `tests/fixtures/06-wire/python/` in the temp folder: ask `main` of
+`ids_and_classes.py`, rewrite the file so that `unmarked` calls a new `added`, ask again without `sync_all`, then `sync_all` and ask.
+The same in all three runs (the largest numbers shown).
+
+| Step | time | `added` in the answer |
+|---|---|---|
+| first request (a fresh project: builtins and the file are read) | 20.5 | no |
+| the file rewritten, no `sync_all` | 0.1 | **no**: the old answer, from memory |
+| `sync_all` | 0.05 | |
+| the request after it | 0.4 | **yes** |
+
+So the engine never reads the disk again on its own: without a refresh a kept project answers from the old text. With `sync_all`, only what
+read the changed file is recomputed (0.4 ms, against 20 ms for the first request). A file created after the first request was not tried here
+(PY9.2 (b), `11-driver-needs.md` §10 claim 2).
+
+**Memory.** Resident size from `ps` inside the test after (b), and the peak of the whole run from `/usr/bin/time -l`. The test starts at
+5.8 MiB. The size after (b) is an upper bound of one warm project: the three cold projects of (a) were dropped before it, and the allocator
+may keep their pages.
+
+| Entry | resident after (b) | peak of the run |
+|---|---|---|
+| Jarvis | 60.0 MiB | 60.6 MiB |
+| post | 78.4 MiB | 87.5 MiB |
+| get_files | 61.5 MiB | 62.5 MiB |
+
+**The stack.** The built `python-cli calls <dir> <file> --entry <entry>` on the main thread, its stack set with `ulimit -s` in a subshell; an
+overflow ends it with exit 134 ("has overflowed its stack"). The chain programs are `def f0(): f1()` … `def fN(): pass`, `def main(): f0()`, in
+a temp folder; the 256-level one reaches `max_stack` (the CLI prints `cut max_depth: 1`, core's name for `Cut::Stack`).
+
+| Program | fails at | passes at |
+|---|---|---|
+| chain of 256 levels (to `max_stack`) | 2048 KB | **2052 KB** |
+| chain of 128 levels | 1072 KB | 1088 KB |
+| Jarvis | 192 KB | 224 KB |
+| post | 272 KB | 288 KB |
+| get_files | 128 KB | 256 KB (not narrowed) |
+
+One level of the solver's recursion takes **about 7.5 KB** in this build ((2052 − 1088) ÷ 128); 2052 ÷ 256 ≈ 8.0 KB is the upper bound with
+the fixed part included. A request that reaches `max_stack` needs **just over 2 MiB**, so it overflows a thread with Rust's default 2 MiB
+(`std::thread::spawn`), and an overflow aborts the whole process, not the thread. The driver asks for **8 MiB**
+(`std::thread::Builder::stack_size(8 << 20)`): 2 MiB rounded up to the next power of two is 4 MiB, and doubled for a margin, because a level of
+real code (nested expressions in a body) can be larger than a one-line body's. A release build uses less.
+
+**The longest stretch without a check** (`11-driver-needs.md` §10 claim 5). A temporary timer in `Solver::cost_limit` (reverted) kept the
+longest time between two calls of it in one request, and the time from the last call to the end of `call_wire` (the render and the wire,
+which no check covers). These runs were about twice as slow overall as the ones above (the machine was busier), so the numbers are high.
+
+| Entry | longest gap, cold (4 requests) | longest gap, warm | after the last check, cold / warm |
+|---|---|---|---|
+| Jarvis | 34.4 / 35.0 / 34.8 / 95.6 | 1.05 / 1.77 | ≤ 36.1 / ≤ 11.7 |
+| post | 14.0 / 14.7 / 63.1 / 13.0 | 0.32 / 0.31 | ≤ 27.4 / ≤ 6.7 |
+| get_files | 4.6 / 4.8 / 4.6 / 4.9 | 0.29 / 0.28 | ≤ 2.6 / ≤ 1.7 |
+
+A cancel checked in `cost_limit` would be seen within about 0.1 s at worst on a cold project, and within 2 ms on a warm one, plus the render.
+
 ## A def found past an unknown base (D28)
 
 The engine writes "found past a base it cannot see" as an intersection (`Type::Intersection`) whose positive parts are the def it found and

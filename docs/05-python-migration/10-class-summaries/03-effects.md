@@ -126,7 +126,7 @@ for (targets, attr, vals, strong) in plan.effects {
 
 | Fixture | Entry | Expected |
 |---|---|---|
-| `04-class-summaries/python/effects.py` (pylspt's, never run) | `ctor` | `Pipeline.run > JsonHandler.process` |
+| `04-class-summaries/python/effects.py` (CS0: inline passes; summary fails all five: `Pipeline.run` with no child) | `ctor` | `Pipeline.run > JsonHandler.process` |
 | | `installed` | `JsonHandler.process` only (the strong effect replaces `CsvHandler`) |
 | | `maybe_installed` | both (weak) |
 | | `fresh_installed` | `JsonHandler.process` only (`Obj(0)` as an effect value) |

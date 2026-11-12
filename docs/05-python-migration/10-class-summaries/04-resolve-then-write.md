@@ -61,7 +61,7 @@ that read each other's attribute: applied one by one, both end up `CsvHandler`.
 | | |
 |---|---|
 | Change | none expected. If the fixture is red, the seam leaks: find where a callee's `resolve` reads `env` instead of `before` |
-| Tests | `p04_04_resolve_first`: `check_both("04-class-summaries/python/resolve_first.py")` (pylspt's, never run): `replacing` and `swapping` as in §1. A new entry in the same file, `two_callees_write` (`h = A() if c else B(); h.reset(box)` where `A.reset` and `B.reset` write `box.h` differently and each returns the old `box.h`): both returns are the old handler (decision 3) |
+| Tests | `p04_04_resolve_first`: `check` → `check_both("04-class-summaries/python/resolve_first.py")` (CS0: inline passes; summary fails `replacing` and `swapping`, both `.process` calls missing): `replacing` and `swapping` as in §1. A new entry in the same file, `two_callees_write` (`h = A() if c else B(); h.reset(box)` where `A.reset` and `B.reset` write `box.h` differently and each returns the old `box.h`): both returns are the old handler (decision 3) |
 | Proof | `cargo test` in `languages/python`. pylspt's demonstration, kept as a review step and not as code: swap the two phases in a scratch edit, see `replacing` fail with `CsvHandler.process` under `old`, swap back |
 
 ## 5. After CS4: effects on by default (the owner's yes)

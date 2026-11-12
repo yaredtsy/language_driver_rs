@@ -68,7 +68,7 @@ output when it returns `true`. The digest of a key without aliasing is then byte
 
 | Fixture | Expected |
 |---|---|
-| `04-class-summaries/python/aliases.py` (pylspt's, never run) | `same`: `JsonHandler.process`; `different`: `CsvHandler.process`; `nested`: no edge in summary mode (a mode-specific block: inline finds it) |
+| `04-class-summaries/python/aliases.py` (CS0: inline passes; summary fails `same` and `different`, the `.process` under `set_and_read` missing; `nested` passes, its block is the known limit) | `same`: `JsonHandler.process`; `different`: `CsvHandler.process`; `nested`: no edge in summary mode (a mode-specific block: inline finds it) |
 | **new**, `self_merge.py` | `def merge(self, other): other.x = J(); self.x.run()`, called `a.merge(a)`: `J.run` |
 
 ### CS7. The alias vector
