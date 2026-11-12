@@ -103,4 +103,4 @@ The last-but-one row deserves a second look: **measure before deciding.** After 
 their reasons is the business case for context sensitivity. If 95% of sites resolve in typed TypeScript, C2 may be all that is ever needed there,
 and the effort belongs in JavaScript (C1) or in another language.
 
-Next: [`../04-rust/01-what-rust-analyzer-gives.md`](../04-rust/01-what-rust-analyzer-gives.md)
+Next: [`../04-rust/README.md`](../04-rust/README.md)

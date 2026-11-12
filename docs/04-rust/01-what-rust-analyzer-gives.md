@@ -7,7 +7,8 @@ what rust-analyzer gives
 ├── 3. exported: use as it is
 ├── 4. needs our work
 ├── 5. four facts that shape the design
-└── 6. risks
+├── 6. risks
+└── 7. what the context layer will ask of it
 ```
 
 Read from `../language_clone/rust-analyzer` at commit `2a362a4`.
@@ -25,12 +26,19 @@ It is built on `salsa`, like ty: an incremental database. Change one file, and o
 ```
 rust-syntax      ra_ap_syntax  (+ ra_ap_parser, rowan)                     the lossless syntax tree. No salsa.
 
-rust-analysis    + ra_ap_ide            Analysis / AnalysisHost: the designed API
+rust-analysis    + ra_ap_hir            Semantics: resolve a call, a path, a method; types; impls. THE layer we call
+                 + ra_ap_ide_db         RootDatabase (the salsa database `Semantics` reads)
                  + ra_ap_load-cargo     load a Cargo workspace into a database
-                 + ra_ap_project_model  cargo metadata, the sysroot
-                 + ra_ap_hir            Semantics: resolve a call, a path, a method (when `ide` is not enough)
-                 + ra_ap_ide_db, ra_ap_vfs   as needed by the above
+                 + ra_ap_project_model  cargo metadata, the sysroot, finding the manifest
+                 + ra_ap_vfs            paths ↔ file ids
+                 (dev only) ra_ap_ide   `Analysis::outgoing_calls`, as the cross-check of RS4's proof
 ```
+
+The first plan called `ide` "the designed API" and meant to stay on it. Reading `crates/ide/src/call_hierarchy.rs` changed that: its
+`outgoing_calls` is about 60 lines over `hir::Semantics`, it **drops** every site it cannot resolve and every construction, and it gives no
+type arguments. We need all three, in layer 1 already (rule 8) and for layer 2. So `sem.rs` is written on `hir`, and `ide` stays as a test
+oracle: for every fixture, the sites the engine's own call hierarchy reports must be a subset of ours ([RS4](04-default-resolver/05-rs4-calls.md) §8).
+Whether leaving `ra_ap_ide` out of the release binary makes it smaller is S-RS1's **[measure]**.
 
 ## 3. Exported: use as it is
 
@@ -49,10 +57,12 @@ rust-analysis    + ra_ap_ide            Analysis / AnalysisHost: the designed AP
 | We need | rust-analyzer gives | Notes |
 |---|---|---|
 | load a project | `load_cargo::load_workspace_at(root, &cargo_config, &load_config, &progress) -> (RootDatabase, Vfs, Option<ProcMacroClient>)` | runs `cargo metadata`, finds the sysroot |
-| the query API | `ide::AnalysisHost::with_database(db)` → `host.analysis() -> Analysis` | `Analysis` is a snapshot; every method returns `Cancellable<T>` |
+| the query API | `hir::Semantics::new(&db)` over the `RootDatabase` that loading returned. (`ide::AnalysisHost` / `Analysis` wrap the same database; we use them only in the oracle test) | `Analysis` is a snapshot; every method returns `Cancellable<T>` |
 | an outline, if wanted | `Analysis::file_structure(&config, file_id) -> Vec<StructureNode>` | we use our own rule (TS1's reasoning applies); this is a cross-check |
-| **what a function calls** | `Analysis::outgoing_calls(&config, FilePosition) -> Option<Vec<CallItem>>` | **the default resolver**, ready-made. `CallItem { target: NavigationTarget, ranges: Vec<FileRange> }` |
-| the same, by hand | `hir::Semantics::resolve_method_call(&ast::MethodCallExpr) -> Option<hir::Function>`; `sema.type_of_expr(&expr)` → `.as_callable(db)` → `CallableKind::{Function, TupleStruct, TupleEnumVariant}`; `sema.resolve_path` | this is what `outgoing_calls` is made of (`crates/ide/src/call_hierarchy.rs`, about 60 lines). Per-site, in order, when we need more control |
+| **what a function calls** | `Analysis::outgoing_calls(&config, FilePosition) -> Option<Vec<CallItem>>` | the engine's own call hierarchy. **Our test oracle, not our resolver** (§2). `CallItem { target: NavigationTarget, ranges: Vec<FileRange> }` |
+| the same, by hand | `hir::Semantics::resolve_method_call(&ast::MethodCallExpr) -> Option<hir::Function>`; `sema.type_of_expr(&expr)` → `.as_callable(db)` → `CallableKind::{Function, TupleStruct, TupleEnumVariant, Closure, FnPtr, FnImpl}`; `sema.resolve_path` | this is what `outgoing_calls` is made of (`crates/ide/src/call_hierarchy.rs`, about 60 lines). **This is what we call** |
+| the same, with the type arguments of the call | `resolve_method_call_fallback(&call) -> Option<(Either<Function, Field>, Option<GenericSubstitution>)>`; `resolve_path_with_subst(&path)` | the plain functions are these with the substitution thrown away (`semantics.rs`). Layer 1 calls these and ignores the substitution; RC1 reads it |
+| a trait method → the impl's method | inside `resolve_method_call`: `SourceAnalyzer::resolve_impl_method_or_trait_def` asks `lookup_impl_method` with the call's substitution. So `json_writer.write()` gives the method in `impl Writer for JsonWriter`, and `w.write()` with `w: &T` gives the trait's declaration (read from the source; **[check]** in S-RS2) | answers the first plan's open question |
 | a declaration's place | `NavigationTarget { file_id, full_range, focus_range, name, kind, container_name }`; `hir::Function::module(db)`, `.name(db)`, `HasSource` | |
 | project code or external | the file's `SourceRoot::is_library` | registry crates and the sysroot are library roots |
 | macros | `sema.descend_into_macros(token)`: calls *inside* a macro call's arguments are found (`println!("{}", f())`) | built into `outgoing_calls` |
@@ -115,4 +125,19 @@ rust-analyzer pins `salsa 0.28.5` with its own feature set. This is the concrete
 | trait dispatch looks "wrong" to users (`x.fmt()` on a generic goes to the trait's declaration) | certain | the policy table says so; "show implementations" ([`02-tree-rules/03`](../02-tree-rules/03-the-seam.md) §7) is cheap here, rust-analyzer has go-to-implementations |
 | our outline and rust-analyzer disagree about an item under `#[cfg(...)]` | medium | the outline lists what is in the text; a cfg-disabled function is in the outline and simply has no calls. Fixture: `cfg.rs` |
 
-Next: [`02-phases.md`](02-phases.md)
+## 7. What the context layer will ask of it
+
+Read from the clone for [`05-context-layer/`](05-context-layer/01-design.md); none of it is called in layer 1. Each line is a public item of
+`ra_ap_hir` at `2a362a4`, and each is a **[check]** of [RC0](05-context-layer/02-rc0-spikes.md).
+
+| Layer 2 needs | The engine has | Notes |
+|---|---|---|
+| the type arguments at a call | `GenericSubstitution::types(db) -> Vec<(Symbol, Type)>`, `all_types(db)` (also the unnamed `impl Trait` parameters; its comment says it is kept for external tools) | the parent impl's or trait's parameters come first, then the function's own |
+| a caller's type written with the caller's parameters → the same type with them filled in | `Type::instantiate(args) -> Type` | "A `Type` remembers its origin. Trying to do anything (except comparing) with types of different origins will cause errors or panics. Instead, use the `instantiate` methods" (the doc comment of `hir::Type`) |
+| a trait's method + concrete types → the impl's method | `Semantics::resolve_trait_impl_method(env: Type, trait_, func, subst) -> Option<Function>` | public, with a `FIXME: better api for the trait environment`: likely to move in a bump |
+| is this type a parameter, a closure, a `dyn`, a function item? | `Type::as_type_param`, `as_closure`, `as_dyn_trait`, `as_callable` → `CallableKind`, `as_adt`, `type_arguments`, `as_reference`, `tuple_fields` | enough to walk a type's structure from outside |
+| where a `dyn Trait` or a `fn` pointer is **born** | `Semantics::expr_adjustments(&expr) -> Option<Vec<Adjustment { source, target, kind }>>`, with `Adjust::Pointer(PointerCast::Unsize \| ReifyFnPointer \| ClosureFnPointer)` | the coercion the compiler inserted: `source` is `Box<JsonWriter>`, `target` is `Box<dyn Writer>`. This is the one fact value tracking starts from |
+| the implementations of a trait | `Impl::all_for_trait(db, trait_)`, `Impl::all_for_type(db, ty)` | for the "possible targets" option |
+| types as keys | `Type` implements `Hash` and `Eq` by hand | whether two spellings of one type compare equal (lifetimes, aliases) is S-RC1 |
+
+Next: [`02-architecture.md`](02-architecture.md)

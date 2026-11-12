@@ -138,7 +138,8 @@ I read source; I built and ran nothing.
   range comes from the scanner, not the `JSDoc` node.
 - ✅ Whether it runs correctly without mimalloc: yes; the speed difference was not measured.
 
-**About rust-analyzer** (RS0 spikes)
+**About rust-analyzer** (RS0 spikes). The full list, with the context layer's (RC0), and Rust's open questions (Q-RS1–Q-RS5,
+Q-RC1–Q-RC3) and draft rows (RS-M1–RS-M12) are in [`04-rust/03-decisions-and-questions.md`](04-rust/03-decisions-and-questions.md).
 
 - Which `ra_ap_*` version matches commit `2a362a4`.
 - Whether `resolve_method_call` gives the impl's method or the trait's for a trait method on a concrete type.

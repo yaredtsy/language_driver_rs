@@ -118,7 +118,7 @@ fixtures a property's getter and setter are two nodes now (`accessors.py`, `spec
 | [`02-what-moves-where.md`](02-what-moves-where.md) §1, §4, §5, §7 | the same; the public surface gains `wire`, `merge`, `WireOptions`, `WireStyle`, `Frame`; `python-cli calls [--graph \| --wire] [--merged]` |
 | [`03-steps.md`](03-steps.md) | PY5 and PY6 rows name the wire steps below; PY7's proof compares `--wire` with `cli-wire.json`, and `--wire --merged` with the merged golden file |
 | [`../02-tree-rules/01-graph-and-tree.md`](../02-tree-rules/01-graph-and-tree.md) §4, §5 | "V-NOC's merge stays in V-NOC" becomes "the merge is an option of the wire view"; the `FrameJson` row says `Frame`, moved |
-| [`../03-typescript/06-ts4-calls.md`](../03-typescript/06-ts4-calls.md), [`../04-rust/02-phases.md`](../04-rust/02-phases.md) | one line each: the CLI prints `--wire`; the module moves to core here (TypeScript) and is reused (Rust) |
+| [`../03-typescript/06-ts4-calls.md`](../03-typescript/06-ts4-calls.md), [`../04-rust/04-default-resolver/05-rs4-calls.md`](../04-rust/04-default-resolver/05-rs4-calls.md) | one line each: the CLI prints `--wire`; the module moves to core here (TypeScript) and is reused (Rust) |
 | `README.md` | the Python row says what `calls --wire` gives |
 
 `CLAUDE.md` needs no rule change. One sentence is added under "Decisions already made": the wire is a public view of the graph, merged

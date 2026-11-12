@@ -80,7 +80,7 @@ Toolchain: 1.99.1 (`rust-toolchain.toml`). Run `cargo fmt` and `cargo clippy -p 
 - **Nothing in the plan was built or run when it was written.** Every `[check]` and `[measure]` in `docs/` is a claim to verify before you
   depend on it; the list is in `docs/07-decisions-and-questions.md` §5. When you verify one, write the answer where the plan says
   (usually `languages/<lang>/ENGINE.md`) and fix the doc if it was wrong.
-- Do the spikes before the phases that depend on them (`docs/03-typescript/02-ts0-spikes.md`, RS0 in `docs/04-rust/02-phases.md`). Spike code
+- Do the spikes before the phases that depend on them (`docs/03-typescript/02-ts0-spikes.md`, RS0 in `docs/04-rust/04-default-resolver/01-rs0-spikes.md`, RC0 in `docs/04-rust/05-context-layer/02-rc0-spikes.md`). Spike code
   goes in `languages/<lang>/spikes/` as its own tiny workspace and is deleted when the answer is written down.
 - Each phase ends with the proof named in its doc. Do not call a phase done without running that proof; report what actually passed.
 - Every behaviour has a fixture: one file per case under `tests/fixtures/`, every policy-table row a fixture, every tree rule a scenario.

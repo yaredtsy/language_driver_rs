@@ -64,8 +64,12 @@ language_driver_rs
 │   └── later: context-sensitive   what changes, file by file ─────────────────────── 08-later-context-sensitive.md
 │
 ├── RUST ──────────────────────────────────────────── 04-rust/
+│   ├── start here                 the two layers · the phases at a glance ─────────── README.md
 │   ├── what rust-analyzer gives   exported · needs our work · risks ──────────────── 01-what-rust-analyzer-gives.md
-│   └── RS0–RS5                    the same phases, shorter ───────────────────────── 02-phases.md
+│   ├── the architecture           one design for both layers ─────────────────────── 02-architecture.md
+│   ├── decisions and questions    draft rows · what needs your yes · unchecked ───── 03-decisions-and-questions.md
+│   ├── RS0–RS5  default resolver  spikes · outline · markers · project · calls · driver needs ── 04-default-resolver/
+│   └── RC0–RC6  context layer     types in the key, then values: local · across calls · fields ─ 05-context-layer/
 │
 ├── PYTHON: MIGRATING pylspt ──────────────────────── 05-python-migration/
 │   ├── what changes               against the earlier `python-analyzer` plan ─────── 01-what-changes.md
@@ -89,6 +93,7 @@ language_driver_rs
 | how "no context sensitivity now" avoids a rewrite later | [`02-tree-rules/03-the-seam.md`](02-tree-rules/03-the-seam.md) |
 | what tsrs and rust-analyzer already do for us | [`03-typescript/01-what-tsrs-gives.md`](03-typescript/01-what-tsrs-gives.md), [`04-rust/01-what-rust-analyzer-gives.md`](04-rust/01-what-rust-analyzer-gives.md) |
 | the TypeScript work list | [`03-typescript/README.md`](03-typescript/README.md) |
+| the Rust work list, and how Rust becomes context-sensitive | [`04-rust/README.md`](04-rust/README.md), [`04-rust/05-context-layer/01-design.md`](04-rust/05-context-layer/01-design.md) |
 | how pylspt comes in | [`05-python-migration/03-steps.md`](05-python-migration/03-steps.md) |
 | the order of everything | [`06-roadmap.md`](06-roadmap.md) |
 | what I need you to decide | [`07-decisions-and-questions.md`](07-decisions-and-questions.md) |
