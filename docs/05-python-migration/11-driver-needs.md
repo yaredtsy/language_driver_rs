@@ -224,8 +224,8 @@ nothing in `core/` (rule 5 is still checked: core's tests run).
 
 | | |
 |---|---|
-| Change | `python-cli calls … --repeat <n>`: the same request `n` times on one `Project`, with `refresh` before each; with `--timing`, one `open` line and `n` `refresh` / `solve` lines. The output is printed once (the answers are equal: the test checks it) |
-| Failing tests | `tests/cli.rs`: `--repeat 3 --timing` prints three `solve` lines; stdout equals a run without `--repeat`; `--repeat 0` is exit 2 |
+| Change | `python-cli calls … --repeat <n>`: the same request `n` times on one `Project`, with `refresh` before each; with `--timing`, one `open X ms` line and `n` lines `request <i>: refresh <a> ms, solve <b> ms` (two decimals: a warm refresh is under a millisecond). The output is printed once; if a request's output differs from the first one's, nothing is printed, stderr says which, and the exit is 1. Without `--repeat` nothing changes (no refresh, today's one `--timing` line) |
+| Failing tests | `tests/cli.rs`: `--repeat 3 --timing` prints one `open` line and three `request` lines; stdout equals a run without `--repeat`, for the tree, `--wire` and `--graph`; `--repeat 0`, `--repeat x` and `--repeat` alone are exit 2 |
 | Proof | as PY9.1; by hand on Jarvis: the second and third `solve` numbers, next to PY9.0's |
 
 After PY9.4: the vnoc side (§8), then a tag when the owner says (`python-v0.3.0`, or with class summaries' CS4b: [`10-class-summaries/04-resolve-then-write.md`](10-class-summaries/04-resolve-then-write.md) §5).

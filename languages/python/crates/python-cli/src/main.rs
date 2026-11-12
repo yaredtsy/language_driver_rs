@@ -2,9 +2,12 @@
 //!
 //! - `outline <file> [--label <label>]`: the defs of one file.
 //! - `calls <dir> <file> --entry <qualname> [--occurrence <n> | --id <marker>] [--graph | --wire [--merged] [--function-prefix <p>]
-//!   [--class-prefix <p>]] [--only-marked] [--timing] [--label <label>]`: the call tree under a def, a blank line, then the counters; with
+//!   [--class-prefix <p>]] [--only-marked] [--timing] [--repeat <n>] [--label <label>]`: the call tree under a def, a blank line, then the counters; with
 //!   `--graph` the graph, and with `--wire` the wire (D17), as JSON alone on stdout (the counters go to stderr, and the wire has none). A qualname is not unique in a file (D15, D20): when it matches several defs they are
 //!   listed and the exit code is 2, never the first one picked; `--occurrence` or `--id` says which.
+//!   `--repeat <n>` (n >= 1) asks the same thing `n` times on one kept `Project`, refreshed before each: it is for timing a kept project,
+//!   as a driver keeps one. The output is printed once; if a request's output differs from the first one's, nothing is printed on
+//!   stdout, stderr says which request, and the exit code is 1. With `--timing`: one `open` line, then a `request <i>` line each.
 //!
 //! Exit codes: 0 done, 1 the thing asked for is not there, 2 the command line is wrong. stdout is the answer and nothing else;
 //! messages go to stderr.
@@ -12,7 +15,7 @@
 use std::process::ExitCode;
 
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use analyzer_core::text::{Encoding, LineIndex};
 use python_analysis::{
@@ -22,7 +25,7 @@ use python_syntax::{MarkerStyle, outline};
 
 const USAGE: &str = "usage: python-cli outline <file> [--label <label>]
        python-cli calls <dir> <file> --entry <qualname> [--occurrence <n> | --id <marker>]
-                 [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--only-marked] [--timing] [--label <label>]";
+                 [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--only-marked] [--timing] [--repeat <n>] [--label <label>]";
 
 /// Remove `--name value` from `args` and return the value.
 fn take_value(args: &mut Vec<String>, name: &str) -> Option<String> {
@@ -54,6 +57,7 @@ fn main() -> ExitCode {
     let function_prefix = take_value(&mut args, "--function-prefix");
     let class_prefix = take_value(&mut args, "--class-prefix");
     let only_marked = take_flag(&mut args, "--only-marked");
+    let repeat = take_value(&mut args, "--repeat");
     let timing = take_flag(&mut args, "--timing");
     match args
         .iter()
@@ -90,6 +94,15 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
+            // a count of one or more; `--repeat` with no value is left in `args` and is the usage error below
+            let repeat = match repeat.as_deref().map(str::parse::<u32>) {
+                None => None,
+                Some(Ok(n)) if n >= 1 => Some(n),
+                Some(_) => {
+                    eprintln!("--repeat is a number of requests, 1 or more\n{USAGE}");
+                    return ExitCode::from(2);
+                }
+            };
             print_calls(
                 Path::new(dir),
                 file,
@@ -106,6 +119,7 @@ fn main() -> ExitCode {
                     merged,
                     only_marked,
                     timing,
+                    repeat,
                 },
             )
         }
@@ -136,6 +150,15 @@ struct Calls<'a> {
     merged: bool,
     only_marked: bool,
     timing: bool,
+    /// `Some(n)`: the request `n` times on one project, refreshed before each. `None`: once, with no refresh.
+    repeat: Option<u32>,
+}
+
+/// What one request prints: the text for stdout and the text for stderr (the counters of `--graph`). Two requests are equal when both are.
+#[derive(PartialEq)]
+struct Reply {
+    out: String,
+    err: String,
 }
 
 /// The graph's counters as text: one line of the core counts, then a line per cut and a line per language counter. Both are `BTreeMap`s, so
@@ -156,7 +179,7 @@ fn counters(stats: &Stats) -> String {
 
 fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
     let started = Instant::now();
-    let project = match Project::open(&dir.to_string_lossy()) {
+    let mut project = match Project::open(&dir.to_string_lossy()) {
         Ok(project) => project,
         Err(e) => {
             eprintln!("{e}");
@@ -250,63 +273,119 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
         wire: ask.wire.clone().unwrap_or_default(),
         ..Options::default()
     };
-    let solving = Instant::now();
-    let timing = |solving: Instant| {
-        if ask.timing {
-            eprintln!(
-                "open {} ms, solve {} ms",
-                opened.as_millis(),
-                solving.elapsed().as_millis()
-            );
-        }
-    };
-    if ask.wire.is_some() {
-        // the wire alone on stdout: JSON, so it can be read as it is. `call_wire` returns the frame only, so there are no counters
-        let Some(frame) = call_wire(&project, file, &entry, &options, ask.merged) else {
-            eprintln!("{file}: no def `{}`", ask.entry);
-            return ExitCode::from(1);
-        };
-        timing(solving);
-        return print_json(file, serde_json::to_string_pretty(&frame));
+    let requests = ask.repeat.unwrap_or(1);
+    if ask.timing && ask.repeat.is_some() {
+        eprintln!("open {} ms", opened.as_millis());
     }
-    let graph = call_graph(&project, file, &entry, &options);
-    let Some(graph) = graph.filter(|g| !g.entries.is_empty()) else {
-        eprintln!("{file}: no def `{}`", ask.entry);
+    let mut first: Option<Reply> = None;
+    for i in 1..=requests {
+        let refreshing = Instant::now();
+        if ask.repeat.is_some() {
+            project.refresh();
+        }
+        let refreshed = refreshing.elapsed();
+        let (reply, solved) = match request(&project, file, &entry, &options, ask) {
+            Ok(done) => done,
+            Err(code) => return code,
+        };
+        if ask.timing {
+            if ask.repeat.is_some() {
+                eprintln!(
+                    "request {i}: refresh {:.2} ms, solve {:.2} ms",
+                    refreshed.as_secs_f64() * 1000.0,
+                    solved.as_secs_f64() * 1000.0
+                );
+            } else {
+                eprintln!(
+                    "open {} ms, solve {} ms",
+                    opened.as_millis(),
+                    solved.as_millis()
+                );
+            }
+        }
+        // A kept project must give the same answer each time. There is no test for the other case: it needs a file to change while the
+        // run is going, and a test cannot do that to a process it has started.
+        match &first {
+            None => first = Some(reply),
+            Some(first) if *first != reply => {
+                eprintln!("request {i} gave another answer than request 1");
+                return ExitCode::from(1);
+            }
+            Some(_) => {}
+        }
+    }
+    let Some(reply) = first else {
         return ExitCode::from(1);
     };
-    timing(solving);
-    if ask.graph {
-        // the graph alone on stdout, so it can be read as it is; the counters go to stderr
-        let code = print_json(file, serde_json::to_string_pretty(&graph));
-        eprint!("{}", counters(&graph.stats));
-        return code;
-    }
-    print!(
-        "{}",
-        to_text(&render(
-            &graph,
-            &graph.entries[0],
-            &options.render_options()
-        ))
-    );
-    println!();
-    print!("{}", counters(&graph.stats));
+    print!("{}", reply.out);
+    eprint!("{}", reply.err);
     ExitCode::SUCCESS
 }
 
-/// The answer as pretty JSON on stdout. The graph's and the frame's maps are `BTreeMap`s and their lists are sorted, so the bytes are the
-/// same for the same input (rule 9).
-fn print_json(file: &str, json: serde_json::Result<String>) -> ExitCode {
-    match json {
-        Ok(json) => {
-            println!("{json}");
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            eprintln!("{file}: the answer cannot be written: {e}");
-            ExitCode::from(1)
-        }
+/// One request on a kept project: what it prints, and how long the solve took (the text is made after the clock stops). A request
+/// that has no answer says so on stderr and gives the exit code.
+fn request(
+    project: &Project,
+    file: &str,
+    entry: &Entry<'_>,
+    options: &Options,
+    ask: &Calls<'_>,
+) -> Result<(Reply, Duration), ExitCode> {
+    let solving = Instant::now();
+    let no_def = || {
+        eprintln!("{file}: no def `{}`", ask.entry);
+        ExitCode::from(1)
+    };
+    if ask.wire.is_some() {
+        // the wire alone on stdout: JSON, so it can be read as it is. `call_wire` returns the frame only, so there are no counters
+        let frame = call_wire(project, file, entry, options, ask.merged).ok_or_else(no_def)?;
+        let solved = solving.elapsed();
+        let out = json_text(file, serde_json::to_string_pretty(&frame))?;
+        return Ok((
+            Reply {
+                out,
+                err: String::new(),
+            },
+            solved,
+        ));
     }
+    let graph = call_graph(project, file, entry, options)
+        .filter(|g| !g.entries.is_empty())
+        .ok_or_else(no_def)?;
+    let solved = solving.elapsed();
+    if ask.graph {
+        // the graph alone on stdout, so it can be read as it is; the counters go to stderr
+        let out = json_text(file, serde_json::to_string_pretty(&graph))?;
+        return Ok((
+            Reply {
+                out,
+                err: counters(&graph.stats),
+            },
+            solved,
+        ));
+    }
+    let tree = to_text(&render(
+        &graph,
+        &graph.entries[0],
+        &options.render_options(),
+    ));
+    let out = format!("{tree}\n{}", counters(&graph.stats));
+    Ok((
+        Reply {
+            out,
+            err: String::new(),
+        },
+        solved,
+    ))
+}
+
+/// The answer as pretty JSON, with the newline `println!` would add. The graph's and the frame's maps are `BTreeMap`s and their lists are
+/// sorted, so the bytes are the same for the same input (rule 9).
+fn json_text(file: &str, json: serde_json::Result<String>) -> Result<String, ExitCode> {
+    json.map(|json| format!("{json}\n")).map_err(|e| {
+        eprintln!("{file}: the answer cannot be written: {e}");
+        ExitCode::from(1)
+    })
 }
 
 fn print_outline(path: &str, label: &str) -> ExitCode {

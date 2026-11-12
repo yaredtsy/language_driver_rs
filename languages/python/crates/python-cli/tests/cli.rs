@@ -612,3 +612,62 @@ fn timing_with_a_json_output_is_on_stderr_and_stdout_stays_json() {
         );
     }
 }
+
+// `calls --repeat <n>` (PY9.4)
+
+#[test]
+fn repeat_with_timing_prints_one_open_line_and_one_request_line_each() {
+    let plain = calls_main(&[]);
+    let out = calls_main(&["--repeat", "3", "--timing"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_eq!(stdout(&out), stdout(&plain));
+    let err = stderr(&out);
+    let lines: Vec<&str> = err.lines().collect();
+    assert_eq!(lines.len(), 4, "{err}");
+    assert!(
+        lines[0].starts_with("open ") && lines[0].ends_with(" ms"),
+        "{err}"
+    );
+    for (i, line) in lines[1..].iter().enumerate() {
+        let start = format!("request {}: refresh ", i + 1);
+        assert!(
+            line.starts_with(&start) && line.contains(" ms, solve ") && line.ends_with(" ms"),
+            "{err}"
+        );
+    }
+    assert_eq!(err.lines().filter(|l| l.starts_with("open ")).count(), 1);
+}
+
+#[test]
+fn repeat_prints_the_output_once_for_the_tree_the_wire_and_the_graph() {
+    for more in [&[][..], &["--wire"], &["--wire", "--merged"], &["--graph"]] {
+        let plain = calls_main(more);
+        let args: Vec<&str> = more.iter().copied().chain(["--repeat", "3"]).collect();
+        let repeated = calls_main(&args);
+        assert_eq!(
+            repeated.status.code(),
+            Some(0),
+            "{more:?}: {}",
+            stderr(&repeated)
+        );
+        assert!(!repeated.stdout.is_empty(), "{more:?}");
+        assert_eq!(repeated.stdout, plain.stdout, "{more:?}");
+        // the counters of `--graph` are on stderr, and they are printed once too
+        assert_eq!(repeated.stderr, plain.stderr, "{more:?}");
+    }
+}
+
+#[test]
+fn repeat_that_is_not_a_count_of_one_or_more_is_exit_2() {
+    for more in [
+        &["--repeat", "0"][..],
+        &["--repeat", "x"],
+        &["--repeat", "-1"],
+        &["--repeat"],
+    ] {
+        let out = calls_main(more);
+        assert_eq!(out.status.code(), Some(2), "{more:?}: {}", stderr(&out));
+        assert!(stderr(&out).contains("usage:"), "{more:?}");
+        assert_eq!(stdout(&out), "", "{more:?}");
+    }
+}

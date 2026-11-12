@@ -153,6 +153,18 @@ So the engine never reads the disk again on its own: without a refresh a kept pr
 read the changed file is recomputed (0.4 ms, against 20 ms for the first request). A file created after the first request was not tried here
 (PY9.2 (b), `11-driver-needs.md` §10 claim 2).
 
+**Through the CLI (PY9.4).** `python-cli calls <dir> <file> --entry <entry> --wire --timing --repeat 3`, the debug binary, run twice on 2026-11-13
+at the commit of PY9.4 (the second run is in the second line of each cell; refresh is `Project::refresh`, which includes `sync_all`). Times in
+ms; the three answers were equal (the CLI checks it and exits 1 if not).
+
+| Entry | refresh 1 / 2 / 3 | solve 1 / 2 / 3 |
+|---|---|---|
+| Jarvis | 0.04 / 0.16 / 0.13; 0.03 / 0.16 / 0.12 | 128.4 / 5.8 / 5.8; 88.5 / 5.7 / 5.5 |
+| post | 0.05 / 2.19 / 2.19; 0.05 / 2.20 / 2.31 | 279.3 / 9.3 / 9.5; 167.7 / 9.7 / 9.0 |
+
+They agree with (b) and (c) (solve 5.6–5.8 and 9.1–9.9). Refresh 1 is before the first request, when the engine knows no file yet, so it is
+the cheapest; later ones are about as (c) says (Jarvis a little over it, 0.12–0.16 against 0.05–0.10).
+
 **Memory.** Resident size from `ps` inside the test after (b), and the peak of the whole run from `/usr/bin/time -l`. The test starts at
 5.8 MiB. The size after (b) is an upper bound of one warm project: the three cold projects of (a) were dropped before it, and the allocator
 may keep their pages.
