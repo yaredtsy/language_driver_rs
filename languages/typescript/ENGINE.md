@@ -771,7 +771,7 @@ Pinned in `tests/fixtures/uncovered/` (`members.ts`, `classes.tsx`; 24 rows adde
 
 **On the V-NOC frontend all three are 0** (`TaskDetailPanel`: 141 call, 2 construct, 235 external, 86 unresolved, 18 passed, 90 contexts; the whole frontend, 1084 entries: 1921 / 3 / 2802 / 1057 / 153, no counter line in the breakdown), and the source says so: no assignment destructuring at all in `src/` (so none with a rest); 4 `for … of` with a destructuring pattern, all array patterns (`for (const [key, nested] of Object.entries(value))`), none an object pattern, which `for_of_destructuring` needs; the 5 classes have no computed member name.
 
-**Known and left**: a `for … of` whose target is an assignment pattern (`for ({ load } of xs)`), an array pattern anywhere (`const [a] = list`), a `for … in`, and a `catch ({ load })` are not followed or counted; the computed names of a class counted only where the class def is walked, so a class reached only by a construction counts nothing (its definition runs once, elsewhere: D25).
+**Known and left**: a `for … of` whose target is an assignment pattern (`for ({ load } of xs) use(load)`), an array pattern anywhere, in a `for … of` too (`for (const [f] of xs) use(f)`; `const [a] = list`), a `for … in`, and a `catch ({ load })` are not followed or counted; the computed names of a class counted only where the class def is walked, so a class reached only by a construction counts nothing (its definition runs once, elsewhere: D25).
 
 ### Memory with graphs built each round, determinism over the scenarios (TS4 step 8)
 
