@@ -230,6 +230,52 @@ export function readNotHandedOver() {
   register(`${handler}`);
 }
 
+// ---- handed over or called in a way no edge covers (D22 step 5): counted, not drawn
+declare const key: string;
+export function elementAccessHandedOver() {
+  register(api["load"]);
+}
+export function elementAccessWithAComputedKey() {
+  // the key is not a literal: the checker cannot say what it names, so nothing is counted
+  register((api as Record<string, unknown>)[key]);
+}
+export function elementAccessCalled() {
+  // called, not handed over: the call resolves to a def (an edge), and the access is not counted
+  api["load"]();
+}
+export function elementAccessKeyIsAFunction() {
+  // the key is a name, not a literal: nothing is counted, though the name is a def
+  register((api as any)[sharedHelper]);
+}
+export function bindHandedOver() {
+  const h = () => {};
+  register(h.bind(null));
+}
+export function bindOfAMethod() {
+  register(widget.method.bind(widget));
+}
+export function bindDiscarded() {
+  const h = () => {};
+  h.bind(null);
+}
+export function callAndApply() {
+  const h = () => {};
+  h.call(null);
+  h.apply(null, []);
+}
+export function classHandedOver() {
+  register(Widget);
+}
+export function classInAProperty() {
+  register({ Icon: Widget });
+}
+export function classNotHandedOver() {
+  new Widget();
+  if (Widget) {
+    register(1);
+  }
+}
+
 // ---- not counted: called, or not a def, or not a hand-over
 export function neverUsed() {
   // a def of its own name that nothing names: dead code, not a hand-over

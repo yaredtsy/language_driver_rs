@@ -680,3 +680,25 @@ edges **143 to 153**, call edges unchanged at 1185, graph 126 ms; **the 3 defs i
 lost, `toggleNodeExpansion(nodeId)` in `onToggle`, **is an edge of the graph again** (bytes 16 to 35 of `onToggle`, 19 characters, the callee): `Unresolved(function_typed_value)`, since `toggleNodeExpansion` is a store action (D16),
 and so not drawn in the tree, which hides unresolved edges unless asked. The other 7 of the 10 new passed edges were not listed.
 
+### What no edge covers: counted, not drawn (D22 step 5)
+
+Four shapes hand a def over, or call one, in a way no edge covers. Each is **counted per occurrence** in every walked body (`Stats.language["uncovered_<kind>"]`, `Breakdown.uncovered`, one line in the breakdown when any is above 0):
+
+| Kind | What it is | Why there is no edge |
+|---|---|---|
+| `element_access` | a project function handed over by `a["k"]`, the key a **string literal** the checker can follow | resolving it is the checker's signature fallback for a call; for a value there is no site rule yet |
+| `bind` | `f.bind(…)` or `obj.m.bind(obj)` **in a hand-over position**, `f` / `obj.m` a project function | the value handed over is a new function (the bound one), not the def |
+| `call_apply` | `f.call(…)` / `f.apply(…)` with `f` a project function, **anywhere** | it is a call, and the call site is `f.call`, which resolves to the library's `Function.call`: an `External` edge, not an edge to `f` |
+| `class` | a project class named where a value is handed over (`register(Widget)`, `{ Icon: Widget }`) | a passed edge points at a context, and a class has none (it is a `Construct` target, its constructor is `init`) |
+
+Not counted, because it cannot be told from code that is not a def: an element access with a **computed key** (`a[key]`), a spread of an object that holds defs (`{ ...api }`). (A function named in `bind`'s own arguments is an ordinary argument: an edge, step 3.) A count is
+a lower bound for what the checker can name.
+
+Pinned in `handed-over/` (`elementAccessHandedOver`, `bindHandedOver`, `bindOfAMethod`, `callAndApply`, `classHandedOver`, `classInAProperty`, and the shapes that must **not** count: `elementAccessWithAComputedKey`,
+`elementAccessKeyIsAFunction`, `elementAccessCalled`, `bindDiscarded`, `classNotHandedOver`, and the shapes the edges cover). **Mutation-checked**: a discarded `bind`, `apply`, a computed key, the class count and a called
+access each turn a row red; one control was wrong the first time (a key wrapped in `as unknown as string` has no symbol, so the guard was never exercised) and was rewritten.
+
+**On the V-NOC frontend all four are 0** (`TaskDetailPanel` and the whole frontend, 1084 entries; edges as in step 4, 153 passed), and that is the source, not the counter: there is no `.bind(` in it; its 3 `.call(` are on
+`debounce(…)` results (`debouncedBasicInfoChange.call(data)`: a variable, not a project def, so correctly not counted); its 17 string-literal accesses are indexed **types** (`Task["subtasks"]`); its 5 classes are never named in a hand-over
+position (the class counter reads 0; I did not check where each is used). The fixture is the evidence that the counters count; the frontend is the evidence that, for this project, the remainder is nothing.
+

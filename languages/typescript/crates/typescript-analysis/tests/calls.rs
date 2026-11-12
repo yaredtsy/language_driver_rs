@@ -709,6 +709,77 @@ fn passed_what_a_method_of_an_arguments_literal_calls_is_in_the_tree() {
     );
 }
 
+/// The counters of what no edge covers: `element_access`, `bind`, `call_apply`, `class`, per occurrence, only those that are above 0.
+fn uncovered(root: &Path, entry: &str) -> Vec<(String, u64)> {
+    let graph = graph_of(root, "src/main.ts", entry);
+    check_invariants(&graph);
+    breakdown(&graph)
+        .uncovered
+        .into_iter()
+        .collect::<Vec<(String, u64)>>()
+}
+
+#[test]
+fn uncovered_what_no_edge_covers_is_a_number_per_kind() {
+    let root = fixture("handed-over");
+    let row = |entry: &str, expected: &[(&str, u64)]| {
+        let expected: Vec<(String, u64)> = expected
+            .iter()
+            .map(|(kind, n)| ((*kind).to_owned(), *n))
+            .collect();
+        assert_eq!(uncovered(&root, entry), expected, "{entry}");
+    };
+    // a function handed over by an element access with a literal key, by `bind` (a name and a method), a class named as a value
+    row("elementAccessHandedOver", &[("element_access", 1)]);
+    row("bindHandedOver", &[("bind", 1)]);
+    row("bindOfAMethod", &[("bind", 1)]);
+    row("classHandedOver", &[("class", 1)]);
+    row("classInAProperty", &[("class", 1)]);
+    // a call through `call` and `apply`: the tree has `Function.call` and no edge to the function
+    row("callAndApply", &[("call_apply", 2)]);
+    // not counted: a computed key (unknowable), a bind whose result is dropped, a class that is constructed or tested
+    row("elementAccessWithAComputedKey", &[]);
+    row("elementAccessCalled", &[]);
+    row("elementAccessKeyIsAFunction", &[]);
+    row("bindDiscarded", &[]);
+    row("classNotHandedOver", &[]);
+    // and the shapes the edges cover are not in it
+    row("constArrowByName", &[]);
+    row("literalByName", &[]);
+    row("argMethod", &[]);
+}
+
+#[test]
+fn uncovered_a_function_handed_over_by_bind_or_an_access_has_no_edge_yet() {
+    // what the counter says is missing is missing: no passed edge for any of these
+    let root = fixture("handed-over");
+    for entry in [
+        "elementAccessHandedOver",
+        "bindHandedOver",
+        "bindOfAMethod",
+        "classHandedOver",
+        "callAndApply",
+    ] {
+        let graph = graph_of(&root, "src/main.ts", entry);
+        assert_eq!(breakdown(&graph).passed, 0, "{entry}");
+    }
+}
+
+#[test]
+fn uncovered_the_breakdown_says_what_each_count_is() {
+    let root = fixture("handed-over");
+    let graph = graph_of(&root, "src/main.ts", "callAndApply");
+    assert_eq!(graph.stats.language.get("uncovered_call_apply"), Some(&2));
+    let text = breakdown(&graph).to_string();
+    assert!(
+        text.contains("not covered by an edge (counted, not drawn): call/apply 2"),
+        "{text}"
+    );
+    // a graph with none prints no line for it
+    let plain = graph_of(&root, "src/main.ts", "literalByName");
+    assert!(!breakdown(&plain).to_string().contains("not covered"));
+}
+
 #[test]
 fn handed_a_def_every_hand_over_reaches_leaves_nothing_to_count() {
     // The counters of what is handed over and reached by no edge are 0 by construction now: a name, and a value that holds defs, each has an edge. They stay as

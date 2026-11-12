@@ -14,7 +14,7 @@ use analyzer_core::solve::{Cancel, Lang, Limits, Solver, Summary};
 use crate::Project;
 use crate::env::Env;
 use crate::key::Key;
-use crate::sem::{Func, Handed, Sem};
+use crate::sem::{Func, Handed, Sem, Uncovered};
 use crate::walk;
 
 /// How to build a graph. The marker style is how a def's marker is read (`ID: …` in its JSDoc).
@@ -54,6 +54,13 @@ impl<'p> TypeScript<'p> {
             style,
             notes: RefCell::new(BTreeMap::new()),
             handed: RefCell::new(HashMap::new()),
+        }
+    }
+
+    /// Count what a walked body hands over or calls that no edge covers (`Uncovered`), once per occurrence. A count and nothing else: no edge, no node.
+    pub(crate) fn note_uncovered(&self, uncovered: &[Uncovered]) {
+        for kind in uncovered {
+            self.note(kind.counter());
         }
     }
 
@@ -189,6 +196,10 @@ pub struct Breakdown {
     /// is not in the tree, because nothing calls it.
     pub handed_written: u64,
     pub handed_named: u64,
+    /// What a body hands over or calls that **no edge covers**, per occurrence, by kind (D22 step 5): `element_access` (a function handed over by `a["k"]`),
+    /// `bind` (handed over bound: `f.bind(…)`, `obj.m.bind(obj)`), `call_apply` (called through `call` or `apply`), `class` (a class named where a value is handed
+    /// over). Only the kinds above 0. A count, not an edge: the def is known and is not in the tree.
+    pub uncovered: BTreeMap<String, u64>,
     pub contexts: u64,
     pub walks: u64,
     pub reuse_hits: u64,
@@ -230,6 +241,12 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
     let language = |key: &str| graph.stats.language.get(key).copied().unwrap_or(0);
     summary.handed_written = language(walk::WRITTEN_NOT_CALLED);
     summary.handed_named = language(walk::NAMED_NOT_CALLED);
+    summary.uncovered = graph
+        .stats
+        .language
+        .iter()
+        .filter_map(|(key, count)| Some((key.strip_prefix("uncovered_")?.to_owned(), *count)))
+        .collect();
     summary.notes = graph
         .stats
         .language
@@ -266,6 +283,23 @@ impl fmt::Display for Breakdown {
             for (note, count) in &self.notes {
                 writeln!(f, "    {note}: {count}")?;
             }
+        }
+        if !self.uncovered.is_empty() {
+            let labels = [
+                ("element_access", "element access"),
+                ("bind", "bind"),
+                ("call_apply", "call/apply"),
+                ("class", "class"),
+            ];
+            let parts: Vec<String> = labels
+                .iter()
+                .filter_map(|(key, label)| Some(format!("{label} {}", self.uncovered.get(*key)?)))
+                .collect();
+            writeln!(
+                f,
+                "  not covered by an edge (counted, not drawn): {}",
+                parts.join(", ")
+            )?;
         }
         if self.handed_written + self.handed_named > 0 {
             writeln!(

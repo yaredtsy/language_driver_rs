@@ -469,6 +469,9 @@ impl Sem {
             sites: Vec::new(),
             nested: Vec::new(),
             lits: Vec::new(),
+            elems: Vec::new(),
+            binds: Vec::new(),
+            call_apply: Vec::new(),
             refs: Vec::new(),
         };
         collector.body_of(node);
@@ -477,6 +480,9 @@ impl Sem {
             sites: collector.sites,
             nested: collector.nested,
             lits: collector.lits,
+            elems: collector.elems,
+            binds: collector.binds,
+            call_apply: collector.call_apply,
             refs: collector.refs,
         });
         self.bodies.borrow_mut().insert(node, Arc::clone(&made));
@@ -638,6 +644,11 @@ struct Collector<'a> {
     nested: Vec<(usize, bool)>,
     /// The object literals written in a position where a value is handed over (`literal_is_handed`): what a literal hands over is its function members.
     lits: Vec<P<Node>>,
+    /// Element accesses (`a["k"]`) in a hand-over position, and the targets of `x.bind(…)` in one and of `x.call(…)` / `x.apply(…)` anywhere (`x`): what no edge
+    /// covers, counted by `Sem::handed_over`.
+    elems: Vec<P<Node>>,
+    binds: Vec<P<Node>>,
+    call_apply: Vec<P<Node>>,
     /// The names in a position where a value is **handed over** (`is_handed_over`): an identifier or a property access, or a shorthand property, with the
     /// span of the name. What each names is asked of the checker later (`Sem::handed_over`).
     refs: Vec<(Span, P<Node>)>,
@@ -648,6 +659,9 @@ struct Body {
     sites: Vec<CallNode>,
     nested: Vec<(usize, bool)>,
     lits: Vec<P<Node>>,
+    elems: Vec<P<Node>>,
+    binds: Vec<P<Node>>,
+    call_apply: Vec<P<Node>>,
     refs: Vec<(Span, P<Node>)>,
 }
 
@@ -725,6 +739,7 @@ impl Collector<'_> {
                         call: node,
                     });
                 }
+                self.note_bound_or_applied(node);
                 // not the type arguments
                 self.collect(node.expression());
                 for &argument in node.arguments() {
@@ -746,6 +761,8 @@ impl Collector<'_> {
                 }
                 return;
             }
+            // `a["k"]` handed over: no edge covers it (a counted remainder)
+            Kind::ElementAccessExpression if is_handed_over(node) => self.elems.push(node),
             // an object literal handed over where it is written hands over its function members
             Kind::ObjectLiteralExpression if literal_is_handed(node) => self.lits.push(node),
             // `a.b`: the access is the name (its own name child is not looked at); the object is walked
@@ -763,6 +780,25 @@ impl Collector<'_> {
             self.collect(Some(child));
             false
         });
+    }
+
+    /// `x.bind(…)` in a hand-over position, and `x.call(…)` / `x.apply(…)` anywhere: `x` is a function that is handed over bound, or called through `call`, and
+    /// no edge covers either. Remembered for the count.
+    fn note_bound_or_applied(&mut self, call: P<Node>) {
+        let Some(callee) = call.expression() else {
+            return;
+        };
+        if callee.kind() != Kind::PropertyAccessExpression {
+            return;
+        }
+        let (Some(target), Some(name)) = (callee.expression(), callee.name()) else {
+            return;
+        };
+        match name.text() {
+            "bind" if is_handed_over(call) => self.binds.push(target),
+            "call" | "apply" => self.call_apply.push(target),
+            _ => {}
+        }
     }
 
     /// A name where a value is handed over: remembered with the span of the name, and the node to ask the checker about.
@@ -1167,6 +1203,35 @@ mod resolve {
         pub(crate) at: Option<Span>,
     }
 
+    /// What a body hands over or calls in a way **no edge covers**, counted per occurrence (D22 step 5): a function handed over by an element access with a
+    /// literal key, a function handed over bound (`f.bind(…)`, `obj.m.bind(obj)`), a function called through `call` or `apply` (the tree has `Function.call`,
+    /// not the function), a class named where a value is handed over (a class is built, so a passed edge cannot point at it).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(crate) enum Uncovered {
+        ElementAccess,
+        Bind,
+        CallApply,
+        Class,
+    }
+
+    impl Uncovered {
+        /// The key in `Stats.language`.
+        pub(crate) fn counter(self) -> &'static str {
+            match self {
+                Uncovered::ElementAccess => "uncovered_element_access",
+                Uncovered::Bind => "uncovered_bind",
+                Uncovered::CallApply => "uncovered_call_apply",
+                Uncovered::Class => "uncovered_class",
+            }
+        }
+    }
+
+    /// What reading one body found about hand-overs: the defs it hands over (each an edge), and what it hands over or calls that no edge covers.
+    pub(crate) struct HandOvers<'p> {
+        pub(crate) handed: Vec<Handed<'p>>,
+        pub(crate) uncovered: Vec<Uncovered>,
+    }
+
     /// Why a site has no target. Each is counted apart in `Stats.language` (D16, rule 8), so a missing edge can be explained from a number.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub(crate) enum Why {
@@ -1493,9 +1558,13 @@ mod resolve {
             &'p self,
             func: Func<'p>,
             style: MarkerStyle<'_>,
-        ) -> Vec<Handed<'p>> {
+        ) -> HandOvers<'p> {
+            let mut uncovered: Vec<Uncovered> = Vec::new();
             let Some(body) = self.body(func, style) else {
-                return Vec::new();
+                return HandOvers {
+                    handed: Vec::new(),
+                    uncovered,
+                };
             };
             let mut found: Vec<Handed<'p>> = Vec::new();
             // a named function expression handed over where it is written (`xs.map(function step() {})`): at its name
@@ -1529,11 +1598,35 @@ mod resolve {
                     }
                 }
             }
-            if body.refs.is_empty() {
-                return found;
-            }
             let _scope = self._region.enter();
             let mut checker = self.program.get_type_checker(&Context::default());
+            // what no edge covers: the function behind a `bind`, a `call` or an `apply`, and behind an element access with a literal key
+            for &target in &body.binds {
+                if !self
+                    .functions_named(&mut checker, target, style)
+                    .0
+                    .is_empty()
+                {
+                    uncovered.push(Uncovered::Bind);
+                }
+            }
+            for &target in &body.call_apply {
+                if !self
+                    .functions_named(&mut checker, target, style)
+                    .0
+                    .is_empty()
+                {
+                    uncovered.push(Uncovered::CallApply);
+                }
+            }
+            for &access in &body.elems {
+                let key = access.as_element_access_expression().argument_expression;
+                if ast::is_string_literal_like(key)
+                    && !self.functions_named(&mut checker, key, style).0.is_empty()
+                {
+                    uncovered.push(Uncovered::ElementAccess);
+                }
+            }
             // in source order, as the body names them
             for &(span, node) in &body.refs {
                 let symbol = if node.kind() == Kind::ShorthandPropertyAssignment {
@@ -1580,38 +1673,95 @@ mod resolve {
                             }
                         }
                     }
-                    for target in callable_declarations(&mut checker, declaration) {
-                        let Some(file_node) = ast::get_source_file_of_node(target) else {
-                            continue;
-                        };
-                        let file = File {
-                            node: file_node,
-                            _sem: PhantomData,
-                            _one_thread: PhantomData,
-                        };
-                        if !self.is_project_code(file) {
-                            continue;
-                        }
-                        let Some(defs) = self.file_defs(file, style) else {
-                            continue;
-                        };
-                        let Some(&def) = defs.def_of.get(&target) else {
-                            continue;
-                        };
-                        let held = Func { file, def };
+                    let (functions, classes) =
+                        self.functions_of_declaration(&mut checker, declaration, style);
+                    for held in functions {
                         let handed = Handed {
                             func: held,
                             written: false,
                             at: Some(span),
                         };
                         // one edge for each place and def: the declarations of one symbol can name a def twice
-                        if self.is_function_with_body(held, style) && !found.contains(&handed) {
+                        if !found.contains(&handed) {
                             found.push(handed);
                         }
                     }
+                    if classes > 0 {
+                        uncovered.push(Uncovered::Class);
+                    }
                 }
             }
-            found
+            HandOvers {
+                handed: found,
+                uncovered,
+            }
+        }
+
+        /// The project functions with a body that `node` (a name, an access, a shorthand property) names, and how many project classes: the symbol's
+        /// declarations, mapped as a call maps them (`callable_declarations`), kept if they are defs of the project.
+        fn functions_named<'p>(
+            &'p self,
+            checker: &mut Checker,
+            node: P<Node>,
+            style: MarkerStyle<'_>,
+        ) -> (Vec<Func<'p>>, usize) {
+            let symbol = if node.kind() == Kind::ShorthandPropertyAssignment {
+                checker.get_shorthand_assignment_value_symbol(Some(node))
+            } else {
+                checker.get_symbol_at_location_exported(node)
+            };
+            let Some(mut symbol) = symbol else {
+                return (Vec::new(), 0);
+            };
+            if symbol.flags().intersects(SymbolFlags::Alias) {
+                symbol = checker.get_aliased_symbol(symbol);
+            }
+            let mut functions = Vec::new();
+            let mut classes = 0;
+            for declaration in symbol.declarations().to_vec() {
+                let (found, class_count) =
+                    self.functions_of_declaration(checker, declaration, style);
+                functions.extend(found);
+                classes += class_count;
+            }
+            (functions, classes)
+        }
+
+        /// What one declaration is, as something a call would enter: the project functions with a body, and the number of project classes.
+        fn functions_of_declaration<'p>(
+            &'p self,
+            checker: &mut Checker,
+            declaration: P<Node>,
+            style: MarkerStyle<'_>,
+        ) -> (Vec<Func<'p>>, usize) {
+            let mut functions = Vec::new();
+            let mut classes = 0;
+            for target in callable_declarations(checker, declaration) {
+                let Some(file_node) = ast::get_source_file_of_node(target) else {
+                    continue;
+                };
+                let file = File {
+                    node: file_node,
+                    _sem: PhantomData,
+                    _one_thread: PhantomData,
+                };
+                if !self.is_project_code(file) {
+                    continue;
+                }
+                let Some(defs) = self.file_defs(file, style) else {
+                    continue;
+                };
+                let Some(&def) = defs.def_of.get(&target) else {
+                    continue;
+                };
+                let held = Func { file, def };
+                if self.is_function_with_body(held, style) {
+                    functions.push(held);
+                } else if defs.outline.defs[def].kind == DefKind::Class {
+                    classes += 1;
+                }
+            }
+            (functions, classes)
         }
 
         /// The function members of an object literal that are defs, through nested literals, each with the span of its key: a method, an arrow or a function
@@ -2155,7 +2305,7 @@ mod resolve {
     }
 }
 
-pub(crate) use resolve::{Handed, Init, Resolved};
+pub(crate) use resolve::{Handed, Init, Resolved, Uncovered};
 
 #[cfg(test)]
 mod tests {

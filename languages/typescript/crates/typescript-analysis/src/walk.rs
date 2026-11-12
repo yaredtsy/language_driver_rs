@@ -50,9 +50,9 @@ pub(crate) fn body<'p>(
     }
     // What the body hands over is a site too (D22): the def's context, at the name, marked passed. It is walked like a call, so what it calls is in the
     // graph, and the edge says it is not one. Placed among the calls by where the name is.
-    let handed = lang.sem.handed_over(f, lang.style);
+    let hand_overs = lang.sem.handed_over(f, lang.style);
     let start = lang.sem.def(f, lang.style).range.start;
-    for held in &handed {
+    for held in &hand_overs.handed {
         if let Some(at) = held.at {
             found.push(SiteCalls::passed(
                 Site::new(at.start.saturating_sub(start), at.end.saturating_sub(start)),
@@ -61,7 +61,8 @@ pub(crate) fn body<'p>(
         }
     }
     found.sort_by_key(|calls| (calls.site.start, calls.site.end));
-    lang.note_handed_over(&handed);
+    lang.note_handed_over(&hand_overs.handed);
+    lang.note_uncovered(&hand_overs.uncovered);
     Summary::complete(found)
 }
 
