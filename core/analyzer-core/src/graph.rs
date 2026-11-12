@@ -225,10 +225,37 @@ impl EdgeTo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[non_exhaustive]
 pub struct Edge {
     pub from: ContextId,
     pub site: Site,
     pub to: EdgeTo,
+    /// `true`: `from` hands the target over at `site` and does not call it there (`onClick={handleClose}`, `xs.map(parse)`; D22). The target is
+    /// walked like any other, so what it calls is in the graph, but this edge is not a call and is never counted as one. Only an edge to a
+    /// [`EdgeTo::Context`] can be passed (`check_invariants` says so). Last, so the order of edges that are not passed is what it was.
+    pub passed: bool,
+}
+
+impl Edge {
+    /// An edge for a call: what every edge was before D22.
+    pub fn new(from: ContextId, site: Site, to: EdgeTo) -> Self {
+        Edge {
+            from,
+            site,
+            to,
+            passed: false,
+        }
+    }
+
+    /// An edge for a def handed over, not called.
+    pub fn passed(from: ContextId, site: Site, to: EdgeTo) -> Self {
+        Edge {
+            from,
+            site,
+            to,
+            passed: true,
+        }
+    }
 }
 
 /// What every language can count. A missing edge should be explainable from a number here.
@@ -385,10 +412,12 @@ pub(crate) mod tests {
 
     #[test]
     fn new_sorts_and_dedups() {
-        let edge = |from: &str, at: u32, to: &str| Edge {
-            from: cid(from),
-            site: Site::at(at),
-            to: EdgeTo::Context(cid(to), Basis::Type),
+        let edge = |from: &str, at: u32, to: &str| {
+            Edge::new(
+                cid(from),
+                Site::at(at),
+                EdgeTo::Context(cid(to), Basis::Type),
+            )
         };
         let g = Graph::new(
             vec![Root::Context(cid("b"))],

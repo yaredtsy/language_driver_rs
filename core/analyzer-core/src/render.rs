@@ -45,6 +45,9 @@ pub struct Node {
     pub qname: String,
     /// `None` for the root.
     pub site: Option<Site>,
+    /// The parent hands this def over at `site` and does not call it (D22): `onClick={handleClose}`. Its children are what the def calls when it is
+    /// walked. A field and not a `Mark`: a passed node can also be `Recursive`, and a merge must see it as a value.
+    pub passed: bool,
     /// Which graph contexts this node stands for. A construction stands for its `init` contexts (none if the class has
     /// no constructor function).
     pub contexts: Vec<ContextId>,
@@ -108,6 +111,8 @@ struct Child<'g> {
     qname: String,
     contexts: Vec<&'g ContextId>,
     kind: Kind,
+    /// Handed over at `site`, not called (`Edge::passed`). Only project code can be.
+    passed: bool,
 }
 
 /// A node being built, and the children it has not visited yet.
@@ -134,7 +139,7 @@ pub fn render(graph: &Graph, root: &Root, opts: &RenderOptions) -> Node {
     let contexts: Vec<&ContextId> = root.context().into_iter().collect();
     // Functions on the path from the root to the node being built (rule 8 asks "is it on the path?").
     let mut path: HashSet<StableDef> = HashSet::from([func.clone()]);
-    let mut stack = vec![r.open(func, qname, None, contexts, 0)];
+    let mut stack = vec![r.open(func, qname, None, false, contexts, 0)];
 
     loop {
         let top = stack.last_mut().expect("the root frame is popped last");
@@ -166,7 +171,14 @@ pub fn render(graph: &Graph, root: &Root, opts: &RenderOptions) -> Node {
             Kind::Code => {
                 path.insert(child.func.clone());
                 let depth = stack.len() as u32;
-                stack.push(r.open(child.func, child.qname, site, child.contexts, depth));
+                stack.push(r.open(
+                    child.func,
+                    child.qname,
+                    site,
+                    child.passed,
+                    child.contexts,
+                    depth,
+                ));
             }
         }
     }
@@ -177,6 +189,7 @@ fn leaf(c: Child<'_>, mark: Mark) -> Node {
         func: c.func,
         qname: c.qname,
         site: Some(c.site),
+        passed: c.passed,
         contexts: c.contexts.into_iter().cloned().collect(),
         marks: vec![mark],
         children: Vec::new(),
@@ -189,6 +202,7 @@ impl<'g> Renderer<'g> {
         func: StableDef,
         qname: String,
         site: Option<Site>,
+        passed: bool,
         contexts: Vec<&'g ContextId>,
         depth: u32,
     ) -> Frame<'g> {
@@ -209,6 +223,7 @@ impl<'g> Renderer<'g> {
             func,
             qname,
             site,
+            passed,
             contexts: contexts.into_iter().cloned().collect(),
             marks,
             children: Vec::new(),
@@ -219,15 +234,15 @@ impl<'g> Renderer<'g> {
         }
     }
 
-    /// Rule 7: group the edges of all `contexts` by (site, callee function); rule 9: leave out what is hidden.
+    /// Rule 7: group the edges of all `contexts` by (site, callee function, called or passed); rule 9: leave out what is hidden.
     fn children_of(&self, contexts: &[&'g ContextId]) -> Vec<Child<'g>> {
-        let mut groups: BTreeMap<(Site, StableDef, u8), Child<'g>> = BTreeMap::new();
+        let mut groups: BTreeMap<(Site, StableDef, u8, bool), Child<'g>> = BTreeMap::new();
         for id in contexts {
             for edge in self.graph.edges_from(id) {
                 let Some(child) = self.child(edge) else {
                     continue;
                 };
-                match groups.entry((edge.site, child.func.clone(), child.order.0)) {
+                match groups.entry((edge.site, child.func.clone(), child.order.0, child.passed)) {
                     std::collections::btree_map::Entry::Occupied(mut o) => {
                         for id in child.contexts {
                             if !o.get().contexts.contains(&id) {
@@ -245,14 +260,16 @@ impl<'g> Renderer<'g> {
         for c in &mut out {
             c.contexts.sort();
         }
-        out.sort_by(|a, b| (a.site, a.order, &a.func).cmp(&(b.site, b.order, &b.func)));
+        out.sort_by(|a, b| {
+            (a.site, a.order, &a.func, a.passed).cmp(&(b.site, b.order, &b.func, b.passed))
+        });
         out
     }
 
     fn child(&self, edge: &'g Edge) -> Option<Child<'g>> {
         let site = edge.site;
         match &edge.to {
-            EdgeTo::Context(id, _) => self.code(site, id),
+            EdgeTo::Context(id, _) => self.code(site, id, edge.passed),
             EdgeTo::Construct { class, init, .. } => self.class(site, class, init.as_ref()),
             EdgeTo::External(ext, _) => self.opts.show_external.then(|| Child {
                 site,
@@ -269,6 +286,7 @@ impl<'g> Renderer<'g> {
                 },
                 contexts: Vec::new(),
                 kind: Kind::External,
+                passed: false,
             }),
             EdgeTo::Unresolved(_) => self.opts.show_unresolved.then(|| Child {
                 site,
@@ -281,11 +299,12 @@ impl<'g> Renderer<'g> {
                 qname: "<unresolved>".to_owned(),
                 contexts: Vec::new(),
                 kind: Kind::Unresolved,
+                passed: false,
             }),
         }
     }
 
-    fn code(&self, site: Site, id: &'g ContextId) -> Option<Child<'g>> {
+    fn code(&self, site: Site, id: &'g ContextId, passed: bool) -> Option<Child<'g>> {
         if self.opts.only_marked && !id.func.is_marked() {
             return None;
         }
@@ -297,6 +316,7 @@ impl<'g> Renderer<'g> {
             qname,
             contexts: vec![id],
             kind: Kind::Code,
+            passed,
         })
     }
 
@@ -319,6 +339,7 @@ impl<'g> Renderer<'g> {
             qname,
             contexts: init.into_iter().collect(),
             kind: Kind::Code,
+            passed: false,
         })
     }
 
@@ -331,13 +352,17 @@ impl<'g> Renderer<'g> {
     }
 }
 
-/// One line per node, two spaces per level: `qname`, then ` [Mark]` for each mark. The format of the scenario files.
+/// One line per node, two spaces per level: `qname`, then ` [Passed]` when the parent hands the def over and does not call it (D22), then ` [Mark]`
+/// for each mark. The format of the scenario files; a tree with no passed node prints what it always printed.
 pub fn to_text(root: &Node) -> String {
     let mut out = String::new();
     let mut stack = vec![(root, 0usize)];
     while let Some((node, level)) = stack.pop() {
         out.push_str(&"  ".repeat(level));
         out.push_str(&node.qname);
+        if node.passed {
+            out.push_str(" [Passed]");
+        }
         for m in &node.marks {
             out.push_str(" [");
             out.push_str(m.as_str());
@@ -392,11 +417,7 @@ mod tests {
                     ),
                     callee => EdgeTo::Context(cid(callee), Basis::Type),
                 };
-                edges.push(Edge {
-                    from: cid(name.trim()),
-                    site: Site::at(i as u32 * 10),
-                    to,
-                });
+                edges.push(Edge::new(cid(name.trim()), Site::at(i as u32 * 10), to));
             }
         }
         Graph::new(vec![], defs, contexts, edges, Stats::default())
@@ -444,16 +465,8 @@ mod tests {
         };
         let site = Site::at(0);
         let mut edges = vec![
-            Edge {
-                from: cid("main"),
-                site,
-                to: EdgeTo::Context(cid("f"), Basis::Type),
-            },
-            Edge {
-                from: cid("main"),
-                site,
-                to: EdgeTo::Context(f2.clone(), Basis::Type),
-            },
+            Edge::new(cid("main"), site, EdgeTo::Context(cid("f"), Basis::Type)),
+            Edge::new(cid("main"), site, EdgeTo::Context(f2.clone(), Basis::Type)),
         ];
         edges.extend(g.edges.clone());
         let mut contexts = g.contexts.clone();
@@ -470,16 +483,8 @@ mod tests {
         let mut g = graph(&["main:", "b:", "a:"]);
         let site = Site::at(0);
         let mut edges = vec![
-            Edge {
-                from: cid("main"),
-                site,
-                to: EdgeTo::Context(cid("a"), Basis::Type),
-            },
-            Edge {
-                from: cid("main"),
-                site,
-                to: EdgeTo::Context(cid("b"), Basis::Type),
-            },
+            Edge::new(cid("main"), site, EdgeTo::Context(cid("a"), Basis::Type)),
+            Edge::new(cid("main"), site, EdgeTo::Context(cid("b"), Basis::Type)),
         ];
         edges.extend(g.edges.clone());
         g = with_edges(&g, edges);
@@ -516,11 +521,11 @@ mod tests {
         let mut g = graph(&["f:", "main:"]);
         let mut contexts = g.contexts.clone();
         contexts.push(Context::new(f2.clone()));
-        let edges = vec![Edge {
-            from: cid("f"),
-            site: Site::at(0),
-            to: EdgeTo::Context(f2, Basis::Type),
-        }];
+        let edges = vec![Edge::new(
+            cid("f"),
+            Site::at(0),
+            EdgeTo::Context(f2, Basis::Type),
+        )];
         g = Graph::new(vec![], g.defs.clone(), contexts, edges, Stats::default());
         assert_eq!(
             text(&g, "f", &RenderOptions::default()),
@@ -579,24 +584,24 @@ mod tests {
         defs.push(def_at("Foo", DefKind::Class, 3));
         defs.push(def_at("Bar", DefKind::Class, 4));
         let mut edges = g.edges.clone();
-        edges.push(Edge {
-            from: cid("main"),
-            site: Site::at(0),
-            to: EdgeTo::Construct {
+        edges.push(Edge::new(
+            cid("main"),
+            Site::at(0),
+            EdgeTo::Construct {
                 class: marked("Foo"),
                 init: Some(cid("Foo.init")),
                 basis: Basis::Type,
             },
-        });
-        edges.push(Edge {
-            from: cid("main"),
-            site: Site::at(5),
-            to: EdgeTo::Construct {
+        ));
+        edges.push(Edge::new(
+            cid("main"),
+            Site::at(5),
+            EdgeTo::Construct {
                 class: marked("Bar"),
                 init: None,
                 basis: Basis::Type,
             },
-        });
+        ));
         Graph::new(vec![], defs, g.contexts.clone(), edges, Stats::default())
     }
 
@@ -619,15 +624,15 @@ mod tests {
     #[test]
     fn rule_5_a_construct_without_init_is_still_a_leaf_node() {
         let mut g = graph(&["main:"]);
-        let edge = Edge {
-            from: cid("main"),
-            site: Site::at(0),
-            to: EdgeTo::Construct {
+        let edge = Edge::new(
+            cid("main"),
+            Site::at(0),
+            EdgeTo::Construct {
                 class: marked("Bar"),
                 init: None,
                 basis: Basis::Type,
             },
-        };
+        );
         let mut defs = g.defs.clone();
         defs.push(def_at("Bar", DefKind::Class, 1));
         g = Graph::new(
@@ -645,11 +650,7 @@ mod tests {
         // a class with no row, and a called function with a context and no row, each beside a described function that
         // is defined later: the unknown one sorts first at its site
         let site = Site::at(0);
-        let edge = |to| Edge {
-            from: cid("main"),
-            site,
-            to,
-        };
+        let edge = |to| Edge::new(cid("main"), site, to);
         let g = graph(&["main:", "a:"]);
         let construct = EdgeTo::Construct {
             class: marked("Ghost"),
@@ -689,11 +690,11 @@ mod tests {
     #[test]
     fn an_edge_to_a_context_the_graph_does_not_hold_is_still_drawn() {
         let g = graph(&["main:"]);
-        let edge = Edge {
-            from: cid("main"),
-            site: Site::at(0),
-            to: EdgeTo::Context(cid("gone"), Basis::Type),
-        };
+        let edge = Edge::new(
+            cid("main"),
+            Site::at(0),
+            EdgeTo::Context(cid("gone"), Basis::Type),
+        );
         let g = with_edges(&g, vec![edge]);
         assert_eq!(
             text(&g, "main", &RenderOptions::default()),
@@ -707,24 +708,24 @@ mod tests {
         // Foo's constructor builds a Foo
         let g = graph(&["main:", "Foo:", "Foo.init:"]);
         let edges = vec![
-            Edge {
-                from: cid("main"),
-                site: Site::at(0),
-                to: EdgeTo::Construct {
+            Edge::new(
+                cid("main"),
+                Site::at(0),
+                EdgeTo::Construct {
                     class: marked("Foo"),
                     init: Some(cid("Foo.init")),
                     basis: Basis::Type,
                 },
-            },
-            Edge {
-                from: cid("Foo.init"),
-                site: Site::at(0),
-                to: EdgeTo::Construct {
+            ),
+            Edge::new(
+                cid("Foo.init"),
+                Site::at(0),
+                EdgeTo::Construct {
                     class: marked("Foo"),
                     init: Some(cid("Foo.init")),
                     basis: Basis::Type,
                 },
-            },
+            ),
         ];
         let g = with_edges(&g, edges);
         assert_eq!(
@@ -741,15 +742,15 @@ mod tests {
             qname: "Foo".into(),
             nth: 0,
         };
-        let edge = Edge {
-            from: cid("main"),
-            site: Site::at(0),
-            to: EdgeTo::Construct {
+        let edge = Edge::new(
+            cid("main"),
+            Site::at(0),
+            EdgeTo::Construct {
                 class: class.clone(),
                 init: None,
                 basis: Basis::Type,
             },
-        };
+        );
         let mut row = def_at("Foo", DefKind::Class, 1);
         row.id = class;
         let mut defs = g.defs.clone();
@@ -927,17 +928,99 @@ mod tests {
         let (g, root) = constructed(&["init:"], Some("init"));
         let g = with_edges(
             &g,
-            vec![Edge {
-                from: cid("init"),
-                site: Site::at(0),
-                to: EdgeTo::Construct {
+            vec![Edge::new(
+                cid("init"),
+                Site::at(0),
+                EdgeTo::Construct {
                     class: marked("Foo"),
                     init: Some(cid("init")),
                     basis: Basis::Type,
                 },
-            }],
+            )],
         );
         let tree = render(&g, &root, &RenderOptions::default());
         assert_eq!(to_text(&tree), "Foo\n  Foo [Recursive]\n");
+    }
+
+    // D22
+
+    fn toy_text(
+        program: &[(&'static str, &[&'static str])],
+        entry: &'static str,
+        opts: &RenderOptions,
+    ) -> String {
+        let g = crate::solve::tests::graph_of(program, entry);
+        to_text(&render(&g, &g.entries[0], opts))
+    }
+
+    #[test]
+    fn d22_a_def_handed_over_is_a_node_marked_passed_with_what_it_calls_under_it() {
+        let program: &[(&'static str, &[&'static str])] = &[
+            ("main", &["a", ">a", ">b"]),
+            ("a", &[]),
+            ("b", &["c"]),
+            ("c", &[]),
+        ];
+        assert_eq!(
+            toy_text(program, "main", &RenderOptions::default()),
+            "main\n  a\n  a [Passed]\n  b [Passed]\n    c\n"
+        );
+    }
+
+    #[test]
+    fn d22_a_passed_def_already_on_the_path_is_a_recursive_leaf_and_still_passed() {
+        assert_eq!(
+            toy_text(&[("f", &[">f"])], "f", &RenderOptions::default()),
+            "f\n  f [Passed] [Recursive]\n"
+        );
+    }
+
+    #[test]
+    fn d22_a_tree_with_no_passed_node_prints_what_it_printed() {
+        let g = graph(&["main: a b", "a: b", "b:"]);
+        let tree = render(
+            &g,
+            &g.entries
+                .first()
+                .cloned()
+                .unwrap_or(Root::Context(cid("main"))),
+            &RenderOptions::default(),
+        );
+        assert_eq!(to_text(&tree), "main\n  a\n    b\n  b\n");
+        fn any_passed(n: &Node) -> bool {
+            n.passed || n.children.iter().any(any_passed)
+        }
+        assert!(!any_passed(&tree));
+    }
+
+    #[test]
+    fn d22_hidden_hides_a_passed_node_and_what_is_under_it() {
+        let mut g = graph(&["main: a", "a: b", "b:"]);
+        let unmarked = StableDef::Path {
+            module: "m".into(),
+            qname: "a".into(),
+            nth: 0,
+        };
+        for e in &mut g.edges {
+            if e.to == EdgeTo::Context(cid("a"), Basis::Type) {
+                e.to = EdgeTo::Context(ContextId::of(unmarked.clone()), Basis::Type);
+                e.passed = true;
+            }
+        }
+        let mut row = def("a");
+        row.id = unmarked.clone();
+        g.defs.push(row);
+        g.defs.sort_by(|a, b| a.id.cmp(&b.id));
+        g.contexts.push(Context::new(ContextId::of(unmarked)));
+        g.contexts.sort_by(|a, b| a.id.cmp(&b.id));
+        let only = RenderOptions {
+            only_marked: true,
+            ..RenderOptions::default()
+        };
+        assert_eq!(text(&g, "main", &only), "main\n");
+        assert_eq!(
+            text(&g, "main", &RenderOptions::default()),
+            "main\n  a [Passed]\n"
+        );
     }
 }

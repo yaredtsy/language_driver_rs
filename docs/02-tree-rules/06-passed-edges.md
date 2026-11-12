@@ -1,6 +1,7 @@
 # Note: an edge that passes a def instead of calling it (D22)
 
-Status: **a proposal for the owner's OK (step 1 of 6). Nothing here is built.** Written on 2026-11-12 from reading `core/analyzer-core/src/{graph,solve,render,wire}.rs`, `core/analyzer-testkit`,
+Status: **the shape was approved by the owner on 2026-11-12; step 2 (core) is built** (the sections below are the shape as approved, with the four additions of step 2: the wire format version, the pointer
+to the `vnoc` side, classes, and text dumps). Steps 3 to 6 are not. Written on 2026-11-12 from reading `core/analyzer-core/src/{graph,solve,render,wire}.rs`, `core/analyzer-testkit`,
 `languages/python/.../interp/core_graph.rs` and the TypeScript counter (`languages/typescript/ENGINE.md`, "Defs handed over and not called"). Every `[check]` is a claim to verify while building.
 
 ## Why
@@ -131,10 +132,34 @@ TaskDetailPanel
 - `[check]` whether V-NOC's reader of the wire (`vnoc/drivers/*`) tolerates a field it does not know. The field is absent unless a passed node exists, so a driver that rejects unknown fields fails only on
   a graph that has one; the TypeScript driver is the first that will.
 
+#### The wire format version
+
+`analyzer_core::wire::WIRE_FORMAT_VERSION: u32`, a plain number, documented as **bumped when a field is added that changes what a node means**: a reader that predates such a field draws a wrong tree
+and does not fail, which ignoring an unknown field cannot catch. This repo has no handshake (drivers stay in `vnoc`, Q-M7); the driver reports the constant in `initialize` and the backend checks it
+([`03-typescript/07-ts5-driver-needs.md`](../03-typescript/07-ts5-driver-needs.md) §8 says how, and is not repeated here).
+
+- **1** is the wire through E3: D17's fields, and E2's `target_*` and `call_site_file` and the merge key by the target's identity. By the owner's rule E2 does **not** bump it: those fields say more about a
+  node, they do not change what it is. The Python session did not plan a number and left this count to the owner; **the owner confirms it** (the alternative is to count E2's merge-key change as a
+  change of meaning, which makes `passed` 3).
+- **2** is `passed`. A test (`d22_the_wire_format_version_is_a_number_changed_on_purpose`) holds the value, so changing it is a decision with a line in the doc.
+
 ### 5. Python
 
 Nothing yet, and its tests stay green: Python builds its graph by its own solver and writes `Edge::new` (the one line in `core_graph.rs`); its wire is the same bytes. Python's context-sensitive solver could
 one day pass a callback to `map`; that is a decision for its session and needs nothing from this note beyond the field.
+
+## Where a graph is printed as text
+
+A passed edge is **shown as passed and is not counted as a call** wherever a graph becomes text. Each place says it only when it is true, so a graph with no passed edge prints what it always printed and no
+snapshot changes:
+
+| Where | What |
+|---|---|
+| the tree (`to_text`, the scenario files) | ` [Passed]` after the name |
+| the TypeScript breakdown (`typescript-cli calls`, `Breakdown`) | `calls` no longer includes a passed edge; the edges line ends with `, N passed` when N > 0 (`Breakdown.passed`) |
+| the TypeScript edge listing used by the tests (`edges_as_text`) | `pass X` where a call is `call X` |
+| Python's graph snapshot printer (`graph_text`) | ` passed` at the end of an edge line, only when the flag is true |
+| the graph's `Debug` dump (`typescript-cli calls --graph`) | `passed: true` is a field of `Edge`, so it is there as any field is |
 
 ## What this does not do
 
@@ -145,6 +170,9 @@ A passed edge says what the handing def **gives**, not what the receiver **calls
 
 - **The graph gets bigger.** Every handed-over body is now walked: on `TaskDetailPanel` the 7 handlers and what they reach. Contexts, tree nodes and graph time are measured **before and after at step 3**
   (graph time was 16–18 ms for 41 contexts).
+- **A reader older than `passed` draws a handed-over def as a call.** It ignores the field it does not know, and the node looks like a call at the site where the def is only named. That is the
+  case `WIRE_FORMAT_VERSION` exists for, and the `vnoc`-side items that make use of it (a versioned drivers folder, the driver reporting the version in `initialize` and the backend checking it) are written
+  down in [`03-typescript/07-ts5-driver-needs.md`](../03-typescript/07-ts5-driver-needs.md) §8, not here. Nothing in this repo checks it.
 - **A tree can show a def twice** (passed and called). Intended, and why `passed` is part of the key.
 - **An unseen caller of a passed def is not an edge.** If the receiver calls it, the tree shows it under the handing def anyway: the tree says "this def gives X to something", not "this def runs X".
   That is the one sentence a reader needs, and what the `[Passed]` mark is for.
@@ -159,10 +187,10 @@ reads `Edge { to, .. }`, which `#[non_exhaustive]` still allows inside a pattern
 | # | Do | Proof |
 |---|---|---|
 | 1 | this note, and D22 in `docs/07` | the owner's OK on the shape |
-| 2 | core: `Edge.passed` with `new`/`passed`, `SiteCalls::passed`, the solver stamp, `Node.passed`, `[Passed]`, `Frame.passed`, the merge key, the invariant; rule 7 in `02-the-rules.md` is amended in the same commit | a toy language in `core/` (below); every language's tests green; the wire of a graph with no passed edge is byte-identical |
+| 2 | **Done.** core: `Edge.passed` with `new`/`passed`, `SiteCalls::passed`, the solver stamp, `Node.passed`, `[Passed]`, `Frame.passed`, the merge key, the invariant; rule 7 in `02-the-rules.md` is amended in the same commit | a toy language in `core/` (below); every language's tests green; the wire of a graph with no passed edge is byte-identical |
 | 3 | TypeScript, by name: every reference the counter finds is a passed edge at its name | the `handed-over` fixture rows change on purpose; `TaskDetailPanel`'s 7 are edges and `handleClose`'s call inside `handleBack` is in the tree; `def_named_not_called` is 0 for the shapes covered; graph time before and after |
 | 4 | TypeScript, written inside an expression (literal methods, D21 arrows in a passed-on literal) | the Q-TS2 fixture changes its answer on purpose; `traverse` gets `toggleNodeExpansion` back; the 3 written on the frontend are edges. **Q-TS2 is closed** |
-| 5 | keep the counters for what is still not covered | the remainder is a number |
+| 5 | keep the counters for what is still not covered: an element access, `f.bind(…)`, `f.call(…)`, **and a class handed over by name** (`register(MyClass)`, `{ Icon: MyClass }`). A passed edge points at a context, and a class has none (a class is a `Construct` target; its constructor is `init`), so it cannot be passed; the counter of the handed-over defs filters function-like defs and does not see a class at all. Step 5 adds a count for it | the remainder is a number, a class included |
 | 6 | TS step 6: JSX, tagged templates, decorators, accessors | its own fixtures |
 
 ### The test of step 2 (a toy language in `core/`)

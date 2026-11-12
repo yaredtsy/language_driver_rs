@@ -22,7 +22,7 @@ or ty. Every language in this repo follows all twelve. Where a rule has a part t
 | 4 | **Resolve from what the walk knows first, from the engine second.** |
 | 5 | **A call has one of four kinds of target:** project code, a construction, external code, unresolved. |
 | 6 | **Never guess, never fail.** Every step that can fail returns "no result". A partial graph is a valid answer. |
-| 7 | **One tree node per call site and callee function.** |
+| 7 | **One tree node per call site and callee function, and whether it is called or handed over.** |
 | 8 | **Recursion is shown, not entered.** |
 | 9 | **Hidden means hidden with everything under it.** |
 | 10 | **Precision limits and cost limits are different things.** A cost limit only cuts, is marked, is counted, and is never cached. |
@@ -107,13 +107,17 @@ edges with the same `site`.
 
 ## 3. Rules about the tree
 
-### Rule 7: one node per call site and callee function
+### Rule 7: one node per call site and callee function, and whether it is called or handed over
 
 When one site reaches several contexts of the **same** function (a union argument), they are one node whose `contexts` list has several entries,
 and its children are the union of theirs. Without this, V-NOC's merge would count one call as two.
 
 When one site reaches **different** functions, they are sibling nodes, ordered by where each is defined (file, then offset), never by the order
 the analysis found them.
+
+A def can also be **handed over** instead of called (`onClick={handleClose}`, `xs.map(parse)`; D22,
+[`06-passed-edges.md`](06-passed-edges.md)). That edge is walked like a call and drawn as a node marked `[Passed]`; `passed` is part of what
+makes two nodes one, so a def called at one site and handed over at another is two nodes, and a merged wire never counts a hand-over as a call.
 
 Children of a node are ordered by `site`, which is source order.
 

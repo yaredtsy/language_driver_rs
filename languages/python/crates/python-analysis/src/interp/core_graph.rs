@@ -171,11 +171,7 @@ pub(crate) fn core_graph(s: &Solver<'_>, entries: &[ContextId]) -> Graph {
                         EdgeTo::Unresolved(Reason::new(UNKNOWN_CALLEE))
                     }
                 };
-                edges.push(Edge {
-                    from: ids[&c].clone(),
-                    site,
-                    to,
-                });
+                edges.push(Edge::new(ids[&c].clone(), site, to));
             }
         }
     }

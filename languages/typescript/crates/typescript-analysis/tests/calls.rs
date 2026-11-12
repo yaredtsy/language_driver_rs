@@ -291,6 +291,7 @@ fn edges_as_text(graph: &Graph, root: &Path) -> Vec<String> {
             let callee = &text[(from.range.start + edge.site.start) as usize
                 ..(from.range.start + edge.site.end) as usize];
             let to = match &edge.to {
+                EdgeTo::Context(id, _) if edge.passed => format!("pass {}", name(&id.func)),
                 EdgeTo::Context(id, _) => format!("call {}", name(&id.func)),
                 EdgeTo::Construct { class, init, .. } => match init {
                     Some(init) => format!("construct {} init {}", name(class), name(&init.func)),

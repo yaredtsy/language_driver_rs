@@ -28,14 +28,33 @@ pub enum Target<L: Lang + ?Sized> {
     Unresolved(Reason),
 }
 
+#[non_exhaustive]
 pub struct SiteCalls<L: Lang + ?Sized> {
     pub site: Site,
     pub targets: Vec<Target<L>>,
+    /// The targets are handed over at this site, not called (D22). Only a `Target::Call` can be: the solver walks it as it walks a call, and the
+    /// edge says it is not one.
+    pub passed: bool,
 }
 
 impl<L: Lang + ?Sized> SiteCalls<L> {
+    /// What is called at `site`.
     pub fn new(site: Site, targets: Vec<Target<L>>) -> Self {
-        SiteCalls { site, targets }
+        SiteCalls {
+            site,
+            targets,
+            passed: false,
+        }
+    }
+
+    /// What is handed over at `site` (`onClick={handleClose}`): each target must be a `Target::Call`, and the language chooses the site (the span of
+    /// the name).
+    pub fn passed(site: Site, targets: Vec<Target<L>>) -> Self {
+        SiteCalls {
+            site,
+            targets,
+            passed: true,
+        }
     }
 }
 
@@ -274,10 +293,16 @@ impl<L: Lang> Solver<L> {
                             EdgeTo::Unresolved(why.clone())
                         }
                     };
-                    edges.push(Edge {
-                        from: from.clone(),
-                        site: calls.site,
-                        to,
+                    // Only a call into project code can be handed over; anything else a language marks passed is its bug, and the flag is dropped.
+                    debug_assert!(
+                        !calls.passed || matches!(to, EdgeTo::Context(..)),
+                        "a site marked passed has a target that is not a call into project code"
+                    );
+                    let passed = calls.passed && matches!(to, EdgeTo::Context(..));
+                    edges.push(if passed {
+                        Edge::passed(from.clone(), calls.site, to)
+                    } else {
+                        Edge::new(from.clone(), calls.site, to)
                     });
                 }
             }
@@ -387,7 +412,12 @@ pub(crate) mod tests {
                 .flatten()
                 .enumerate()
                 .map(|(i, callee)| {
-                    let target = match *callee {
+                    // `>name`: handed over at this site, not called (D22)
+                    let (callee, passed) = match callee.strip_prefix('>') {
+                        Some(name) => (name, true),
+                        None => (*callee, false),
+                    };
+                    let target = match callee {
                         "?" => Target::Unresolved(Reason::new("toy")),
                         c if self.program.contains_key(c) => Target::Call(c, ()),
                         c => Target::External(External {
@@ -395,7 +425,11 @@ pub(crate) mod tests {
                             name: c.into(),
                         }),
                     };
-                    SiteCalls::new(Site::at(i as u32), vec![target])
+                    if passed {
+                        SiteCalls::passed(Site::at(i as u32), vec![target])
+                    } else {
+                        SiteCalls::new(Site::at(i as u32), vec![target])
+                    }
                 })
                 .collect();
             Summary::complete(sites)
@@ -418,7 +452,10 @@ pub(crate) mod tests {
         }
     }
 
-    fn graph_of(program: &[(&'static str, &[&'static str])], entry: &'static str) -> Graph {
+    pub(crate) fn graph_of(
+        program: &[(&'static str, &[&'static str])],
+        entry: &'static str,
+    ) -> Graph {
         let mut solver = Solver::new(Toy::new(program), Limits::default());
         solver.graph(&[(entry, ())], &Cancel::new())
     }
@@ -779,5 +816,83 @@ pub(crate) mod tests {
             [StableDef::Marked("b".into()), StableDef::Marked("a".into())]
         );
         assert_eq!(names(&g), ["a", "b"]);
+    }
+
+    // D22: a def handed over is an edge to its context at the site where it is named, walked like a call and marked as not one.
+
+    fn edges_text(g: &Graph) -> Vec<String> {
+        let name = |f: &StableDef| g.def(f).unwrap().qname.clone();
+        g.edges
+            .iter()
+            .map(|e| {
+                let EdgeTo::Context(to, _) = &e.to else {
+                    return format!("{} @{} other", name(&e.from.func), e.site.start);
+                };
+                format!(
+                    "{} @{} {} {}",
+                    name(&e.from.func),
+                    e.site.start,
+                    if e.passed { "passes" } else { "calls" },
+                    name(&to.func)
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_def_handed_over_is_walked_and_its_edge_says_it_is_not_a_call() {
+        // `main` calls `a`, hands `a` over, hands `b` over; `b` calls `c`, which only the hand-over reaches
+        let g = graph_of(
+            &[
+                ("main", &["a", ">a", ">b"]),
+                ("a", &[]),
+                ("b", &["c"]),
+                ("c", &[]),
+            ],
+            "main",
+        );
+        no_dangling(&g);
+        assert_eq!(
+            edges_text(&g),
+            [
+                "b @0 calls c",
+                "main @0 calls a",
+                "main @1 passes a",
+                "main @2 passes b"
+            ]
+        );
+        // `c` is in the graph because the hand-over of `b` walked `b`
+        assert!(
+            g.context(&ContextId::of(StableDef::Marked("c".into())))
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn a_def_that_is_called_and_passed_has_both_edges_at_their_own_sites() {
+        let g = graph_of(&[("main", &["a", ">a"]), ("a", &[])], "main");
+        let to_a: Vec<(u32, bool)> = g.edges.iter().map(|e| (e.site.start, e.passed)).collect();
+        assert_eq!(to_a, [(0, false), (1, true)]);
+    }
+
+    #[test]
+    fn passing_does_not_change_what_a_graph_without_a_hand_over_is() {
+        let g = graph_of(&[("main", &["a"]), ("a", &[])], "main");
+        assert!(g.edges.iter().all(|e| !e.passed));
+    }
+
+    #[test]
+    fn a_call_that_is_not_into_project_code_cannot_be_marked_passed() {
+        // the solver drops the flag for an external, an unresolved or a construction: a language that asked for it has a bug, and in a release build the
+        // edge is a call, never a passed edge to something that cannot be walked
+        let mut solver = Solver::new(Toy::new(&[("main", &[">ext", ">?"])]), Limits::default());
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            solver.graph(&[("main", ())], &Cancel::new())
+        }));
+        if cfg!(debug_assertions) {
+            assert!(result.is_err(), "a debug build says so");
+        } else {
+            assert!(result.unwrap().edges.iter().all(|e| !e.passed));
+        }
     }
 }

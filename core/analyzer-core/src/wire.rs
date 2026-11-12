@@ -15,6 +15,15 @@ use crate::render::{Node, RenderOptions, render};
 use crate::text::LineIndex;
 use serde::Serialize;
 
+/// The version of the wire's format: a plain number, **bumped when a field is added that changes what a node means**, so a reader that predates it
+/// would draw a wrong tree and not fail. A reader may ignore a field it does not know; for such a field that is not enough, which is what this is
+/// for. A driver reports it when it starts (the driver side, `docs/03-typescript/07-ts5-driver-needs.md` §8); nothing here checks it.
+///
+/// - **1**: the wire through E3 (D17's fields; E2's `target_*` and `call_site_file` and the merge key by the target's identity, which say more about a
+///   node without changing what it is).
+/// - **2**: `passed` (D22): a node can be a def the parent hands over, not calls. A reader older than this draws it as a call.
+pub const WIRE_FORMAT_VERSION: u32 = 2;
+
 /// How an id is written on the wire: the prefix of its kind, then the marker text. The prefixes are the caller's, never ours (the way the
 /// marker label is), so no product word is in this crate. Empty by default: the wire then carries the bare marker text.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -75,11 +84,15 @@ pub struct Frame {
     pub target_kind: Option<DefKind>,
     /// 0 in an unmerged wire. In a merged one, the calls joined into this node, less one.
     pub call_count: u32,
-    /// Where the call is. `None` for the root.
+    /// Where the call is, or where the def is handed over when `passed`. `None` for the root.
     pub call_site: Option<LineSpan>,
     /// The file `call_site` is in, relative to the project root. `None` for the root. For a call made in an inherited constructor it is the
     /// constructor's file, not the class's.
     pub call_site_file: Option<String>,
+    /// `true`: the parent hands this def over at `call_site` and does not call it (D22). `call_count` then counts the hand-overs joined into this node,
+    /// and `children` are what the def calls when it is walked. Absent when `false`, so a wire with no passed node is what it was.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub passed: bool,
     /// Which graph contexts this node shows.
     pub contexts: Vec<ContextId>,
     /// `recursive`, `cut`, `incomplete`, and with the options on, `external` and `unresolved`.
@@ -170,6 +183,7 @@ fn head(
         call_count: 0,
         call_site,
         call_site_file: node.site.and(caller).map(|c| c.file.clone()),
+        passed: node.passed,
         contexts: node.contexts.clone(),
         marks: node
             .marks
@@ -226,19 +240,22 @@ pub fn wire(graph: &Graph, root: &Root, sources: &dyn Sources, opts: &WireOption
     if opts.merged { merge(frame) } else { frame }
 }
 
-/// Whether two sibling frames are one target. Project code is named by (file, outline qualname, occurrence), so two defs with one display name
-/// stay two nodes (B6); an external or an unresolved leaf has no row, and its display name decides, as it always did.
+/// Whether two sibling frames are one target, reached the same way. Project code is named by (file, outline qualname, occurrence), so two defs with
+/// one display name stay two nodes (B6); an external or an unresolved leaf has no row, and its display name decides, as it always did. **Called or
+/// passed is part of the key (D22)**: a def called at one site and handed over at another is two nodes, so a hand-over is never counted as a call.
 fn same_target(a: &Frame, b: &Frame) -> bool {
     (
         &a.target_file,
         &a.target_qualname,
         a.target_occurrence,
         &a.target_qname,
+        a.passed,
     ) == (
         &b.target_file,
         &b.target_qualname,
         b.target_occurrence,
         &b.target_qname,
+        b.passed,
     )
 }
 
@@ -325,11 +342,11 @@ mod tests {
     }
 
     fn call(from: &str, at: u32, to: &str) -> Edge {
-        Edge {
-            from: ContextId::of(marked(from)),
-            site: Site::new(at, at + 3),
-            to: EdgeTo::Context(ContextId::of(marked(to)), Basis::Type),
-        }
+        Edge::new(
+            ContextId::of(marked(from)),
+            Site::new(at, at + 3),
+            EdgeTo::Context(ContextId::of(marked(to)), Basis::Type),
+        )
     }
 
     fn opts(merged: bool) -> WireOptions {
@@ -413,20 +430,20 @@ mod tests {
                 Context::new(ContextId::of(path.clone())),
             ],
             vec![
-                Edge {
-                    from: ContextId::of(marked("main")),
-                    site: Site::new(0, 3),
-                    to: EdgeTo::Construct {
+                Edge::new(
+                    ContextId::of(marked("main")),
+                    Site::new(0, 3),
+                    EdgeTo::Construct {
                         class: marked("Report"),
                         init: None,
                         basis: Basis::Type,
                     },
-                },
-                Edge {
-                    from: ContextId::of(marked("main")),
-                    site: Site::new(5, 8),
-                    to: EdgeTo::Context(ContextId::of(path), Basis::Type),
-                },
+                ),
+                Edge::new(
+                    ContextId::of(marked("main")),
+                    Site::new(5, 8),
+                    EdgeTo::Context(ContextId::of(path), Basis::Type),
+                ),
             ],
             Stats::default(),
         );
@@ -705,20 +722,20 @@ mod tests {
                 Context::new(ContextId::of(marked("helper"))),
             ],
             vec![
-                Edge {
-                    from: ContextId::of(marked("make")),
-                    site: Site::new(0, 7),
-                    to: EdgeTo::Construct {
+                Edge::new(
+                    ContextId::of(marked("make")),
+                    Site::new(0, 7),
+                    EdgeTo::Construct {
                         class: child,
                         init: Some(init),
                         basis: Basis::Name,
                     },
-                },
-                Edge {
-                    from: ContextId::of(marked("Base.__init__")),
-                    site: Site::new(site, site + 8),
-                    to: EdgeTo::Context(ContextId::of(marked("helper")), Basis::Name),
-                },
+                ),
+                Edge::new(
+                    ContextId::of(marked("Base.__init__")),
+                    Site::new(site, site + 8),
+                    EdgeTo::Context(ContextId::of(marked("helper")), Basis::Name),
+                ),
             ],
             Stats::default(),
         );
@@ -769,17 +786,17 @@ mod tests {
                 (0, 40),
             )],
             vec![Context::new(ContextId::of(marked("main")))],
-            vec![Edge {
-                from: ContextId::of(marked("main")),
-                site: Site::new(0, 3),
-                to: EdgeTo::External(
+            vec![Edge::new(
+                ContextId::of(marked("main")),
+                Site::new(0, 3),
+                EdgeTo::External(
                     crate::graph::External {
                         package: "os".into(),
                         name: "getcwd".into(),
                     },
                     Basis::Name,
                 ),
-            }],
+            )],
             Stats::default(),
         );
         let render = RenderOptions {
@@ -887,11 +904,11 @@ mod tests {
                 Context::new(init.clone()),
                 Context::new(ContextId::of(marked("helper"))),
             ],
-            vec![Edge {
-                from: init,
-                site: Site::new(site, site + 8),
-                to: EdgeTo::Context(ContextId::of(marked("helper")), Basis::Name),
-            }],
+            vec![Edge::new(
+                init,
+                Site::new(site, site + 8),
+                EdgeTo::Context(ContextId::of(marked("helper")), Basis::Name),
+            )],
             Stats::default(),
         );
         let sources = Files(HashMap::from([
@@ -914,5 +931,87 @@ mod tests {
         let helper = &frame.children[0];
         assert_eq!(helper.call_site_file.as_deref(), Some("b.py"));
         assert_eq!(helper.call_site.unwrap().start, (2, 5));
+    }
+
+    // D22
+
+    fn toy_wire(
+        program: &[(&'static str, &[&'static str])],
+        entry: &'static str,
+        merged: bool,
+    ) -> Frame {
+        let g = crate::solve::tests::graph_of(program, entry);
+        let text = "x".repeat(2000);
+        wire(
+            &g,
+            &g.entries[0],
+            &Files(HashMap::from([("toy.src".to_owned(), text)])),
+            &opts(merged),
+        )
+    }
+
+    /// `(name, passed, call_count)` of the children.
+    fn kids(frame: &Frame) -> Vec<(String, bool, u32)> {
+        frame
+            .children
+            .iter()
+            .map(|c| (c.target_qname.clone(), c.passed, c.call_count))
+            .collect()
+    }
+
+    #[test]
+    fn d22_the_unmerged_wire_marks_a_passed_frame_and_keeps_its_own_site() {
+        let program: &[(&'static str, &[&'static str])] = &[
+            ("main", &["a", ">a", ">b"]),
+            ("a", &[]),
+            ("b", &["c"]),
+            ("c", &[]),
+        ];
+        let frame = toy_wire(program, "main", false);
+        assert_eq!(
+            kids(&frame),
+            [
+                ("a".to_owned(), false, 0),
+                ("a".to_owned(), true, 0),
+                ("b".to_owned(), true, 0)
+            ]
+        );
+        // each has its own call site (the call and the hand-over of `a` are at different places), and what `b` calls is under it
+        let sites: Vec<_> = frame.children.iter().map(|c| c.call_site).collect();
+        assert!(sites.iter().all(Option::is_some));
+        assert_ne!(sites[0], sites[1]);
+        assert_eq!(frame.children[2].children.len(), 1);
+    }
+
+    #[test]
+    fn d22_the_merged_wire_never_folds_a_passed_frame_into_a_call_frame() {
+        // `a` called once and handed over twice: a call node, and one passed node with `call_count` 1 (two hand-overs, less one)
+        let program: &[(&'static str, &[&'static str])] =
+            &[("main", &["a", ">a", ">a"]), ("a", &[])];
+        let frame = toy_wire(program, "main", true);
+        assert_eq!(
+            kids(&frame),
+            [("a".to_owned(), false, 0), ("a".to_owned(), true, 1)]
+        );
+    }
+
+    #[test]
+    fn d22_passed_is_in_the_json_only_when_true() {
+        let program: &[(&'static str, &[&'static str])] = &[("main", &["a", ">a"]), ("a", &[])];
+        let frame = toy_wire(program, "main", false);
+        let called = serde_json::to_value(&frame.children[0]).unwrap();
+        let passed = serde_json::to_value(&frame.children[1]).unwrap();
+        assert!(called.get("passed").is_none(), "{called}");
+        assert_eq!(passed["passed"], serde_json::Value::Bool(true));
+        // a wire with no passed node has no `passed` key anywhere
+        let plain = toy_wire(&[("main", &["a"]), ("a", &[])], "main", false);
+        assert!(!serde_json::to_string(&plain).unwrap().contains("passed"));
+    }
+
+    #[test]
+    fn d22_the_wire_format_version_is_a_number_changed_on_purpose() {
+        // 1: through E3. 2: `passed`. A change to this constant is a change to what a node means: it comes with a line in its doc and in
+        // `docs/03-typescript/07-ts5-driver-needs.md` §8.
+        assert_eq!(WIRE_FORMAT_VERSION, 2);
     }
 }

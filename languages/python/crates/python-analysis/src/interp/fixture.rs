@@ -1234,7 +1234,9 @@ fn graph_text(g: &analyzer_core::graph::Graph) -> String {
                 EdgeTo::Unresolved(r) => format!("? {}", r.as_str()),
                 _ => unreachable!(),
             };
-            writeln!(out, "  @{}-{} -> {to}", e.site.start, e.site.end).unwrap();
+            // a def handed over, not called (D22): said only when it is, so a snapshot of a graph with none is what it was
+            let passed = if e.passed { " passed" } else { "" };
+            writeln!(out, "  @{}-{} -> {to}{passed}", e.site.start, e.site.end).unwrap();
         }
     }
     out

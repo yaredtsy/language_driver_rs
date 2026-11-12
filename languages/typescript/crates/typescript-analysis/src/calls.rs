@@ -169,7 +169,10 @@ fn count_handed_over(graph: &mut Graph, lang: &TypeScript<'_>) {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Breakdown {
+    /// Edges that call a def of the project. A def handed over is not one (`passed`).
     pub calls: u64,
+    /// Edges that hand a def over and do not call it (D22): in the graph, walked, and never counted as a call.
+    pub passed: u64,
     pub constructs: u64,
     pub externals: u64,
     pub unresolved: u64,
@@ -207,6 +210,7 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
     };
     for edge in &graph.edges {
         match &edge.to {
+            EdgeTo::Context(..) if edge.passed => summary.passed += 1,
             EdgeTo::Context(..) => summary.calls += 1,
             EdgeTo::Construct { .. } => summary.constructs += 1,
             EdgeTo::External(..) => summary.externals += 1,
@@ -239,11 +243,16 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
 impl fmt::Display for Breakdown {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "breakdown:")?;
-        writeln!(
+        write!(
             f,
             "  edges: {} call, {} construct, {} external, {} unresolved",
             self.calls, self.constructs, self.externals, self.unresolved
         )?;
+        // said only when there is one, so the breakdown of a graph with none is what it was
+        if self.passed > 0 {
+            write!(f, ", {} passed", self.passed)?;
+        }
+        writeln!(f)?;
         if !self.reasons.is_empty() {
             writeln!(f, "  unresolved by reason:")?;
             for (reason, count) in &self.reasons {
@@ -285,7 +294,7 @@ impl fmt::Display for Breakdown {
 mod tests {
     use std::path::Path;
 
-    use analyzer_core::graph::{Reason, Site, Status};
+    use analyzer_core::graph::{Reason, Site, StableDef, Status};
     use analyzer_core::outline::DefKind;
     use analyzer_testkit::graph::check_invariants;
 
@@ -295,6 +304,60 @@ mod tests {
         label: "ID",
         placement: analyzer_core::edit::Placement::Docstring,
     };
+
+    #[test]
+    fn a_passed_edge_is_not_counted_as_a_call_and_the_breakdown_says_it_is_passed() {
+        use analyzer_core::graph::{Basis, Context, ContextId, DefInfo, Edge, Root};
+        let id = |name: &str| ContextId::of(StableDef::Marked(name.to_owned()));
+        let row = |name: &str| {
+            DefInfo::new(
+                StableDef::Marked(name.to_owned()),
+                name,
+                name,
+                0,
+                DefKind::Function,
+                "m.ts",
+                analyzer_core::text::Span::new(0, 1),
+            )
+        };
+        let to = |name: &str| EdgeTo::Context(id(name), Basis::Type);
+        let graph = Graph::new(
+            vec![Root::Context(id("main"))],
+            vec![row("main"), row("a"), row("b")],
+            vec![
+                Context::new(id("main")),
+                Context::new(id("a")),
+                Context::new(id("b")),
+            ],
+            vec![
+                Edge::new(id("main"), Site::new(0, 1), to("a")),
+                Edge::passed(id("main"), Site::new(2, 3), to("a")),
+                Edge::passed(id("main"), Site::new(4, 5), to("b")),
+            ],
+            analyzer_core::graph::Stats::default(),
+        );
+        let summary = breakdown(&graph);
+        assert_eq!((summary.calls, summary.passed), (1, 2));
+        assert!(
+            summary
+                .to_string()
+                .contains("1 call, 0 construct, 0 external, 0 unresolved, 2 passed"),
+            "{summary}"
+        );
+        // a graph with none prints the line it always did
+        let plain = Graph::new(
+            vec![Root::Context(id("main"))],
+            vec![row("main"), row("a")],
+            vec![Context::new(id("main")), Context::new(id("a"))],
+            vec![Edge::new(id("main"), Site::new(0, 1), to("a"))],
+            analyzer_core::graph::Stats::default(),
+        );
+        assert!(
+            breakdown(&plain)
+                .to_string()
+                .contains("1 call, 0 construct, 0 external, 0 unresolved\n"),
+        );
+    }
 
     #[test]
     fn a_def_with_no_node_is_one_unresolved_edge_and_a_count_not_an_empty_body() {

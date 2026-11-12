@@ -16,7 +16,9 @@ pub fn violations(graph: &Graph) -> Vec<String> {
         out.push("defs are not sorted by id, or an id appears twice".to_owned());
     }
     if !graph.edges.windows(2).all(|w| w[0] < w[1]) {
-        out.push("edges are not sorted by (from, site, to), or one appears twice".to_owned());
+        out.push(
+            "edges are not sorted by (from, site, to, passed), or one appears twice".to_owned(),
+        );
     }
     let known: HashSet<&ContextId> = graph.contexts.iter().map(|c| &c.id).collect();
     for entry in &graph.entries {
@@ -25,6 +27,12 @@ pub fn violations(graph: &Graph) -> Vec<String> {
         }
     }
     for edge in &graph.edges {
+        if edge.passed && !matches!(edge.to, EdgeTo::Context(..)) {
+            out.push(format!(
+                "edge from {:?} is passed, and only an edge to a context can be (D22)",
+                edge.from.func
+            ));
+        }
         if !known.contains(&edge.from) {
             out.push(format!(
                 "edge from {:?} starts at an unknown context",
@@ -125,23 +133,19 @@ mod tests {
     }
 
     fn edge(from: &str, to: &str) -> Edge {
-        Edge {
-            from: id(from),
-            site: Site::at(0),
-            to: EdgeTo::Context(id(to), Basis::Type),
-        }
+        Edge::new(id(from), Site::at(0), EdgeTo::Context(id(to), Basis::Type))
     }
 
     fn construct(from: &str, class: &str) -> Edge {
-        Edge {
-            from: id(from),
-            site: Site::at(0),
-            to: EdgeTo::Construct {
+        Edge::new(
+            id(from),
+            Site::at(0),
+            EdgeTo::Construct {
                 class: def_id(class),
                 init: None,
                 basis: Basis::Type,
             },
-        }
+        )
     }
 
     /// `a` calls `b` and builds `Foo`: two contexts and three rows.
@@ -195,6 +199,78 @@ mod tests {
         );
         only(&construct(&both, "Foo", "zz"), "entry");
         only(&construct(&both[..1], "Bar", "a"), "no row");
+    }
+
+    #[test]
+    fn only_an_edge_to_a_context_can_be_passed() {
+        let passed = |to: EdgeTo| {
+            Graph::new(
+                vec![Root::Context(id("a"))],
+                vec![
+                    row("a", DefKind::Function),
+                    row("b", DefKind::Function),
+                    row("Foo", DefKind::Class),
+                ],
+                vec![ctx("a"), ctx("b")],
+                vec![Edge::passed(id("a"), Site::at(0), to)],
+                Stats::default(),
+            )
+        };
+        // handing a def over is an edge to its context: well formed (`Foo` has a row only if something needs it, so it is dropped from the check)
+        let ok = Graph::new(
+            vec![Root::Context(id("a"))],
+            vec![row("a", DefKind::Function), row("b", DefKind::Function)],
+            vec![ctx("a"), ctx("b")],
+            vec![Edge::passed(
+                id("a"),
+                Site::at(0),
+                EdgeTo::Context(id("b"), Basis::Name),
+            )],
+            Stats::default(),
+        );
+        assert_eq!(violations(&ok), Vec::<String>::new());
+        // a construction, an external and an unresolved call cannot be handed over
+        let construct = passed(EdgeTo::Construct {
+            class: def_id("Foo"),
+            init: None,
+            basis: Basis::Type,
+        });
+        assert!(
+            violations(&construct)
+                .iter()
+                .any(|v| v.contains("passed") && v.contains("only an edge to a context")),
+            "{:?}",
+            violations(&construct)
+        );
+        for to in [
+            EdgeTo::External(
+                analyzer_core::graph::External {
+                    package: "p".into(),
+                    name: "n".into(),
+                },
+                Basis::Type,
+            ),
+            EdgeTo::Unresolved(analyzer_core::graph::Reason::new("x")),
+        ] {
+            assert!(
+                violations(&passed(to))
+                    .iter()
+                    .any(|v| v.contains("only an edge to a context")),
+            );
+        }
+        // an edge that is passed and an edge that is called to one target are two edges, both kept
+        let both = Graph::new(
+            vec![Root::Context(id("a"))],
+            vec![row("a", DefKind::Function), row("b", DefKind::Function)],
+            vec![ctx("a"), ctx("b")],
+            vec![
+                Edge::new(id("a"), Site::at(0), EdgeTo::Context(id("b"), Basis::Type)),
+                Edge::passed(id("a"), Site::at(0), EdgeTo::Context(id("b"), Basis::Type)),
+            ],
+            Stats::default(),
+        );
+        assert_eq!(both.edges.len(), 2);
+        assert_eq!(violations(&both), Vec::<String>::new());
     }
 
     #[test]
