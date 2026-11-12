@@ -17,7 +17,9 @@ mod stable;
 mod wire;
 
 pub use analyzer_core::edit::MarkerStyle;
-pub use analyzer_core::graph::{Context, ContextId, Edge, EdgeTo, Graph, StableDef, Stats};
+pub use analyzer_core::graph::{
+    Context, ContextId, Edge, EdgeTo, Entry, Graph, Root, StableDef, Stats,
+};
 pub use analyzer_core::render::{Mark, Node, RenderOptions, render, to_text};
 pub use interp::Limits;
 pub use sem::{OpenError, Project};
@@ -65,18 +67,23 @@ impl Options {
     }
 }
 
-/// The call graph of `entry`, a function of `file` (a path absolute or relative to the project root, `entry` a dotted name inside it).
-/// `None` when there is no such file or no such function. Draw a tree from it with [`render`] and [`Options::render_options`].
-pub fn call_graph(project: &Project, file: &str, entry: &str, opts: &Options) -> Option<Graph> {
+/// The call graph of `entry`, a def of `file` (a path absolute or relative to the project root), named the way the outline names it:
+/// its qualname and which of the defs with that qualname it is (D20). `None` when there is no such file or no such def. Draw a tree from it with [`render`] and [`Options::render_options`].
+pub fn call_graph(
+    project: &Project,
+    file: &str,
+    entry: &Entry<'_>,
+    opts: &Options,
+) -> Option<Graph> {
     interp::call_graph(project.db(), project.file(file)?, entry, &opts.solver())
 }
 
 /// The wire of `entry`: the tree V-NOC stores, one node per call site, or with `merged` the siblings of one target joined and counted.
-/// `None` when there is no such file or no such function.
+/// `None` when there is no such file or no such def.
 pub fn call_wire(
     project: &Project,
     file: &str,
-    entry: &str,
+    entry: &Entry<'_>,
     opts: &Options,
     merged: bool,
 ) -> Option<Frame> {

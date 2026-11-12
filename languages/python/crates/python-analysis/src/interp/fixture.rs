@@ -2,9 +2,10 @@
 use crate::interp::bind::param_names;
 use crate::interp::relevant::relevant_params;
 use crate::interp::summary::{PlainVal, SVal};
-use crate::interp::{Limits, Mode, Options, Stats, call_graph, call_tree, solve, to_text};
+use crate::interp::{Limits, Mode, Options, Stats, to_text};
 use crate::sem::Sem;
 use crate::sem::{ProjectDatabase, open, open_project};
+use analyzer_core::graph::Entry;
 use ruff_db::system::SystemPath;
 use ruff_text_size::TextRange;
 use std::collections::BTreeSet;
@@ -45,6 +46,99 @@ pub(super) fn expectations(source: &str) -> Vec<Expect> {
         out.push(Expect { entry, tree, mode });
     }
     out
+}
+
+/// A `# expect:` name (`outer.inner`, `Host.meth.Local.m`: the dotted way, with no `<locals>`) as the outline names it: the first def of
+/// the file whose qualname, with every `.<locals>` removed, is `dotted`, at occurrence 0 (the first def with its qualname). The fixtures and
+/// their snapshot headers keep the dotted names; `Sem` takes only the outline's (D20).
+fn entry_named(db: &ProjectDatabase, file: ruff_db::files::File, dotted: &str) -> Option<String> {
+    let text = ruff_db::source::source_text(db, file);
+    let outline = python_syntax::outline(text.as_str(), Options::default().marker);
+    outline
+        .defs
+        .iter()
+        .find(|d| d.qualname.replace(".<locals>", "") == dotted)
+        .map(|d| d.qualname.clone())
+}
+
+// The interp functions take the outline's `Entry`; the harness asks by a dotted name. These shadow them with the same names, so
+// every call below reads as before.
+
+pub(super) fn solve<'db>(
+    db: &'db ProjectDatabase,
+    file: ruff_db::files::File,
+    dotted: &str,
+    opts: &Options,
+) -> Option<(
+    crate::interp::solver::Solver<'db>,
+    crate::interp::key::ContextId,
+)> {
+    let qualname = entry_named(db, file, dotted)?;
+    crate::interp::solve(
+        db,
+        file,
+        &Entry {
+            qualname: &qualname,
+            occurrence: 0,
+        },
+        opts,
+    )
+}
+
+pub(super) fn call_tree(
+    db: &ProjectDatabase,
+    file: ruff_db::files::File,
+    dotted: &str,
+    opts: &Options,
+) -> Option<(crate::interp::Node, Stats)> {
+    let qualname = entry_named(db, file, dotted)?;
+    crate::interp::call_tree(
+        db,
+        file,
+        &Entry {
+            qualname: &qualname,
+            occurrence: 0,
+        },
+        opts,
+    )
+}
+
+pub(super) fn call_graph(
+    db: &ProjectDatabase,
+    file: ruff_db::files::File,
+    dotted: &str,
+    opts: &Options,
+) -> Option<analyzer_core::graph::Graph> {
+    let qualname = entry_named(db, file, dotted)?;
+    crate::interp::call_graph(
+        db,
+        file,
+        &Entry {
+            qualname: &qualname,
+            occurrence: 0,
+        },
+        opts,
+    )
+}
+
+pub(super) fn call_frame(
+    db: &ProjectDatabase,
+    file: ruff_db::files::File,
+    dotted: &str,
+    opts: &Options,
+    merged: bool,
+) -> Option<(crate::wire::Frame, analyzer_core::graph::Stats)> {
+    let qualname = entry_named(db, file, dotted)?;
+    crate::interp::call_frame(
+        db,
+        file,
+        &Entry {
+            qualname: &qualname,
+            occurrence: 0,
+        },
+        opts,
+        merged,
+    )
 }
 
 /// The functions `func` can return (qualified names), over all its contexts,
@@ -96,7 +190,16 @@ pub(super) fn relevant_names(fixture: &str, func: &str) -> Vec<String> {
     let db = open_project(SystemPath::from_std_path(root).unwrap()).unwrap();
     let (file, _) = open(&db, SystemPath::from_std_path(&path).unwrap()).unwrap();
     let sem = Sem::new(&db, Options::default().marker);
-    let def = sem.entry(file, func).unwrap();
+    let qualname = entry_named(&db, file, func).unwrap();
+    let def = sem
+        .entry(
+            file,
+            &Entry {
+                qualname: &qualname,
+                occurrence: 0,
+            },
+        )
+        .unwrap();
     let parsed = sem.parsed(def);
     let node = sem.function_node(def, &parsed).unwrap();
     param_names(node)
@@ -686,9 +789,7 @@ fn frame_of(
     opts: &Options,
     merged: bool,
 ) -> crate::wire::Frame {
-    crate::interp::call_frame(db, file, "main", opts, merged)
-        .unwrap()
-        .0
+    call_frame(db, file, "main", opts, merged).unwrap().0
 }
 
 fn styled() -> Options {
@@ -835,7 +936,6 @@ fn open_fixture(fixture: &str) -> (ProjectDatabase, ruff_db::files::File) {
 
 #[test]
 fn the_core_graph_of_every_fixture_keeps_core_s_invariants() {
-    use crate::interp::call_graph;
     let all = every_entry();
     assert!(all.len() > 40, "found only {} entries", all.len());
     for (fixture, entry, opts) in all {
@@ -860,7 +960,6 @@ fn the_core_graph_of_every_fixture_keeps_core_s_invariants() {
 /// needs that bit in `Fp::Instance`: digests change and contexts split. Decided not now; revisit with part 04 (returned objects).
 #[test]
 fn edges_say_what_they_rest_on() {
-    use crate::interp::call_graph;
     use analyzer_core::graph::EdgeTo;
     let edges = |fixture: &str, entry: &str| {
         let (db, file) = open_fixture(fixture);
@@ -916,7 +1015,6 @@ fn edges_say_what_they_rest_on() {
 /// an `Unresolved` site next to the written handler.
 #[test]
 fn a_weak_write_marks_what_it_may_have_dropped_and_a_strong_one_marks_nothing() {
-    use crate::interp::call_graph;
     let unresolved = |entry: &str| {
         let (db, file) = open_fixture("03-classes/python/writes.py");
         let g = call_graph(&db, file, entry, &summary()).unwrap();
@@ -946,7 +1044,7 @@ fn a_weak_write_marks_what_it_may_have_dropped_and_a_strong_one_marks_nothing() 
 #[test]
 #[ignore = "needs a real project and out/golden/: see the comment"]
 fn golden_wire_of_a_real_project() {
-    use crate::interp::{WireStyle, call_frame};
+    use crate::interp::WireStyle;
     use serde_json::Value;
     let var = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("set {k}"));
     let (project, file, entry, dir, prefixes) = (
@@ -1134,7 +1232,6 @@ fn wire_text(frame: &crate::wire::Frame) -> String {
 /// answer. Moving a program to `check_both` and re-blessing moves its snapshot out of that folder.
 #[test]
 fn the_wire_of_every_fixture_equals_its_snapshot() {
-    use crate::interp::call_frame;
     let this_file = include_str!("fixture.rs");
     // (the program, whether summary mode answers it completely, the text)
     let mut by_fixture: Vec<(String, bool, String)> = Vec::new();
@@ -1451,7 +1548,6 @@ fn dump_unresolved_sites(db: &ProjectDatabase, project: &str, graph: &analyzer_c
 /// def (the same kind, as the outline says it, and the same range). This is the one naming rule a request and an answer share (D20), so a row that is wrong is the bug.
 #[test]
 fn every_def_row_of_every_graph_names_a_def_of_its_files_outline() {
-    use crate::interp::call_graph;
     let mut rows = 0;
     for (fixture, entry, opts) in every_entry() {
         let (db, file) = open_fixture(&fixture);
@@ -1546,7 +1642,6 @@ fn occurrence_is_the_outlines_count_and_nth_is_the_older_count_by_the_name_witho
 /// the diff of a re-bless is every edge, basis, reason and digest the change moved.
 #[test]
 fn the_graph_of_every_fixture_equals_its_snapshot() {
-    use crate::interp::call_graph;
     let mut by_fixture: Vec<(String, String)> = Vec::new();
     let mut entries = 0;
     for (fixture, entry, opts) in every_entry() {
@@ -1680,7 +1775,6 @@ fn compare_with_inline(
 /// gives its tree (the safety net), (2) the class programs' gaps against inline mode, entry by entry, with it off and on, and what moved.
 #[test]
 fn constructor_effects_spike() {
-    use crate::interp::call_graph;
     use analyzer_core::render::{RenderOptions, render};
     let this_file = include_str!("fixture.rs");
     let with_effects = |o: &Options| Options {
@@ -1783,7 +1877,6 @@ fn constructor_effects_spike() {
 /// `Unresolved`, and what summary mode has that inline mode does not. The numbers are pinned: a fix moves them, and the diff is the review.
 #[test]
 fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there() {
-    use crate::interp::call_graph;
     use analyzer_core::render::{RenderOptions, render};
     let this_file = include_str!("fixture.rs");
     let (mut entries, mut failing, mut total) = (0, 0, Gap::default());

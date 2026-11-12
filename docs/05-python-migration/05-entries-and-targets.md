@@ -13,7 +13,7 @@ entries and targets
 
 Written on 2026-11-12 from reading the code. **Nothing here was built or run when it was written.** Every `[check]` is a claim to verify before depending on it.
 
-**Status (2026-11-12):** E1 is done (`8fafd0f`), E2 is done (`acc1b2a`) and E3 is done (see its commit). E4 and E5 are not started. Decisions of the owner while building: the kind on the wire is the outline's (`Method` for a Python method), made in E2; the TypeScript files are edited only after the TypeScript session has committed; EW is done locally and stays *unproven* until CI has run it.
+**Status (2026-11-12):** E1 is done (`8fafd0f`), E2 is done (`acc1b2a`) and E3 is done (`9120198`) and E4 is done (see its commit). E5 is not started. Decisions of the owner while building: the kind on the wire is the outline's (`Method` for a Python method), made in E2; the TypeScript files are edited only after the TypeScript session has committed; EW is done locally and stays *unproven* until CI has run it.
 
 Where it comes from: a review of the V-NOC Python driver found three bugs whose cause is in the analyzer, not in the driver. pylspt fixed part
 of them in `c395dde` ("wire names each target by file, qualname and occurrence; call_wire_at"). This repo was ported from `670ae79`, one
@@ -396,7 +396,7 @@ stop picking `__init__` itself, and read `call_site_file` instead of the parent'
 | 1 | `python_syntax::outline`'s `name_range.start` equals the AST name's start for every `def` and `class`, decorated ones included | E1's row test: **yes**, for every row of the 129 entries (decorated ones included) |
 | 2 | TypeScript has the outline qualname and can compute the occurrence where it calls `DefInfo::new` | E1: **yes** (`sem.rs::describe`) |
 | 3 | `DefKind` serializes as a plain string for `Function` and `Class` | E2 test (f) |
-| 4 | `every_entry` skips a `.py` file with no `# expect:` block, so `08-entries` does not move the `(29, 6)` count | E4 |
+| 4 | `every_entry` skips a `.py` file with no `# expect:` block, so `08-entries` does not move the `(29, 6)` count | E4: **yes**. The six new files have no `# expect:` block, and both counts held: `(29, 6)` programs and `(35, 129)` programs and entries |
 | 5 | `construct_summary` can be called on a `Walk` made for a class entry (today `Walk::new` is given a function def) | E5; if it cannot, make the walk from `init` when there is one, and build the root directly when there is none |
 | 6 | ty resolves `from inherit_b import Base` inside the fixture project, and `Child()` reaches `Base.__init__` through `init_of` | E5 test (b) |
 | 7 | A class entry and a no-argument `Child()` callee give the same `init` context (same key), not only the same subtree | E5; the test compares subtrees, so a different digest does not fail it. Write down which it is |

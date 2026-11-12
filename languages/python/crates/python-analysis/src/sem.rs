@@ -1,5 +1,6 @@
 use crate::stable::{StableDef, StableType};
 use analyzer_core::edit::MarkerStyle;
+use analyzer_core::graph::Entry;
 use analyzer_core::outline::DefKind;
 use ruff_db::files::{File, system_path_to_file};
 use ruff_db::parsed::{ParsedModuleRef, parsed_module};
@@ -65,6 +66,8 @@ pub(crate) struct OutlineName {
 pub(crate) struct NamedDefs {
     /// The start of a def's name to what the outline calls it.
     by_name: FxHashMap<u32, OutlineName>,
+    /// A qualname to the starts of the names of the defs that have it, in source order: `occurrence` indexes it. Only looked up by key.
+    starts: FxHashMap<String, Vec<u32>>,
 }
 
 impl NamedDefs {
@@ -83,8 +86,21 @@ impl NamedDefs {
                 },
             );
             *n += 1;
+            named
+                .starts
+                .entry(def.qualname.clone())
+                .or_default()
+                .push(def.name_range.start);
         }
         named
+    }
+
+    /// Where the name of the def `entry` asks for starts, if the outline has that many defs with its qualname.
+    fn start_of(&self, entry: &Entry<'_>) -> Option<u32> {
+        self.starts
+            .get(entry.qualname)?
+            .get(usize::from(entry.occurrence))
+            .copied()
     }
 }
 
@@ -704,34 +720,46 @@ impl<'db> Sem<'db> {
         (!defs.is_empty()).then_some(defs)
     }
 
-    pub(crate) fn entry(&self, file: File, dotted: &str) -> Option<Definition<'db>> {
+    /// The def `entry` names: the `occurrence`th def of `file` that the outline gives `qualname`, found in the syntax tree by where its name
+    /// starts (D20). A def or a class, at any depth, in any block. `None` when the outline has fewer defs with that name.
+    pub(crate) fn entry(&self, file: File, entry: &Entry<'_>) -> Option<Definition<'db>> {
+        let start = self.named_defs(file).start_of(entry)?;
         let program_file = self.db.program_file(file);
         let parsed = parsed_module(self.db, program_file.python_file(self.db)).load(self.db);
         let model = SemanticModel::new(self.db, program_file);
 
-        let mut body: &[Stmt] = &parsed.syntax().body;
-        let mut parts = dotted.split('.').peekable();
-
-        while let Some(part) = parts.next() {
-            let last = parts.peek().is_none();
-            let mut next = None;
-            for stmt in body {
-                match stmt {
-                    Stmt::FunctionDef(f) if last && f.name.as_str() == part => {
-                        return Some(f.definition(&model));
-                    }
-                    Stmt::ClassDef(c) if !last && c.name.as_str() == part => {
-                        next = Some(&c.body[..])
-                    }
-                    Stmt::FunctionDef(f) if !last && f.name.as_str() == part => {
-                        next = Some(&f.body[..])
-                    }
-                    _ => {}
+        /// Finds the `def` or `class` whose name starts at `start`.
+        struct Finder<'a> {
+            start: TextSize,
+            found: Option<&'a Stmt>,
+        }
+        impl<'a> Visitor<'a> for Finder<'a> {
+            fn visit_stmt(&mut self, stmt: &'a Stmt) {
+                if self.found.is_some() {
+                    return;
+                }
+                let name_start = match stmt {
+                    Stmt::FunctionDef(f) => Some(f.name.range().start()),
+                    Stmt::ClassDef(c) => Some(c.name.range().start()),
+                    _ => None,
+                };
+                if name_start == Some(self.start) {
+                    self.found = Some(stmt);
+                } else {
+                    walk_stmt(self, stmt);
                 }
             }
-            body = next?;
         }
-        None
+        let mut finder = Finder {
+            start: TextSize::from(start),
+            found: None,
+        };
+        finder.visit_body(&parsed.syntax().body);
+        match finder.found? {
+            Stmt::FunctionDef(f) => Some(f.definition(&model)),
+            Stmt::ClassDef(c) => Some(c.definition(&model)),
+            _ => None,
+        }
     }
 
     /// The definition's file, relative to the project root, with `/`. A file outside the root (library code) keeps its full path.

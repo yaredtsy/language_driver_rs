@@ -23,6 +23,7 @@ pub(crate) use tree::{Mark, Node};
 use std::time::Duration;
 
 use analyzer_core::edit::MarkerStyle;
+use analyzer_core::graph::Entry;
 
 use ruff_db::files::File;
 use summary::Cut;
@@ -159,7 +160,7 @@ impl Default for Options {
 pub(crate) fn call_tree(
     db: &ProjectDatabase,
     file: File,
-    entry: &str,
+    entry: &Entry<'_>,
     opts: &Options,
 ) -> Option<(Node, Stats)> {
     match opts.mode {
@@ -174,7 +175,7 @@ pub(crate) fn call_tree(
 fn summary_tree(
     db: &ProjectDatabase,
     file: File,
-    entry: &str,
+    entry: &Entry<'_>,
     opts: &Options,
 ) -> Option<(Node, Stats)> {
     use analyzer_core::render::{Mark as CoreMark, Node as CoreNode, render};
@@ -215,7 +216,7 @@ fn summary_tree(
 pub(crate) fn call_graph(
     db: &ProjectDatabase,
     file: File,
-    entry: &str,
+    entry: &Entry<'_>,
     opts: &Options,
 ) -> Option<analyzer_core::graph::Graph> {
     let (mut s, root) = solve(db, file, entry, opts)?;
@@ -227,7 +228,7 @@ pub(crate) fn call_graph(
 pub(crate) fn call_frame(
     db: &ProjectDatabase,
     file: File,
-    entry: &str,
+    entry: &Entry<'_>,
     opts: &Options,
     merged: bool,
 ) -> Option<(crate::wire::Frame, analyzer_core::graph::Stats)> {
@@ -242,7 +243,7 @@ pub(crate) fn call_frame(
 pub(crate) fn solve<'db>(
     db: &'db ProjectDatabase,
     file: File,
-    entry: &str,
+    entry: &Entry<'_>,
     opts: &Options,
 ) -> Option<(Solver<'db>, ContextId)> {
     let sem = Sem::new(db, opts.marker);
@@ -295,7 +296,7 @@ pub(crate) fn solve<'db>(
 fn inline_tree(
     db: &ProjectDatabase,
     file: File,
-    entry: &str,
+    entry: &Entry<'_>,
     opts: &Options,
 ) -> Option<(Node, Stats)> {
     let sem = Sem::new(db, opts.marker);
