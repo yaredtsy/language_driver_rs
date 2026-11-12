@@ -100,6 +100,9 @@ pub enum Status {
     Finished,
     /// The body was not (fully) walked, so its edges are a prefix of the real ones.
     Incomplete(Cut),
+    /// Listed and not walked, because the request's [`Budget`](crate::solve::Budget) ended here. Not a cut: nothing above it is missing, and
+    /// asking again with a larger budget walks it. It has no edges, and it is counted in [`Stats::frontier`], not in [`Stats::cuts`].
+    Frontier,
 }
 
 /// What a definition is. One row per definition the graph mentions, function or class: [`Graph::defs`].
@@ -272,6 +275,8 @@ pub struct Stats {
     /// Summaries asked for that were already known.
     pub reuse_hits: u64,
     pub cuts: BTreeMap<Cut, u64>,
+    /// Contexts listed and not walked because the request's budget ended there ([`Status::Frontier`]). Not a cut, so not in `cuts`.
+    pub frontier: u64,
     pub unresolved: u64,
     /// A language's own counters.
     pub language: BTreeMap<String, u64>,

@@ -167,6 +167,40 @@ impl Limits {
     }
 }
 
+/// How far one request wants to look. Past it a context is listed and not walked: a frontier ([`Status::Frontier`]), not a cut. What is above it is
+/// complete; asking again with a larger budget, or from a node on the frontier, walks the rest. `Budget::default()` has no limit.
+///
+/// Not [`Limits`]: those protect the cost of a request and cut (the cut is marked and counted in `Stats::cuts`). A budget is what the caller asked for.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Budget {
+    /// Steps from a start. A context at this distance is on the frontier: `Some(0)` walks nothing.
+    pub max_depth: Option<u32>,
+    /// Bodies read in this request, whether the solver walked them or already knew them: counting only walks would make the same request give a
+    /// different graph once the memo is warm (rule 9).
+    pub max_contexts: Option<u32>,
+}
+
+impl Budget {
+    pub fn new(max_depth: Option<u32>, max_contexts: Option<u32>) -> Self {
+        Budget {
+            max_depth,
+            max_contexts,
+        }
+    }
+}
+
+/// Where a request starts. A construction is a start of its own (D25): the class is a row and the tree is its constructor's calls.
+pub enum Start<L: Lang> {
+    /// A function under a key.
+    Call(L::Func, L::Key),
+    /// A class. `init` is its constructor function, `None` when it has none in project code.
+    Construct {
+        class: L::Func,
+        init: Option<(L::Func, L::Key)>,
+    },
+}
+
 pub struct Solver<L: Lang> {
     lang: L,
     memo: HashMap<(L::Func, L::Key), Summary<L>>,
@@ -214,9 +248,19 @@ impl<L: Lang> Solver<L> {
         false
     }
 
-    /// Everything reachable from `entries`, until a limit. Breadth-first, so which contexts a limit cuts does not
-    /// depend on the order the engine lists things in; the result is sorted by [`Graph::new`].
+    /// Everything reachable from `entries`, until a limit. [`graph_within`](Self::graph_within) with no budget and a function at each start.
     pub fn graph(&mut self, entries: &[(L::Func, L::Key)], cancel: &Cancel) -> Graph {
+        let starts: Vec<Start<L>> = entries
+            .iter()
+            .map(|(f, k)| Start::Call(*f, k.clone()))
+            .collect();
+        self.graph_within(&starts, &Budget::default(), cancel)
+    }
+
+    /// Everything reachable from `starts` that `budget` and the cost limits allow. Breadth-first, so which contexts a limit or the budget stops
+    /// at does not depend on the order the engine lists things in, and a context at tree depth `d` stands for one at graph distance `<= d`; the
+    /// result is sorted by [`Graph::new`].
+    pub fn graph_within(&mut self, starts: &[Start<L>], budget: &Budget, cancel: &Cancel) -> Graph {
         let mut run = Run::<L> {
             seen: HashSet::new(),
             queue: VecDeque::new(),
@@ -227,16 +271,46 @@ impl<L: Lang> Solver<L> {
         let mut edges = Vec::new();
         let mut stats = Stats::default();
 
-        let entry_ids: Vec<ContextId> = entries.iter().map(|n| self.id_of(&mut run, n)).collect();
-        for node in entries {
-            run.discover(node, 0);
+        let mut roots = Vec::new();
+        for start in starts {
+            match start {
+                Start::Call(f, k) => {
+                    let node = (*f, k.clone());
+                    roots.push(Root::Context(self.id_of(&mut run, &node)));
+                    run.discover(&node, 0);
+                }
+                Start::Construct { class, init } => {
+                    // As an edge to a construction: the class is a row and has no context, its constructor is walked.
+                    let info = info_of(&self.lang, &mut run.infos, *class).clone();
+                    let class = info.id.clone();
+                    defs.push(info);
+                    let init = init.as_ref().map(|(f, k)| {
+                        let init = (*f, k.clone());
+                        run.discover(&init, 0);
+                        id_of(&self.lang, &mut run.infos, &init)
+                    });
+                    roots.push(Root::Construct { class, init });
+                }
+            }
         }
+        // Contexts read so far under the budget: walked or reused from the memo, never the ones on the frontier or cut by a limit.
+        let mut read = 0u32;
 
         while let Some((node, depth)) = run.queue.pop_front() {
             let from = self.id_of(&mut run, &node);
             defs.push(info_of(&self.lang, &mut run.infos, node.0).clone());
             let mut context = Context::new(from.clone());
             stats.contexts += 1;
+
+            // The budget first: a context the request did not ask for is not "cut" by a cost limit or a cancel that would have stopped it too.
+            if budget.max_depth.is_some_and(|d| depth >= d)
+                || budget.max_contexts.is_some_and(|m| read >= m)
+            {
+                context.status = Status::Frontier;
+                stats.frontier += 1;
+                contexts.push(context);
+                continue;
+            }
 
             let stop = if stats.walks >= u64::from(self.limits.max_contexts) {
                 Some(Cut::MaxContexts)
@@ -251,6 +325,7 @@ impl<L: Lang> Solver<L> {
                 contexts.push(context);
                 continue;
             }
+            read += 1;
 
             let hit = self.ensure(&node, cancel);
             stats.walks += u64::from(!hit);
@@ -308,13 +383,7 @@ impl<L: Lang> Solver<L> {
             }
             contexts.push(context);
         }
-        Graph::new(
-            entry_ids.into_iter().map(Root::Context).collect(),
-            defs,
-            contexts,
-            edges,
-            stats,
-        )
+        Graph::new(roots, defs, contexts, edges, stats)
     }
 
     fn id_of(&self, run: &mut Run<L>, node: &Node<L>) -> ContextId {
@@ -816,6 +885,268 @@ pub(crate) mod tests {
             [StableDef::Marked("b".into()), StableDef::Marked("a".into())]
         );
         assert_eq!(names(&g), ["a", "b"]);
+    }
+
+    // The budget: a frontier is listed and not walked, and it is not a cut.
+
+    fn within(
+        program: &[(&'static str, &[&'static str])],
+        entry: &'static str,
+        budget: &Budget,
+    ) -> (Graph, Vec<&'static str>) {
+        let mut solver = Solver::new(Toy::new(program), Limits::default());
+        let g = solver.graph_within(&[Start::Call(entry, ())], budget, &Cancel::new());
+        (g, solver.lang().walks.clone())
+    }
+
+    fn statuses(g: &Graph) -> Vec<(String, Status)> {
+        g.contexts
+            .iter()
+            .map(|c| (g.def(&c.id.func).unwrap().qname.clone(), c.status))
+            .collect()
+    }
+
+    const FOUR_LEVELS: &[(&str, &[&str])] =
+        &[("a", &["b"]), ("b", &["c"]), ("c", &["d"]), ("d", &[])];
+
+    #[test]
+    fn max_depth_walks_exactly_the_bodies_above_the_frontier() {
+        let (g, walks) = within(FOUR_LEVELS, "a", &Budget::new(Some(2), None));
+        // `a` is at distance 0, `b` at 1, `c` at 2: `c` is listed (b calls it) and not walked, `d` is not even known
+        assert_eq!(walks, ["a", "b"]);
+        assert_eq!(names(&g), ["a", "b", "c"]);
+        assert_eq!(
+            statuses(&g),
+            [
+                ("a".to_owned(), Status::Finished),
+                ("b".to_owned(), Status::Finished),
+                ("c".to_owned(), Status::Frontier),
+            ]
+        );
+        assert_eq!(calls(&g, "b"), ["c"], "the edge into the frontier is there");
+        assert!(g.edges_from(&g.contexts[2].id).is_empty());
+        no_dangling(&g);
+    }
+
+    #[test]
+    fn a_frontier_is_counted_in_frontier_and_not_in_cuts() {
+        let (g, _) = within(FOUR_LEVELS, "a", &Budget::new(Some(2), None));
+        assert_eq!(g.stats.frontier, 1);
+        assert!(g.stats.cuts.is_empty(), "{:?}", g.stats.cuts);
+        assert_eq!((g.stats.walks, g.stats.contexts), (2, 3));
+        assert!(
+            g.contexts
+                .iter()
+                .all(|c| !matches!(c.status, Status::Incomplete(_)))
+        );
+    }
+
+    #[test]
+    fn a_context_is_at_the_shortest_distance_it_was_found_at() {
+        // `d` is `a`'s callee and also three steps down the chain: the first sight (distance 1) is the one that counts
+        let program: &[(&str, &[&str])] = &[
+            ("a", &["b", "d"]),
+            ("b", &["c"]),
+            ("c", &["d"]),
+            ("d", &["e"]),
+            ("e", &[]),
+        ];
+        let (g, walks) = within(program, "a", &Budget::new(Some(2), None));
+        assert_eq!(walks, ["a", "b", "d"]);
+        let frontier: Vec<_> = statuses(&g)
+            .into_iter()
+            .filter(|(_, s)| *s == Status::Frontier)
+            .map(|(n, _)| n)
+            .collect();
+        assert_eq!(frontier, ["c", "e"]);
+    }
+
+    #[test]
+    fn a_depth_of_zero_walks_nothing_and_lists_the_start() {
+        let (g, walks) = within(FOUR_LEVELS, "a", &Budget::new(Some(0), None));
+        assert!(walks.is_empty());
+        assert_eq!(statuses(&g), [("a".to_owned(), Status::Frontier)]);
+        assert_eq!(g.stats.frontier, 1);
+    }
+
+    #[test]
+    fn max_contexts_in_a_budget_counts_bodies_read_not_walked() {
+        let program: &[(&str, &[&str])] =
+            &[("a", &["b", "c"]), ("b", &["d"]), ("c", &[]), ("d", &[])];
+        let budget = Budget::new(None, Some(2));
+        let mut solver = Solver::new(Toy::new(program), Limits::default());
+        let cold = solver.graph_within(&[Start::Call("a", ())], &budget, &Cancel::new());
+        assert_eq!(solver.lang().walks, ["a", "b"]);
+        assert_eq!(
+            statuses(&cold),
+            [
+                ("a".to_owned(), Status::Finished),
+                ("b".to_owned(), Status::Finished),
+                ("c".to_owned(), Status::Frontier),
+                ("d".to_owned(), Status::Frontier),
+            ]
+        );
+        // the memo now holds `a` and `b`: the same request must not read more bodies because they are free (rule 9)
+        let warm = solver.graph_within(&[Start::Call("a", ())], &budget, &Cancel::new());
+        assert_eq!(solver.lang().walks, ["a", "b"], "nothing was walked again");
+        assert_eq!((warm.stats.walks, warm.stats.reuse_hits), (0, 2));
+        assert_eq!(
+            (&warm.contexts, &warm.edges, warm.stats.frontier),
+            (&cold.contexts, &cold.edges, cold.stats.frontier)
+        );
+    }
+
+    #[test]
+    fn no_budget_is_the_graph_of_before() {
+        let program: &[(&str, &[&str])] = &[
+            ("a", &["b", "c"]),
+            ("b", &["d", "?"]),
+            ("c", &["d"]),
+            ("d", &[]),
+        ];
+        let (g, _) = within(program, "a", &Budget::default());
+        assert_eq!(g, graph_of(program, "a"));
+        assert_eq!(g.stats.frontier, 0);
+        assert!(g.contexts.iter().all(|c| c.status == Status::Finished));
+    }
+
+    #[test]
+    fn the_budget_decides_before_a_cost_limit_or_a_cancel() {
+        // the request did not ask for `a`'s body, so nothing "cut" it, whatever else would have stopped it
+        let cancel = Cancel::new();
+        cancel.cancel();
+        let mut solver = Solver::new(Toy::new(FOUR_LEVELS), Limits::new(0, Some(0)));
+        let g = solver.graph_within(
+            &[Start::Call("a", ())],
+            &Budget::new(Some(0), None),
+            &cancel,
+        );
+        assert_eq!(statuses(&g), [("a".to_owned(), Status::Frontier)]);
+        assert!(g.stats.cuts.is_empty());
+        // and a limit still cuts what the budget lets through
+        let mut solver = Solver::new(Toy::new(FOUR_LEVELS), Limits::new(1, None));
+        let g = solver.graph_within(
+            &[Start::Call("a", ())],
+            &Budget::new(Some(3), None),
+            &Cancel::new(),
+        );
+        assert_eq!(
+            statuses(&g),
+            [
+                ("a".to_owned(), Status::Finished),
+                ("b".to_owned(), Status::Incomplete(Cut::MaxContexts)),
+            ]
+        );
+        assert_eq!(
+            (g.stats.frontier, g.stats.cuts.get(&Cut::MaxContexts)),
+            (0, Some(&1))
+        );
+    }
+
+    // D25: a construction is a start.
+
+    const CONSTRUCT: &[(&str, &[&str])] = &[
+        ("Foo.init", &["helper"]),
+        ("helper", &["deep"]),
+        ("deep", &[]),
+    ];
+
+    fn construct_root(g: &Graph) -> (StableDef, Option<StableDef>) {
+        let Root::Construct { class, init } = &g.entries[0] else {
+            panic!("{:?}", g.entries[0])
+        };
+        (class.clone(), init.as_ref().map(|c| c.func.clone()))
+    }
+
+    #[test]
+    fn a_construction_start_is_a_class_row_and_its_constructors_context() {
+        let mut solver = Solver::new(Toy::new(CONSTRUCT), Limits::default());
+        let g = solver.graph_within(
+            &[Start::Construct {
+                class: "Foo",
+                init: Some(("Foo.init", ())),
+            }],
+            &Budget::default(),
+            &Cancel::new(),
+        );
+        assert_eq!(
+            construct_root(&g),
+            (
+                StableDef::Marked("Foo".into()),
+                Some(StableDef::Marked("Foo.init".into()))
+            )
+        );
+        assert_eq!(names(&g), ["Foo.init", "deep", "helper"]);
+        assert!(
+            g.def(&StableDef::Marked("Foo".into())).is_some(),
+            "the class has its row"
+        );
+        assert!(
+            g.context(&ContextId::of(StableDef::Marked("Foo".into())))
+                .is_none(),
+            "and no context"
+        );
+        assert_eq!(g.stats.contexts, 3);
+        assert_eq!(solver.lang().walks, ["Foo.init", "helper", "deep"]);
+        no_dangling(&g);
+    }
+
+    #[test]
+    fn a_construction_start_with_no_constructor_is_a_class_row_and_nothing_to_walk() {
+        let mut solver = Solver::new(Toy::new(CONSTRUCT), Limits::default());
+        let g = solver.graph_within(
+            &[Start::Construct {
+                class: "Foo",
+                init: None,
+            }],
+            &Budget::default(),
+            &Cancel::new(),
+        );
+        assert_eq!(construct_root(&g), (StableDef::Marked("Foo".into()), None));
+        assert!(g.contexts.is_empty() && g.edges.is_empty());
+        assert_eq!(g.defs.len(), 1);
+        assert!(solver.lang().walks.is_empty());
+        no_dangling(&g);
+    }
+
+    #[test]
+    fn the_constructor_of_a_start_is_at_distance_zero_for_a_budget() {
+        let mut solver = Solver::new(Toy::new(CONSTRUCT), Limits::default());
+        let g = solver.graph_within(
+            &[Start::Construct {
+                class: "Foo",
+                init: Some(("Foo.init", ())),
+            }],
+            &Budget::new(Some(1), None),
+            &Cancel::new(),
+        );
+        assert_eq!(solver.lang().walks, ["Foo.init"]);
+        assert_eq!(
+            statuses(&g),
+            [
+                ("Foo.init".to_owned(), Status::Finished),
+                ("helper".to_owned(), Status::Frontier),
+            ]
+        );
+    }
+
+    #[test]
+    fn calls_and_constructions_can_start_one_request_in_the_requests_order() {
+        let mut solver = Solver::new(Toy::new(CONSTRUCT), Limits::default());
+        let g = solver.graph_within(
+            &[
+                Start::Call("deep", ()),
+                Start::Construct {
+                    class: "Foo",
+                    init: Some(("Foo.init", ())),
+                },
+            ],
+            &Budget::default(),
+            &Cancel::new(),
+        );
+        assert!(matches!(g.entries[0], Root::Context(_)));
+        assert!(matches!(g.entries[1], Root::Construct { .. }));
+        assert_eq!(names(&g), ["Foo.init", "deep", "helper"]);
     }
 
     // D22: a def handed over is an edge to its context at the site where it is named, walked like a call and marked as not one.
