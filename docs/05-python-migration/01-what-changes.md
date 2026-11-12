@@ -69,7 +69,7 @@ moves, the code keeps compiling".
 | `stable.rs` `StableDef`; `interp/canon.rs` `StableContextId`; `interp/graph.rs` `GraphOut`, `ContextOut`, `EdgeOut`, `EdgeTo`, `Span` | `analyzer_core::graph::*` | move the definitions **into core** in B0 with the renames of [`02-tree-rules/01`](../02-tree-rules/01-graph-and-tree.md) §5. `StableType` and the canonical key encoding stay in `python-analysis` |
 | `interp/tree.rs` `Node`, `Mark`, `to_text` | `analyzer_core::render::*` | move into core in B0 |
 | `interp/render.rs` (renders from the `Solver`) | `analyzer_core::render::render` (renders from the `Graph`) | **the one real rework.** See below |
-| `interp/wire.rs` `FrameJson`, `merge_for_output` | not moved (PA5) | — |
+| `interp/wire.rs` `FrameJson`, `merge_for_output` | `analyzer_core::wire::{Frame, merge}` (D17; the wire is the output, merged on request) | [`04-the-wire.md`](04-the-wire.md) |
 
 ### The renderer: the one real rework
 

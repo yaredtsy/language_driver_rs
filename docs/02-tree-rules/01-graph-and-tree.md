@@ -174,7 +174,7 @@ What the V-NOC driver sends is built from `Node`. V-NOC's own merge (`call_count
 | `Span { start: (line, col), end }` on an edge | `Site` relative bytes on the edge; `file` + `range` on the def's row in `defs` | the wire's line and column rule (UTF-16) is the driver's; bytes are what all three engines give |
 | `EdgeTo::External(StableDef)` | `EdgeTo::External(External { package, name })` | the V-NOC driver contract asks for `{ package, name }` on external leaves (`09/02` §4) |
 | `StableType` | stays in `python-analysis` | it encodes ty's types inside a key. No other language has keys yet |
-| `FrameJson`, `merge_for_output` | not moved | V-NOC's stored shape (PA5) |
+| `FrameJson`, `merge_for_output` | `analyzer_core::wire::{Frame, merge}` (D17) | the stored shape, drawn from the graph; the merge is an option of the view |
 | `Node { qname, site, marks, children }` | the same, plus `func` and `contexts` | so a consumer can join a node to an outline entry and to the graph |
 | `Mark::{Recursive, Cut, Incomplete}` | the same three, plus `External` and `Unresolved` | only produced when the two `show_*` options are on; off by default, so Python's output is unchanged |
 

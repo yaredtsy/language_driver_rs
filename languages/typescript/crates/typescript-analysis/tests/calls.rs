@@ -451,7 +451,7 @@ fn construct_a_construction_that_cannot_enter_an_inherited_constructor_is_counte
 #[test]
 fn construct_a_library_global_called_as_a_function_is_an_external_edge_not_an_unknown_one() {
     // `String(x)` has no declaration with a body: the library declares `String` as an interface and a `var`. It is a call into the library, and
-    // `no_declaration` would say the engine could not tell. Found on the V-NOC frontend (`applyOps`: 4 of its 4 unresolved edges).
+    // `no_declaration` would say the engine could not tell. Found on a real frontend project (`applyOps`: 4 of its 4 unresolved edges).
     let root = fixture("construct");
     let graph = graph_of(&root, "src/main.ts", "convert");
     check_invariants(&graph);

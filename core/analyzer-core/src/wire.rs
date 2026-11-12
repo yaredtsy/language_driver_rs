@@ -1,4 +1,4 @@
-//! The wire: the call tree as V-NOC stores it, a view of the graph. `graph → render → Node → Frame`.
+//! The wire: the call tree as it is stored, a view of the graph. `graph → render → Node → Frame`.
 //!
 //! Written only against core types, and it names no language and no engine. It lives in `analyzer-core` because every language has the wire (D17):
 //! Python wrote it first and TypeScript is its second user (rule of two), so it moved here unchanged. It has no tree rules of its own: recursion,
@@ -295,7 +295,7 @@ fn group(kids: Vec<Frame>) -> Vec<Frame> {
     out
 }
 
-/// The merged form of a wire: V-NOC's merge, as an option of the view. Merging a merged wire changes nothing. It takes the frame by value
+/// The merged form of a wire: the stored merge, as an option of the view. Merging a merged wire changes nothing. It takes the frame by value
 /// because a clone would recurse once per level; a caller that still needs the unmerged wire clones it first, if it is not deep.
 pub fn merge(root: Frame) -> Frame {
     struct Open {

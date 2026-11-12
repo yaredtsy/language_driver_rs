@@ -116,7 +116,7 @@ by (file, outline qualname, occurrence); the dotted lookup is gone.
 
 | From | To | Note |
 |---|---|---|
-| `bin/pylspt-dev.rs` (152) | `python-cli outline`, `python-cli calls [--graph]` | `--merged` is dropped with `merge_for_output` (PA5) unless Q-PA3 says the old parity is still needed |
+| `bin/pylspt-dev.rs` (152) | `python-cli outline`, `python-cli calls [--graph \| --wire [--merged]]` | `--merged` is kept: it is `calls --wire --merged`, the merge in `analyzer_core::wire` (D17) |
 | `bin/mro.rs` (90), `bin/attrs.rs` (134) | `python-cli mro`, `python-cli attrs` | |
 | `bin/ast.rs` (31), `show.rs` (62) | `python-cli ast`, if you still use it (Q-PA5) | |
 

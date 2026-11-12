@@ -26,7 +26,7 @@ none "an engine is named outside the sem module (rule 4)" \
 none "core names an engine (rule 5)" "$(rs -E "$engine" core)"
 
 # rule 1: no product words in code
-none "a product word in code (rule 1)" "$(rs -iE 'vnoc|FileID|Schema/' core "${crates[@]}")"
+none "a product word in code (rule 1)" "$(rs -iE 'v-?noc|FileID|Schema/' core "${crates[@]}")"
 
 # rule 6: no personal paths. The pattern is written in two pieces so this file does not match itself.
 none "a personal path (rule 6)" \

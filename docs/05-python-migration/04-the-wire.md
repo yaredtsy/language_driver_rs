@@ -11,7 +11,7 @@ the wire
 └── 7. to confirm
 ```
 
-A correction decided on 2026-11-11. Until step W5 below is done, the other files still say "the wire is not moved": this file wins.
+A correction decided on 2026-11-11.
 
 ## 1. What the plan got wrong
 
@@ -134,7 +134,7 @@ They fit inside PY5–PY7; no step is added to the roadmap. Each is a commit.
 | W2 | **done** | The golden baseline, once, from a worktree of `670ae79a15` (D14): `calls --wire` and `calls --wire --merged` on the Jarvis project, kept outside git. `cli-wire.json` is checked against the first | two files; the unmerged one equals `cli-wire.json` |
 | W3 | **built; question 4 decided (A, source order: §7)** | `wire.rs`: `wire(&graph, …)` and `merge`, built on `Graph` + `render` as in §3. A test on every fixture: the new wire equals the old renderer's wire, after the renames of §4 | the comparison passes on all 41 fixture tests' programs; it is PY6's renderer comparison, one level up |
 | W4 | **done** | Before deleting anything: compare the **merged** wire on the fixtures too (today merged is compared only on Jarvis and in unit tests). Then delete the old renderer and the old `FrameJson` with it, **and the comparator** the fixture test relies on, and replace it with **reviewed snapshots of the new wire, one per fixture entry**, so "same test count" does not hide losing the only fixture-level guard. `wire.rs` is the only wire. Regenerate `out/golden/` from the new wire | the merged comparison passes on all 125 entries before the deletion; after it `cargo test -p python-analysis` passes, every fixture entry has a snapshot that was read, and `out/golden/` holds the new wire with fresh checksums |
-| W5 | PY7 | `python-cli calls --wire [--merged] --function-prefix … --class-prefix …`; the doc edits of §5; delete the sentence under this file's title | `calls --wire` on Jarvis is content-equal to W2's file (any sibling order, after the renames of §4) **except the listed accessor nodes** (`out/golden/accessors*.txt`: 12 in the unmerged wire, 2 in the merged one) and byte-equal to the regenerated golden, and the same for `--merged`; `grep -rn "not moved" docs` finds no line about the wire |
+| W5 | PY7 | **Done** (PY7 C2 to C4; `06-python-cli.md`). `python-cli calls --wire [--merged] --function-prefix … --class-prefix …`; the doc edits of §5; delete the sentence under this file's title | `calls --wire` on Jarvis is content-equal to W2's file (any sibling order, after the renames of §4) **except the listed accessor nodes** (`out/golden/accessors*.txt`: 12 in the unmerged wire, 2 in the merged one) and equal as JSON to the regenerated golden, and the same for `--merged`; `grep -rn "not moved" docs` finds no line about the wire. **Run:** `GOLDEN=out/golden scripts/run-on-project.sh python <the project> jarvis.py CallGraphGenerator.do_pass --function-prefix <p> --class-prefix <p>`: `wire.json: equal` (207 nodes) and `wire-merged.json: equal` (66), compared as JSON (the golden's keys are sorted, the CLI's are in field order). The accessor nodes are in both files, so no list was needed |
 
 **W2 result (2026-11-11).** Built from `git archive 670ae79a15` (not a worktree: no metadata is added to pylspt's `.git`). On the Jarvis project,
 entry `CallGraphGenerator.do_pass`: `wire.json` has **195 nodes and is the same JSON as `cli-wire.json`** (only the pretty-print layout differs);

@@ -383,7 +383,7 @@ the path unchanged: never fail and never guess (rule 8).
 | A cancel flag for Python (`Cut::Cancelled` is never set from outside) | a different seam (row M18: core's cancel, "later Python") | its own step after TS5 |
 | The solver recursing to `max_stack` = 256 | not a bug in the answer; the driver must give its request thread a big enough stack until the solver is iterative | driver, then a Python step |
 | A TypeScript class as the entry | no user yet; `Root::Construct` makes it possible without another core change | TS5 |
-| `python-cli calls` | it does not exist yet (W5, PY7). When it is built it takes `--occurrence`, default 0 | `04-the-wire.md` W5 |
+| `python-cli calls` | **built** (PY7). It takes `--occurrence <n>`, with **no default**: a name that matches several defs is listed and the exit code is 2, the first is never picked | [`06-python-cli.md`](06-python-cli.md) §3.1 |
 | The driver-host findings (timeout on write, cancel before request, lost exit reason) and the driver-only ones (`catch_unwind`, UNC paths) | they are in `vnoc`, not here | `vnoc` `docs/14-call-trees.md` |
 
 After E5 the driver's part is small: send `(file, qualname, occurrence)` as the outline gave them (converting its 1-based occurrence, D18),
