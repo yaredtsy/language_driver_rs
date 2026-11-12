@@ -27,7 +27,7 @@ state.read_json#362dace93a857048 Finished
 
 == via_factory
 entries: state.via_factory#dfd9ec0caec38803
-stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 1, "types_dropped": 0, "unknown_callee": 1}
 def state.JsonHandler = JsonHandler#0 Class state.py
 def state.Pipeline = Pipeline#0 Class state.py
 def state.Pipeline.__init__ = Pipeline.__init__#0 Method state.py

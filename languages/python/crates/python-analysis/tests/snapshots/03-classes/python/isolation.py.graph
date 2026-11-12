@@ -21,7 +21,7 @@ isolation.two_alive#459ff191303b9127 Finished
 
 == one_site
 entries: isolation.one_site#645ae6ed164248bc
-stats: walks 5, contexts 5, reuse_hits 0, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 2}
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 2, "types_dropped": 0, "unknown_callee": 2}
 def isolation.CsvHandler = CsvHandler#0 Class isolation.py
 def isolation.JsonHandler = JsonHandler#0 Class isolation.py
 def isolation.Pipeline = Pipeline#0 Class isolation.py

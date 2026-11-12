@@ -1,6 +1,6 @@
 == main
 entries: split.main#c030e3b86e3aaa4a
-stats: walks 5, contexts 5, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 3, "types_dropped": 0, "unknown_callee": 1}
 def split.CsvHandler = CsvHandler#0 Class split.py
 def split.CsvHandler.key = CsvHandler.key#0 Method split.py
 def split.CsvKey = CsvKey#0 Class split.py

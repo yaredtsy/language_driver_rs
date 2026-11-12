@@ -76,7 +76,7 @@ impl<'db> Walk<'db> {
             let d = self.deferred[id].clone();
             let v = match d.op {
                 DeferredOp::Apply { ctx } => match sol.get(ctx) {
-                    Got::Ready(res) => self.resolve(&res.returns),
+                    Got::Ready(res) => self.resolve(sol, &res.returns),
                     Got::Pending => Values::new(), // the solver flagged it: the round is abandoned
                 },
                 DeferredOp::Call {

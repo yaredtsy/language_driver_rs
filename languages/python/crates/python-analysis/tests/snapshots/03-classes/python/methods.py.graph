@@ -1,6 +1,6 @@
 == main
 entries: methods.main#979944f3663f24a5
-stats: walks 8, contexts 8, reuse_hits 5, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+stats: walks 8, contexts 8, reuse_hits 5, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 1, "types_dropped": 0, "unknown_callee": 0}
 def methods.Greeter = Greeter#0 Class methods.py
 def methods.Greeter.greet = Greeter.greet#0 Method methods.py
 def methods.Greeter.make = Greeter.make#0 Method methods.py

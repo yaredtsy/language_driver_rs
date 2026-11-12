@@ -170,6 +170,18 @@ pub(super) fn returns_of(fixture: &str, entry: &str, func: &str) -> BTreeSet<Str
     out
 }
 
+/// Solve `entry` of `fixture` in summary mode and hand the solver to `body`, which reads its contexts and summaries. The database lives
+/// only as long as this call, so a test cannot take a summary out of it.
+pub(super) fn with_solved<R>(
+    fixture: &str,
+    entry: &str,
+    body: impl for<'db> FnOnce(&mut crate::interp::solver::Solver<'db>) -> R,
+) -> R {
+    let (db, file) = open_fixture(fixture);
+    let (mut s, _) = solve(&db, file, entry, &summary()).unwrap();
+    body(&mut s)
+}
+
 /// How many contexts of `func` summary mode makes, solving from `entry`.
 pub(super) fn contexts_of(fixture: &str, entry: &str, func: &str) -> usize {
     let path = std::fs::canonicalize(format!("tests/fixtures/{fixture}")).unwrap();

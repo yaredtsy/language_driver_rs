@@ -1,6 +1,6 @@
 == main
 entries: special.main#45cf4468e015cb83
-stats: walks 5, contexts 5, reuse_hits 0, unresolved 4, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 4}
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 4, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 1, "types_dropped": 0, "unknown_callee": 4}
 def special.JsonHandler = JsonHandler#0 Class special.py
 def special.Registry = Registry#0 Class special.py
 def special.Registry.__init__ = Registry.__init__#0 Method special.py

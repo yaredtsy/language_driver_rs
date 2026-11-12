@@ -89,6 +89,7 @@ pub(crate) struct Stats {
     pub lifted_subclass_of: u32,   // `lift` reached a `type[X]` (tests: the arm runs)
     pub effects_applied: u32,      // an `__init__` write replayed on a new object
     pub effects_dropped: u32,      // a value an `__init__` wrote that an effect cannot say
+    pub ref_unresolved: u32,       // a `Ref` or `Obj` no caller resolved (until CS2b: all)
 }
 pub(crate) use crate::wire::WireStyle;
 

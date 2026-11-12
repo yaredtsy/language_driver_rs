@@ -105,6 +105,7 @@ fn stats(old: &Stats, unresolved: u64, likely: u64) -> CStats {
     for (name, n) in [
         ("effects_applied", old.effects_applied),
         ("effects_dropped", old.effects_dropped),
+        ("ref_unresolved", old.ref_unresolved),
     ] {
         if n > 0 {
             out.language.insert(name.to_owned(), u64::from(n));

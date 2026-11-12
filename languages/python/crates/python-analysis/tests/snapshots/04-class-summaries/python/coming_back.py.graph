@@ -1,6 +1,6 @@
 == identity
 entries: coming_back.identity#c0e3d12af271551b
-stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 1, "types_dropped": 0, "unknown_callee": 0}
 def coming_back.Box = Box#0 Class coming_back.py
 def coming_back.Box.run = Box.run#0 Method coming_back.py
 def coming_back.CsvHandler = CsvHandler#0 Class coming_back.py
@@ -21,7 +21,7 @@ coming_back.identity#c0e3d12af271551b Finished
 
 == built_inside
 entries: coming_back.built_inside#29e47e0ca8e184c5
-stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 1, "types_dropped": 0, "unknown_callee": 1}
 def coming_back.Box = Box#0 Class coming_back.py
 def coming_back.JsonHandler = JsonHandler#0 Class coming_back.py
 def coming_back.built_inside = built_inside#0 Function coming_back.py
@@ -35,7 +35,7 @@ coming_back.make_json#79b2a6ec581d2e48 Finished
 
 == built_with_arg
 entries: coming_back.built_with_arg#90d3a0cce1f9c938
-stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 1, "types_dropped": 0, "unknown_callee": 1}
 def coming_back.Box = Box#0 Class coming_back.py
 def coming_back.CsvHandler = CsvHandler#0 Class coming_back.py
 def coming_back.built_with_arg = built_with_arg#0 Function coming_back.py
@@ -49,7 +49,7 @@ coming_back.make_box#3909621be9d4664d Finished
 
 == two_from_one_site
 entries: coming_back.two_from_one_site#c7a4d2b51496b3e0
-stats: walks 3, contexts 3, reuse_hits 0, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 2}
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 2, "types_dropped": 0, "unknown_callee": 2}
 def coming_back.Box = Box#0 Class coming_back.py
 def coming_back.CsvHandler = CsvHandler#0 Class coming_back.py
 def coming_back.JsonHandler = JsonHandler#0 Class coming_back.py

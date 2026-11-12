@@ -1,6 +1,6 @@
 == use_walk
 entries: recursion_objects.use_walk#748887c4af7394f2
-stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 2, "types_dropped": 0, "unknown_callee": 1}
 def recursion_objects.Handle = Handle#0 Class recursion_objects.py
 def recursion_objects.use_walk = use_walk#0 Function recursion_objects.py
 def recursion_objects.walk = walk#0 Function recursion_objects.py
@@ -39,7 +39,7 @@ recursion_objects.visitor#4e37d1816584b80d Finished
 
 == identity_limit
 entries: recursion_objects.identity_limit#f7d0b12952051fef
-stats: walks 5, contexts 5, reuse_hits 2, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 5, contexts 5, reuse_hits 3, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 7, "types_dropped": 0, "unknown_callee": 1}
 def recursion_objects.Branch = Branch#0 Class recursion_objects.py
 def recursion_objects.Branch.__init__ = Branch.__init__#0 Method recursion_objects.py
 def recursion_objects.JsonHandler = JsonHandler#0 Class recursion_objects.py

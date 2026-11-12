@@ -655,7 +655,7 @@ impl<'db> Walk<'db> {
         targets.push(Target::Call(ctx, basis)); // recorded now, whatever `get` answers
         match sol.get(ctx) {
             _ if !runs => Values::new(), // Python never makes this call, whatever `get` answered
-            Got::Ready(res) => self.resolve(&res.returns),
+            Got::Ready(res) => self.resolve(sol, &res.returns),
             Got::Pending if self.replaying => Values::new(), // the solver flagged the reader
             Got::Pending => {
                 let id = self.defer(DeferredOp::Apply { ctx }, env);
@@ -787,6 +787,10 @@ fn plain_value<'db>(p: &PlainVal<'db>) -> AbstractValue<'db> {
         PlainVal::Class(d) => AbstractValue::Class(d),
         PlainVal::Module(t) => AbstractValue::Module(t),
         PlainVal::Ty(t) => AbstractValue::Ty(t),
+        PlainVal::Opaque(class) => AbstractValue::Instance {
+            class,
+            origin: OriginId::OPAQUE,
+        },
         PlainVal::Unknown => AbstractValue::Unknown,
     }
 }

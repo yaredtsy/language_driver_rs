@@ -122,8 +122,9 @@ fn apply(&mut self, plan: Plan<'db>, env: &mut Env<'db>) -> Values<'db>;   // wr
 
 - `Ref(path)`: start at the root (`Param(i)` is `call.bound.slots[i]`; `Free(i)` and `Default(i)` read the enclosing run), then each step
   in `before`: `Attr` reads the object's **state only** (`before.attrs`), never a property or the class side (phase 1 runs nothing);
-  `Recv` takes a bound method's receiver; `Free` and `Default` read a closure's run. A path that does not resolve gives nothing, counted
-  `ref_unresolved` (§7 claim 3 says it should not happen in this step).
+  `Recv` takes a bound method's receiver; `Free` and `Default` read a closure's run. A path that does not resolve gives `Unknown` (what `plain` gave
+  before a summary could name an object), counted `ref_unresolved` (§7 claim 3 says it should not happen in this step). Never an empty
+  `Values`: an empty value means "Python never makes this call" (`EvaluatedArgs::has_empty`), and would drop the edges D27 finds.
 - `Obj(j)`: a new origin `New { site, act, t, made: Made::Obj(j) }`, class `objects[j].class`; its attributes resolved against `before`
   and put in the plan.
 - `apply` writes each new object's attributes (strong: a new object has nothing to keep), then returns the values.
@@ -158,7 +159,7 @@ the env is built on `rpds` persistent maps, so the clone copies a pointer, not t
 
 | | |
 |---|---|
-| Change | §4.1, §4.2. `resolve_in` handles the new values only as far as `Plain(Opaque)` and `Bound`; `Ref` and `Obj` still give nothing (counted `ref_unresolved`, so the gap is visible) |
+| Change | §4.1, §4.2. `resolve_in` handles the new values only as far as `Plain(Opaque)` and `Bound`; `Ref` and `Obj` still give `Unknown`, as every object did (counted `ref_unresolved`, so the gap is visible; not an empty `Values`, which means "never called" and would drop D27's edges). The counter is in `Stats.language`, so every graph snapshot with it above 0 moves its `stats:` line; the fixtures that have it are CS2b's list |
 | Failing tests | unit tests in `summary.rs`, hand-built from small programs through the harness: `ident`'s returns are `[Ref(Param(0))]`; `make_json`'s are `[Obj(0)]` with `objects[0]` a `Box` whose `handler` is `[Obj(1)]`; two runs of one walk give `==` summaries |
 | Proof | `cargo test -p python-analysis`; **no snapshot changes** (nothing resolves the new values yet) |
 
@@ -176,8 +177,8 @@ the env is built on `rpds` persistent maps, so the clone copies a pointer, not t
 
 | # | Claim | Checked in |
 |---|---|---|
-| 1 | `walk_context` leaves the joined exit env at `activations[frame.act]` for every walk, so `finish` can read final attributes there | CS2a |
-| 2 | Objects reached only through a closure's free value (returned closure that captured a new object) are numbered and described too | CS2a, a unit test |
+| 1 | `walk_context` leaves the joined exit env at `activations[frame.act]` for every walk, so `finish` can read final attributes there | CS2a. **Holds**, with one case that does not matter. `walk_context` joins `frame.exits` (every `return` and the fall off the end) into `activations[frame.act]`; nothing after it writes that slot (a replay runs operations, not statements). Test `the_state_a_summary_reads_is_every_exit_joined`: two `return`s that left a `JsonHandler` and a `CsvHandler` on one object give both on its attribute. When every path raises there is no exit, the join is `None`, and the slot keeps the env at the start of the last statement walked; such a walk returns nothing, so `finish` reads no attribute from it |
+| 2 | Objects reached only through a closure's free value (returned closure that captured a new object) are numbered and described too | CS2a, a unit test. **Holds.** `an_object_only_a_returned_closure_holds_is_numbered_and_described` (`closure_holds_object.py`): `make_getter` returns `Closure { get, free: [b: [Obj(0)]] }`, and `objects` holds the `Box` (`handler: [Obj(1)]`) and the `Handler`. The closure's free value reaches `to_svals` through `lookup_in`, which reads the same exit env |
 | 3 | In this step every `Ref` path is at most `fp_depth` steps and resolves in the caller's `before` state: the key took those attributes from it. `ref_unresolved` stays 0 on every fixture | CS2b |
 | 4 | The basis of a call on an `Obj(j)` object is `Path` (`is_built_here` is true for its `New` origin), and on a `Ref` object whatever the caller's object gives | CS2b, a test in `tests/api.rs` on `coming_back.py` |
 | 5 | No `debug_assert` fires in `fp_one`'s pending arm on the whole suite | CS2b |
