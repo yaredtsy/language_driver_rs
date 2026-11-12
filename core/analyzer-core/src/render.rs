@@ -16,7 +16,8 @@ use crate::graph::{Basis, ContextId, Edge, EdgeTo, Graph, Root, Site, StableDef,
 pub enum Mark {
     /// The function is already on the path above: shown as a leaf, not entered.
     Recursive,
-    /// The node budget or depth limit ran out here: the children are partial.
+    /// The node budget or depth limit ran out here, or the request's own budget did (a `Status::Frontier` context, never walked): the children are
+    /// partial.
     Cut,
     /// A context this node stands for has a gap: a cost limit hit while solving it.
     Incomplete,
@@ -224,7 +225,7 @@ fn leaf(c: Child<'_>, mark: Mark) -> Node {
 
 impl<'g> Renderer<'g> {
     /// `head` is the node as its edge makes it (name, site, passed, the edge's marks); this adds its contexts and the marks of the node's own
-    /// state (incomplete, cut), and its children to visit.
+    /// state (incomplete, frontier, cut), and its children to visit.
     fn open(&self, mut head: Node, contexts: Vec<&'g ContextId>, depth: u32) -> Frame<'g> {
         if contexts.iter().any(|id| {
             self.graph
@@ -232,6 +233,15 @@ impl<'g> Renderer<'g> {
                 .is_some_and(|c| matches!(c.status, Status::Incomplete(_)))
         }) {
             head.marks.push(Mark::Incomplete);
+        }
+        // A context the request's budget ended at was listed and not walked, so it has no edges here and its children are partial: `Cut`, as when the
+        // renderer's own budget ends at a node. Unlike that one it is marked even where the walk would have found nothing, because it was not walked.
+        if contexts.iter().any(|id| {
+            self.graph
+                .context(id)
+                .is_some_and(|c| c.status == Status::Frontier)
+        }) {
+            head.marks.push(Mark::Cut);
         }
         let mut groups = self.children_of(&contexts);
         if !groups.is_empty() && self.opts.max_depth.is_some_and(|limit| depth >= limit) {
@@ -960,6 +970,199 @@ mod tests {
         );
         let tree = render(&g, &root, &RenderOptions::default());
         assert_eq!(to_text(&tree), "Foo\n  Foo [Recursive]\n");
+    }
+
+    // Step 2a: a context the request's budget ended at (`Status::Frontier`) is drawn `Cut`.
+
+    use crate::solve::tests::Toy;
+    use crate::solve::{Budget, Cancel, Limits, Solver, Start};
+
+    type Program = &'static [(&'static str, &'static [&'static str])];
+
+    /// A diamond, a shared callee at two distances, a hand-over, an external and an unresolved call. `a` is 0 steps from itself, `b` and `c` 1,
+    /// `d`, `e`, `f` 2, `g`, `h` 3, `i` 4.
+    const SHAPES: Program = &[
+        ("a", &["b", "c", "ext", "?"]),
+        ("b", &["d", "e"]),
+        ("c", &["e", "f"]),
+        ("d", &["g", ">h"]),
+        ("e", &["g", "h"]),
+        ("f", &[]),
+        ("g", &["i"]),
+        ("h", &[]),
+        ("i", &[]),
+    ];
+
+    /// What the toy language's own table says, with no solver: the number of steps from `entry` to each function.
+    fn distances(program: Program, entry: &'static str) -> BTreeMap<&'static str, u32> {
+        let mut dist = BTreeMap::from([(entry, 0)]);
+        let mut queue = std::collections::VecDeque::from([entry]);
+        while let Some(f) = queue.pop_front() {
+            let calls = program.iter().find(|(name, _)| *name == f).map(|(_, c)| *c);
+            for callee in calls.into_iter().flatten() {
+                let callee = callee.strip_prefix('>').unwrap_or(callee);
+                let Some(&(name, _)) = program.iter().find(|(n, _)| *n == callee) else {
+                    continue;
+                };
+                if !dist.contains_key(name) {
+                    dist.insert(name, dist[f] + 1);
+                    queue.push_back(name);
+                }
+            }
+        }
+        dist
+    }
+
+    fn request(program: Program, entry: &'static str, budget: &Budget) -> Graph {
+        let mut solver = Solver::new(Toy::new(program), Limits::default());
+        solver.graph_within(&[Start::Call(entry, ())], budget, &Cancel::new())
+    }
+
+    fn everything() -> RenderOptions {
+        RenderOptions {
+            show_external: true,
+            show_unresolved: true,
+            ..RenderOptions::default()
+        }
+    }
+
+    /// Every node with the names from the root to it, `a/b/d`.
+    fn all_nodes<'n>(node: &'n Node, path: &str, out: &mut Vec<(String, &'n Node)>) {
+        let here = format!("{path}/{}", node.qname);
+        for child in &node.children {
+            all_nodes(child, &here, out);
+        }
+        out.push((here, node));
+    }
+
+    #[test]
+    fn at_each_depth_exactly_the_frontier_nodes_are_cut() {
+        let dist = distances(SHAPES, "a");
+        for depth in 1..=3u32 {
+            let g = request(SHAPES, "a", &Budget::new(Some(depth), None));
+            let tree = render(&g, &g.entries[0], &everything());
+            let mut nodes = Vec::new();
+            all_nodes(&tree, "", &mut nodes);
+            let mut cut = 0;
+            for (path, node) in &nodes {
+                // a node is on the frontier when its function is exactly `depth` steps from the entry: nothing farther was ever listed
+                let expected = dist.get(node.qname.as_str()) == Some(&depth);
+                assert_eq!(
+                    node.marks.contains(&Mark::Cut),
+                    expected,
+                    "depth {depth}, {path}"
+                );
+                assert!(
+                    !node.marks.contains(&Mark::Incomplete),
+                    "depth {depth}, {path}"
+                );
+                cut += usize::from(expected);
+            }
+            assert!(
+                cut > 0,
+                "depth {depth}: a check that finds no frontier node proves nothing"
+            );
+            let frontier = dist.values().filter(|&&d| d == depth).count() as u64;
+            assert_eq!(g.stats.frontier, frontier, "depth {depth}");
+        }
+        let g = request(SHAPES, "a", &Budget::default());
+        let tree = render(&g, &g.entries[0], &everything());
+        assert!(
+            !to_text(&tree).contains("[Cut]"),
+            "no budget, no frontier, no cut"
+        );
+    }
+
+    #[test]
+    fn a_frontier_node_is_cut_even_where_its_body_would_have_had_nothing_to_draw() {
+        // `f` calls nothing, and at depth 2 it is not walked: the tree cannot say it has no calls
+        let g = request(SHAPES, "a", &Budget::new(Some(2), None));
+        let text = to_text(&render(&g, &g.entries[0], &RenderOptions::default()));
+        assert!(text.contains("\n    f [Cut]\n"), "{text}");
+        // and at depth 3 the same `f` was walked and is a plain leaf
+        let g = request(SHAPES, "a", &Budget::new(Some(3), None));
+        let text = to_text(&render(&g, &g.entries[0], &RenderOptions::default()));
+        assert!(text.contains("\n    f\n"), "{text}");
+    }
+
+    #[test]
+    fn a_frontier_root_is_cut() {
+        let g = request(SHAPES, "a", &Budget::new(Some(0), None));
+        assert_eq!(text_of(&g), "a [Cut]\n");
+    }
+
+    fn text_of(g: &Graph) -> String {
+        to_text(&render(g, &g.entries[0], &RenderOptions::default()))
+    }
+
+    /// Replaces each `Cut` node, as a request for its callee, by what that request draws.
+    fn stitch(node: &mut Node, program: Program, budget: &Budget) {
+        if node.marks.contains(&Mark::Cut) {
+            let callee = program
+                .iter()
+                .map(|(name, _)| *name)
+                .find(|name| *name == node.qname)
+                .expect("a toy def");
+            let g = request(program, callee, budget);
+            let mut again = render(&g, &g.entries[0], &RenderOptions::default());
+            node.children = std::mem::take(&mut again.children);
+            node.marks.retain(|m| *m != Mark::Cut);
+            node.marks.extend(again.marks.iter().copied());
+            node.marks.sort();
+        }
+        for child in &mut node.children {
+            stitch(child, program, budget);
+        }
+    }
+
+    #[test]
+    fn for_an_acyclic_program_a_new_request_per_cut_node_gives_the_unbounded_tree() {
+        let unbounded = {
+            let g = request(SHAPES, "a", &Budget::default());
+            render(&g, &g.entries[0], &RenderOptions::default())
+        };
+        for first in 1..=3u32 {
+            // each new request unbounded, and each bounded again (so its own frontier is replaced in turn)
+            for next in [None, Some(1), Some(2)] {
+                let g = request(SHAPES, "a", &Budget::new(Some(first), None));
+                let mut tree = render(&g, &g.entries[0], &RenderOptions::default());
+                stitch(&mut tree, SHAPES, &Budget::new(next, None));
+                assert_eq!(
+                    tree,
+                    unbounded,
+                    "first {first}, next {next:?}\n{}",
+                    to_text(&tree)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_node_cut_by_the_budget_and_one_stopped_by_the_renderer_are_both_cut() {
+        // `a` has two callees and the node budget (3) stops it after `b` and `b`'s only callee; `d` is on the request's frontier
+        let program: Program = &[("a", &["b", "c"]), ("b", &["d"]), ("c", &[]), ("d", &[])];
+        let g = request(program, "a", &Budget::new(Some(2), None));
+        let opts = RenderOptions {
+            max_nodes: 3,
+            ..RenderOptions::default()
+        };
+        assert_eq!(
+            to_text(&render(&g, &g.entries[0], &opts)),
+            "a [Cut]\n  b\n    d [Cut]\n"
+        );
+    }
+
+    #[test]
+    fn a_frontier_node_is_never_incomplete_and_incomplete_is_what_it_was() {
+        // `Limits` stop `c` (two bodies were allowed), the budget stops `d`: one node of each kind
+        let program: Program = &[("a", &["b", "c"]), ("b", &["d"]), ("c", &[]), ("d", &[])];
+        let mut solver = Solver::new(Toy::new(program), Limits::new(2, None));
+        let g = solver.graph_within(
+            &[Start::Call("a", ())],
+            &Budget::new(Some(2), None),
+            &Cancel::new(),
+        );
+        assert_eq!(text_of(&g), "a\n  b\n    d [Cut]\n  c [Incomplete]\n");
     }
 
     // D22
