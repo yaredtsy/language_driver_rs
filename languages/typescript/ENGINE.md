@@ -481,7 +481,7 @@ On the V-NOC component `TaskDetailPanel` the 75 were all value holders by declar
 | a value declared **in a package** with a function type | 18 | `useQueryClient` 8, `toast.error` 2, `mutation.mutate` 8 (react-query's result, a union whose members each hold a `mutate`) | `External` (a named call into the package): 84 external, 57 unresolved |
 | a state setter from `useState` (a destructured binding) | 25 | `setAddingSubtask`, `setSubtaskQuery` | D16, as decided |
 | a project hook or store built by a call | 11 | `useVersioningStore(…)` 6, `useProjectStore(…)` 4, `useTabStore(…)` 1 | D16 |
-| an **arrow held by a property of an object literal in the project** | 20 | `tasksApi.updateTask(…)` and ten more, `queryKeys.tasks.anchorSummary(…)` and two more (9 in all) | D16, and **a coverage gap**: these are project functions the outline does not treat as defs (a property holding an arrow is not a def, "for now"), and the engine's call hierarchy does not resolve them either (`is_assigned_expression` wants a `const` or a class property). Idiomatic code puts a whole API in such an object; whether `key: () => {}` should be a def is the owner's question |
+| an **arrow held by a property of an object literal in the project** | 20 | `tasksApi.updateTask(…)` and ten more, `queryKeys.tasks.anchorSummary(…)` and two more (9 in all) | D16 at the time, and **a coverage gap** (closed by D21, see "Arrows held by object-literal properties" below): these were project functions the outline did not treat as defs (a property holding an arrow is not a def, "for now"), and the engine's call hierarchy does not resolve them either (`is_assigned_expression` wants a `const` or a class property). Idiomatic code puts a whole API in such an object; whether `key: () => {}` should be a def is the owner's question |
 | an optional callback prop of the project | 1 | `onNavigateToNode` | D16 |
 
 25 + 11 + 20 + 1 = 57, the unresolved edges left after the 18 moved to external.
@@ -527,3 +527,39 @@ in TypeScript. A `new` is a site on the class expression (`new a.B(x)` → `a.B`
 - **A project file that augments a library global makes it the project's too.** `declare global { interface String { shout(): string } }` in a project file gives the symbol `String` a project declaration, so
   `external_declarations` (every declaration outside the project) says nothing and `String(1)` is `no_declaration` again in that project; `Number(…)` and `new Date()` stay `External` (checked on a scratch
   project, 2026-11-12). Left as it is: the rule is "all declarations outside", and narrowing it to the declarations that have a signature would be the next step if a real project shows it.
+
+### Arrows held by object-literal properties (D21, TS4 after step 5)
+
+The outline rule is D21 (`docs/07`); `typescript-syntax` tests pin it in four dialects (`object_literal_arrows.*`), the marker tests pin where a marker goes, and the 292 existing defs did not move (the existing
+snapshots gained two rows, `api.arrowProp` and `api.functionProp` in `object_literals.ts`, and lost none). **Resolution**, pinned in `tests/fixtures/object-arrows/`: three places in `sem.rs` know that a property can hold the
+function.
+
+- `declarations_of_signature` takes an arrow or function expression that is the value of a property assignment (`api["load"]()` and the named `api.load()` both reach it through the checker's resolved signature).
+- `callable_declarations` does the same for the members of a union receiver (`either.go()`: one target per member, as for methods).
+- `classify` turns a property arrow that is **not** a def by D21's rule (a `let`, a default export, a class property's literal, an argument's literal) into `Unknown(function_typed_value)`: it is a holder of a function
+  declared in the project, which is what D16 counts. Without this arm the outline and the engine disagree and the debug assertion for "not a def of the outline" fires (mutation-checked: the arm removed, the test panics there).
+- An attempt that was **not needed**: a branch in `declarations_of`, the port of the engine's hierarchy, for a property assignment. The test passed with it removed (the signature fallback already finds the arrow), so it was
+  taken out; the port is as it was.
+
+An external property arrow (a `.js` file in a package) is named by its property in the `External`, as `own` in `classify`.
+
+**On the V-NOC `TaskDetailPanel`** (the proof of D21, `typescript-cli calls … --entry TaskDetailPanel`):
+
+| | before | after |
+|---|---|---|
+| edges | 32 call, 0 construct, 88 external, 57 unresolved | 81 call, 2 construct, 111 external, 38 unresolved |
+| contexts | 18 | 41 |
+| wire nodes | 41 | 190 |
+| open / graph | 63–230 ms / 13–31 ms | 88–117 ms / 15–19 ms |
+
+The 57 were 25 state setters, 11 project stores and hooks, 1 optional callback prop and **20 object-literal arrows**; the 20 are all calls now. The 38 are the same 37 (25 + 11 + 1) and **one new one**: the walk now enters
+`readOnlyGate.ts`, which calls `useSidebarModalStore.getState().openReadOnlyModal`, a method of a zustand store, held by an object literal that is the return value of `create((set) => ({ … }))`: D21's rule 2, unresolved on purpose.
+The two constructions are the first project classes constructed in a real run (`ApiError`, `ReadOnlyModeError`, each with its own constructor as `init`). The 11 stores (`useVersioningStore`, `useProjectStore`, `useTabStore`) stay
+unresolved. Checked for `useVersioningStore` and `useSidebarModalStore`: both are `create<State>()(…)` results, so the arrows are inside an argument's literal (rule 2); `useProjectStore` and `useTabStore` were not opened.
+
+**A def that has no frame.** An arrow property is a def, and what is inside its body keeps the names and parents it had before (`api.inner`, not `api.load.<locals>.inner`): `Def::parent` of such a def is the enclosing def, not the arrow.
+The tree of the arrow shows its calls (it is a context), but a named function inside it is a sibling in the outline. This is the price of not renaming; if the owner decides a rename is acceptable at `typescript-v0.2.0`, the
+frame is one line (`add` becomes `enter`).
+
+**Calls leave the enclosing def, as they do for `const handler = () => {}`.** A `const` object literal **inside a function** (`const local = { l: () => other() }`) now owns the arrow's calls: `run` shows them only if something
+calls `local.l` through a name the checker resolves (fixture: it does). Passed on without being called (`register(local)`), they are in no tree. Same trade as the named const arrow, which was already a def.
