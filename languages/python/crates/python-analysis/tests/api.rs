@@ -769,7 +769,7 @@ impl Scratch {
     fn write(&self, relative: &str, text: &str) {
         let path = self.path(relative);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        // A `File` and `write_all`: `check-all.sh` greps the one-call form in a crate's folder, tests included; this writes only a test's own scratch folder
+        // A `File` and not `fs::write`: `set_modified` below needs the open file
         let mut file = std::fs::File::create(&path).unwrap();
         file.write_all(text.as_bytes()).unwrap();
         let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);

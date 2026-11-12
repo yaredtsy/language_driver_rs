@@ -32,10 +32,12 @@ none "a product word in code (rule 1)" "$(rs -iE 'v-?noc|FileID|Schema/' core "$
 none "a personal path (rule 6)" \
   "$(grep -rnE --exclude-dir=target --exclude-dir=vendor "/Us""ers/|/ho""me/" core "${crates[@]}" scripts 2>/dev/null || true)"
 
-# rule 2: a library never writes a file and never invents an ID. Allowed: *-cli (they are the program), and
-# analyzer-testkit, a dev-dependency whose ANALYZER_BLESS switch writes expected files for a person to review.
-none "fs::write or uuid in a library (rule 2)" \
-  "$(rs -E 'fs::write|uuid' core/analyzer-core/src "${crates[@]}" | grep -v -- '-cli/' || true)"
+# rule 2: a library never writes a file and never invents an ID: the check reads library code, the src folders, and looks for every way
+# to write (fs::write, File::create, OpenOptions) and for uuid. Allowed: *-cli (they are the program); tests, which write their own scratch
+# folders; and analyzer-testkit, a dev-dependency whose ANALYZER_BLESS switch writes expected files for a person to review.
+lib_src=(core/analyzer-core/src languages/*/crates/*/src)
+none "a way to write a file, or uuid, in a library (rule 2)" \
+  "$(rs -E 'fs::write|File::create|OpenOptions|uuid' "${lib_src[@]}" | grep -v -- '-cli/' || true)"
 
 # one lint style: every language's [workspace.lints] block equals the template's, except the value of unsafe_code and comments
 lints() { awk '/^\[workspace\.lints/{p=1} /^\[profile/{p=0} p' "$1" | grep -v -e '^#' -e '^unsafe_code'; }
