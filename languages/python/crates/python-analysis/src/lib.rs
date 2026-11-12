@@ -1,4 +1,4 @@
-//! SLOW: project loading, call sites, the call graph and the wire. `sem.rs` is the only file that imports the type checker.
+//! SLOW: project loading, call sites, the call graph and the wire. The `sem` module (the folder `src/sem/`) is the only code that imports the type checker.
 //!
 //! Moved from pylspt (`670ae79a15`). The surface is this file's list and nothing else:
 //!

@@ -110,9 +110,8 @@ pub(crate) fn open_project(dir: &SystemPath) -> anyhow::Result<ProjectDatabase> 
         // The root is `dir` or one of its parents, cut from the same text, so it is spelled as `dir` is: no `canonicalize` needed.
         Ok(m) if m.root() == dir => m,
         Ok(_) => here(),
-        Err(_err) => {
+        Err(_) => {
             // Broken config must never take the analyser down (quirk 13).
-            // tracing::warn!("project discovery failed: {err}; using defaults");
             here()
         }
     };
