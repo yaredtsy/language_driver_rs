@@ -55,6 +55,7 @@ impl Options {
             only_marked: self.only_marked,
             wire: self.wire.clone(),
             marker: self.marker,
+            constructor_effects: false,
         }
     }
 

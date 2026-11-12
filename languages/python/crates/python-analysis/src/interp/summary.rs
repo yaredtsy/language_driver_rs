@@ -17,7 +17,26 @@ use ruff_index::IndexVec;
 pub(crate) struct FunctionResult<'db> {
     pub calls: Vec<CallEdge<'db>>, // one per call site reached, in evaluation order
     pub returns: SVals<'db>,       // the union of every return
+    /// What an `__init__` wrote onto `self`, relative to its inputs. Empty unless `Options::constructor_effects` is on.
+    pub effects: Vec<Effect<'db>>,
+    /// Attribute values of `self` an `__init__` wrote that no `EffectValue` can say (an object it built, a closure, a derived value).
+    pub effects_dropped: u32,
     pub status: Status,
+}
+
+/// `self.<attr> = <value>` in an `__init__`, written so that a caller with other arguments can replay it.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct Effect<'db> {
+    pub attr: Name,
+    pub value: EffectValue<'db>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) enum EffectValue<'db> {
+    /// Whatever the caller passed for parameter slot `k` (the slot order of `Bound`: `self` is 0), defaults filled.
+    Param(usize),
+    /// A value with no identity: a class, a function, a module, a type, or nothing known.
+    Plain(PlainVal<'db>),
 }
 
 /// What a caller must know about how far to trust a summary .
@@ -42,6 +61,8 @@ impl<'db> FunctionResult<'db> {
         FunctionResult {
             calls: Vec::new(),
             returns: smallvec![SVal::Plain(PlainVal::Unknown)],
+            effects: Vec::new(),
+            effects_dropped: 0,
             status: Status {
                 gaps: Gaps::default(),
                 cut: Some(cut),
@@ -158,10 +179,100 @@ impl<'db> Walk<'db> {
                 &mut ClosureStack::default(),
             )
         };
+        let (effects, effects_dropped) = if s.opts.constructor_effects {
+            self.init_effects(s, resolved)
+        } else {
+            (Vec::new(), 0)
+        };
         FunctionResult {
             calls: self.frame.calls.clone(),
             returns,
+            effects,
+            effects_dropped,
             status: Status::default(),
+        }
+    }
+
+    /// What this walk wrote onto `self`, if it is an `__init__` run on an object that holds state: one `Effect` per attribute and
+    /// value, sorted by attribute name, and how many values could not be said. A value is `Param(k)` when it is exactly what slot `k`
+    /// held at the start (the first such `k`: callers that share this context have equal fingerprints there, so any of them says the same),
+    /// else a plain value, else dropped. Nothing the walk did not change is an effect.
+    fn init_effects(
+        &self,
+        s: &Solver<'db>,
+        resolved: &IndexVec<DeferId, Values<'db>>,
+    ) -> (Vec<Effect<'db>>, u32) {
+        let none = (Vec::new(), 0);
+        if s.sem.function_name(self.frame.func) != "__init__" {
+            return none;
+        }
+        let Some([AbstractValue::Instance { origin, .. }]) =
+            self.inputs.first().map(|v| v.as_slice())
+        else {
+            return none;
+        };
+        let origin = *origin;
+        if !origin.holds_state() {
+            return none;
+        }
+        let end = &self.activations[self.frame.act];
+        let (mut effects, mut dropped) = (Vec::new(), 0);
+        for (attr, vals) in end.attrs_of(origin) {
+            if self.start_attrs.get(&(origin, attr.clone())) == Some(&vals) {
+                continue; // it came in this way
+            }
+            let mut settled = Values::new();
+            self.settle(&vals, resolved, &mut settled);
+            for v in settled {
+                let value = match v {
+                    AbstractValue::Unknown => EffectValue::Plain(PlainVal::Unknown),
+                    AbstractValue::Instance { origin: o, .. } if o == origin => {
+                        dropped += 1; // `self.me = self`
+                        continue;
+                    }
+                    _ => match self
+                        .inputs
+                        .iter()
+                        .skip(1)
+                        .position(|slot| slot.contains(&v))
+                    {
+                        Some(k) => EffectValue::Param(k + 1),
+                        None => match v {
+                            AbstractValue::Function(_)
+                            | AbstractValue::Class(_)
+                            | AbstractValue::Module(_)
+                            | AbstractValue::Ty(_) => EffectValue::Plain(plain(v)),
+                            _ => {
+                                dropped += 1; // an object built here, a closure, a bound method, a derived value
+                                continue;
+                            }
+                        },
+                    },
+                };
+                let effect = Effect {
+                    attr: attr.clone(),
+                    value,
+                };
+                if !effects.contains(&effect) {
+                    effects.push(effect);
+                }
+            }
+        }
+        (effects, dropped)
+    }
+
+    /// `vals` with every pending value replaced by what it resolved to.
+    fn settle(
+        &self,
+        vals: &Values<'db>,
+        resolved: &IndexVec<DeferId, Values<'db>>,
+        out: &mut Values<'db>,
+    ) {
+        for &v in vals {
+            match v {
+                AbstractValue::Pending(id) => self.settle(&resolved[id], resolved, out),
+                other => out.push(other),
+            }
         }
     }
 

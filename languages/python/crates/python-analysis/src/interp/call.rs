@@ -5,11 +5,11 @@ use crate::interp::bind::{Bound, EvaluatedArgs};
 use crate::interp::defer::DeferredOp;
 use crate::interp::env::Env;
 use crate::interp::solver::{Got, Solver};
-use crate::interp::summary::{CallEdge, SiteId, Target};
+use crate::interp::summary::{CallEdge, EffectValue, FunctionResult, PlainVal, SiteId, Target};
 use crate::interp::tree::Node;
 use crate::interp::value::dedup;
 use crate::interp::value::{AbstractValue, Values};
-use crate::interp::value::{ActivationId, OriginKey};
+use crate::interp::value::{ActivationId, OriginId, OriginKey};
 use crate::interp::walk::{Walk, contains_yield};
 use crate::sem::Definition;
 use crate::sem::Shape;
@@ -305,7 +305,7 @@ impl<'db> Walk<'db> {
                     args,
                     if named { Basis::Name } else { Basis::Type },
                     &mut edge_targets,
-                    &*env,
+                    env,
                 )),
             }
         }
@@ -609,10 +609,11 @@ impl<'db> Walk<'db> {
         )
     }
 
-    /// Summary mode: a new object here, and `__init__` keyed on it.
+    /// Summary mode: a new object here, and `__init__` keyed on it. With `constructor_effects`, what `__init__` wrote onto `self` is
+    /// written onto the new object, from the arguments of this call (a spike: part 04, step 3).
     // the construct site's inputs: the class and its site, the arguments, what the class expression rests on, and the walk's state
     #[allow(clippy::too_many_arguments)]
-    fn construct_summary(
+    pub(crate) fn construct_summary(
         &mut self,
         sol: &mut Solver<'db>,
         class: Definition<'db>,
@@ -620,30 +621,68 @@ impl<'db> Walk<'db> {
         args: &EvaluatedArgs<'db>,
         basis: Basis, // `Name` when the class expression names the class
         targets: &mut SmallVec<[Target<'db>; 2]>,
-        env: &Env<'db>,
+        env: &mut Env<'db>,
     ) -> Values<'db> {
         let origin = self.origins.intern(OriginKey::New {
             site,
             act: self.frame.act,
         });
         let obj = AbstractValue::Instance { class, origin };
-        let init = sol
-            .sem
-            .init_of(class)
-            .filter(|&i| sol.sem.is_project(i))
-            .and_then(|init| {
-                let parsed = sol.sem.parsed(init);
-                let node = sol.sem.function_node(init, &parsed)?;
-                let bound = self.bind_for_callee(sol, init, node, Some(obj), args, None);
-                let ctx = sol.key(self, init, &bound, None, env);
-                sol.get(ctx); // its value is never used; its writes are effects (step 03)
-                Some(ctx)
-            });
+        let mut init = None;
+        if let Some(init_def) = sol.sem.init_of(class).filter(|&i| sol.sem.is_project(i)) {
+            let parsed = sol.sem.parsed(init_def);
+            if let Some(node) = sol.sem.function_node(init_def, &parsed) {
+                let bound = self.bind_for_callee(sol, init_def, node, Some(obj), args, None);
+                let ctx = sol.key(self, init_def, &bound, None, env);
+                // its value is never used; its writes are effects (step 03)
+                if let Got::Ready(res) = sol.get(ctx)
+                    && sol.opts.constructor_effects
+                {
+                    self.apply_effects(sol, origin, &res, &bound, env);
+                }
+                init = Some(ctx);
+            }
+        }
         targets.push(Target::Construct { class, init, basis });
         if args.has_empty() {
             Values::new()
         } else {
             smallvec![obj]
         }
+    }
+
+    /// Write what `res` says `__init__` wrote onto `self` onto the object `origin`. A `Param(k)` is what this call passed for slot `k`.
+    /// Joined, not replaced: the same site builds the object again in a loop. A write whose values are all `Unknown` is left out: the
+    /// attribute stays absent, and a read of it asks ty, which may know what the walk does not.
+    fn apply_effects(
+        &mut self,
+        sol: &mut Solver<'db>,
+        origin: OriginId,
+        res: &FunctionResult<'db>,
+        bound: &Bound<'db>,
+        env: &mut Env<'db>,
+    ) {
+        sol.stats.effects_dropped += res.effects_dropped;
+        for e in &res.effects {
+            let vals: Values<'db> = match &e.value {
+                EffectValue::Param(k) => bound.slots.get(*k).cloned().unwrap_or_default(),
+                EffectValue::Plain(p) => smallvec![plain_value(p)],
+            };
+            if vals.iter().all(|v| matches!(v, AbstractValue::Unknown)) {
+                continue;
+            }
+            env.join_attr(origin, &e.attr, vals);
+            sol.stats.effects_applied += 1;
+        }
+    }
+}
+
+fn plain_value<'db>(p: &PlainVal<'db>) -> AbstractValue<'db> {
+    match *p {
+        PlainVal::Function(d) => AbstractValue::Function(d),
+        PlainVal::Class(d) => AbstractValue::Class(d),
+        PlainVal::Module(t) => AbstractValue::Module(t),
+        PlainVal::Ty(t) => AbstractValue::Ty(t),
+        PlainVal::Unknown => AbstractValue::Unknown,
     }
 }

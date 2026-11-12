@@ -1206,7 +1206,12 @@ fn dump_graph_of_a_real_project() {
     );
     let db = open_project(SystemPath::new(&project)).unwrap();
     let (file, _) = open(&db, &SystemPath::new(&project).join(file)).unwrap();
-    let graph = call_graph(&db, file, &entry, &summary()).unwrap();
+    // `PYTHON_DUMP_EFFECTS=1`: with the constructor effects of part 04, step 3 (the spike)
+    let opts = Options {
+        constructor_effects: std::env::var("PYTHON_DUMP_EFFECTS").is_ok(),
+        ..summary()
+    };
+    let graph = call_graph(&db, file, &entry, &opts).unwrap();
     println!("=====BEGIN graph\n{}=====END", graph_text(&graph));
     if std::env::var("PYTHON_DUMP_UNRESOLVED").is_ok() {
         dump_unresolved_sites(&db, &project, &graph);
@@ -1525,6 +1530,108 @@ fn compare_with_inline(
             gap.extras.push(format!("{path} -> {}", s.qname));
         }
     }
+}
+
+/// The spike of part 04, step 3 (`Options::constructor_effects`, off by default). With it on: (1) every program verified in both modes still
+/// gives its tree (the safety net), (2) the class programs' gaps against inline mode, entry by entry, with it off and on, and what moved.
+#[test]
+fn constructor_effects_spike() {
+    use crate::interp::call_graph;
+    use analyzer_core::render::{RenderOptions, render};
+    let this_file = include_str!("fixture.rs");
+    let with_effects = |o: &Options| Options {
+        constructor_effects: true,
+        ..o.clone()
+    };
+
+    // 1. programs verified in both modes: the trees do not change
+    let mut seen = BTreeSet::new();
+    for (fixture, _, opts) in every_entry() {
+        if this_file.contains(&format!("check(\"{fixture}\")")) || !seen.insert(fixture.clone()) {
+            continue;
+        }
+        let report = failures(&fixture, &with_effects(&opts));
+        assert!(
+            report.is_empty(),
+            "effects broke a verified program:\n{report}"
+        );
+    }
+
+    // 2. the class programs: what is missing against inline mode, per entry
+    let gap_of = |effects: bool| {
+        let mut rows: Vec<(String, usize, usize, Gap)> = Vec::new();
+        for (fixture, entry, opts) in every_entry() {
+            if !this_file.contains(&format!("check(\"{fixture}\")")) {
+                continue;
+            }
+            let (db, file) = open_fixture(&fixture);
+            let inline_opts = Options {
+                mode: Mode::Inline,
+                ..opts.clone()
+            };
+            let opts = if effects { with_effects(&opts) } else { opts };
+            let inline = call_tree(&db, file, &entry, &inline_opts).unwrap().0;
+            let graph = call_graph(&db, file, &entry, &opts).unwrap();
+            let summary = render(&graph, &graph.entries[0], &RenderOptions::default());
+            let mut gap = Gap::default();
+            compare_with_inline(&entry, &inline, &summary, &graph, &mut gap);
+            let applied = graph
+                .stats
+                .language
+                .get("effects_applied")
+                .copied()
+                .unwrap_or(0) as usize;
+            let dropped = graph
+                .stats
+                .language
+                .get("effects_dropped")
+                .copied()
+                .unwrap_or(0) as usize;
+            rows.push((format!("{fixture} {entry}"), applied, dropped, gap));
+        }
+        rows
+    };
+    let (off, on) = (gap_of(false), gap_of(true));
+    let sum = |rows: &[(String, usize, usize, Gap)]| {
+        (
+            rows.iter()
+                .filter(|r| r.3.missing > 0 || r.3.extra > 0)
+                .count(),
+            rows.iter().map(|r| r.3.missing).sum::<usize>(),
+            rows.iter().map(|r| r.3.highest_missing).sum::<usize>(),
+            rows.iter().map(|r| r.3.extra).sum::<usize>(),
+        )
+    };
+    println!(
+        "EFFECTS off: (failing entries, missing nodes, topmost, extra) = {:?}",
+        sum(&off)
+    );
+    println!(
+        "EFFECTS on:  (failing entries, missing nodes, topmost, extra) = {:?}",
+        sum(&on)
+    );
+    for ((name, _, _, before), (_, applied, dropped, after)) in off.iter().zip(&on) {
+        let (b, a) = (before.missing + before.extra, after.missing + after.extra);
+        if (before.missing, before.extra) != (after.missing, after.extra) {
+            println!(
+                "EFFECTS moved {name}: missing {} -> {}, extra {} -> {} ({applied} effects applied, {dropped} dropped){}",
+                before.missing,
+                after.missing,
+                before.extra,
+                after.extra,
+                if a > b { "  <-- WORSE" } else { "" }
+            );
+        }
+    }
+    let two_alive = on
+        .iter()
+        .find(|r| r.0 == "03-classes/python/isolation.py two_alive")
+        .expect("isolation.two_alive is run");
+    assert_eq!(
+        (two_alive.3.missing, two_alive.3.extra),
+        (0, 0),
+        "isolation.two_alive is green with effects on"
+    );
 }
 
 /// The six programs summary mode cannot answer completely (class summaries, part 04 of pylspt: steps 2 to 8 are not built). For every

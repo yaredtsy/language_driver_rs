@@ -93,6 +93,14 @@ fn stats(old: &Stats, unresolved: u64) -> CStats {
     ] {
         out.language.insert(name.to_owned(), u64::from(n));
     }
+    for (name, n) in [
+        ("effects_applied", old.effects_applied),
+        ("effects_dropped", old.effects_dropped),
+    ] {
+        if n > 0 {
+            out.language.insert(name.to_owned(), u64::from(n));
+        }
+    }
     out.language.insert(UNKNOWN_CALLEE.to_owned(), unresolved);
     out
 }

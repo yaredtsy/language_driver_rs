@@ -73,6 +73,8 @@ pub(crate) struct Stats {
     pub annotation_fallbacks: u32, // a parameter that started from its annotation
     pub types_dropped: u32,        // a type left out of a key: no one-to-one stable form
     pub lifted_subclass_of: u32,   // `lift` reached a `type[X]` (tests: the arm runs)
+    pub effects_applied: u32,      // an `__init__` write replayed on a new object
+    pub effects_dropped: u32,      // a value an `__init__` wrote that an effect cannot say
 }
 pub(crate) use crate::wire::WireStyle;
 
@@ -87,6 +89,9 @@ pub(crate) struct Options {
     pub wire: WireStyle,
     /// The label a marker is read under (`ID: …` in a docstring), the same style `python_syntax::outline` takes.
     pub marker: MarkerStyle<'static>,
+    /// SPIKE, off by default: an `__init__`'s writes onto `self` are recorded in its summary and replayed at the construct site, and a
+    /// method entry starts on an object its `__init__` has run on (the entry prologue). Part 04, step 3.
+    pub constructor_effects: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -143,6 +148,7 @@ impl Default for Options {
             only_marked: false, // the harness; requests set it
             wire: WireStyle::default(),
             marker: MarkerStyle::docstring("ID"),
+            constructor_effects: false,
         }
     }
 }
@@ -247,10 +253,31 @@ pub(crate) fn solve<'db>(
     // Called with no arguments (step 01.11). A walk of the entry's own frame
     // does the binding, exactly as step 02 did.
     let mut w = Walk::new(&s, def);
-    let receiver = s
-        .sem
-        .classmethod_class(def)
-        .map(value::AbstractValue::Class);
+    let mut env = env::Env::default();
+    let receiver = match s.sem.classmethod_class(def) {
+        Some(class) => Some(value::AbstractValue::Class(class)),
+        // The entry prologue (spike): an instance method starts on an object its `__init__` has run on, hidden. Only `__init__` is part of
+        // the start (the entry rule), and with its defaults: the entry is called with no arguments.
+        None if opts.constructor_effects => match s.sem.method_class(def) {
+            Some(class) => {
+                let site = s.sem.def_range(class);
+                let mut hidden = smallvec::SmallVec::new();
+                let built = w.construct_summary(
+                    &mut s,
+                    class,
+                    site,
+                    &bind::EvaluatedArgs::default(),
+                    analyzer_core::graph::Basis::Type, // hidden: no edge is drawn
+                    &mut hidden,
+                    &mut env,
+                );
+                s.stats.prologue_walks += 1;
+                built.first().copied()
+            }
+            None => None,
+        },
+        None => None,
+    };
     let bound = w.bind_parameters(
         &mut s,
         def,
@@ -259,7 +286,7 @@ pub(crate) fn solve<'db>(
         &bind::EvaluatedArgs::default(),
         None,
     );
-    let root_ctx = s.key(&w, def, &bound, None, &env::Env::default());
+    let root_ctx = s.key(&w, def, &bound, None, &env);
     s.get(root_ctx);
     Some((s, root_ctx))
 }

@@ -37,6 +37,10 @@ pub(crate) struct Walk<'db> {
     pub now: Option<IndexVec<DeferId, Values<'db>>>,
     /// The body yields: its call returns a generator, whatever it returns.
     pub generator: bool,
+    /// What each parameter slot held when the body began, in `Bound` order: what an `__init__`'s effects are written against.
+    pub inputs: Vec<Values<'db>>,
+    /// What each object held when the body began (the attributes the key gave it).
+    pub start_attrs: rpds::HashTrieMap<(OriginId, Name), Values<'db>>,
 }
 
 /// The body being walked now.
@@ -86,6 +90,8 @@ impl<'db> Walk<'db> {
             replaying: false,
             now: None,
             generator: false,
+            inputs: Vec::new(),
+            start_attrs: Default::default(),
         }
     }
     pub(crate) fn new_frame(&mut self, sol: &Solver<'db>, func: Definition<'db>) -> Frame<'db> {
