@@ -164,8 +164,8 @@ pub struct Sem {
     _not_shared: PhantomData<Cell<()>>,
     /// One outline per (file, marker label), made on first use. A `Sem` is not `Sync`, so a `RefCell` is enough.
     file_defs: RefCell<FileDefsCache>,
-    /// The plain calls of each def, made on first use, by the def's node.
-    call_nodes: RefCell<HashMap<P<Node>, Arc<Vec<CallNode>>>>,
+    /// What the walk of each def's body found, made on first use, by the def's node: its sites, the defs it stops at, the references by name.
+    bodies: RefCell<HashMap<P<Node>, Arc<Body>>>,
     // Fields drop in this order, after `Drop::drop` has freed the program: the loaders' regions, then the program's own.
     _loaders: Arc<ProgramRegions>,
     _region: Region,
@@ -250,7 +250,7 @@ impl Sem {
             config_file,
             _not_shared: PhantomData,
             file_defs: RefCell::new(HashMap::new()),
-            call_nodes: RefCell::new(HashMap::new()),
+            bodies: RefCell::new(HashMap::new()),
             _loaders: loaders,
             _region: region,
         };
@@ -277,6 +277,33 @@ impl Sem {
             _sem: PhantomData,
             _one_thread: PhantomData,
         })
+    }
+
+    /// Every function, method and class of the project's own files that can be walked (it has a node in the program's tree), in the program's file order
+    /// and source order: what a measurement over the whole project starts from.
+    #[cfg(test)]
+    pub(crate) fn project_defs(&self, style: MarkerStyle<'_>) -> Vec<Func<'_>> {
+        let mut found = Vec::new();
+        for file in self.files() {
+            if !self.is_project_code(file) {
+                continue;
+            }
+            let Some(defs) = self.file_defs(file, style) else {
+                continue;
+            };
+            for (index, def) in defs.outline.defs.iter().enumerate() {
+                if matches!(
+                    def.kind,
+                    typescript_syntax::DefKind::Function
+                        | typescript_syntax::DefKind::Method
+                        | typescript_syntax::DefKind::Class
+                ) && defs.nodes[index].is_some()
+                {
+                    found.push(Func { file, def: index });
+                }
+            }
+        }
+        found
     }
 
     /// The file at `relative` (to the root, with `/`; `./` and `..` are folded), if the program holds it.
@@ -422,15 +449,16 @@ impl Sem {
     /// callee starts, then where it ends). Walks the **program's** tree from the def's node, through `FileDefs`. `None` for a def with no node (see
     /// `FileDefs::nodes`).
     pub(crate) fn call_sites(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Vec<Span>> {
-        let calls = self.call_nodes(func, style)?;
-        Some(calls.iter().map(|call| call.span).collect())
+        let body = self.body(func, style)?;
+        Some(body.sites.iter().map(|call| call.span).collect())
     }
 
-    /// The plain calls of `func`'s body with their nodes, sorted by span: what `call_sites` reports and `callee` asks the checker about.
-    fn call_nodes(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Arc<Vec<CallNode>>> {
+    /// What reading `func`'s body found: its sites with their nodes, sorted by span (what `call_sites` reports and `callee` asks the checker about), the
+    /// defs the walk stopped at, and the references by name. One pass, made once per def.
+    fn body(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Arc<Body>> {
         let defs = self.file_defs(func.file, style)?;
         let node = defs.nodes[func.def]?;
-        if let Some(found) = self.call_nodes.borrow().get(&node) {
+        if let Some(found) = self.bodies.borrow().get(&node) {
             return Some(Arc::clone(found));
         }
         let _scope = self._region.enter();
@@ -439,11 +467,18 @@ impl Sem {
             def_of: &defs.def_of,
             own: node,
             sites: Vec::new(),
+            nested: Vec::new(),
+            refs: Vec::new(),
+            called: false,
         };
         collector.body_of(node);
         collector.sites.sort_by_key(|call| call.span);
-        let made = Arc::new(collector.sites);
-        self.call_nodes.borrow_mut().insert(node, Arc::clone(&made));
+        let made = Arc::new(Body {
+            sites: collector.sites,
+            nested: collector.nested,
+            refs: collector.refs,
+        });
+        self.bodies.borrow_mut().insert(node, Arc::clone(&made));
         Some(made)
     }
 
@@ -596,6 +631,19 @@ struct Collector<'a> {
     /// The def being walked: it is in `def_of` too, and must not stop its own walk.
     own: P<Node>,
     sites: Vec<CallNode>,
+    /// The defs the walk stopped at (they are in `def_of`), with whether each is written inside an expression.
+    nested: Vec<(usize, bool)>,
+    /// The nodes that name a value without calling it: an identifier or a property access in a value position, or a shorthand property.
+    refs: Vec<P<Node>>,
+    /// While walking what is being called (a callee, a tag, a decorator): a name there is the thing called, not a thing handed over.
+    called: bool,
+}
+
+/// What reading one def's body found. `sites` is the walk the call graph is made from; `nested` and `refs` only feed a count (`Sem::handed_over`).
+struct Body {
+    sites: Vec<CallNode>,
+    nested: Vec<(usize, bool)>,
+    refs: Vec<P<Node>>,
 }
 
 /// A call or a `new` found in a body: the span of its callee (or class) expression (absolute, in the file) and the call node. Kept privately by `Sem`, per def, so
@@ -616,7 +664,10 @@ impl Collector<'_> {
             return;
         }
         // a nested def's calls are its own. As in tsrs, a nested class still owns the calls in its computed member names.
-        if node != self.own && self.def_of.contains_key(&node) {
+        if node != self.own
+            && let Some(&def) = self.def_of.get(&node)
+        {
+            self.nested.push((def, is_written_in_expression(node)));
             if ast::is_class_like(node) {
                 for &member in node.members() {
                     if let Some(name) = member.name()
@@ -629,9 +680,12 @@ impl Collector<'_> {
             return;
         }
         match node.kind() {
-            // cannot contain a callable node
-            Kind::Identifier
-            | Kind::ImportEqualsDeclaration
+            // cannot contain a callable node; a name that is not being called may be a function handed over
+            Kind::Identifier => {
+                self.reference(node);
+                return;
+            }
+            Kind::ImportEqualsDeclaration
             | Kind::ImportDeclaration
             | Kind::ExportDeclaration
             | Kind::InterfaceDeclaration
@@ -657,7 +711,7 @@ impl Collector<'_> {
                     });
                 }
                 // not the type arguments
-                self.collect(node.expression());
+                self.collect_callee(node.expression());
                 for &argument in node.arguments() {
                     self.collect(Some(argument));
                 }
@@ -671,10 +725,29 @@ impl Collector<'_> {
                         call: node,
                     });
                 }
-                self.collect(node.expression());
+                self.collect_callee(node.expression());
                 for &argument in node.arguments() {
                     self.collect(Some(argument));
                 }
+                return;
+            }
+            // `a.b`: the access is the name (its own name child is not looked at); the object is walked
+            Kind::PropertyAccessExpression if !ast::is_part_of_type_node(node) => {
+                if !is_jsx_tag(node) {
+                    self.reference(node);
+                }
+                self.collect(node.expression());
+                return;
+            }
+            // a tag and a decorator are called (step 6 makes them sites), so their names are not handed over
+            Kind::TaggedTemplateExpression => {
+                let tagged = node.as_tagged_template_expression();
+                self.collect_callee(Some(tagged.tag));
+                self.collect(Some(tagged.template));
+                return;
+            }
+            Kind::Decorator => {
+                self.collect_callee(node.expression());
                 return;
             }
             _ => {}
@@ -686,6 +759,48 @@ impl Collector<'_> {
             self.collect(Some(child));
             false
         });
+    }
+
+    /// Walk what is being called: its names are not handed over, and what is inside a call there (`f(g)(h)`'s `g`) is again a value.
+    fn collect_callee(&mut self, callee: Option<P<Node>>) {
+        let outer = std::mem::replace(&mut self.called, true);
+        self.collect(callee);
+        self.called = outer;
+    }
+
+    /// A name in a value position that is not being called: a candidate for a function handed over.
+    fn reference(&mut self, node: P<Node>) {
+        if self.called {
+            return;
+        }
+        let parent = node.parent();
+        match parent.map(|parent| parent.kind()) {
+            // an element's tag and an attribute's name are not values (the tag becomes a site in step 6); a label is not a value
+            Some(
+                Kind::JsxOpeningElement
+                | Kind::JsxSelfClosingElement
+                | Kind::JsxClosingElement
+                | Kind::JsxAttribute
+                | Kind::JsxNamespacedName
+                | Kind::LabeledStatement
+                | Kind::BreakStatement
+                | Kind::ContinueStatement,
+            ) => {}
+            // `{ f }` names a value and is a declaration name at once: the shorthand is the reference (the checker's symbol for its name is the
+            // property, and `get_shorthand_assignment_value_symbol` is the variable)
+            Some(Kind::ShorthandPropertyAssignment) => {
+                if let Some(parent) = parent
+                    && parent.name() == Some(node)
+                {
+                    self.refs.push(parent);
+                }
+            }
+            _ => {
+                if !ast::is_declaration_name(node) {
+                    self.refs.push(node);
+                }
+            }
+        }
     }
 
     /// What a def's walk starts from: the parts of the node that are its body (`tsrs_ls`'s `collect_call_sites`, with the plan's class rule).
@@ -742,6 +857,27 @@ impl Collector<'_> {
             _ => {}
         }
     }
+}
+
+/// A def's node that is a function written where an expression is, with no binding of its own to reach it by: a property of a literal, an argument, a
+/// named function expression. A function declaration and `const f = () => {}` are reached by name (`f`), so a reference to them is the count.
+fn is_written_in_expression(node: P<Node>) -> bool {
+    matches!(
+        node.kind(),
+        Kind::ArrowFunction | Kind::FunctionExpression | Kind::MethodDeclaration
+    ) && node
+        .parent()
+        .is_none_or(|parent| parent.kind() != Kind::VariableDeclaration)
+}
+
+/// The tag of an element: `<a.B />`.
+fn is_jsx_tag(node: P<Node>) -> bool {
+    node.parent().is_some_and(|parent| {
+        matches!(
+            parent.kind(),
+            Kind::JsxOpeningElement | Kind::JsxSelfClosingElement | Kind::JsxClosingElement
+        )
+    })
 }
 
 /// `f(x)`, `a.b(x)`, `a?.b(x)`, `super(x)`. Not `import("./m")` and not `require("./m")`: that is loading a module, not calling into a function.
@@ -978,6 +1114,15 @@ mod resolve {
         Unknown,
     }
 
+    /// A def of a walked body that is handed over: made where an expression is, or named, and not called by the walk of this body.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub(crate) struct Handed<'p> {
+        pub(crate) func: Func<'p>,
+        /// Written inside an expression (a method or arrow of a literal, a named function expression) and not reached by a name of its own. Otherwise it
+        /// was reached by name (`onClick={handleClose}`, `xs.map(parse)`, `{ f }`).
+        pub(crate) written: bool,
+    }
+
     /// Why a site has no target. Each is counted apart in `Stats.language` (D16, rule 8), so a missing edge can be explained from a number.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub(crate) enum Why {
@@ -1019,10 +1164,10 @@ mod resolve {
             site_index: usize,
             style: MarkerStyle<'_>,
         ) -> Vec<Resolved<'_>> {
-            let Some(calls) = self.call_nodes(func, style) else {
+            let Some(calls) = self.body(func, style) else {
                 return vec![Resolved::Unknown(Why::NoDeclaration)];
             };
-            let Some(call) = calls.get(site_index) else {
+            let Some(call) = calls.sites.get(site_index) else {
                 debug_assert!(false, "a site index outside the def's sites");
                 return vec![Resolved::Unknown(Why::NoDeclaration)];
             };
@@ -1294,6 +1439,109 @@ mod resolve {
                     _ => return Init::Unknown,
                 }
             }
+        }
+
+        /// The functions `func`'s body hands over instead of calling: the defs it writes inside an expression, and the project functions it names without
+        /// calling (an argument, a property value, a JSX attribute, a shorthand property). Only functions with a body: a method or arrow, a function
+        /// declaration. Whether anything calls them elsewhere is the caller's question (the graph's edges): this only says what the body does. A name that
+        /// is called is not here, and neither is a JSX tag, a tagged template's tag or a decorator (step 6 makes those sites). Not looked at: an element
+        /// access (`api["load"]`), `f.bind(…)` and `f.call(…)` (a callee's object is the thing called).
+        pub(crate) fn handed_over<'p>(
+            &'p self,
+            func: Func<'p>,
+            style: MarkerStyle<'_>,
+        ) -> Vec<Handed<'p>> {
+            let Some(body) = self.body(func, style) else {
+                return Vec::new();
+            };
+            let mut found: Vec<Handed<'p>> = Vec::new();
+            let mut add =
+                |handed: Handed<'p>| match found.iter_mut().find(|h| h.func == handed.func) {
+                    // written wins: a function made in an expression and also named is one function
+                    Some(known) => known.written |= handed.written,
+                    None => found.push(handed),
+                };
+            for &(def, written) in &body.nested {
+                // a def with a name of its own is handed over only if something names it (below); one made inside an expression is handed over by
+                // being written there
+                if !written {
+                    continue;
+                }
+                let held = Func {
+                    file: func.file,
+                    def,
+                };
+                if self.is_function_with_body(held, style) {
+                    add(Handed {
+                        func: held,
+                        written,
+                    });
+                }
+            }
+            if body.refs.is_empty() {
+                return found;
+            }
+            let _scope = self._region.enter();
+            let mut checker = self.program.get_type_checker(&Context::default());
+            for &node in &body.refs {
+                let symbol = if node.kind() == Kind::ShorthandPropertyAssignment {
+                    checker.get_shorthand_assignment_value_symbol(Some(node))
+                } else {
+                    checker.get_symbol_at_location_exported(node)
+                };
+                let Some(mut symbol) = symbol else {
+                    continue;
+                };
+                if symbol.flags().intersects(SymbolFlags::Alias) {
+                    symbol = checker.get_aliased_symbol(symbol);
+                }
+                for declaration in symbol.declarations().to_vec() {
+                    for target in callable_declarations(&mut checker, declaration) {
+                        let Some(file_node) = ast::get_source_file_of_node(target) else {
+                            continue;
+                        };
+                        let file = File {
+                            node: file_node,
+                            _sem: PhantomData,
+                            _one_thread: PhantomData,
+                        };
+                        if !self.is_project_code(file) {
+                            continue;
+                        }
+                        let Some(defs) = self.file_defs(file, style) else {
+                            continue;
+                        };
+                        let Some(&def) = defs.def_of.get(&target) else {
+                            continue;
+                        };
+                        let held = Func { file, def };
+                        if self.is_function_with_body(held, style) {
+                            add(Handed {
+                                func: held,
+                                written: false,
+                            });
+                        }
+                    }
+                }
+            }
+            found
+        }
+
+        /// A def that is a function written with a body: a function declaration, a function expression, an arrow, a method. Not a class, an accessor,
+        /// a constructor, or a signature (an interface's method, an ambient `declare function`: nothing to walk).
+        fn is_function_with_body(&self, func: Func<'_>, style: MarkerStyle<'_>) -> bool {
+            let Some(defs) = self.file_defs(func.file, style) else {
+                return false;
+            };
+            defs.nodes[func.def].is_some_and(|node| {
+                matches!(
+                    node.kind(),
+                    Kind::FunctionDeclaration
+                        | Kind::FunctionExpression
+                        | Kind::ArrowFunction
+                        | Kind::MethodDeclaration
+                ) && node.body().is_some()
+            })
         }
 
         /// What the def is, in the core's terms: `Marked` by its marker when it has one, else named by where it is (the file relative to the root,

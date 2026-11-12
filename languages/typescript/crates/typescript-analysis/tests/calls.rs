@@ -501,3 +501,75 @@ fn object_arrows_a_property_arrow_of_a_const_literal_is_a_call_and_any_other_pro
         [(&StableDef::Marked("ARROW-0001".into()), "documented.marked")]
     );
 }
+
+/// `(written inside an expression, referenced by name)`: the defs of a walked body that are handed over and that no edge of the graph reaches.
+fn handed(root: &Path, file: &str, entry: &str) -> (u64, u64) {
+    let graph = graph_of(root, file, entry);
+    check_invariants(&graph);
+    let summary = breakdown(&graph);
+    (summary.handed_written, summary.handed_named)
+}
+
+#[test]
+fn handed_a_def_that_is_written_or_named_and_not_called_in_the_tree_is_counted_once_per_shape() {
+    let root = fixture("handed-over");
+    let rows: [(&str, (u64, u64)); 21] = [
+        // written inside an expression: a method or an arrow property of a literal, a named function expression
+        ("argMethod", (1, 0)),
+        ("localLiteral", (1, 0)),
+        ("namedFunctionExpression", (1, 0)),
+        // written and named: once, as written
+        ("writtenAndNamed", (1, 0)),
+        ("writtenHereNamedInAClosure", (1, 0)),
+        // referenced by name: a const arrow, a function declaration, an import, a property arrow, a method, a shorthand property
+        ("constArrowByName", (0, 1)),
+        ("declByName", (0, 1)),
+        ("importedByName", (0, 1)),
+        ("propertyArrowByName", (0, 1)),
+        ("methodByName", (0, 1)),
+        ("shorthand", (0, 1)),
+        // not counted: called, not a def (D21 rule 2), an anonymous function, a tagged template's tag (step 6's site)
+        ("literalCalled", (0, 0)),
+        ("constArrowCalled", (0, 0)),
+        ("argArrowProperty", (0, 0)),
+        ("anonymousArrow", (0, 0)),
+        ("taggedTemplate", (0, 0)),
+        // a function of its own name that nothing names is dead code
+        ("neverUsed", (0, 0)),
+        // a callee the engine cannot resolve is still the thing called; a decorator is called
+        ("unresolvedCallee", (0, 0)),
+        ("Decorated", (0, 0)),
+        // handed over here, called by another def of the same tree
+        ("calledElsewhereInTheTree", (0, 0)),
+        // a callee is not a reference
+        ("callsIt", (0, 0)),
+    ];
+    for (entry, expected) in rows {
+        assert_eq!(handed(&root, "src/main.ts", entry), expected, "{entry}");
+    }
+}
+
+#[test]
+fn handed_jsx_attributes_are_references_by_name_and_an_elements_tag_is_not() {
+    let root = fixture("handed-over");
+    // `onClick={handleClose}` and `{...{ onKeyDown: onKey }}`; `<Close />` is step 6's call, not a hand-over
+    assert_eq!(handed(&root, "src/panel.tsx", "Panel"), (0, 2));
+}
+
+#[test]
+fn handed_the_counts_are_in_the_graph_stats_and_the_breakdown_says_what_they_are() {
+    let root = fixture("handed-over");
+    let graph = graph_of(&root, "src/main.ts", "argMethod");
+    assert_eq!(graph.stats.language.get("def_written_not_called"), Some(&1));
+    assert_eq!(graph.stats.language.get("def_named_not_called"), None);
+    let text = breakdown(&graph).to_string();
+    assert!(
+        text.contains(
+            "handed over and not called: 1 written inside an expression, 0 referenced by name"
+        ),
+        "{text}"
+    );
+    // a graph with nothing handed over prints no line for it
+    let plain = graph_of(&root, "src/main.ts", "literalCalled");
+    assert!(!breakdown(&plain).to_string().contains("handed over"));
+}

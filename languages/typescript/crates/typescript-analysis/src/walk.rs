@@ -21,6 +21,11 @@ const DEF_WITHOUT_NODE: &str = "def_without_node";
 pub(crate) const INHERITED_EXTERNAL: &str = "inherited_constructor_external";
 pub(crate) const INHERITED_UNKNOWN: &str = "inherited_constructor_unknown";
 
+/// The keys of the counters, in `Stats.language`, for the defs of a walked body that are handed over (written inside an expression, or named) and that no
+/// edge of the graph reaches. Counted by `call_graph` once the edges are known; a count and nothing else: no edge and no node is added for them.
+pub(crate) const WRITTEN_NOT_CALLED: &str = "def_written_not_called";
+pub(crate) const NAMED_NOT_CALLED: &str = "def_named_not_called";
+
 /// Read `f`'s body once: its sites, each with its targets. The solver does the recursion.
 pub(crate) fn body<'p>(
     lang: &TypeScript<'p>,
@@ -43,6 +48,7 @@ pub(crate) fn body<'p>(
         }
         found.push(SiteCalls::new(site, resolve(lang, f, index, env)));
     }
+    lang.note_handed_over(f);
     Summary::complete(found)
 }
 

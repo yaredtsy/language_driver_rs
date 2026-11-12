@@ -4,11 +4,11 @@
 //! is kept: a target is `Target::Call(func, ())`, and `walk` is the only place that would take a key.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 
 use analyzer_core::edit::MarkerStyle;
-use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Graph};
+use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Graph, StableDef};
 use analyzer_core::solve::{Cancel, Lang, Limits, Solver, Summary};
 
 use crate::Project;
@@ -49,6 +49,9 @@ pub(crate) struct TypeScript<'p> {
     /// Counters that are not the reason of an edge (`walk::INHERITED_*`), filled as bodies are walked, once each, and put in `Stats.language` by
     /// `call_graph`.
     notes: RefCell<BTreeMap<&'static str, u64>>,
+    /// The defs the walked bodies hand over, by identity, and whether each was written inside an expression (`Sem::handed_over`). Compared with the
+    /// graph's edges by `call_graph`, once they are known.
+    handed: RefCell<HashMap<StableDef, bool>>,
 }
 
 impl<'p> TypeScript<'p> {
@@ -57,6 +60,16 @@ impl<'p> TypeScript<'p> {
             sem,
             style,
             notes: RefCell::new(BTreeMap::new()),
+            handed: RefCell::new(HashMap::new()),
+        }
+    }
+
+    /// Remember the functions `f`'s body hands over instead of calling. A function written inside an expression and also named is counted once, as written.
+    pub(crate) fn note_handed_over(&self, f: Func<'p>) {
+        let mut handed = self.handed.borrow_mut();
+        for held in self.sem.handed_over(f, self.style) {
+            let id = self.sem.describe(held.func, self.style).id;
+            *handed.entry(id).or_insert(false) |= held.written;
         }
     }
 
@@ -100,7 +113,13 @@ pub fn call_graph(
     let lang = TypeScript::new(sem, opts.marker);
     let mut solver = Solver::new(lang, opts.limits.clone());
     let mut graph = solver.graph(&[(func, ())], cancel);
-    // Each unresolved edge carries its reason, and `Stats.language` counts them: a count is what the edges say
+    finish(&mut graph, solver.lang());
+    Some(graph)
+}
+
+/// What a graph has beyond its edges: each unresolved edge's reason in `Stats.language` (a count is what the edges say), the notes the walk kept, and the
+/// defs handed over and not called.
+fn finish(graph: &mut Graph, lang: &TypeScript<'_>) {
     let mut reasons: BTreeMap<String, u64> = BTreeMap::new();
     for edge in &graph.edges {
         if let EdgeTo::Unresolved(reason) = &edge.to {
@@ -108,10 +127,49 @@ pub fn call_graph(
         }
     }
     graph.stats.language.extend(reasons);
-    for (key, count) in solver.lang().notes.borrow().iter() {
+    for (key, count) in lang.notes.borrow().iter() {
         graph.stats.language.insert((*key).to_owned(), *count);
     }
-    Some(graph)
+    count_handed_over(graph, lang);
+}
+
+/// The defs the walked bodies hand over that no edge of the graph reaches, with whether each was written inside an expression. Sorted, so what is
+/// listed from it is the same every time (rule 9).
+fn handed_not_called(graph: &Graph, lang: &TypeScript<'_>) -> Vec<(StableDef, bool)> {
+    let reached: HashSet<&StableDef> = graph
+        .edges
+        .iter()
+        .filter_map(|edge| match &edge.to {
+            EdgeTo::Context(id, _) => Some(&id.func),
+            EdgeTo::Construct { init: Some(id), .. } => Some(&id.func),
+            _ => None,
+        })
+        .collect();
+    let mut found: Vec<(StableDef, bool)> = lang
+        .handed
+        .borrow()
+        .iter()
+        .filter(|(id, _)| !reached.contains(id))
+        .map(|(id, written)| (id.clone(), *written))
+        .collect();
+    found.sort_by(|a, b| format!("{:?}", a.0).cmp(&format!("{:?}", b.0)));
+    found
+}
+
+/// The defs the walked bodies hand over that no edge of the graph reaches, in `Stats.language`: written inside an expression, and referenced by name. A
+/// count only (for the owner's decision on how a handed-over def shows in the tree): no edge, node or context is added.
+fn count_handed_over(graph: &mut Graph, lang: &TypeScript<'_>) {
+    let found = handed_not_called(graph, lang);
+    let written = found.iter().filter(|(_, written)| *written).count() as u64;
+    let named = found.len() as u64 - written;
+    for (key, count) in [
+        (walk::WRITTEN_NOT_CALLED, written),
+        (walk::NAMED_NOT_CALLED, named),
+    ] {
+        if count > 0 {
+            graph.stats.language.insert(key.to_owned(), count);
+        }
+    }
 }
 
 /// What a graph is made of, and why its unresolved edges are unresolved. A missing edge is explained by a number here, not by reading the code.
@@ -128,6 +186,11 @@ pub struct Breakdown {
     /// from `Stats.language`). The edge is a known class, so it is not `unresolved`, but it is not complete. Only these two keys: the heading of `Display`
     /// says what they are, so another counter is added to a field of its own.
     pub notes: BTreeMap<String, u64>,
+    /// Defs a walked body hands over that no edge of the graph reaches, written inside an expression (`run({ onSuccess() {} })`, a property arrow of a
+    /// literal passed on) and referenced by name (`onClick={handleClose}`). Counted once per def. Neither is an unresolved edge: the def is known and
+    /// is not in the tree, because nothing calls it.
+    pub handed_written: u64,
+    pub handed_named: u64,
     pub contexts: u64,
     pub walks: u64,
     pub reuse_hits: u64,
@@ -165,6 +228,9 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
             _ => {}
         }
     }
+    let language = |key: &str| graph.stats.language.get(key).copied().unwrap_or(0);
+    summary.handed_written = language(walk::WRITTEN_NOT_CALLED);
+    summary.handed_named = language(walk::NAMED_NOT_CALLED);
     summary.notes = graph
         .stats
         .language
@@ -196,6 +262,13 @@ impl fmt::Display for Breakdown {
             for (note, count) in &self.notes {
                 writeln!(f, "    {note}: {count}")?;
             }
+        }
+        if self.handed_written + self.handed_named > 0 {
+            writeln!(
+                f,
+                "  defs handed over and not called: {} written inside an expression, {} referenced by name",
+                self.handed_written, self.handed_named
+            )?;
         }
         writeln!(
             f,
@@ -266,5 +339,52 @@ mod tests {
         // and this is a bug in a rule.
         assert_eq!(graph.defs[0].kind, DefKind::Function);
         assert_eq!(graph.contexts[0].status, Status::Finished);
+    }
+
+    /// A measurement on a real project, not a check. `TS_MEASURE_ROOT=<dir> TS_MEASURE_FILE=<a file of it> [TS_MEASURE_ENTRY=<qualname in that file>]
+    /// [TS_MEASURE_LIST=<n>] cargo test -p typescript-analysis --lib measure_handed_over -- --ignored --nocapture`. With an entry it is that def's graph; without,
+    /// every function, method and class of the project is an entry, so "not called" means "called by nothing in the project".
+    #[test]
+    #[ignore = "a measurement on a real project, driven by TS_MEASURE_ROOT and TS_MEASURE_FILE"]
+    fn measure_handed_over() {
+        let (Ok(root), Ok(file)) = (
+            std::env::var("TS_MEASURE_ROOT"),
+            std::env::var("TS_MEASURE_FILE"),
+        ) else {
+            eprintln!("set TS_MEASURE_ROOT and TS_MEASURE_FILE");
+            return;
+        };
+        let project = Project::open(Path::new(&root), Path::new(&file)).unwrap();
+        let sem = &project.sem;
+        let entries: Vec<_> = match std::env::var("TS_MEASURE_ENTRY") {
+            Ok(qualname) => vec![(sem.entry(&file, &qualname, 0, STYLE).unwrap(), ())],
+            Err(_) => sem
+                .project_defs(STYLE)
+                .into_iter()
+                .map(|f| (f, ()))
+                .collect(),
+        };
+        let mut solver = Solver::new(TypeScript::new(sem, STYLE), Limits::new(u32::MAX, None));
+        let started = std::time::Instant::now();
+        let mut graph = solver.graph(&entries, &Cancel::new());
+        finish(&mut graph, solver.lang());
+        eprintln!("entries {}, graph {:?}", entries.len(), started.elapsed());
+        eprint!("{}", breakdown(&graph));
+        let list: usize = std::env::var("TS_MEASURE_LIST")
+            .ok()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0);
+        for (id, written) in handed_not_called(&graph, solver.lang())
+            .into_iter()
+            .take(list)
+        {
+            let what = if written { "written" } else { "named  " };
+            match id {
+                StableDef::Path { module, qname, nth } => {
+                    eprintln!("{what} {module} {qname}#{nth}")
+                }
+                other => eprintln!("{what} {other:?}"),
+            }
+        }
     }
 }
