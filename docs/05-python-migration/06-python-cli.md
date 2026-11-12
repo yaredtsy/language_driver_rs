@@ -203,4 +203,4 @@ already in the workspace. `Cargo.lock` may gain lines for `python-cli` only. Nev
 | 5 | `python-analysis/src/lib.rs` line 81 says "the tree V-NOC stores" in a doc comment. Rule 1 forbids product words in the crates; the static check does not catch this spelling. Reword it in C3 (`the stored tree`), and say whether other such comments exist | C3 |
 | 6 | What `Options::only_marked` shows on `ids_and_classes.py`, entry `main`: this file does not say, because it was not run. Find the library test that pins the filter, write the expected tree from the rule, and say in the report what it is | C2 test (b) |
 
-Next: [`../06-roadmap.md`](../06-roadmap.md)
+Next: [`07-the-root.md`](07-the-root.md)

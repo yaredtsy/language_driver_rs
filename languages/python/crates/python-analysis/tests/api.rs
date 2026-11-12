@@ -407,3 +407,76 @@ fn files_are_relative_and_the_root_does_not_change_the_answer() {
         );
     }
 }
+
+const ROOT: &str = "tests/fixtures/09-root";
+const ROOT_CASES: [&str; 3] = ["above-pyproject", "above-ty", "own-config"];
+
+/// `main` of `inner/app.py`, asked for on the project opened at `inner`: the folder with the program, whatever config files sit above it.
+fn wire_of_inner(case: &str) -> Option<python_analysis::Frame> {
+    let project = Project::open(&format!("{ROOT}/{case}/inner")).unwrap();
+    call_wire(
+        &project,
+        "app.py",
+        &first("main"),
+        &Options::default(),
+        false,
+    )
+}
+
+#[test]
+fn a_config_above_the_folder_does_not_move_the_root() {
+    let none: Vec<_> = ROOT_CASES
+        .into_iter()
+        .filter(|case| wire_of_inner(case).is_none())
+        .collect();
+    assert!(
+        none.is_empty(),
+        "`app.py` is looked for under the folder that was opened, and was not found in {none:?}"
+    );
+}
+
+#[test]
+fn files_are_relative_to_the_folder_that_was_opened() {
+    for case in ROOT_CASES {
+        let frame = wire_of_inner(case).unwrap_or_else(|| panic!("{case}: no answer"));
+        assert_eq!(frame.target_file.as_deref(), Some("app.py"), "{case}");
+        assert_eq!(frame.children.len(), 1, "{case}");
+        let work = &frame.children[0];
+        assert_eq!(work.target_file.as_deref(), Some("helper.py"), "{case}");
+        assert_eq!(work.call_site_file.as_deref(), Some("app.py"), "{case}");
+    }
+}
+
+#[test]
+fn module_names_do_not_carry_the_folders_above_the_root() {
+    for case in ROOT_CASES {
+        let frame = wire_of_inner(case).unwrap_or_else(|| panic!("{case}: no answer"));
+        assert_eq!(frame.target_qname, "app.main", "{case}");
+        assert_eq!(frame.children[0].target_qname, "helper.work", "{case}");
+    }
+}
+
+#[test]
+fn the_sibling_files_of_a_parent_are_not_project_code_and_a_folder_with_its_own_config_is_its_own_root()
+ {
+    let inner = Project::open(&format!("{ROOT}/above-pyproject/inner")).unwrap();
+    let graph = call_graph(&inner, "app.py", &first("main"), &Options::default()).unwrap();
+    for def in &graph.defs {
+        assert!(
+            def.file != "sibling.py" && !def.file.starts_with(".."),
+            "`{}` is not in the folder that was opened",
+            def.file
+        );
+    }
+    // the parent, opened itself, is a root with the config it has: its files are named from it
+    let outer = Project::open(&format!("{ROOT}/above-pyproject")).unwrap();
+    let frame = call_wire(
+        &outer,
+        "inner/app.py",
+        &first("main"),
+        &Options::default(),
+        false,
+    )
+    .unwrap();
+    assert_eq!(frame.target_file.as_deref(), Some("inner/app.py"));
+}

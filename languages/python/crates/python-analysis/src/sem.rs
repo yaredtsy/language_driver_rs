@@ -861,8 +861,9 @@ fn plain(path: std::path::PathBuf) -> std::path::PathBuf {
 }
 
 impl Project {
-    /// Opens the project rooted at `dir`. A broken project configuration never fails it (the defaults are used): only a path that is not
-    /// a directory does.
+    /// Opens the project rooted at `dir`: `dir` is the root, whatever is above it (D26). A `ty.toml` or `pyproject.toml` in `dir` is read; one
+    /// in a parent folder is not, and files and modules are named from `dir`. A broken project configuration never fails it (the defaults
+    /// are used): only a path that is not a directory does.
     pub fn open(dir: &str) -> Result<Project, OpenError> {
         let not = || OpenError::NotADirectory(dir.to_owned());
         let absolute = plain(std::fs::canonicalize(dir).map_err(|_| not())?);
@@ -904,7 +905,7 @@ mod project {
     #[cfg(test)]
     use ruff_db::files::{File, system_path_to_file};
 
-    use ruff_db::system::{OsSystem, SystemPath, SystemPathBuf};
+    use ruff_db::system::{OsSystem, SystemPath};
 
     use ty_project::{ProjectDatabase, ProjectMetadata};
     #[cfg(test)]
@@ -912,14 +913,20 @@ mod project {
     #[cfg(test)]
     use ty_python_semantic::Db as _;
 
+    /// The project rooted at `dir` (D26). `ProjectMetadata::discover` walks up through the parent folders and lets a config file there
+    /// move the root, so its answer is used only when the root is `dir` itself. When it is a parent, `dir` gets the engine's own "no
+    /// config" project, which is what `discover` returns when no folder has a config.
     pub(crate) fn open_project(dir: &SystemPath) -> anyhow::Result<ProjectDatabase> {
         let system = OsSystem::new(dir);
+        let here = || ProjectMetadata::new(dir.file_name().unwrap_or("root"), dir.to_path_buf());
         let metadata = match ProjectMetadata::discover(dir, &system) {
-            Ok(m) => m,
+            // The root is `dir` or one of its parents, cut from the same text, so it is spelled as `dir` is: no `canonicalize` needed.
+            Ok(m) if m.root() == dir => m,
+            Ok(_) => here(),
             Err(_err) => {
                 // Broken config must never take the analyser down (quirk 13).
                 // tracing::warn!("project discovery failed: {err}; using defaults");
-                ProjectMetadata::new("adhoc", SystemPathBuf::from(dir.as_str()))
+                here()
             }
         };
         Ok(ProjectDatabase::use_defaults(metadata, system))

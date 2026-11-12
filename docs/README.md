@@ -77,7 +77,8 @@ language_driver_rs
 │   ├── PY0–PY8                    the steps, each with a proof ───────────────────── 03-steps.md
 │   ├── the wire                   a fix: the wire is an output, merged on request ── 04-the-wire.md
 │   ├── entries and targets        a fix: one name for a def, in and out; class entry ─ 05-entries-and-targets.md
-│   └── python-cli                 PY7: outline and calls, the script, the golden run ─ 06-python-cli.md
+│   ├── python-cli                 PY7: outline and calls, the script, the golden run ─ 06-python-cli.md
+│   └── the root                   a fix: the root is the folder asked for (D26) ───── 07-the-root.md
 │
 ├── THE ROADMAP ───────────────────────────────────── 06-roadmap.md
 │   └── B0 bootstrap, then three tracks; what blocks what

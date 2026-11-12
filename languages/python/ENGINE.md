@@ -76,6 +76,29 @@ has.
 If the order is reversed (add the dependencies to the 90-package lock), Cargo has no pins for the ~197 dropped packages and takes the newest compatible
 version of each, so drift becomes the expected result.
 
+## The project root (D26)
+
+`ProjectMetadata::discover(dir, system)` (`ty_project/src/metadata.rs`, `discover_with_uv_workspace`) walks **up** from `dir` through every
+parent folder and takes as the root, in this order: the closest folder with a `ty.toml` or a `pyproject.toml` that has `[tool.ty]`; the uv
+workspace root, if uv is on; the closest folder with any `pyproject.toml`; else `dir`. A config in a parent therefore moves the root, and
+`Project::file("app.py")` then looks under the parent.
+
+What `open_project` (`sem.rs`) does: it calls `discover`, and uses the answer only when `metadata.root() == dir`. When the root is a parent,
+or `discover` fails, it uses `ProjectMetadata::new(<name of dir>, dir)`: the project `discover` itself returns when no folder has a config.
+
+- **Spelling.** Checked in R1: `root()` is one of the `ancestors()` of the `dir` given, so it is cut from the same text and is equal to it when
+  it is `dir` (`SystemPath` compares by components, so a trailing separator does not matter either). A parent is never equal to the longer path,
+  so no `canonicalize` is needed in `open_project`. `Project::open` still canonicalizes once, before it.
+- **An empty `ty.toml` is a valid config** and makes its folder the root (`tests/fixtures/09-root/above-ty`: red before the fix).
+- **Known limit.** `dir` has a `pyproject.toml` without `[tool.ty]` and a parent has a `ty.toml` (or a `[tool.ty]` pyproject): the engine prefers
+  the parent, we fall back to the default project, and `dir`'s `requires-python` is not read. No public function reads one folder only
+  (`discover_in` is private). Rare.
+- **Known limit.** A virtual environment in a parent folder (`<repo>/.venv`, with `services/api` opened) is no longer found: library types do not
+  resolve. R1b is the step that gives it back.
+- **uv.** `UseUv::from_system` (`ty_project/src/uv.rs`) reads the variable `TY_UV`: `1` or `true` is on, `scripts` is scripts only, anything else
+  (and unset) is off. Off, `discover` runs no `uv` process. On, it runs `uv` once per `discover`, and the V-NOC driver opens the project on every
+  request. A uv workspace root above `dir` is a parent root, so it is ignored like any other. Read, not run.
+
 ## Toolchain
 
 `vendor/ruff/rust-toolchain.toml` says 1.98.0 and ruff's `rust-version` is 1.96. It is ignored here (the repo root's `rust-toolchain.toml` decides,
