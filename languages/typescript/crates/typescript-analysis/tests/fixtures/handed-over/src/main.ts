@@ -121,6 +121,15 @@ export function namedTwice() {
   register(handler);
 }
 
+// a hook's dependency array lists what the hook watches; by the rule an array element handed to a call is a hand-over, so both are passed edges. A known
+// over-report, kept as it is (see ENGINE.md): this is its current answer
+declare function useEffect(f: () => void, dependencies: unknown[]): void;
+export function inDependencyArray() {
+  const a = () => {};
+  const b = () => {};
+  useEffect(() => {}, [a, b]);
+}
+
 // ---- a name that is read, not handed over: no edge
 export function readNotHandedOver() {
   const handler = () => {};

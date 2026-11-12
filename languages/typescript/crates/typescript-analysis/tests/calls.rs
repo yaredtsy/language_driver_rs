@@ -544,6 +544,8 @@ fn passed_each_hand_over_is_an_edge_at_its_name_and_a_read_is_not() {
         ("inProperty", (0, 0, 1)),
         // named twice in one body: two edges, each at its own site
         ("namedTwice", (0, 0, 2)),
+        // a hook's dependency array: both are hand-overs by the rule (a known over-report, see ENGINE.md)
+        ("inDependencyArray", (0, 0, 2)),
         // a name that is read: a condition, `typeof`, a comparison, `!`, a ternary's condition, a property of it, a template: no edge
         ("readNotHandedOver", (0, 0, 0)),
         // called, not a def (D21 rule 2), an anonymous function, a tagged template's tag (step 6's site), a decorator, a callee the engine cannot resolve

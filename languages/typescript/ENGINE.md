@@ -627,6 +627,7 @@ and the renderer both sort away, so only a test of `walk::body` itself sees it.
 | | before | after |
 |---|---|---|
 | `TaskDetailPanel`: edges | 81 call, 2 construct, 111 external, 38 unresolved | 84 call, 2 construct, 122 external, 48 unresolved, **15 passed** |
+| `TaskDetailPanel`: constructions | 2 (`ApiError`, `ReadOnlyModeError`, each with its own constructor as `init`) | 2, the same |
 | `TaskDetailPanel`: contexts | 41 | **50** |
 | `TaskDetailPanel`: graph time | 16–18 ms | 16 ms (23 once in five runs) |
 | `TaskDetailPanel`: handed over, not called | 0 written, 7 by name | 0 written, **0 by name** |
@@ -635,9 +636,13 @@ and the renderer both sort away, so only a test of `walk::body` itself sees it.
 | whole frontend: graph time | 200 ms | 132 ms (a different run, not a speed-up: the same walks plus the edges) |
 
 The 7 handlers of `TaskDetailPanel` are edges (8 passed nodes at the top, `navigateToTask` twice), and **`handleClose`'s call inside `handleBack` is in the tree**: `handleBack [Passed]` has `handleClose` under it, and
-`handleClose [Passed]` is its own node, since `onClick={handleClose}` hands it over too. The extra 9 contexts are the bodies the hand-overs now reach (the 7 handlers, `taskMutationError`, which `useTasks.ts` hands to a mutation's `onError` seven times
-(seven of the passed nodes), and what they reach; I did not list the ninth); the extra 10 unresolved are all `function_typed_value`, state setters called inside those bodies, which were not walked before. The graph is bigger and no slower.
+`handleClose [Passed]` is its own node, since `onClick={handleClose}` hands it over too. The extra 9 contexts are the 7 handlers plus `firstDoneColumn` and `firstWorkflowColumn` (the owner's review listed them; an earlier version of this text named `taskMutationError`, which was
+already a context: `useTasks.ts` hands it to a mutation's `onError` seven times, and those are seven of the passed nodes); the extra 10 unresolved are all `function_typed_value`, state setters called inside those bodies, which were not walked before. The graph is bigger and no slower.
 
 `def_named_not_called` is 0 **because every named hand-over now has an edge**; it is kept as a cross-check (a nonzero value would mean the edge builder and the counter disagree), not as evidence of coverage. What is
-still counted is what has no edge: a def written inside an expression (`def_written_not_called`, step 4), and step 5 adds what no step covers (an element access, `f.bind(…)`, `f.call(…)`, a class named as a value).
+still counted is what has no edge: a def written inside an expression (`def_written_not_called`, step 4), and step 5 adds what no step covers (an element access, `f.bind(…)` and `obj.m.bind(obj)` handed over, `f.call(…)`, a class named as a value).
+
+**A known over-report: a hook's dependency array.** `useEffect(fn, [a, b])` hands `a` and `b` over by the rule (an element of an array that is an argument), and they are passed edges, both, when they are project
+functions. A dependency array lists what the hook watches; it does not give it to anything. The rule is **not changed** (the owner's decision): an array element is a hand-over, and this is the one place where that
+says more than the code does. Pinned with its current answer in the fixture (`inDependencyArray`, 2 passed edges).
 
