@@ -24,7 +24,7 @@ pub use analyzer_core::solve::{Limits, Cancel};
 /// `None` when there is no such def.
 pub fn call_graph(project: &Project, file: &str, entry: &Entry, opts: &Options, cancel: &Cancel) -> Option<Graph>;
 
-pub struct Entry<'a> { pub qualname: &'a str, pub occurrence: u16 }
+pub use analyzer_core::graph::Entry; // core's, not this crate's (D20, E3): `pub struct Entry<'a> { pub qualname: &'a str, pub occurrence: u16 }`
 #[non_exhaustive]
 pub struct Options { pub limits: Limits, pub marker: MarkerStyle<'static> }
 ```

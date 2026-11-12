@@ -97,17 +97,20 @@ what lets the testkit and the V-NOC drivers treat the languages alike.
 The public surface:
 
 ```rust
-pub use analyzer_core::graph::{Graph, Context, Edge, EdgeTo, StableDef, ContextId, Stats};
+pub use analyzer_core::graph::{Graph, Context, Edge, EdgeTo, Entry, Root, StableDef, ContextId, Stats};
 pub use analyzer_core::render::{render, Node, Mark, RenderOptions, to_text};
 
 pub use project::{Project, OpenError};
-pub fn call_graph(project: &Project, file: &str, entry: &Entry, opts: &Options) -> Option<Graph>;
+pub fn call_graph(project: &Project, file: &str, entry: &Entry<'_>, opts: &Options) -> Option<Graph>;
+pub fn call_wire(project: &Project, file: &str, entry: &Entry<'_>, opts: &Options, merged: bool) -> Option<Frame>;
 pub use classes::{mro, attributes};
 pub struct Options { pub limits: Limits, pub marker: MarkerStyle<'static> }      // Limits: Python's own (fp_depth, max_rounds, …)
 ```
 
-`call_tree` and `call_wire` from today's `interp/mod.rs` are gone from the public API: the tree is `render(&graph, …)` (rule 1), and the wire
-shape is the driver's.
+`call_tree` from today's `interp/mod.rs` is gone from the public API: the tree is `render(&graph, …)` (rule 1). `call_wire` came back as the view
+of the graph that D17 asks for (`04-the-wire.md`). `Entry` is core's, shared with TypeScript, and `Graph::entries` holds a `Root`: a function's
+context, or a class with its constructor's context (D20, [`05-entries-and-targets.md`](05-entries-and-targets.md)). A request names its entry
+by (file, outline qualname, occurrence); the dotted lookup is gone.
 
 ## 5. To `python-cli`
 
