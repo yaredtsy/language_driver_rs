@@ -398,7 +398,9 @@ mod input_lists {
     #[test]
     fn an_environment_outside_the_root_is_absolute() {
         let l = list(Some("/elsewhere/env"));
-        assert!(l.contains(&"/elsewhere/env/pyvenv.cfg".to_owned()), "{l:?}");
+        // `join` puts the OS's separator: `\pyvenv.cfg` on Windows, as the engine's own absolute paths have there.
+        let cfg = SystemPath::new("/elsewhere/env").join("pyvenv.cfg");
+        assert!(l.contains(&cfg.as_str().to_owned()), "{l:?}");
         assert_eq!(l.len(), FIXED.len() + 1);
         assert!(sorted(&l));
     }
