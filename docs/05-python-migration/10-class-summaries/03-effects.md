@@ -12,7 +12,8 @@ effects
 ```
 
 From pylspt's `04-class-summaries/03-effects.md`. **A spike of it is in the tree, off** (`54b513e`); this step replaces it. Read against
-the code at `e55ab37`. Needs CS2.
+the code at `e55ab37`, and again after CS2 (`b2bc150`, 2026-11-13): the rows marked **after CS2** say what CS2 already built or changed.
+Needs CS2.
 
 ## 1. What is wrong, and what the spike showed
 
@@ -64,10 +65,10 @@ What the spike does differently from pylspt's design, and what this step does wi
 |---|---|---|---|
 | 1 | effects are a new thing | they **replace the spike**: `init_effects`, `EffectValue`, `apply_effects`, `Walk.inputs`, `Walk.start_attrs` and the `mod.rs` prologue are deleted in this step | one mechanism (README §5 rule 5) |
 | 2 | a strong write whose values are all `Unknown` replaces the old value with `[Unknown]` | a strong **effect** whose values are all `Unknown` **removes** the attribute from the caller's object; a weak one is joined as any weak write | a read of an attribute that holds `[Unknown]` returns it (`member`, step 1 of three); a read of an absent one asks the engine's declared type (step 3), as D27 does for a callee. Leaving the write out, as the spike does, keeps the **old** value: a stale handler, the wrong edge of §1 again. Removing it is what the spike's rule meant, said safely. Whether a *local* strong write of `Unknown` should do the same is §7 claim 6 |
-| 3 | the summary-mode prologue is `inline_tree`'s `prologue` | the same: `Walk::prologue` (`entry.rs`) is called by `solve` too, and the spike's method-only prologue in `mod.rs` goes. The **entry rule** stays as it is: only `__init__` is part of a method entry's start, with its defaults | `outer.inner` and `Svc.build.step` need the parents run, and a closure's free values read the parent's run. `Job.run -> entries.B.go` stays excluded by the entry rule (the gap test says why) |
-| 4 | the fixpoint compares effects and objects in step 8 | **in this step**: `Slot::set_current` (`solver.rs`) compares `returns`, `effects` and `objects` (all sorted, so `==` after `same_svals` on the values) | today it compares `returns` only. A recursive group whose writes change while its returns do not would stop one round early, with no mark |
+| 3 | the summary-mode prologue is `inline_tree`'s `prologue` | the same: `Walk::prologue` (`entry.rs`) is called by `solve` too, and the spike's method-only prologue in `mod.rs` goes. The **entry rule** stays as it is: only `__init__` is part of a method entry's start, with its defaults. **After CS2:** `solve` calls the prologue only when `Options::effects` is on; off, a summary-mode entry starts as it does today (a classmethod's `cls`, nothing else), so the request path does not move until the owner's yes (row 6). Without effects a prologue's object holds nothing `__init__` wrote, so it would only add walks | `outer.inner` and `Svc.build.step` need the parents run, and a closure's free values read the parent's run. `Job.run -> entries.B.go` stays excluded by the entry rule (the gap test says why) |
+| 4 | the fixpoint compares effects and objects in step 8 | **in this step**: `Slot::set_current` (`solver.rs`) compares `returns`, `effects` and `objects` (all sorted, so `==` after `same_svals` on the values). **After CS2:** `returns` and `objects` are compared already (`same_objects`, CS2b); this step adds `effects` | before CS2 it compared `returns` only. A recursive group whose writes change while its returns do not would stop one round early, with no mark |
 | 5 | a recursive call's effects are applied in the fixpoint, weakly (step 8) | **until CS8, dropped and counted**: a replayed `Apply` and a construct whose `__init__` is `Pending` apply no effect, and add to `Stats.language["effects_in_cycle"]` | rule 8: not carried, so counted. CS8 carries them |
-| 6 | there is no flag | the spike's internal flag becomes `interp::Options::effects` (renamed): **on in every fixture run, off on the request path** (`lib.rs`, `Options::solver`) until the owner's yes after CS4 (README §7 question 2) | the wire changes when it goes on; the public `Options` has no such field, so turning it on is one line in `lib.rs` |
+| 6 | there is no flag | the spike's internal flag becomes `interp::Options::effects` (renamed): **on in every fixture run, off on the request path** (`lib.rs`, `Options::solver`) until the owner's yes after CS4 (README §7 question 2). **After CS2:** "every fixture run" is the harness's `summary()` (`fixture.rs`); the snapshots then show effects on, while the request path is proved unchanged by the API tests and the golden | the wire changes when it goes on; the public `Options` has no such field, so turning it on is one line in `lib.rs` |
 | 7 | — | `Env::join` treats a name one arm never wrote as nothing, not `Unknown` (the known limit the gap test describes, "left until constructor effects make an absent attribute the exception") | revisited here, at the gate: measure what marking it changes (§7 claim 7). Its own commit if it is done |
 
 ## 4. The design here
@@ -102,8 +103,11 @@ converted by step 2's table, `strong` from `Must`. An effect with an empty value
 and absent at the end (a `forget_attr` of §3 row 2): it is the effect `[Plain(Unknown)]`, strong, so the next caller up forgets it too
 and no caller keeps a stale value. New objects reachable from effect values join `objects` (numbered after the returns' objects).
 
-`Plan` (step 2) gains `effects: Vec<(SmallVec<[OriginId; 2]>, Name, Values<'db>, bool)>`: targets resolved by following the path in
-`before`, values resolved against `before`, the effect's `strong`. `apply` writes new objects' attributes first, then the effects:
+`Plan` (step 2; **after CS2** it is in `summary.rs`, beside `resolve`, `apply` and `CallSite`) gains
+`effects: Vec<(SmallVec<[OriginId; 2]>, Name, Values<'db>, bool)>`: targets resolved by following the path in `before` (the same `follow`
+a `Ref` uses), values resolved against `before`, the effect's `strong`. `apply` writes new objects' attributes first, then the effects.
+In a replay (`DeferredOp::Apply`) the effects are **not** applied, and are counted (§3 row 5); CS2b's `replay_attrs` keeps only new
+objects' attributes and does not grow here:
 
 ```rust
 for (targets, attr, vals, strong) in plan.effects {
@@ -152,7 +156,7 @@ further up: the same answer (§4, the forgotten attribute travels as `[Unknown]`
 |---|---|
 | Change | §4; §3 rows 1, 2, 5, 6. The spike's pieces deleted; the flag renamed and on in the harness |
 | Failing tests | `p04_03_effects`: `check_both("04-class-summaries/python/effects.py")`. `forget.py`, `cycle_effect.py`. A unit test: `install`'s summary has exactly one effect, `Param(0).handler = [Ref(Param(1))]`, strong; `maybe`'s is weak and its value holds `Ref(Param(0).handler)` |
-| Proof | `cargo test` in `languages/python`. The request path is unchanged (flag off): **no API test and no verified snapshot changes** |
+| Proof | `cargo test` in `languages/python`. The request path is unchanged (flag off): **no API test changes, and the golden is equal**. **After CS2:** the harness now runs with the flag on, so a verified snapshot *can* move; none is expected (the verified programs either build no object a callee writes, or are `coming_back.py` / `two_callees.py`, whose callees write only new objects); any move is read and explained before it is blessed. The unverified `03-classes/` and `04-class-summaries/` wires are expected to gain the handler children (`state.py via_factory` gains `JsonHandler.process` under `Pipeline.run`) |
 
 ### CS3c. One prologue
 
@@ -166,8 +170,8 @@ further up: the same answer (§4, the forgotten attribute travels as `[Unknown]`
 
 | | |
 |---|---|
-| Change | §3 row 4 |
-| Failing tests | a recursive group whose returns are equal in rounds 0 and 1 and whose effects differ: today it stops after round 1 with the round-0 effects. pylspt's `recursion_objects.py` `visitor` is the larger case (step 8) |
+| Change | §3 row 4: `effects` joins the comparison (`returns` and `objects` are compared since CS2b) |
+| Failing tests | a recursive group whose returns and objects are equal in rounds 0 and 1 and whose effects differ: today it stops after round 1 with the round-0 effects. pylspt's `recursion_objects.py` `visitor` is the larger case (step 8) |
 | Proof | as CS3b; `02-function-summaries` snapshots unchanged |
 
 ### CS3e. The gate

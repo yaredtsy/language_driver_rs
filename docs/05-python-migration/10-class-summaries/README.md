@@ -212,6 +212,7 @@ lists its commits, failing tests and proof in the form of [`../09-a-def-past-an-
 | Containers (`self.items.append(h)`), `nonlocal` cells, a loop fixpoint | pylspt's growth path (v1.2) | not planned |
 | Calls on untyped values (Jarvis's 30, most of the Flask service's 79) | not object state: the engine has no type | a virtual environment for the engine, not analyzer work |
 | A union with `Unknown`, `functools.wraps` | D28 §6, R3 §6 | the owner's list |
+| Narrowing on a branch (`isinstance(x, C)`, `if PYDANTIC_V2:`): the walk takes every arm with every value, in both modes | not object state, and inline mode does the same, so `extra` (summary against inline) cannot see it. Found at CS2b: 20 of FastAPI's 22 new nodes are edges Python never takes (a v2 `ModelField` down the v1 `isinstance` arm; `languages/python/ENGINE.md`, CS2). Effects (CS3) carry more objects into more arms, so it can grow | its own plan, if CS3e's FastAPI numbers show it; the owner's list until then |
 
 ## 9. To check while building
 
