@@ -32,8 +32,13 @@ const ENVIRONMENT_GLOBS: [&str; 9] = [
     "**/bun.lockb",
 ];
 
-/// Whether `ENVIRONMENT_GLOBS` already covers the file at `path`. Only the file name matters: every glob starts with `**/`.
+/// Whether `ENVIRONMENT_GLOBS` already covers the file at `path`. Only the file name matters, for a path under the root: every glob starts with
+/// `**/`. A path that is absolute is outside the root (`environment_inputs` entries are relative where they can be), and a glob relative to the
+/// root cannot cover it.
 fn matches_a_glob(path: &str) -> bool {
+    if Path::new(path).is_absolute() {
+        return false;
+    }
     let name = path.rsplit('/').next().unwrap_or(path);
     (name.starts_with("tsconfig") && name.ends_with(".json"))
         || [

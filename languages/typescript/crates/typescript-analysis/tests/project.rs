@@ -172,21 +172,42 @@ fn an_extended_config_with_any_name_is_an_input_too() {
     assert_eq!(project.environment_inputs(), expected);
 }
 
+/// The engine's spelling of a fixture file: absolute, with `/`, and without the `\\?\` prefix `canonicalize` adds on Windows.
+fn engine_path(name: &str) -> String {
+    let path = fixture(name).canonicalize().unwrap();
+    let path = path.to_string_lossy();
+    path.strip_prefix(r"\\?\")
+        .unwrap_or(&path)
+        .replace('\\', "/")
+}
+
+fn globs_then(last: String) -> Vec<String> {
+    let mut expected: Vec<String> = GLOBS.iter().map(|glob| (*glob).to_owned()).collect();
+    expected.push(last);
+    expected
+}
+
 #[test]
 fn an_extended_config_outside_the_root_is_an_absolute_input() {
     let root = fixture("extends-outside/app");
     let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
-    // `../base.json` is not under the root, so there is no relative name for it: the entry is the engine's own spelling, absolute with `/`
-    // (the engine has no `\\?\` prefix, which `canonicalize` adds on Windows)
-    let base = fixture("extends-outside/base.json").canonicalize().unwrap();
-    let base = base.to_string_lossy();
-    let base = base
-        .strip_prefix(r"\\?\")
-        .unwrap_or(&base)
-        .replace('\\', "/");
-    let mut expected: Vec<String> = GLOBS.iter().map(|glob| (*glob).to_owned()).collect();
-    expected.push(base);
-    assert_eq!(project.environment_inputs(), expected);
+    // `../base.json` is not under the root, so there is no relative name for it: the entry is the engine's own spelling
+    assert_eq!(
+        project.environment_inputs(),
+        globs_then(engine_path("extends-outside/base.json"))
+    );
+}
+
+#[test]
+fn a_glob_covers_only_what_is_under_the_root() {
+    let root = fixture("extends-outside-named/app");
+    let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
+    // `../tsconfig.base.json` is named like the first glob, but that glob is relative to the root and cannot reach it: it is listed.
+    // `tsconfig.local.json` is under the root, where the glob does cover it: it is not listed a second time.
+    assert_eq!(
+        project.environment_inputs(),
+        globs_then(engine_path("extends-outside-named/tsconfig.base.json"))
+    );
 }
 
 #[test]
