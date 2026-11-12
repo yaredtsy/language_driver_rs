@@ -10,13 +10,13 @@ use std::fmt;
 use std::path::Path;
 
 pub use analyzer_core::graph::{
-    Basis, Context, ContextId, Cut, DefInfo, Edge, EdgeTo, External, Graph, Reason, Site,
-    StableDef, Stats, Status,
+    Basis, Context, ContextId, Cut, DefInfo, Edge, EdgeTo, Entry, External, Graph, Reason, Root,
+    Site, StableDef, Stats, Status,
 };
 pub use analyzer_core::render::{Mark, Node, RenderOptions, render, to_text};
 pub use analyzer_core::solve::{Cancel, Limits};
 pub use analyzer_core::wire::{Frame, LineSpan, Sources, WireOptions, WireStyle, merge, wire};
-pub use calls::{Breakdown, Entry, Options, breakdown, call_graph};
+pub use calls::{Breakdown, Options, breakdown, call_graph};
 pub use typescript_syntax::{DefKind, MarkerStyle, Placement, Span};
 
 /// Config, package and lock files whose change means "load again". The last two are bun's text and binary lock files.

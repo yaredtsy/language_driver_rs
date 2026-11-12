@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 
 use analyzer_core::edit::MarkerStyle;
-use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Graph, StableDef};
+use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Entry, Graph, StableDef};
 use analyzer_core::solve::{Cancel, Lang, Limits, Solver, Summary};
 
 use crate::Project;
@@ -16,13 +16,6 @@ use crate::env::Env;
 use crate::key::Key;
 use crate::sem::{Func, Sem};
 use crate::walk;
-
-/// A def of one file, as the outline names it: its qualname and which of the same-named defs it is (0-based, in source order).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Entry<'a> {
-    pub qualname: &'a str,
-    pub occurrence: u16,
-}
 
 /// How to build a graph. The marker style is how a def's marker is read (`ID: …` in its JSDoc).
 #[derive(Clone, Debug)]

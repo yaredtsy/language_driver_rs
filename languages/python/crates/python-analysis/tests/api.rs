@@ -46,7 +46,7 @@ fn the_graph_draws_as_a_tree_with_core_s_renderer() {
         "ids_and_classes.main\n  ids_and_classes.Report\n    ids_and_classes.Report.prepare\n  ids_and_classes.marked\n    ids_and_classes.unmarked\n  ids_and_classes.unmarked\n  ids_and_classes.unmarked\n"
     );
     // every context's function has a row, every class too: the graph is well formed
-    assert!(graph.def(&graph.entries[0].func).is_some());
+    assert!(graph.def(graph.entries[0].func()).is_some());
 }
 
 #[test]

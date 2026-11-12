@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use crate::graph::{ContextId, Graph, StableDef};
+use crate::graph::{ContextId, Graph, Root, StableDef};
 use crate::outline::DefKind;
 use crate::render::{Node, RenderOptions, render};
 use crate::text::LineIndex;
@@ -180,9 +180,9 @@ fn head(
     }
 }
 
-/// The wire of `entry`: the tree `render` draws, as frames, merged when asked.
-pub fn wire(graph: &Graph, entry: &ContextId, sources: &dyn Sources, opts: &WireOptions) -> Frame {
-    let tree = render(graph, entry, &opts.render);
+/// The wire of `root`: the tree `render` draws, as frames, merged when asked.
+pub fn wire(graph: &Graph, root: &Root, sources: &dyn Sources, opts: &WireOptions) -> Frame {
+    let tree = render(graph, root, &opts.render);
     let mut positions = Positions::new(sources);
 
     struct Open<'n> {
@@ -354,7 +354,7 @@ mod tests {
         let first = text.find("g()").unwrap() as u32;
         let second = text.rfind("g()").unwrap() as u32;
         let graph = Graph::new(
-            vec![ContextId::of(marked("f"))],
+            vec![Root::Context(ContextId::of(marked("f")))],
             vec![
                 row(marked("f"), "m.f", DefKind::Function, 0, text.len() as u32),
                 row(marked("g"), "m.g", DefKind::Function, 0, 0),
@@ -368,7 +368,7 @@ mod tests {
         );
         let frame = wire(
             &graph,
-            &ContextId::of(marked("f")),
+            &Root::Context(ContextId::of(marked("f"))),
             &files(text),
             &opts(false),
         );
@@ -402,7 +402,7 @@ mod tests {
             nth: 0,
         };
         let graph = Graph::new(
-            vec![ContextId::of(marked("main"))],
+            vec![Root::Context(ContextId::of(marked("main")))],
             vec![
                 row(marked("main"), "m.main", DefKind::Function, 0, 40),
                 row(marked("Report"), "m.Report", DefKind::Class, 50, 90),
@@ -432,7 +432,7 @@ mod tests {
         );
         let frame = wire(
             &graph,
-            &ContextId::of(marked("main")),
+            &Root::Context(ContextId::of(marked("main"))),
             &files("x\n"),
             &opts(false),
         );
@@ -442,7 +442,12 @@ mod tests {
             .collect();
         assert_eq!(ids, ["F/main", "C/Report", ""]);
         let bare = WireOptions::new(WireStyle::default(), false, RenderOptions::default());
-        let frame = wire(&graph, &ContextId::of(marked("main")), &files("x\n"), &bare);
+        let frame = wire(
+            &graph,
+            &Root::Context(ContextId::of(marked("main"))),
+            &files("x\n"),
+            &bare,
+        );
         assert_eq!(
             frame.target_id, "main",
             "no prefix given: the bare marker text"
@@ -451,7 +456,7 @@ mod tests {
 
     fn twice() -> Graph {
         Graph::new(
-            vec![ContextId::of(marked("main"))],
+            vec![Root::Context(ContextId::of(marked("main")))],
             vec![
                 row(marked("main"), "m.main", DefKind::Function, 0, 60),
                 row(marked("run"), "m.run", DefKind::Function, 70, 90),
@@ -473,7 +478,7 @@ mod tests {
 
     #[test]
     fn merging_joins_siblings_counts_them_and_keeps_the_id() {
-        let entry = ContextId::of(marked("main"));
+        let entry = Root::Context(ContextId::of(marked("main")));
         let plain = wire(&twice(), &entry, &files("x\n"), &opts(false));
         let counts = |f: &Frame| f.children.iter().map(|c| c.call_count).collect::<Vec<_>>();
         assert_eq!(counts(&plain), [0, 0]);
@@ -497,7 +502,7 @@ mod tests {
     fn a_merged_node_keeps_the_call_site_of_its_first_sibling() {
         // two calls to `run`, at bytes 0 and 10: the merged node is where the first is, and has its site
         let text = "aaaaaaaaaa bbbbbbbbbb\n";
-        let entry = ContextId::of(marked("main"));
+        let entry = Root::Context(ContextId::of(marked("main")));
         let merged = wire(&twice(), &entry, &files(text), &opts(true));
         let site = merged.children[0].call_site.unwrap();
         assert_eq!(
@@ -511,7 +516,7 @@ mod tests {
 
     #[test]
     fn merging_twice_changes_nothing() {
-        let entry = ContextId::of(marked("main"));
+        let entry = Root::Context(ContextId::of(marked("main")));
         let once = wire(&twice(), &entry, &files("x\n"), &opts(true));
         assert_eq!(merge(once.clone()), once);
     }
@@ -529,13 +534,13 @@ mod tests {
             }
         }
         let graph = Graph::new(
-            vec![ContextId::of(marked("f0"))],
+            vec![Root::Context(ContextId::of(marked("f0")))],
             defs,
             contexts,
             edges,
             Stats::default(),
         );
-        let entry = ContextId::of(marked("f0"));
+        let entry = Root::Context(ContextId::of(marked("f0")));
         let deep = wire(&graph, &entry, &files("x\n"), &opts(false));
         let depth = |root: &Frame| {
             let (mut n, mut f) = (1, root);
@@ -574,7 +579,7 @@ mod tests {
     /// `main` calls `f` twice, at two sites, and the two `f`s are two defs of one file with one name (`if C: def f() ... else: def f() ...`).
     fn twins() -> Graph {
         Graph::new(
-            vec![ContextId::of(marked("main"))],
+            vec![Root::Context(ContextId::of(marked("main")))],
             vec![
                 row_in(
                     marked("main"),
@@ -614,7 +619,7 @@ mod tests {
     #[test]
     fn two_defs_with_one_name_are_two_nodes_in_a_merged_wire() {
         // B6: the merge key was the display name, so the twins became one node with their children mixed
-        let entry = ContextId::of(marked("main"));
+        let entry = Root::Context(ContextId::of(marked("main")));
         let merged = wire(&twins(), &entry, &files("x\n"), &opts(true));
         let kids: Vec<_> = merged
             .children
@@ -630,7 +635,7 @@ mod tests {
 
     #[test]
     fn a_frame_names_its_target_by_file_qualname_occurrence_and_kind() {
-        let entry = ContextId::of(marked("main"));
+        let entry = Root::Context(ContextId::of(marked("main")));
         let frame = wire(&twins(), &entry, &files("x\n"), &opts(false));
         // the root: named, and not a call
         assert_eq!(
@@ -659,7 +664,7 @@ mod tests {
         let child = marked("Child");
         let init = ContextId::of(marked("Base.__init__"));
         let graph = Graph::new(
-            vec![ContextId::of(marked("make"))],
+            vec![Root::Context(ContextId::of(marked("make")))],
             vec![
                 row_in(
                     marked("make"),
@@ -723,7 +728,7 @@ mod tests {
         ]));
         let frame = wire(
             &graph,
-            &ContextId::of(marked("make")),
+            &Root::Context(ContextId::of(marked("make"))),
             &sources,
             &opts(false),
         );
@@ -754,7 +759,7 @@ mod tests {
     #[test]
     fn an_external_leaf_has_no_file_no_qualname_and_no_kind() {
         let graph = Graph::new(
-            vec![ContextId::of(marked("main"))],
+            vec![Root::Context(ContextId::of(marked("main")))],
             vec![row_in(
                 marked("main"),
                 "m.main",
@@ -784,7 +789,7 @@ mod tests {
         let shown = WireOptions::new(WireStyle::default(), false, render);
         let frame = wire(
             &graph,
-            &ContextId::of(marked("main")),
+            &Root::Context(ContextId::of(marked("main"))),
             &files("x\n"),
             &shown,
         );
@@ -804,7 +809,7 @@ mod tests {
     /// The names of the fields and how a `DefKind` is written are the contract with a driver: pinned as text, so they cannot drift.
     #[test]
     fn a_frame_as_json() {
-        let entry = ContextId::of(marked("main"));
+        let entry = Root::Context(ContextId::of(marked("main")));
         let frame = wire(&twice(), &entry, &files("aaaa bbbb\n"), &opts(false));
         let leaf = &frame.children[0];
         let text = serde_json::to_string(leaf).unwrap();
@@ -831,8 +836,83 @@ mod tests {
     fn a_site_whose_file_cannot_be_read_has_no_position_and_the_node_stays() {
         let graph = twice();
         let none = Files(HashMap::new());
-        let frame = wire(&graph, &ContextId::of(marked("main")), &none, &opts(false));
+        let frame = wire(
+            &graph,
+            &Root::Context(ContextId::of(marked("main"))),
+            &none,
+            &opts(false),
+        );
         assert_eq!(frame.children.len(), 2);
         assert!(frame.children.iter().all(|c| c.call_site.is_none()));
+    }
+
+    #[test]
+    fn under_a_construct_root_a_call_is_in_the_constructors_file() {
+        // the same program as above, asked for `Child` itself: the root is in a.py, the call made by `Base.__init__` is in b.py
+        let text_b = "def __init__(self):\n    helper()\n";
+        let site = text_b.find("helper").unwrap() as u32;
+        let init = ContextId::of(marked("Base.__init__"));
+        let graph = Graph::new(
+            vec![Root::Construct {
+                class: marked("Child"),
+                init: Some(init.clone()),
+            }],
+            vec![
+                row_in(
+                    marked("Child"),
+                    "a.Child",
+                    ("Child", 0),
+                    DefKind::Class,
+                    "a.py",
+                    (40, 60),
+                ),
+                row_in(
+                    marked("Base.__init__"),
+                    "b.Base.__init__",
+                    ("Base.__init__", 0),
+                    DefKind::Method,
+                    "b.py",
+                    (0, 40),
+                ),
+                row_in(
+                    marked("helper"),
+                    "b.helper",
+                    ("helper", 0),
+                    DefKind::Function,
+                    "b.py",
+                    (50, 70),
+                ),
+            ],
+            vec![
+                Context::new(init.clone()),
+                Context::new(ContextId::of(marked("helper"))),
+            ],
+            vec![Edge {
+                from: init,
+                site: Site::new(site, site + 8),
+                to: EdgeTo::Context(ContextId::of(marked("helper")), Basis::Name),
+            }],
+            Stats::default(),
+        );
+        let sources = Files(HashMap::from([
+            (
+                "a.py".to_owned(),
+                "class Child(Base):\n    pass\n".to_owned(),
+            ),
+            ("b.py".to_owned(), text_b.to_owned()),
+        ]));
+        let frame = wire(&graph, &graph.entries[0], &sources, &opts(false));
+        assert_eq!(
+            (
+                frame.target_file.as_deref(),
+                frame.target_kind.clone(),
+                frame.call_site_file.as_deref()
+            ),
+            (Some("a.py"), Some(DefKind::Class), None),
+            "the root is the class, in a.py, and is not a call"
+        );
+        let helper = &frame.children[0];
+        assert_eq!(helper.call_site_file.as_deref(), Some("b.py"));
+        assert_eq!(helper.call_site.unwrap().start, (2, 5));
     }
 }

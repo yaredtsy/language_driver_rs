@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crate::graph::{
-    Basis, Context, ContextId, Cut, DefInfo, Edge, EdgeTo, External, Graph, Reason, Site, Stats,
-    Status,
+    Basis, Context, ContextId, Cut, DefInfo, Edge, EdgeTo, External, Graph, Reason, Root, Site,
+    Stats, Status,
 };
 
 /// What one call site can reach.
@@ -283,7 +283,13 @@ impl<L: Lang> Solver<L> {
             }
             contexts.push(context);
         }
-        Graph::new(entry_ids, defs, contexts, edges, stats)
+        Graph::new(
+            entry_ids.into_iter().map(Root::Context).collect(),
+            defs,
+            contexts,
+            edges,
+            stats,
+        )
     }
 
     fn id_of(&self, run: &mut Run<L>, node: &Node<L>) -> ContextId {
@@ -767,7 +773,7 @@ pub(crate) mod tests {
     fn several_entries_keep_the_requests_order() {
         let mut solver = Solver::new(Toy::new(&[("a", &[]), ("b", &[])]), Limits::default());
         let g = solver.graph(&[("b", ()), ("a", ())], &Cancel::new());
-        let order: Vec<_> = g.entries.iter().map(|e| e.func.clone()).collect();
+        let order: Vec<_> = g.entries.iter().map(|e| e.func().clone()).collect();
         assert_eq!(
             order,
             [StableDef::Marked("b".into()), StableDef::Marked("a".into())]

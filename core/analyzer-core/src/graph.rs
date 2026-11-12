@@ -252,11 +252,51 @@ impl Stats {
     }
 }
 
+/// A def of one file, as the outline names it: its qualname and which of the same-named defs it is (0-based, in source order). A request
+/// names its entry this way (D20).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Entry<'a> {
+    pub qualname: &'a str,
+    pub occurrence: u16,
+}
+
+/// What a tree starts from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub enum Root {
+    /// A function: the tree is its calls.
+    Context(ContextId),
+    /// A class: the tree is its constructor's calls. `init` is `None` when the class has no constructor function in project code. The same two
+    /// fields as [`EdgeTo::Construct`] without its `basis`: it is the same thing, without a caller.
+    Construct {
+        class: StableDef,
+        init: Option<ContextId>,
+    },
+}
+
+impl Root {
+    /// The def the root node is named by: the function, or the class.
+    pub fn func(&self) -> &StableDef {
+        match self {
+            Root::Context(id) => &id.func,
+            Root::Construct { class, .. } => class,
+        }
+    }
+
+    /// The context the root's calls were made in: the function's own, or the constructor's. `None` for a class with no constructor function.
+    pub fn context(&self) -> Option<&ContextId> {
+        match self {
+            Root::Context(id) => Some(id),
+            Root::Construct { init, .. } => init.as_ref(),
+        }
+    }
+}
+
 /// Everything reachable from the entries. Built by [`Graph::new`], which sorts: the same input gives the same output.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct Graph {
-    pub entries: Vec<ContextId>,
+    pub entries: Vec<Root>,
     /// One row per function or class a context or a `Construct` edge names. Sorted by id.
     pub defs: Vec<DefInfo>,
     /// Sorted by id.
@@ -272,7 +312,7 @@ impl Graph {
     /// Two defs with one id (a copied function carries the same marker) keep the first by `(file, range.start)`, so the
     /// graph does not depend on the order the rows arrived in.
     pub fn new(
-        entries: Vec<ContextId>,
+        entries: Vec<Root>,
         mut defs: Vec<DefInfo>,
         mut contexts: Vec<Context>,
         mut edges: Vec<Edge>,
@@ -351,7 +391,7 @@ pub(crate) mod tests {
             to: EdgeTo::Context(cid(to), Basis::Type),
         };
         let g = Graph::new(
-            vec![cid("b")],
+            vec![Root::Context(cid("b"))],
             vec![def("b"), def("a"), def("b")],
             vec![ctx("b"), ctx("a"), ctx("b")],
             vec![

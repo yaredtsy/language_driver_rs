@@ -13,7 +13,7 @@ entries and targets
 
 Written on 2026-11-12 from reading the code. **Nothing here was built or run when it was written.** Every `[check]` is a claim to verify before depending on it.
 
-**Status (2026-11-12):** E1 is done (`8fafd0f`) and E2 is done (see its commit). E3 to E5 are not started. Decisions of the owner while building: the kind on the wire is the outline's (`Method` for a Python method), made in E2; the TypeScript files are edited only after the TypeScript session has committed; EW is done locally and stays *unproven* until CI has run it.
+**Status (2026-11-12):** E1 is done (`8fafd0f`), E2 is done (`acc1b2a`) and E3 is done (see its commit). E4 and E5 are not started. Decisions of the owner while building: the kind on the wire is the outline's (`Method` for a Python method), made in E2; the TypeScript files are edited only after the TypeScript session has committed; EW is done locally and stays *unproven* until CI has run it.
 
 Where it comes from: a review of the V-NOC Python driver found three bugs whose cause is in the analyzer, not in the driver. pylspt fixed part
 of them in `c395dde` ("wire names each target by file, qualname and occurrence; call_wire_at"). This repo was ported from `670ae79`, one
@@ -330,7 +330,7 @@ Core changes (E1–E3) must keep both languages green (rule 5). After each: `cd 
 |---|---|
 | Change | §3.1, §3.2, the `wire` signature of §3.3, `Entry` moved (§3.6). Every caller wraps its context as `Root::Context`; behaviour is unchanged for functions |
 | Failing tests | **core** (`render.rs` tests): (a) `Root::Construct` with an `init` that has two edges: the root is named by the class, has `site: None`, `contexts == [init]`, and two children. (b) `Root::Construct { init: None }`: a root with no children and no marks. (c) a `Construct` root whose `init` constructs the same class again: the inner node is `Recursive` (rule 8). **core** (`wire.rs`): (d) under a `Construct` root, a child's `call_site_file` is the `init`'s file |
-| Proof | the three `cargo test` runs; no snapshot changes (`graph_text` prints a context root as it does today and a class root as `entries: new <Class>`); `grep -rn "struct Entry" languages` finds nothing |
+| Proof | the three `cargo test` runs; no snapshot changes (`graph_text` prints a context root as it does today and a class root as `entries: new <Class>`); `grep -rn "struct Entry<" languages core` finds only core's (`typescript-syntax` has an unrelated private `struct Entry` in its outline builder) |
 
 ### E4. Python: the entry by (qualname, occurrence)
 

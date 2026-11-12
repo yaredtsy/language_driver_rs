@@ -865,7 +865,7 @@ fn edges_say_what_they_rest_on() {
     let edges = |fixture: &str, entry: &str| {
         let (db, file) = open_fixture(fixture);
         let g = call_graph(&db, file, entry, &summary()).unwrap();
-        let from = g.entries[0].clone();
+        let from = g.entries[0].context().unwrap().clone();
         let named = |f: &analyzer_core::graph::StableDef| g.def(f).unwrap().qname.clone();
         let rows: Vec<String> = g
             .edges_from(&from)
@@ -1187,7 +1187,7 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
 /// what 570ab69 got wrong (a spurious `Unresolved` edge: the tree does not draw one), so this is the snapshot that sees edges, bases, reasons
 /// and the contexts' digests. A digest is shown by its first 8 bytes.
 fn graph_text(g: &analyzer_core::graph::Graph) -> String {
-    use analyzer_core::graph::{ContextId, EdgeTo, StableDef};
+    use analyzer_core::graph::{ContextId, EdgeTo, Root, StableDef};
     use std::fmt::Write;
     let name = |f: &StableDef| g.def(f).map_or_else(|| "?".to_owned(), |d| d.qname.clone());
     let ctx = |c: &ContextId| {
@@ -1195,7 +1195,15 @@ fn graph_text(g: &analyzer_core::graph::Graph) -> String {
         format!("{}#{digest}", name(&c.func))
     };
     let mut out = String::new();
-    let entries: Vec<String> = g.entries.iter().map(ctx).collect();
+    let entries: Vec<String> = g
+        .entries
+        .iter()
+        .map(|root| match root {
+            Root::Context(id) => ctx(id),
+            Root::Construct { class, .. } => format!("new {}", name(class)),
+            _ => "?".to_owned(),
+        })
+        .collect();
     writeln!(out, "entries: {}", entries.join(", ")).unwrap();
     let s = &g.stats;
     writeln!(

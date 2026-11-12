@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use analyzer_core::graph::{
-    Context, ContextId as Id, Cut as CCut, DefInfo, Edge, EdgeTo, External, Graph, Reason, Site,
-    Stats as CStats, Status as CStatus,
+    Context, ContextId as Id, Cut as CCut, DefInfo, Edge, EdgeTo, External, Graph, Reason, Root,
+    Site, Stats as CStats, Status as CStatus,
 };
 use analyzer_core::outline::DefKind;
 use analyzer_core::text::Span;
@@ -179,7 +179,10 @@ pub(crate) fn core_graph(s: &Solver<'_>, entries: &[ContextId]) -> Graph {
             }
         }
     }
-    let entry_ids = entries.iter().map(|e| ids[e].clone()).collect();
+    let entry_ids = entries
+        .iter()
+        .map(|e| Root::Context(ids[e].clone()))
+        .collect();
     Graph::new(
         entry_ids,
         defs,

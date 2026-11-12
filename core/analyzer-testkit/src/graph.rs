@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use analyzer_core::graph::{ContextId, EdgeTo, Graph, StableDef};
+use analyzer_core::graph::{ContextId, EdgeTo, Graph, Root, StableDef};
 
 /// Everything wrong with `graph`, one sentence each. Empty means the graph is well formed: sorted, no duplicates,
 /// no edge or entry pointing at a context the graph does not hold, and `defs` has a row for every function and class
@@ -20,8 +20,8 @@ pub fn violations(graph: &Graph) -> Vec<String> {
     }
     let known: HashSet<&ContextId> = graph.contexts.iter().map(|c| &c.id).collect();
     for entry in &graph.entries {
-        if !known.contains(entry) {
-            out.push(format!("entry {:?} is not in `contexts`", entry.func));
+        if let Some(id) = entry.context().filter(|id| !known.contains(id)) {
+            out.push(format!("entry {:?} is not in `contexts`", id.func));
         }
     }
     for edge in &graph.edges {
@@ -61,6 +61,14 @@ pub fn violations(graph: &Graph) -> Vec<String> {
             used.insert(class);
             if !rows.contains(class) {
                 out.push(format!("class {class:?} has no row in defs"));
+            }
+        }
+    }
+    for entry in &graph.entries {
+        if let Root::Construct { class, .. } = entry {
+            used.insert(class);
+            if !rows.contains(class) {
+                out.push(format!("entry class {class:?} has no row in defs"));
             }
         }
     }
@@ -139,7 +147,7 @@ mod tests {
     /// `a` calls `b` and builds `Foo`: two contexts and three rows.
     fn good() -> Graph {
         Graph::new(
-            vec![id("a")],
+            vec![Root::Context(id("a"))],
             vec![
                 row("a", DefKind::Function),
                 row("b", DefKind::Function),
@@ -164,9 +172,35 @@ mod tests {
     }
 
     #[test]
+    fn a_class_entry_needs_its_row_and_its_init_context() {
+        // `rows` are the defs the graph has: `a` is the constructor and has a context, `Foo` is the class
+        let construct = |rows: &[(&str, DefKind)], class: &str, init: &str| {
+            Graph::new(
+                vec![Root::Construct {
+                    class: def_id(class),
+                    init: Some(id(init)),
+                }],
+                rows.iter()
+                    .map(|(name, kind)| row(name, kind.clone()))
+                    .collect(),
+                vec![ctx("a")],
+                vec![],
+                Stats::default(),
+            )
+        };
+        let both = [("a", DefKind::Function), ("Foo", DefKind::Class)];
+        assert_eq!(
+            violations(&construct(&both, "Foo", "a")),
+            Vec::<String>::new()
+        );
+        only(&construct(&both, "Foo", "zz"), "entry");
+        only(&construct(&both[..1], "Bar", "a"), "no row");
+    }
+
+    #[test]
     fn dangling_and_missing_entries_are_found() {
         let g = Graph::new(
-            vec![id("zz")],
+            vec![Root::Context(id("zz"))],
             vec![row("a", DefKind::Function)],
             vec![ctx("a")],
             vec![edge("a", "gone"), edge("ghost", "a")],

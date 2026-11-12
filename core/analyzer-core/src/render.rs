@@ -9,7 +9,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use crate::graph::{ContextId, Edge, EdgeTo, Graph, Site, StableDef, Status};
+use crate::graph::{ContextId, Edge, EdgeTo, Graph, Root, Site, StableDef, Status};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[non_exhaustive]
@@ -121,17 +121,20 @@ struct Renderer<'g> {
     opts: &'g RenderOptions,
 }
 
-/// The tree under `entry`. An entry that is not in the graph gives a bare root (the caller asked for something we
+/// The tree under `root`. A root that is not in the graph gives a bare root (the caller asked for something we
 /// do not have; it is not a panic).
-pub fn render(graph: &Graph, entry: &ContextId, opts: &RenderOptions) -> Node {
+pub fn render(graph: &Graph, root: &Root, opts: &RenderOptions) -> Node {
     let r = Renderer { graph, opts };
     let mut budget = opts.max_nodes.saturating_sub(1);
+    let func = root.func().clone();
     let qname = graph
-        .def(&entry.func)
+        .def(&func)
         .map_or_else(|| UNKNOWN.to_owned(), |d| d.qname.clone());
+    // A construction stands for its constructor's context, if the class has one: what `Renderer::class` does for a callee, with no site.
+    let contexts: Vec<&ContextId> = root.context().into_iter().collect();
     // Functions on the path from the root to the node being built (rule 8 asks "is it on the path?").
-    let mut path: HashSet<StableDef> = HashSet::from([entry.func.clone()]);
-    let mut stack = vec![r.open(entry.func.clone(), qname, None, vec![entry], 0)];
+    let mut path: HashSet<StableDef> = HashSet::from([func.clone()]);
+    let mut stack = vec![r.open(func, qname, None, contexts, 0)];
 
     loop {
         let top = stack.last_mut().expect("the root frame is popped last");
@@ -411,7 +414,7 @@ mod tests {
     }
 
     fn text(g: &Graph, root: &str, opts: &RenderOptions) -> String {
-        to_text(&render(g, &cid(root), opts))
+        to_text(&render(g, &Root::Context(cid(root)), opts))
     }
 
     #[test]
@@ -456,7 +459,7 @@ mod tests {
         let mut contexts = g.contexts.clone();
         contexts.push(Context::new(f2.clone()));
         g = Graph::new(vec![], g.defs.clone(), contexts, edges, Stats::default());
-        let tree = render(&g, &cid("main"), &RenderOptions::default());
+        let tree = render(&g, &Root::Context(cid("main")), &RenderOptions::default());
         assert_eq!(tree.children.len(), 1);
         assert_eq!(tree.children[0].contexts, vec![cid("f"), f2]);
     }
@@ -604,7 +607,7 @@ mod tests {
             text(&g, "main", &RenderOptions::default()),
             "main\n  Foo\n    helper\n  Bar\n"
         );
-        let tree = render(&g, &cid("main"), &RenderOptions::default());
+        let tree = render(&g, &Root::Context(cid("main")), &RenderOptions::default());
         assert_eq!(tree.children[0].func, marked("Foo"));
         assert_eq!(tree.children[0].contexts, vec![cid("Foo.init")]);
         assert!(
@@ -834,7 +837,7 @@ mod tests {
             .collect();
         let spec_refs: Vec<&str> = spec.iter().map(String::as_str).collect();
         let g = graph(&spec_refs);
-        let tree = render(&g, &cid("f0"), &RenderOptions::default());
+        let tree = render(&g, &Root::Context(cid("f0")), &RenderOptions::default());
         assert_eq!(
             chain_length(&tree),
             (n, vec![]),
@@ -846,7 +849,7 @@ mod tests {
             max_depth: Some(40_000),
             ..RenderOptions::default()
         };
-        let tree = render(&g, &cid("f0"), &opts);
+        let tree = render(&g, &Root::Context(cid("f0")), &opts);
         assert_eq!(chain_length(&tree), (40_001, vec![Mark::Cut]));
     }
 
@@ -879,5 +882,62 @@ mod tests {
         let g = graph(&["main: a b", "a: b", "b:"]);
         let opts = RenderOptions::default();
         assert_eq!(text(&g, "main", &opts), text(&g, "main", &opts));
+    }
+
+    /// `graph(spec)` and a class row `Foo`, with a root that constructs `Foo`, whose constructor is the context `init`.
+    fn constructed(spec: &[&str], init: Option<&str>) -> (Graph, Root) {
+        let g = graph(spec);
+        let mut defs = g.defs.clone();
+        defs.push(def_at("Foo", DefKind::Class, 9));
+        let root = Root::Construct {
+            class: marked("Foo"),
+            init: init.map(cid),
+        };
+        let g = Graph::new(
+            vec![root.clone()],
+            defs,
+            g.contexts.clone(),
+            g.edges.clone(),
+            Stats::default(),
+        );
+        (g, root)
+    }
+
+    #[test]
+    fn a_construct_root_is_drawn_like_a_class_callee() {
+        let (g, root) = constructed(&["init: a b", "a:", "b:"], Some("init"));
+        let tree = render(&g, &root, &RenderOptions::default());
+        assert_eq!((tree.qname.as_str(), tree.site), ("Foo", None));
+        assert_eq!(tree.func, marked("Foo"));
+        assert_eq!(tree.contexts, vec![cid("init")]);
+        assert_eq!(to_text(&tree), "Foo\n  a\n  b\n");
+    }
+
+    #[test]
+    fn a_construct_root_without_a_constructor_has_no_children_and_no_marks() {
+        let (g, root) = constructed(&["a:"], None);
+        let tree = render(&g, &root, &RenderOptions::default());
+        assert_eq!(to_text(&tree), "Foo\n");
+        assert!(tree.contexts.is_empty() && tree.marks.is_empty());
+    }
+
+    #[test]
+    fn rule_8_a_construct_root_is_on_the_path() {
+        // the constructor builds the class it belongs to again: the inner node is a leaf, marked, not entered
+        let (g, root) = constructed(&["init:"], Some("init"));
+        let g = with_edges(
+            &g,
+            vec![Edge {
+                from: cid("init"),
+                site: Site::at(0),
+                to: EdgeTo::Construct {
+                    class: marked("Foo"),
+                    init: Some(cid("init")),
+                    basis: Basis::Type,
+                },
+            }],
+        );
+        let tree = render(&g, &root, &RenderOptions::default());
+        assert_eq!(to_text(&tree), "Foo\n  Foo [Recursive]\n");
     }
 }
