@@ -780,6 +780,28 @@ fn uncovered_a_rest_element_or_an_assignment_target_that_takes_a_def_is_counted_
     row_in(file, "assignedNeverUsed", &[]);
     row_in(file, "assignedPlainly", &[]);
     row_in(file, "comparedNotAssigned", &[]);
+    // a rest in an assignment pattern counts as a rest element, where the rest name is handed over
+    let rest = "rest_element";
+    row_in(file, "assignedRestHanded", &[(rest, 1)]);
+    row_in(file, "assignedRestHandedTwice", &[(rest, 2)]);
+    row_in(file, "assignedRestHoldsNoDef", &[]);
+    row_in(file, "assignedRestOnlyWhatIsNamed", &[]);
+    row_in(file, "assignedRestNotHanded", &[]);
+    row_in(file, "assignedRestTwice", &[(rest, 1)]);
+    // a `for … of` pattern
+    let for_of = "for_of_destructuring";
+    row_in(file, "forOfHanded", &[(for_of, 1)]);
+    row_in(file, "forOfHandedTwice", &[(for_of, 2)]);
+    row_in(file, "forOfRenamed", &[(for_of, 1)]);
+    row_in(file, "forOfNested", &[(for_of, 1)]);
+    row_in(file, "forOfAwaited", &[(for_of, 1)]);
+    row_in(file, "forOfCalled", &[]);
+    row_in(file, "forOfNotAFunction", &[]);
+    row_in(file, "forOfUnused", &[]);
+    row_in(file, "forOfArrayPattern", &[]);
+    // a rest in a `for … of` pattern is the rest element's, not this one's (not counted twice)
+    row_in(file, "forOfRest", &[(rest, 1)]);
+    row_in(file, "initializerNotForOf", &[]);
     // the breakdown says each one by its name
     let text = breakdown(&graph_of(
         &fixture("uncovered"),
@@ -790,6 +812,34 @@ fn uncovered_a_rest_element_or_an_assignment_target_that_takes_a_def_is_counted_
     assert!(
         text.contains("not covered by an edge (counted, not drawn): assignment destructuring 2"),
         "{text}"
+    );
+}
+
+#[test]
+fn uncovered_the_computed_member_names_of_a_class_at_the_top_of_a_file_are_in_no_tree() {
+    let file = "src/classes.tsx";
+    let counter = "computed_member_name_sites";
+    row_in(file, "ComputedTop", &[(counter, 2)]);
+    row_in(file, "ComputedNoSite", &[]);
+    row_in(file, "ComputedWithInitializer", &[(counter, 1)]);
+    row_in(file, "ComputedAmongPlainNames", &[(counter, 1)]);
+    row_in(file, "constructsComputed", &[]);
+    row_in(file, "declaresComputed", &[]);
+    // the nested class as the entry: the function around it is where its names are drawn, not here
+    row_in(file, "declaresComputed.<locals>.Local", &[]);
+    // the entry draws what the initializer calls, and not what the name calls
+    expect_edges(
+        &fixture("uncovered"),
+        file,
+        "ComputedWithInitializer",
+        &["make | call make"],
+    );
+    // a class in a function: the function draws its names
+    expect_edges(
+        &fixture("uncovered"),
+        file,
+        "declaresComputed",
+        &["side | call side"],
     );
 }
 

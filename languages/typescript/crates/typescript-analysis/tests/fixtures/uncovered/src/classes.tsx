@@ -212,3 +212,35 @@ export function showsFunctionComponent() {
 export function constructsWidget() {
   new Widget();
 }
+
+// ---- computed member names of a class at the top of a file: in no tree. One for each site.
+export class ComputedTop {
+  [side()] = 1;
+  [make()]() {}
+}
+// a literal and a property access are no site: 0
+export class ComputedNoSite {
+  ["literal"] = 1;
+  [Symbol.iterator]() {}
+}
+// only the names count; the initializer is the class's body and is drawn when the class is the entry: 1
+export class ComputedWithInitializer {
+  [side()] = make();
+}
+// names that are not computed are not read (asking an identifier for its expression is an error in the engine's tree): 1
+export class ComputedAmongPlainNames {
+  plain = 1;
+  [side()] = 2;
+  method() {}
+  static other = 3;
+}
+// a construction does not walk the class, and the name is not in an initializer: 0
+export function constructsComputed() {
+  new ComputedTop();
+}
+// a class declared in a function has its names read by the function: an edge there, and nothing counted
+export function declaresComputed() {
+  class Local {
+    [side()] = 1;
+  }
+}

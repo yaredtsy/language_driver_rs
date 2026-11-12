@@ -462,21 +462,7 @@ impl Sem {
             return Some(Arc::clone(found));
         }
         let _scope = self._region.enter();
-        let mut collector = Collector {
-            text: func.file.node.text(),
-            def_of: &defs.def_of,
-            own: node,
-            sites: Vec::new(),
-            nested: Vec::new(),
-            lits: Vec::new(),
-            elems: Vec::new(),
-            binds: Vec::new(),
-            call_apply: Vec::new(),
-            refs: Vec::new(),
-            accesses: Vec::new(),
-            destructured: Vec::new(),
-            assigns: Vec::new(),
-        };
+        let mut collector = Collector::new(func.file.node.text(), &defs.def_of, node);
         collector.body_of(node);
         let accessors = self.accessor_sites(&collector.accesses, collector.text);
         collector.sites.extend(accessors);
@@ -736,7 +722,25 @@ struct AccessCandidate {
     access: Access,
 }
 
-impl Collector<'_> {
+impl<'a> Collector<'a> {
+    fn new(text: &'a str, def_of: &'a HashMap<P<Node>, usize>, own: P<Node>) -> Self {
+        Collector {
+            text,
+            def_of,
+            own,
+            sites: Vec::new(),
+            nested: Vec::new(),
+            lits: Vec::new(),
+            elems: Vec::new(),
+            binds: Vec::new(),
+            call_apply: Vec::new(),
+            refs: Vec::new(),
+            accesses: Vec::new(),
+            destructured: Vec::new(),
+            assigns: Vec::new(),
+        }
+    }
+
     fn collect(&mut self, node: Option<P<Node>>) {
         let Some(node) = node else {
             return;
@@ -1499,6 +1503,19 @@ mod resolve {
         ClassComponentRender,
         /// `b.fn()` where `fn` is a getter: the one edge is the getter, and the call of what it returns is a second call.
         GetterResultCall,
+        /// `for (const { load } of xs) use(load)`: the name stands for a member of the element, handed over by name, and a `for … of` pattern has no initializer to read.
+        ForOfDestructuring,
+        /// One site in a computed member name (`[key()] = …`) of a class at the top of a file, counted where the class def is walked: the class def's body never reads
+        /// the names, and no enclosing def is there to read them.
+        ComputedMemberNameSite,
+    }
+
+    /// What the object patterns on the left of `=` in a body take (`Sem::assigned_defs`): the variables that get a def of the value, and the variables that get a
+    /// rest object holding one.
+    #[derive(Default)]
+    struct Assigned {
+        defs: Vec<P<Symbol>>,
+        rests: Vec<P<Symbol>>,
     }
 
     impl Uncovered {
@@ -1516,6 +1533,8 @@ mod resolve {
                 Uncovered::LocalClassDecoratorSite => "uncovered_local_class_decorator_sites",
                 Uncovered::ClassComponentRender => "uncovered_class_component_render",
                 Uncovered::GetterResultCall => "uncovered_getter_result_calls",
+                Uncovered::ForOfDestructuring => "uncovered_for_of_destructuring",
+                Uncovered::ComputedMemberNameSite => "uncovered_computed_member_name_sites",
             }
         }
     }
@@ -2043,10 +2062,14 @@ mod resolve {
                     }
                 }
             }
+            uncovered.extend(std::iter::repeat_n(
+                Uncovered::ComputedMemberNameSite,
+                self.computed_name_sites(func, style),
+            ));
             let _scope = self._region.enter();
             let mut checker = self.program.get_type_checker(&Context::default());
-            // the variables an object pattern on the left of `=` assigns a def to (`({ load } = api)`)
-            let mut assigned: Vec<P<Symbol>> = Vec::new();
+            // the variables an object pattern on the left of `=` assigns a def, or a rest object that holds one, to (`({ load, ...others } = api)`)
+            let mut assigned = Assigned::default();
             let mut patterns: Vec<Span> = Vec::new();
             for &(left, right) in &body.assigns {
                 patterns.push(own_span(func.file.node.text(), left));
@@ -2102,12 +2125,14 @@ mod resolve {
                     continue;
                 };
                 // a target of the pattern itself is where the def is taken, not where it is handed over
-                if !patterns
+                let inside_pattern = patterns
                     .iter()
-                    .any(|pattern| pattern.start <= span.start && span.end <= pattern.end)
-                    && assigned.contains(&symbol)
-                {
+                    .any(|pattern| pattern.start <= span.start && span.end <= pattern.end);
+                if !inside_pattern && assigned.defs.contains(&symbol) {
                     uncovered.push(Uncovered::AssignmentDestructuring);
+                }
+                if assigned.rests.contains(&symbol) {
+                    uncovered.push(Uncovered::RestElement);
                 }
                 if symbol.flags().intersects(SymbolFlags::Alias) {
                     symbol = checker.get_aliased_symbol(symbol);
@@ -2126,6 +2151,12 @@ mod resolve {
                             if self.holds_defs(&mut checker, ty, style) {
                                 uncovered.push(Uncovered::RestElement);
                             }
+                        }
+                        // `for (const { load } of xs)`: no initializer to read, so no member is followed (no edge), and the name is counted
+                        if for_of_member(&mut checker, declaration)
+                            .is_some_and(|property| self.holds_def(&mut checker, property, style))
+                        {
+                            uncovered.push(Uncovered::ForOfDestructuring);
                         }
                         declarations.extend(bound_member(&mut checker, declaration));
                     } else {
@@ -2189,21 +2220,31 @@ mod resolve {
             }
         }
 
-        /// Whether a member of `ty` is a project function with a body: the properties' own declarations, mapped as a call maps them.
+        /// Whether a member of `ty` is a project function with a body.
         fn holds_defs(&self, checker: &mut Checker, ty: P<Type>, style: MarkerStyle<'_>) -> bool {
             let properties = checker.get_properties_of_type_exported(ty).to_vec();
-            properties.into_iter().any(|property| {
-                property
-                    .declarations()
-                    .to_vec()
-                    .into_iter()
-                    .any(|declaration| {
-                        !self
-                            .functions_of_declaration(checker, declaration, style)
-                            .0
-                            .is_empty()
-                    })
-            })
+            properties
+                .into_iter()
+                .any(|property| self.holds_def(checker, property, style))
+        }
+
+        /// Whether the property `property` is a project function with a body: its declarations, mapped as a call maps them.
+        fn holds_def(
+            &self,
+            checker: &mut Checker,
+            property: P<Symbol>,
+            style: MarkerStyle<'_>,
+        ) -> bool {
+            property
+                .declarations()
+                .to_vec()
+                .into_iter()
+                .any(|declaration| {
+                    !self
+                        .functions_of_declaration(checker, declaration, style)
+                        .0
+                        .is_empty()
+                })
         }
 
         /// The variables that the object pattern `left` (the left of `=`) assigns a def of its value to: `load` in `({ load } = api)` and `({ load: go } = api)`,
@@ -2215,9 +2256,32 @@ mod resolve {
             left: P<Node>,
             ty: P<Type>,
             style: MarkerStyle<'_>,
-            out: &mut Vec<P<Symbol>>,
+            out: &mut Assigned,
         ) {
             for &member in left.properties() {
+                // `...others`: the rest object holds the members of the value that the pattern did not name
+                if member.kind() == Kind::SpreadAssignment {
+                    let named: Vec<&str> = left
+                        .properties()
+                        .iter()
+                        .filter(|sibling| sibling.kind() != Kind::SpreadAssignment)
+                        .filter_map(|sibling| sibling.name())
+                        .map(|name| name.text())
+                        .collect();
+                    let left_over = checker
+                        .get_properties_of_type_exported(ty)
+                        .to_vec()
+                        .into_iter()
+                        .filter(|property| !named.contains(&property.name()))
+                        .any(|property| self.holds_def(checker, property, style));
+                    if left_over
+                        && let Some(target) = member.expression().map(unwrap_expression)
+                        && let Some(variable) = checker.get_symbol_at_location_exported(target)
+                    {
+                        out.rests.push(variable);
+                    }
+                    continue;
+                }
                 let Some(key) = member
                     .name()
                     .filter(|name| ast::is_identifier(*name) || ast::is_string_literal_like(*name))
@@ -2246,29 +2310,45 @@ mod resolve {
                     self.assigned_defs(checker, nested, inner, style, out);
                     continue;
                 }
-                let is_def = property
-                    .declarations()
-                    .to_vec()
-                    .into_iter()
-                    .any(|declaration| {
-                        !self
-                            .functions_of_declaration(checker, declaration, style)
-                            .0
-                            .is_empty()
-                    });
-                if !is_def {
+                if !self.holds_def(checker, property, style) {
                     continue;
                 }
                 let variable = match target {
                     None => checker.get_shorthand_assignment_value_symbol(Some(member)),
                     Some(target) => checker.get_symbol_at_location_exported(target),
                 };
-                if let Some(variable) = variable
-                    && !out.contains(&variable)
-                {
-                    out.push(variable);
+                if let Some(variable) = variable {
+                    out.defs.push(variable);
                 }
             }
+        }
+
+        /// How many sites are in the computed member names of `class` (`[key()] = …`, `[make()]() {}`), when `class` is a class at the top of a file. A class's own
+        /// body never reads its member names, and a class nested in a body has them read by the def around it (`Collector::collect`, which draws them there); a
+        /// class at the top has no def around it, so the sites are in no tree. Calls, constructions, tags and JSX elements: an accessor in a name is not asked of the
+        /// checker here.
+        fn computed_name_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> usize {
+            let Some(defs) = self.file_defs(class.file, style) else {
+                return 0;
+            };
+            let def = &defs.outline.defs[class.def];
+            let Some(node) = defs.nodes[class.def] else {
+                return 0;
+            };
+            if def.kind != DefKind::Class || def.parent.is_some() {
+                return 0;
+            }
+            let _scope = self._region.enter();
+            let mut collector = Collector::new(class.file.node.text(), &defs.def_of, node);
+            for &member in node.members() {
+                // `expression()` is for a computed name only: asking an identifier for it is a bug in the engine's tree, not an empty answer
+                if let Some(name) = member.name()
+                    && ast::is_computed_property_name(name)
+                {
+                    collector.collect(name.expression());
+                }
+            }
+            collector.sites.len()
         }
 
         /// How many sites of `class`'s own body are in decorators: the decorators of the class, of its members and of the parameters of its constructor and
@@ -2588,6 +2668,48 @@ mod resolve {
     fn bound_member(checker: &mut Checker, element: P<Node>) -> Vec<P<Node>> {
         bound_symbol(checker, element)
             .map_or_else(Vec::new, |symbol| symbol.declarations().to_vec())
+    }
+
+    /// The member a name of a `for (const { load } of xs)` pattern stands for, looked up on the type of the pattern (the element type of `xs`). It exists to be
+    /// **counted**: following it would be an edge, and a `for … of` is not followed yet (`Uncovered::ForOfDestructuring`). `None` for a rest element, a computed key, a
+    /// pattern that is not the declaration of a `for … of` and a member the type does not have.
+    fn for_of_member(checker: &mut Checker, element: P<Node>) -> Option<P<Symbol>> {
+        let mut keys = Vec::new();
+        let mut at = element;
+        let root = loop {
+            let pattern = at.parent()?;
+            if pattern.kind() != Kind::ObjectBindingPattern
+                || at.as_binding_element().dot_dot_dot_token().is_some()
+            {
+                return None;
+            }
+            let key = at.property_name().or(at.name())?;
+            if !(ast::is_identifier(key) || ast::is_string_literal_like(key)) {
+                return None;
+            }
+            keys.push(key.text().to_string());
+            let holder = pattern.parent()?;
+            match holder.kind() {
+                Kind::BindingElement => at = holder,
+                Kind::VariableDeclaration => {
+                    // the declaration of a `for … of`: it has no initializer, and the other declarations with none (`for … in`, `catch`) give a string or `any`
+                    let list = holder.parent()?;
+                    if list.parent()?.kind() != Kind::ForOfStatement {
+                        return None;
+                    }
+                    break pattern;
+                }
+                _ => return None,
+            }
+        };
+        let mut ty = checker.get_type_at_location(root);
+        let mut property = None;
+        for key in keys.iter().rev() {
+            let found = checker.get_property_of_type_exported(ty, key)?;
+            ty = checker.get_type_of_symbol(found);
+            property = Some(found);
+        }
+        property
     }
 
     /// The accessors of the property at `location` that an access of kind `access` runs: the getters for a read, the setters for a write, both for a read and a write.

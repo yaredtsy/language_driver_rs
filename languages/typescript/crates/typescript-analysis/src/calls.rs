@@ -300,6 +300,8 @@ impl fmt::Display for Breakdown {
                 ("local_class_decorator_sites", "local class decorator sites"),
                 ("class_component_render", "class component render"),
                 ("getter_result_calls", "getter result calls"),
+                ("for_of_destructuring", "for-of destructuring"),
+                ("computed_member_name_sites", "computed member name sites"),
             ];
             let parts: Vec<String> = labels
                 .iter()

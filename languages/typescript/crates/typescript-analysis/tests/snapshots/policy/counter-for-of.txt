@@ -1,0 +1,11 @@
+== forOfHanded
+forOfHanded
+  use
+edges:
+forOfHanded | use | call use
+uncovered: for_of_destructuring=1
+== forOfCalled
+forOfCalled
+  api.load
+edges:
+forOfCalled | load | call api.load

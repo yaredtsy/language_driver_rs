@@ -94,3 +94,99 @@ export function comparedNotAssigned() {
   ({ load } == api);
   use(load);
 }
+
+// ---- a rest in an assignment pattern: the rest object takes the members the pattern did not name
+// `load` and `save` are defs and none is named: 1
+export function assignedRestHanded() {
+  let o: typeof api;
+  ({ ...o } = api);
+  use(o);
+}
+// handed over twice: 2
+export function assignedRestHandedTwice() {
+  let o: typeof api;
+  ({ load: _, ...o } = api);
+  use(o);
+  use(o);
+}
+// the rest object holds `label` only, a member that is not a def: 0
+export function assignedRestHoldsNoDef() {
+  let o: typeof plain;
+  ({ ...o } = plain);
+  use(o);
+}
+// every def is named by the pattern: 0
+export function assignedRestOnlyWhatIsNamed() {
+  let o: typeof api;
+  let load, save;
+  ({ load, save, ...o } = api);
+  use(o);
+}
+// the rest object is not handed over, and never used: 0
+export function assignedRestNotHanded() {
+  let o: typeof api;
+  ({ ...o } = api);
+}
+declare let _: unknown;
+// two patterns assign to one variable: it is one variable handed over once: 1
+export function assignedRestTwice() {
+  let o: typeof api;
+  ({ ...o } = api);
+  ({ ...o } = api);
+  use(o);
+}
+
+// ---- a `for … of` pattern: the name stands for a member of the element, and nothing follows it
+declare const apis: (typeof api)[];
+declare const decks: (typeof deep)[];
+declare const plains: (typeof plain)[];
+// `load` is a def of every element: 1
+export function forOfHanded() {
+  for (const { load } of apis) use(load);
+}
+// handed over twice: 2
+export function forOfHandedTwice() {
+  for (const { load } of apis) {
+    use(load);
+    use(load);
+  }
+}
+// a renamed element: 1
+export function forOfRenamed() {
+  for (const { save: keep } of apis) use(keep);
+}
+// a nested pattern: 1
+export function forOfNested() {
+  for (const { inner: { run } } of decks) use(run);
+}
+// `await` does not change it: 1
+export async function forOfAwaited() {
+  for await (const { load } of apis) use(load);
+}
+// called, not handed over: the engine follows the binding to `api.load` for a call (an edge), so nothing is counted: 0
+export function forOfCalled() {
+  for (const { load } of apis) load();
+}
+// a member that is not a def: 0
+export function forOfNotAFunction() {
+  for (const { count } of plains) use(count);
+}
+// never used: 0
+export function forOfUnused() {
+  for (const { load } of apis) {
+  }
+}
+// a destructuring that has an initializer is not a `for … of`: it is followed (an edge, counted nowhere here): 0
+export function initializerNotForOf() {
+  const { load } = api;
+  use(load);
+}
+// a rest element in a `for … of` pattern: the rest object holds `load` and `save`: a rest element (1), and not a member named `load`
+export function forOfRest() {
+  for (const { ...load } of apis) use(load);
+}
+// an array pattern is not followed (its element is named like a member on purpose, which an object pattern would take): 0
+export function forOfArrayPattern() {
+  // @ts-ignore
+  for (const [load] of apis) use(load);
+}

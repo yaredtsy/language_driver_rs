@@ -9,3 +9,12 @@ restIsCalled
   api.save
 edges:
 restIsCalled | others.save | call api.save
+== assignedRestHanded
+assignedRestHanded
+  use
+edges:
+assignedRestHanded | use | call use
+uncovered: rest_element=1
+== assignedRestNotHanded
+assignedRestNotHanded
+edges: none
