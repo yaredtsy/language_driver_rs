@@ -473,8 +473,12 @@ impl Sem {
             binds: Vec::new(),
             call_apply: Vec::new(),
             refs: Vec::new(),
+            accesses: Vec::new(),
+            destructured: Vec::new(),
         };
         collector.body_of(node);
+        let accessors = self.accessor_sites(&collector.accesses, collector.text);
+        collector.sites.extend(accessors);
         collector.sites.sort_by_key(|call| call.span);
         let made = Arc::new(Body {
             sites: collector.sites,
@@ -484,6 +488,7 @@ impl Sem {
             binds: collector.binds,
             call_apply: collector.call_apply,
             refs: collector.refs,
+            destructured: collector.destructured,
         });
         self.bodies.borrow_mut().insert(node, Arc::clone(&made));
         Some(made)
@@ -631,7 +636,7 @@ fn own_span(text: &str, node: P<Node>) -> Span {
 /// the same node kinds and the same places where it does not descend, with the plan's differences: it stops at any nested node that is a def of the
 /// **outline** (`def_of`), not at what tsrs's call hierarchy calls a declaration, so an anonymous function is part of the def around it and a named one is
 /// not; and a class's static block and property initializers are the class's own body. Only calls and constructions are sites so far (`f(x)`, `a.b(x)`,
-/// `a?.b(x)`, `super(x)`, `new C(x)`): a tagged template, a decorator, a JSX element and an accessor are TS4 step 6.
+/// `a?.b(x)`, `super(x)`, `new C(x)`), a tagged template's tag, a decorator, a JSX element that is not intrinsic, and a property access that runs an accessor.
 struct Collector<'a> {
     text: &'a str,
     def_of: &'a HashMap<P<Node>, usize>,
@@ -652,10 +657,16 @@ struct Collector<'a> {
     /// The names in a position where a value is **handed over** (`is_handed_over`): an identifier or a property access, or a shorthand property, with the
     /// span of the name. What each names is asked of the checker later (`Sem::handed_over`).
     refs: Vec<(Span, P<Node>)>,
+    /// The property accesses that are not callees (`note_access`): which are accessors is the checker's to say.
+    accesses: Vec<AccessCandidate>,
+    /// The elements of an object destructuring of a variable (`const { a, b: { c } } = x`): each reads a property without a property access, so an accessor
+    /// among them is run by no site (`Uncovered::DestructuredAccessor`, counted by `Sem::handed_over`).
+    destructured: Vec<P<Node>>,
 }
 
 /// What reading one def's body found. `sites` is the calls; `nested` and `refs` are what the body hands over (`Sem::handed_over`).
 struct Body {
+    destructured: Vec<P<Node>>,
     sites: Vec<CallNode>,
     nested: Vec<(usize, bool)>,
     lits: Vec<P<Node>>,
@@ -665,12 +676,59 @@ struct Body {
     refs: Vec<(Span, P<Node>)>,
 }
 
-/// A call or a `new` found in a body: the span of its callee (or class) expression (absolute, in the file) and the call node. Kept privately by `Sem`, per def, so
-/// that `callee` can ask the checker about a site given only its index: the index is plain data, the node never leaves `sem.rs`.
+/// A site found in a body: the span of the expression that is resolved (absolute, in the file), that expression, and the node the site is (a call, a `new`, a
+/// tagged template, a JSX element, a decorator, a property access). Kept privately by `Sem`, per def, so that `callee` can ask the checker about a site given
+/// only its index: the index is plain data, the node never leaves `sem.rs`.
 #[derive(Clone, Copy)]
 struct CallNode {
     span: Span,
+    /// What is resolved: a call's callee, a `new`'s class, a template's tag, a JSX element's tag name, a decorator's expression, and for an accessor the access
+    /// itself (`a.b`), or the key of `a["b"]`.
+    expr: P<Node>,
+    /// The node of the site, which the checker's resolved signature is asked about.
     call: P<Node>,
+    kind: SiteKind,
+}
+
+/// What a site is. The first four are calls of a function the source names; an accessor is a call the source does not write: `a.b` runs a getter or a setter.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SiteKind {
+    /// `f(x)`, `a.b(x)`, `new C(x)`, `super(x)`
+    Call,
+    /// `<Tag />`: the tag name
+    Jsx,
+    /// `` tag`text` ``: the tag
+    Tagged,
+    /// `@decorator` or `@decorator(1)`
+    Decorator,
+    /// `a.b` (or `a["b"]`) where `b` is an accessor: the getter for a read, the setter for a write, both for `+=` and `++`.
+    Accessor(Access),
+}
+
+/// How a property access uses the property.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Access {
+    Read,
+    Write,
+    ReadWrite,
+}
+
+impl Access {
+    fn reads(self) -> bool {
+        self != Access::Write
+    }
+    fn writes(self) -> bool {
+        self != Access::Read
+    }
+}
+
+/// A property access that may be an accessor: asked of the checker once the body is read (`Sem::body`).
+#[derive(Clone, Copy)]
+struct AccessCandidate {
+    node: P<Node>,
+    /// Where the checker is asked for the property's symbol: the access, or the key of an element access.
+    location: P<Node>,
+    access: Access,
 }
 
 impl Collector<'_> {
@@ -726,6 +784,14 @@ impl Collector<'_> {
             }
             // not the type of a variable or parameter
             Kind::VariableDeclaration | Kind::Parameter => {
+                if node.kind() == Kind::VariableDeclaration
+                    && node.initializer().is_some()
+                    && let Some(pattern) = node
+                        .name()
+                        .filter(|name| name.kind() == Kind::ObjectBindingPattern)
+                {
+                    self.note_destructured(pattern);
+                }
                 self.collect(node.name());
                 self.collect(node.initializer());
                 return;
@@ -736,7 +802,9 @@ impl Collector<'_> {
                 {
                     self.sites.push(CallNode {
                         span: own_span(self.text, callee),
+                        expr: callee,
                         call: node,
+                        kind: SiteKind::Call,
                     });
                 }
                 self.note_bound_or_applied(node);
@@ -752,7 +820,9 @@ impl Collector<'_> {
                 if let Some(class) = node.expression() {
                     self.sites.push(CallNode {
                         span: own_span(self.text, class),
+                        expr: class,
                         call: node,
+                        kind: SiteKind::Call,
                     });
                 }
                 self.collect(node.expression());
@@ -761,13 +831,51 @@ impl Collector<'_> {
                 }
                 return;
             }
+            // `` tag`text` ``: the tag is called
+            Kind::TaggedTemplateExpression => {
+                let tag = node.as_tagged_template_expression().tag;
+                self.sites.push(CallNode {
+                    span: own_span(self.text, tag),
+                    expr: tag,
+                    call: node,
+                    kind: SiteKind::Tagged,
+                });
+            }
+            // `<Tag />`: a component is called, an intrinsic element (`<div>`, `<my-el>`, `<svg:rect>`) is not
+            Kind::JsxOpeningElement | Kind::JsxSelfClosingElement => {
+                let tag = node.tag_name();
+                if !is_intrinsic_jsx_tag(tag) {
+                    self.sites.push(CallNode {
+                        span: own_span(self.text, tag),
+                        expr: tag,
+                        call: node,
+                        kind: SiteKind::Jsx,
+                    });
+                }
+            }
+            // `@decorator`, `@decorator(1)`: the expression is called with what it decorates
+            Kind::Decorator => {
+                if let Some(expression) = node.expression() {
+                    self.sites.push(CallNode {
+                        span: own_span(self.text, expression),
+                        expr: expression,
+                        call: node,
+                        kind: SiteKind::Decorator,
+                    });
+                }
+            }
             // `a["k"]` handed over: no edge covers it (a counted remainder)
-            Kind::ElementAccessExpression if is_handed_over(node) => self.elems.push(node),
+            Kind::ElementAccessExpression if is_handed_over(node) => {
+                self.elems.push(node);
+                self.note_access(node);
+            }
+            Kind::ElementAccessExpression => self.note_access(node),
             // an object literal handed over where it is written hands over its function members
             Kind::ObjectLiteralExpression if literal_is_handed(node) => self.lits.push(node),
             // `a.b`: the access is the name (its own name child is not looked at); the object is walked
             Kind::PropertyAccessExpression if !ast::is_part_of_type_node(node) => {
                 self.reference(node, node);
+                self.note_access(node);
                 self.collect(node.expression());
                 return;
             }
@@ -779,6 +887,69 @@ impl Collector<'_> {
         node.for_each_child(&mut |child| {
             self.collect(Some(child));
             false
+        });
+    }
+
+    /// The elements of an object binding pattern, and of the patterns nested in it. Which of them name one property (not a rest element, not a computed key) is
+    /// `bound_symbol`'s to say.
+    fn note_destructured(&mut self, pattern: P<Node>) {
+        for &element in pattern.elements() {
+            if element.kind() != Kind::BindingElement {
+                continue;
+            }
+            self.destructured.push(element);
+            if let Some(nested) = element
+                .name()
+                .filter(|name| name.kind() == Kind::ObjectBindingPattern)
+            {
+                self.note_destructured(nested);
+            }
+        }
+    }
+
+    /// `a.b` and `a["b"]` that are not callees and not deleted: the getter or setter runs, if `b` is an accessor. Remembered with how the property is used.
+    fn note_access(&mut self, node: P<Node>) {
+        if ast::is_part_of_type_node(node) || is_callee_position(node) {
+            return;
+        }
+        let location = if node.kind() == Kind::ElementAccessExpression {
+            let key = node.as_element_access_expression().argument_expression;
+            if !ast::is_string_literal_like(key) {
+                return;
+            }
+            key
+        } else {
+            node
+        };
+        let mut outer = node;
+        while let Some(parent) = outer.parent()
+            && matches!(
+                parent.kind(),
+                Kind::NonNullExpression
+                    | Kind::AsExpression
+                    | Kind::SatisfiesExpression
+                    | Kind::TypeAssertionExpression
+            )
+        {
+            outer = parent;
+        }
+        if outer
+            .parent()
+            .is_some_and(|parent| parent.kind() == Kind::DeleteExpression)
+        {
+            return;
+        }
+        let access = if !ast::is_write_access(outer) {
+            Access::Read
+        } else if ast::is_write_only_access(outer) {
+            Access::Write
+        } else {
+            Access::ReadWrite
+        };
+        self.accesses.push(AccessCandidate {
+            node,
+            location,
+            access,
         });
     }
 
@@ -840,6 +1011,24 @@ impl Collector<'_> {
                             self.collect(Some(modifier));
                         }
                     }
+                    // `constructor(@Inject(T) x)`, `method(@Body() b)`: the decorators of a parameter run when the class is defined, so they belong to the class
+                    if matches!(
+                        member.kind(),
+                        Kind::Constructor
+                            | Kind::MethodDeclaration
+                            | Kind::GetAccessor
+                            | Kind::SetAccessor
+                    ) {
+                        for &parameter in member.parameters() {
+                            if let Some(modifiers) = parameter.modifiers() {
+                                for &modifier in modifiers.nodes() {
+                                    if modifier.kind() == Kind::Decorator {
+                                        self.collect(Some(modifier));
+                                    }
+                                }
+                            }
+                        }
+                    }
                     match member.kind() {
                         Kind::PropertyDeclaration => self.collect(member.initializer()),
                         Kind::ClassStaticBlockDeclaration => {
@@ -861,6 +1050,45 @@ impl Collector<'_> {
             // an interface, a method signature, an enum, a type alias: nothing to walk
             _ => {}
         }
+    }
+}
+
+/// Whether `node` is what is called where it stands: the callee of a call or a `new`, a tagged template's tag, a decorator's expression, a JSX tag name (the
+/// closing one too), however many parentheses and assertions are between. Such an access is resolved as the callee, and is not an accessor site of its own.
+fn is_callee_position(node: P<Node>) -> bool {
+    let mut at = node;
+    while let Some(parent) = at.parent() {
+        match parent.kind() {
+            Kind::ParenthesizedExpression
+            | Kind::AsExpression
+            | Kind::SatisfiesExpression
+            | Kind::TypeAssertionExpression
+            | Kind::NonNullExpression => at = parent,
+            Kind::CallExpression | Kind::NewExpression | Kind::Decorator => {
+                return parent.expression() == Some(at);
+            }
+            Kind::TaggedTemplateExpression => {
+                return parent.as_tagged_template_expression().tag == at;
+            }
+            Kind::JsxOpeningElement | Kind::JsxSelfClosingElement | Kind::JsxClosingElement => {
+                return parent.tag_name() == at;
+            }
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// A JSX tag that names no value: `<div>`, `<my-el>` (a lower-case first letter, or a dash), `<svg:rect>` (a namespaced name). TypeScript's rule
+/// (`isIntrinsicJsxName`); a tag that is an access (`<props.Icon />`) or starts with a capital is a component.
+fn is_intrinsic_jsx_tag(tag: P<Node>) -> bool {
+    match tag.kind() {
+        Kind::JsxNamespacedName => true,
+        Kind::Identifier => {
+            let name = tag.text();
+            name.starts_with(|c: char| c.is_lowercase()) || name.contains('-')
+        }
+        _ => false,
     }
 }
 
@@ -1231,6 +1459,8 @@ mod resolve {
         Bind,
         CallApply,
         Class,
+        /// `const { value } = box` where `value` is a getter: the getter runs, and there is no property access to be its site.
+        DestructuredAccessor,
     }
 
     impl Uncovered {
@@ -1241,6 +1471,7 @@ mod resolve {
                 Uncovered::Bind => "uncovered_bind",
                 Uncovered::CallApply => "uncovered_call_apply",
                 Uncovered::Class => "uncovered_class",
+                Uncovered::DestructuredAccessor => "uncovered_destructured_accessor",
             }
         }
     }
@@ -1265,6 +1496,9 @@ mod resolve {
         ComputedName,
         /// The engine found a declaration in project code that is not a def of the outline: a bug in one of the two rules (rule 8: counted).
         NotInOutline,
+        /// `@decorator(1)`: the function the factory returned is called with what is decorated, and nothing names it (an arrow written in the factory, a
+        /// function type): the second call of a decorator that takes arguments.
+        DecoratorResult,
         /// None of the above: no symbol, or a symbol with nothing to call.
         NoDeclaration,
     }
@@ -1278,6 +1512,7 @@ mod resolve {
                 Why::UnionReceiver => "union_receiver",
                 Why::ComputedName => "computed_name",
                 Why::NotInOutline => "decl_not_in_outline",
+                Why::DecoratorResult => "decorator_result",
                 Why::NoDeclaration => "no_declaration",
             }
         }
@@ -1302,9 +1537,15 @@ mod resolve {
             let _scope = self._region.enter();
             // one checker, so one handle at a time: it is dropped before this returns
             let mut checker = self.program.get_type_checker(&Context::default());
-            let Some(callee) = call.call.expression() else {
-                return vec![Resolved::Unknown(Why::NoDeclaration)];
-            };
+            let callee = call.expr;
+            if let SiteKind::Accessor(access) = call.kind {
+                return self.accessor_targets(&mut checker, callee, access, style);
+            }
+            if call.kind == SiteKind::Decorator
+                && unwrap_expression(callee).kind() == Kind::CallExpression
+            {
+                return self.decorator_result_targets(&mut checker, call.call, style);
+            }
             let mut declarations =
                 self.prefer_project_bodies(declarations_of(&mut checker, callee));
             let mut unresolved_members = false;
@@ -1340,6 +1581,89 @@ mod resolve {
             if unresolved_members {
                 // a member of the union that has no declaration to enter is not dropped
                 found.push(Resolved::Unknown(Why::UnionReceiver));
+            }
+            found
+        }
+
+        /// The property accesses of a body that run an accessor, as sites: for each candidate the checker's symbol of the property is asked, and it is a site when
+        /// a declaration of it is an accessor of the half the access needs (a getter for a read, a setter for a write, both for `+=`). One checker for the whole
+        /// body, and none when the body has no candidate. A property of a union that is an accessor in some members and a plain property in others is a site for
+        /// the accessors only: the plain property runs nothing.
+        pub(super) fn accessor_sites(
+            &self,
+            candidates: &[AccessCandidate],
+            text: &str,
+        ) -> Vec<CallNode> {
+            if candidates.is_empty() {
+                return Vec::new();
+            }
+            let mut checker = self.program.get_type_checker(&Context::default());
+            candidates
+                .iter()
+                .filter(|candidate| {
+                    accessor_declarations(&mut checker, candidate.location, candidate.access)
+                        .is_some_and(|found| !found.is_empty())
+                })
+                .map(|candidate| CallNode {
+                    span: own_span(text, candidate.node),
+                    expr: candidate.location,
+                    call: candidate.node,
+                    kind: SiteKind::Accessor(candidate.access),
+                })
+                .collect()
+        }
+
+        /// What an accessor site runs: the getter for a read, the setter for a write, both for `+=` and `++`, as defs of the project or externals, in (file, offset)
+        /// order. The site exists only when there is one (`accessor_sites`).
+        fn accessor_targets(
+            &self,
+            checker: &mut Checker,
+            location: P<Node>,
+            access: Access,
+            style: MarkerStyle<'_>,
+        ) -> Vec<Resolved<'_>> {
+            let mut declarations =
+                accessor_declarations(checker, location, access).unwrap_or_default();
+            declarations.sort_by_key(|declaration| {
+                (
+                    ast::get_source_file_of_node(*declaration)
+                        .map(|file| file.file_name().to_owned()),
+                    declaration.pos(),
+                )
+            });
+            let mut found: Vec<Resolved<'_>> = Vec::new();
+            for declaration in declarations {
+                let resolved = self.classify(checker, declaration, style);
+                if !found.contains(&resolved) {
+                    found.push(resolved);
+                }
+            }
+            if found.is_empty() {
+                found.push(Resolved::Unknown(Why::NoDeclaration));
+            }
+            found
+        }
+
+        /// The second call of `@decorator(1)`: the function that `decorator(1)` returns is called with what is decorated. The first call is a site of its own (a
+        /// plain call of `decorator`). The checker's resolved signature of the decorator names the returned function when it is a declaration that can be
+        /// entered (`return apply;` with a function `apply`); an arrow written in the factory's `return` is part of the factory's body already (it is no def), and a
+        /// function type (`ClassDecorator`) has nothing to enter, so those are `Unknown(DecoratorResult)`: counted, never dropped.
+        fn decorator_result_targets(
+            &self,
+            checker: &mut Checker,
+            decorator: P<Node>,
+            style: MarkerStyle<'_>,
+        ) -> Vec<Resolved<'_>> {
+            let declarations = declarations_of_signature(checker, decorator);
+            let mut found: Vec<Resolved<'_>> = Vec::new();
+            for declaration in declarations {
+                let resolved = self.classify(checker, declaration, style);
+                if !found.contains(&resolved) {
+                    found.push(resolved);
+                }
+            }
+            if found.is_empty() {
+                found.push(Resolved::Unknown(Why::DecoratorResult));
             }
             found
         }
@@ -1646,6 +1970,17 @@ mod resolve {
                     uncovered.push(Uncovered::ElementAccess);
                 }
             }
+            // a getter read by destructuring runs, and no property access is there to be its site
+            for &element in &body.destructured {
+                if bound_symbol(&mut checker, element).is_some_and(|symbol| {
+                    symbol
+                        .declarations()
+                        .iter()
+                        .any(|declaration| declaration.kind() == Kind::GetAccessor)
+                }) {
+                    uncovered.push(Uncovered::DestructuredAccessor);
+                }
+            }
             // in source order, as the body names them
             for &(span, node) in &body.refs {
                 let symbol = if node.kind() == Kind::ShorthandPropertyAssignment {
@@ -1918,51 +2253,77 @@ mod resolve {
             })
     }
 
-    /// The declarations of the member a destructured name stands for: `load` in `const { load } = api` is `api`'s `load`, `inner` in `const { a: { inner } } = api`
-    /// is the `inner` of `api.a`. The property is looked up on the type of the initializer, so a member the type does not have (an index signature, a rest
-    /// element, a computed key, an array pattern, a parameter with no initializer) gives nothing: those are not followed.
-    fn bound_member(checker: &mut Checker, element: P<Node>) -> Vec<P<Node>> {
+    /// The member a destructured name stands for: `load` in `const { load } = api` is `api`'s `load`, `inner` in `const { a: { inner } } = api` is the `inner` of
+    /// `api.a`. The property is looked up on the type of the initializer, so a member the type does not have (an index signature, a rest element, a computed key,
+    /// an array pattern, a parameter with no initializer) gives nothing: those are not followed.
+    fn bound_symbol(checker: &mut Checker, element: P<Node>) -> Option<P<Symbol>> {
         let mut keys = Vec::new();
         let mut at = element;
         // from the element up through its patterns to the variable that is initialized
         let initializer = loop {
-            let Some(pattern) = at.parent() else {
-                return Vec::new();
-            };
+            let pattern = at.parent()?;
             if pattern.kind() != Kind::ObjectBindingPattern
                 || at.as_binding_element().dot_dot_dot_token().is_some()
             {
-                return Vec::new();
+                return None;
             }
-            let key = at.property_name().or(at.name());
-            match key {
-                Some(key) if ast::is_identifier(key) || ast::is_string_literal_like(key) => {
-                    keys.push(key.text().to_string())
-                }
-                _ => return Vec::new(),
+            let key = at.property_name().or(at.name())?;
+            if !(ast::is_identifier(key) || ast::is_string_literal_like(key)) {
+                return None;
             }
-            let Some(holder) = pattern.parent() else {
-                return Vec::new();
-            };
+            keys.push(key.text().to_string());
+            let holder = pattern.parent()?;
             match holder.kind() {
                 Kind::BindingElement => at = holder,
-                Kind::VariableDeclaration => match holder.initializer() {
-                    Some(initializer) => break initializer,
-                    None => return Vec::new(),
-                },
-                _ => return Vec::new(),
+                Kind::VariableDeclaration => break holder.initializer()?,
+                _ => return None,
             }
         };
         let mut ty = checker.get_type_at_location(initializer);
         let mut property = None;
         for key in keys.iter().rev() {
-            property = checker.get_property_of_type_exported(ty, key);
-            match property {
-                Some(found) => ty = checker.get_type_of_symbol(found),
-                None => return Vec::new(),
+            let found = checker.get_property_of_type_exported(ty, key)?;
+            ty = checker.get_type_of_symbol(found);
+            property = Some(found);
+        }
+        property
+    }
+
+    /// The declarations of the member a destructured name stands for (`bound_symbol`).
+    fn bound_member(checker: &mut Checker, element: P<Node>) -> Vec<P<Node>> {
+        bound_symbol(checker, element)
+            .map_or_else(Vec::new, |symbol| symbol.declarations().to_vec())
+    }
+
+    /// The accessors of the property at `location` that an access of kind `access` runs: the getters for a read, the setters for a write, both for a read and a write.
+    /// From the symbol's own declarations, so a union's property (a synthetic symbol that holds every member's) gives every member's accessor, and a member that is a
+    /// plain property gives none. `None` when there is no symbol.
+    fn accessor_declarations(
+        checker: &mut Checker,
+        location: P<Node>,
+        access: Access,
+    ) -> Option<Vec<P<Node>>> {
+        let symbol = checker.get_symbol_at_location_exported(location)?;
+        if !symbol.flags().intersects(SymbolFlags::Accessor) {
+            // a union's synthetic property carries the flags of its members; a plain symbol that is no accessor has nothing to run
+            if symbol.declarations().iter().all(|declaration| {
+                !matches!(declaration.kind(), Kind::GetAccessor | Kind::SetAccessor)
+            }) {
+                return Some(Vec::new());
             }
         }
-        property.map_or_else(Vec::new, |symbol| symbol.declarations().to_vec())
+        Some(
+            symbol
+                .declarations()
+                .iter()
+                .copied()
+                .filter(|declaration| match declaration.kind() {
+                    Kind::GetAccessor => access.reads(),
+                    Kind::SetAccessor => access.writes(),
+                    _ => false,
+                })
+                .collect(),
+        )
     }
 
     /// Why the engine has no declaration for this callee: syntax first (a computed name), then the type the checker gives it.
@@ -2738,6 +3099,29 @@ mod tests {
         by_def
     }
 
+    /// The text of every site of the def `qualname` of `src/accessors.ts` in the `site-kinds` fixture, in order.
+    fn accessor_sites_of(qualname: &str) -> Vec<String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/site-kinds");
+        let sem = Sem::open(&root, Path::new("src/accessors.ts")).unwrap();
+        let func = sem.entry("src/accessors.ts", qualname, 0, STYLE).unwrap();
+        let text = func.file.node.text();
+        sem.call_sites(func, STYLE)
+            .unwrap()
+            .iter()
+            .map(|span| span.slice(text).unwrap().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn a_property_access_that_is_a_callee_is_one_site_and_not_also_an_accessor_site() {
+        // two sites on one span would resolve to the same edge and be merged by the graph, so only the sites of the body can tell
+        assert_eq!(accessor_sites_of("callee"), ["box.method", "box.handler"]);
+        // each access of a chain is a site; the callee-position test looks through parentheses and assertions
+        assert_eq!(accessor_sites_of("chain"), ["box.inner", "box.inner.value"]);
+        // a field, a method read and not called, `delete` and a computed key are no sites
+        assert!(accessor_sites_of("none").is_empty());
+    }
+
     #[test]
     fn a_body_s_plain_calls_are_its_sites_in_source_order() {
         let found = sites_by_def(&sites_project());
@@ -2772,10 +3156,12 @@ mod tests {
         expect("nested", &["f"]);
         expect("nested.<locals>.inner", &["g"]);
         expect("nested.<locals>.arrow", &["a.b"]);
-        // `new Base()` is a site since step 5, on the class expression. A tagged template and a property read are step 6's, `import()` and `require()` are never
-        expect("not_sites", &["Base"]);
+        // `new Base()` is a site on the class expression, a tagged template on its tag; `import()` and `require()` are never, and `a.getterOnly` is one only when the
+        // checker says it is an accessor (`a` is `any` here)
+        expect("not_sites", &["Base", "f"]);
         // a class: `extends`, a property initializer, a static property, a static block and a decorator are its body; its methods are not
-        expect("Widget", &["mixin", "f", "g", "a.init", "dec"]);
+        // `@dec(1)` is the call of `dec` and, with the whole decorator expression, the call through its result
+        expect("Widget", &["mixin", "f", "g", "a.init", "dec", "dec(1)"]);
         expect("Widget.method", &["f"]);
         expect("Widget.value", &["g"]);
         expect("Widget.constructor", &["super", "f"]);

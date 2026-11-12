@@ -820,3 +820,261 @@ fn handed_a_def_every_hand_over_reaches_leaves_nothing_to_count() {
         );
     }
 }
+
+/// The edges of `entry`'s context, as `callee text | what it is`, for the entries of the `site-kinds` fixture; a def reached is named `qname#nth` (a getter and a
+/// setter of one name are two defs of the same qualname, so they are written `get Box.value` and `set Box.value`).
+fn edges_of(root: &Path, file: &str, entry: &str) -> Vec<String> {
+    let graph = graph_of(root, file, entry);
+    check_invariants(&graph);
+    let named = |id: &StableDef| {
+        let def = graph.def(id).unwrap();
+        let text = std::fs::read_to_string(root.join(&def.file)).unwrap();
+        let written =
+            text[def.range.start as usize..def.range.end as usize].trim_start_matches("static ");
+        if written.starts_with("get ") {
+            format!("get {}", def.qname)
+        } else if written.starts_with("set ") {
+            format!("set {}", def.qname)
+        } else {
+            def.qname.clone()
+        }
+    };
+    graph
+        .edges
+        .iter()
+        .filter(|edge| graph.def(&edge.from.func).unwrap().qname == entry)
+        .map(|edge| {
+            let from = graph.def(&edge.from.func).unwrap();
+            let text = std::fs::read_to_string(root.join(&from.file)).unwrap();
+            let callee = &text[(from.range.start + edge.site.start) as usize
+                ..(from.range.start + edge.site.end) as usize];
+            let to = match &edge.to {
+                EdgeTo::Context(id, _) if edge.passed => format!("pass {}", named(&id.func)),
+                EdgeTo::Context(id, _) => format!("call {}", named(&id.func)),
+                EdgeTo::Construct { class, init, .. } => match init {
+                    Some(init) => format!("construct {} init {}", named(class), named(&init.func)),
+                    None => format!("construct {} no init", named(class)),
+                },
+                EdgeTo::External(external, _) => {
+                    format!("external {} {}", external.package, external.name)
+                }
+                EdgeTo::Unresolved(reason) => format!("unresolved {}", reason.as_str()),
+                _ => unreachable!("an edge kind this test does not know"),
+            };
+            format!("{callee} | {to}")
+        })
+        .collect()
+}
+
+fn expect_edges(root: &Path, file: &str, entry: &str, expected: &[&str]) {
+    assert_eq!(edges_of(root, file, entry), expected, "{file} {entry}");
+}
+
+#[test]
+fn jsx_a_component_is_a_site_and_an_intrinsic_tag_or_a_closing_tag_is_not() {
+    let root = fixture("site-kinds");
+    let jsx = "src/jsx.tsx";
+    // `<div>`, `<my-el />` and `<svg:rect />` are not sites
+    expect_edges(&root, jsx, "intrinsic", &[]);
+    // a function, an arrow (calls); a class (a construction: a class component has no constructor to enter here); `memo(...)`'s result and a property of a
+    // declared object are values (function_typed_value); `<Arrow></Arrow>` is one site
+    expect_edges(
+        &root,
+        jsx,
+        "components",
+        &[
+            "Plain | call Plain",
+            "Arrow | call Arrow",
+            "ClassComponent | construct ClassComponent no init",
+            "Memoized | unresolved function_typed_value",
+            "Ns.Icon | unresolved function_typed_value",
+        ],
+    );
+    expect_edges(&root, jsx, "closing", &["Plain | call Plain"]);
+    expect_edges(
+        &root,
+        jsx,
+        "fromProps",
+        &["props.Icon | unresolved function_typed_value"],
+    );
+}
+
+#[test]
+fn tagged_template_the_tag_is_a_site_and_so_is_a_call_in_a_substitution() {
+    let root = fixture("site-kinds");
+    expect_edges(
+        &root,
+        "src/tagged.ts",
+        "tagged",
+        &[
+            "tag | call tag",
+            "helper | call helper",
+            "formatter.fmt | call Formatter.fmt",
+            "factory | call factory",
+            // the tag is the call's result: the call is a site of its own, and its result is no declaration
+            "factory() | unresolved no_declaration",
+            "String.raw | external typescript:lib StringConstructor.raw",
+        ],
+    );
+}
+
+#[test]
+fn decorator_each_is_a_call_and_a_factorys_result_is_a_second_one_that_is_counted() {
+    let root = fixture("site-kinds");
+    expect_edges(
+        &root,
+        "src/decorators.ts",
+        "Decorated",
+        &[
+            // `@plain`
+            "plain | call plain",
+            // `@declared()`: the call of `declared`, and the call through its result (a function type: nothing to enter)
+            "declared | call declared",
+            "declared() | unresolved decorator_result",
+            // `@inlineFactory(1)`: the arrow it returns is part of its body and no def
+            "inlineFactory | call inlineFactory",
+            "inlineFactory(1) | unresolved decorator_result",
+            "onMethod | call onMethod",
+            // `@namedFactory(2)`: it returns a function with a name, which the checker's signature finds
+            "namedFactory | call namedFactory",
+            "namedFactory(2) | call applyNamed",
+            // the parameters of a method and of the constructor
+            "parameterFactory | call parameterFactory",
+            "parameterFactory(\"x\") | call onParameter",
+            "onParameter | call onParameter",
+        ],
+    );
+}
+
+#[test]
+fn accessor_a_read_is_the_getter_a_write_the_setter_and_a_compound_write_both() {
+    let root = fixture("site-kinds");
+    let file = "src/accessors.ts";
+    let (get, set) = ("call get Box.value", "call set Box.value");
+    let on = |text: &str, to: &str| format!("{text} | {to}");
+    let cases: &[(&str, Vec<String>)] = &[
+        ("reads", vec![on("box.value", get)]),
+        ("writes", vec![on("box.value", set)]),
+        ("compound", vec![on("box.value", get), on("box.value", set)]),
+        (
+            "increment",
+            vec![
+                on("box.value", get),
+                on("box.value", set),
+                on("box.value", get),
+                on("box.value", set),
+            ],
+        ),
+        (
+            "logicalAssign",
+            vec![on("box.value", get), on("box.value", set)],
+        ),
+        ("inForOf", vec![on("box.value", set)]),
+        ("inDestructuringTarget", vec![on("box.value", set)]),
+        // through `as`, `!` and parentheses
+        ("wrapped", vec![on("box.value", set), on("box.value", set)]),
+        // `box.method()` is a call of the method; `box.handler()` is a call whose callee is the getter's property: one edge each, and no accessor site besides
+        (
+            "callee",
+            vec![
+                on("box.method", "call Box.method"),
+                on("box.handler", "call get Box.handler"),
+            ],
+        ),
+        (
+            "chain",
+            vec![
+                on("box.inner", "call get Box.inner"),
+                on("box.inner.value", get),
+            ],
+        ),
+        // a field, `delete`, a computed key; `const m = box.method` hands the method over (D22) and is no accessor site
+        ("none", vec![on("box.method", "pass Box.method")]),
+        ("elementWithLiteral", vec![on("box[\"value\"]", get)]),
+        ("staticGetter", vec![on("Box.count", "call get Box.count")]),
+        (
+            "accessorInObjectLiteral",
+            vec![
+                on("literal.lit", "call set literal.lit"),
+                on("literal.lit", "call get literal.lit"),
+            ],
+        ),
+        // `box[remote.size]`: the key is a read of an accessor, the element access is not a site
+        (
+            "keyThatIsAnAccessor",
+            vec![on("remote.size", "external src/types.d.ts Remote.size")],
+        ),
+        // the getter of every member that has one
+        (
+            "unionOfAccessors",
+            vec![
+                on("either.value", get),
+                on("either.value", "call get Other.value"),
+            ],
+        ),
+        // a member that is a plain field runs nothing
+        ("unionWithAField", vec![on("mixed.value", get)]),
+        // the getter and the setter of an external class are one name: one edge
+        (
+            "declaredAccessor",
+            vec![on("remote.size", "external src/types.d.ts Remote.size")],
+        ),
+    ];
+    for (entry, expected) in cases {
+        assert_eq!(&edges_of(&root, file, entry), expected, "{entry}");
+    }
+    // what the accessors call is under them, in the tree
+    expect_edges(&root, file, "Box.value", &["read | call read"]);
+    expect_edges(
+        &root,
+        file,
+        "Box.peek",
+        &["this.#secret | call get Box.#secret"],
+    );
+    expect_edges(
+        &root,
+        file,
+        "Sub.viaSuper",
+        &["super.value | call get Box.value"],
+    );
+    expect_edges(
+        &root,
+        file,
+        "Box.viaThis",
+        &["this.value | call get Box.value"],
+    );
+}
+
+#[test]
+fn accessor_a_getter_read_by_destructuring_is_counted_and_has_no_edge() {
+    let root = fixture("site-kinds");
+    let file = "src/accessors.ts";
+    // `(entry, getters run by the pattern)`: `value`; `inner` and `value`; the external `size`; a field and a rest element run nothing
+    let rows = [
+        ("destructuredGetter", 1),
+        ("destructuredNested", 2),
+        ("destructuredExternal", 1),
+        ("destructuredField", 0),
+        ("destructuredRest", 0),
+    ];
+    for (entry, counted) in rows {
+        expect_edges(&root, file, entry, &[]);
+        let graph = graph_of(&root, file, entry);
+        assert_eq!(
+            graph
+                .stats
+                .language
+                .get("uncovered_destructured_accessor")
+                .copied()
+                .unwrap_or(0),
+            counted,
+            "{entry}"
+        );
+    }
+    let graph = graph_of(&root, file, "destructuredGetter");
+    assert!(
+        breakdown(&graph)
+            .to_string()
+            .contains("destructured accessor 1")
+    );
+}

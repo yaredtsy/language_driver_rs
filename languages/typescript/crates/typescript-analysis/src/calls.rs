@@ -290,6 +290,7 @@ impl fmt::Display for Breakdown {
                 ("bind", "bind"),
                 ("call_apply", "call/apply"),
                 ("class", "class"),
+                ("destructured_accessor", "destructured accessor"),
             ];
             let parts: Vec<String> = labels
                 .iter()

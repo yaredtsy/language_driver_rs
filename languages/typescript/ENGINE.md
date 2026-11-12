@@ -702,3 +702,27 @@ access each turn a row red; one control was wrong the first time (a key wrapped 
 `debounce(…)` results (`debouncedBasicInfoChange.call(data)`: a variable, not a project def, so correctly not counted); its 17 string-literal accesses are indexed **types** (`Task["subtasks"]`); its 5 classes are never named in a hand-over
 position (the class counter reads 0; I did not check where each is used). The fixture is the evidence that the counters count; the frontend is the evidence that, for this project, the remainder is nothing.
 
+### The remaining site kinds (TS4 step 6)
+
+**What the engine does and what we do.** The engine's collector (`callhierarchy.rs`, `CallSiteCollector::collect`) records a site for a JSX element (the tag name), a tagged template (the tag), a decorator (its expression) and **every** property or element access, and resolves each by its symbol's value declaration. We follow it, with five differences, each found by writing the expected answer before the run:
+
+| Difference | Why |
+|---|---|
+| an **intrinsic** JSX tag is no site | the engine resolves `div` to `JSX.IntrinsicElements.div`, which is nothing to enter: an `External` or `no_declaration` edge for every element of every component. TypeScript's own rule (`isIntrinsicJsxName`): a lower-case first letter or a dash, or a namespaced name |
+| a **closing** tag is not visited | the engine records opening and self-closing elements only; the same here, and an access in a closing tag (`</props.Icon>`) is not an accessor site either (`is_callee_position`) |
+| `@dec(1)`: the engine records the expression `dec(1)` and **finds nothing** (a call has no symbol) | we say what it is: the call through the result. The checker's resolved signature of the decorator names the function when it can be entered; otherwise `decorator_result` (a new reason), so the second call is a number and not a silent hole. The first call (`dec`) is an ordinary call site |
+| **parameter decorators** are not collected by the engine (a `Parameter` is read for its name and initializer only) | the class's own body collects the decorators of the parameters of its constructor, methods and accessors |
+| the engine records every property access, and a getter and a setter have **one** `value_declaration` | we pick the half by how the access is used (`ast::is_write_access`, `is_write_only_access`: `=` and loop and destructuring targets are writes; `+=`, `||=`, `++` read and write) and read the symbol's own declarations, as for a union |
+
+**Cost of asking the checker about every property access** (V-NOC frontend, release build, the same machine, 6 runs each): the checker is asked once per body that has a candidate, for the access's symbol, and is a site only when a declaration is an accessor. `TaskDetailPanel`: 411 candidates in 90 bodies, 0 accessors; the **whole frontend** (1084 entries): 4198 candidates, **37 accessors**, 1148 JSX component sites, 2 tagged templates, 0 decorators. The 37 are DOM and library getters (`classList`, `style`, `textContent` written, `window.location`) and Tiptap's `editor.document`: `External` edges. Whole-frontend graph time **257 ms with the accessor query, 258–264 ms with it switched off** (3 runs each): no measurable cost. A probe that timed the query inside the walk read 86 ms in total, and that is the checker's lazy work for types, which the next question would have paid; so time the whole, not the query.
+
+| `TaskDetailPanel` | step 1 (0d9d6d0) | step 6 |
+|---|---|---|
+| edges | 84 call, 2 construct, 122 external, 48 unresolved, 15 passed | 141 call, 2 construct, 235 external, 86 unresolved, 18 passed |
+| contexts | 50 | 90 |
+| graph time | 14–15 ms | 27–30 ms |
+| unresolved by reason | `function_typed_value` 48 | `function_typed_value` 86 |
+
+The growth is the JSX components that were never in the tree (35 JSX sites in 90 bodies): each is a context, its children are in the tree, and the time per context is the same (0.29 ms against 0.31 ms). Whole frontend: 1921 call, 3 construct, 2802 external, 1057 unresolved (`function_typed_value` 1034, `any_or_untyped` 17, `no_declaration` 6), 153 passed.
+
+**Known and left**: a getter or setter in an **assignment** destructuring (`({ value } = box)`) is neither a site nor counted; an element access with a **computed** key is neither (as before); `styled(Button)`…`` is `no_declaration`, as `f()()` is; for an **external** decorator factory (`@Component({…})`, `@Input()`) the second call is `decorator_result`, one more unresolved edge for every use.
