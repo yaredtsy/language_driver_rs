@@ -1,6 +1,13 @@
 == main
 entries: summaries.main#4901c288992b8eb8
 stats: walks 8, contexts 8, reuse_hits 5, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def summaries.a = a#0 Function summaries.py
+def summaries.b = b#0 Function summaries.py
+def summaries.chain = chain#0 Function summaries.py
+def summaries.ident = ident#0 Function summaries.py
+def summaries.main = main#0 Function summaries.py
+def summaries.nothing = nothing#0 Function summaries.py
+def summaries.pick = pick#0 Function summaries.py
 summaries.a#d36e143f791aa7b0 Finished
 summaries.b#e8cf25875cd7c7c9 Finished
 summaries.chain#00b92243c06e78c5 Finished

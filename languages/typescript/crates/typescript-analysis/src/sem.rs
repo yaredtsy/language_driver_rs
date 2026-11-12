@@ -1554,18 +1554,27 @@ mod resolve {
             let file = self
                 .relative_path(func.file)
                 .unwrap_or_else(|| func.file.node.file_name().to_owned());
+            let occurrence = defs.outline.defs[..func.def]
+                .iter()
+                .filter(|earlier| earlier.qualname == def.qualname)
+                .count() as u16;
             let id = match &def.marker {
                 Some(marker) => StableDef::Marked(marker.clone()),
                 None => StableDef::Path {
                     module: file.clone(),
                     qname: def.qualname.clone(),
-                    nth: defs.outline.defs[..func.def]
-                        .iter()
-                        .filter(|earlier| earlier.qualname == def.qualname)
-                        .count() as u16,
+                    nth: occurrence,
                 },
             };
-            DefInfo::new(id, def.qualname.clone(), def.kind.clone(), file, def.range)
+            DefInfo::new(
+                id,
+                def.qualname.clone(),
+                def.qualname.clone(),
+                occurrence,
+                def.kind.clone(),
+                file,
+                def.range,
+            )
         }
     }
 

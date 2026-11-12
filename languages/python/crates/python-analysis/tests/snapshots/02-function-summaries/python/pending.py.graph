@@ -1,6 +1,11 @@
 == main
 entries: pending.main#115ccc0fb7e1bc1a
 stats: walks 8, contexts 8, reuse_hits 2, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def pending.done = done#0 Function pending.py
+def pending.grow = grow#0 Function pending.py
+def pending.main = main#0 Function pending.py
+def pending.rec = rec#0 Function pending.py
+def pending.walk = walk#0 Function pending.py
 pending.done#a512a2d54d4671e1 Finished
 pending.grow#904b558d5ad57b1b Finished
   @38-49 -> pending.grow#904b558d5ad57b1b Name

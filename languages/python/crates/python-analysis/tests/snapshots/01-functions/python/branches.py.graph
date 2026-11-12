@@ -1,12 +1,16 @@
 == never_none
 entries: branches.never_none#b999bc60f1bbb0e1
 stats: walks 1, contexts 1, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def branches.never_none = never_none#0 Function branches.py
 branches.never_none#b999bc60f1bbb0e1 Finished
   @80-83 -> ? unknown_callee
 
 == both_arms
 entries: branches.both_arms#9af6e1a766223cac
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def branches.a = a#0 Function branches.py
+def branches.b = b#0 Function branches.py
+def branches.both_arms = both_arms#0 Function branches.py
 branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.both_arms#9af6e1a766223cac Finished
@@ -16,6 +20,9 @@ branches.both_arms#9af6e1a766223cac Finished
 == skipped
 entries: branches.skipped#be55261a27307247
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def branches.a = a#0 Function branches.py
+def branches.b = b#0 Function branches.py
+def branches.skipped = skipped#0 Function branches.py
 branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.skipped#be55261a27307247 Finished
@@ -25,6 +32,10 @@ branches.skipped#be55261a27307247 Finished
 == elif_chain
 entries: branches.elif_chain#b6dbda29467cf803
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def branches.a = a#0 Function branches.py
+def branches.b = b#0 Function branches.py
+def branches.c = c#0 Function branches.py
+def branches.elif_chain = elif_chain#0 Function branches.py
 branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.c#5a699b94025caf8d Finished
@@ -36,6 +47,9 @@ branches.elif_chain#b6dbda29467cf803 Finished
 == loop
 entries: branches.loop#061923c1bfc93e99
 stats: walks 3, contexts 3, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def branches.a = a#0 Function branches.py
+def branches.b = b#0 Function branches.py
+def branches.loop = loop#0 Function branches.py
 branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.loop#061923c1bfc93e99 Finished
@@ -46,6 +60,9 @@ branches.loop#061923c1bfc93e99 Finished
 == while_loop
 entries: branches.while_loop#e308114068e896b1
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def branches.a = a#0 Function branches.py
+def branches.b = b#0 Function branches.py
+def branches.while_loop = while_loop#0 Function branches.py
 branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.while_loop#e308114068e896b1 Finished
@@ -55,6 +72,10 @@ branches.while_loop#e308114068e896b1 Finished
 == try_except
 entries: branches.try_except#5b6557d02571cfd2
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def branches.a = a#0 Function branches.py
+def branches.b = b#0 Function branches.py
+def branches.risky = risky#0 Function branches.py
+def branches.try_except = try_except#0 Function branches.py
 branches.a#0d898a7a906b0aef Finished
 branches.b#dcc794c809942e53 Finished
 branches.risky#716f8b90981a1ef2 Finished

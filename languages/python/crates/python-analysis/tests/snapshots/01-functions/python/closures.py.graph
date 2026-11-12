@@ -1,6 +1,9 @@
 == same_frame
 entries: closures.same_frame#7baba94a3e41fc6c
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures.a = a#0 Function closures.py
+def closures.same_frame = same_frame#0 Function closures.py
+def closures.same_frame.inner = same_frame.<locals>.inner#0 Function closures.py
 closures.a#2381aa686e32a75b Finished
 closures.same_frame#7baba94a3e41fc6c Finished
   @63-70 -> closures.same_frame.inner#e76fa6d6db55efa1 Name
@@ -10,6 +13,10 @@ closures.same_frame.inner#e76fa6d6db55efa1 Finished
 == escaping
 entries: closures.escaping#3c76532d8a37b23d
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures.b = b#0 Function closures.py
+def closures.escaping = escaping#0 Function closures.py
+def closures.make = make#0 Function closures.py
+def closures.make.run = make.<locals>.run#0 Function closures.py
 closures.b#3bead9ecf1fd506a Finished
 closures.escaping#3c76532d8a37b23d Finished
   @24-31 -> closures.make#2eb25f2059adfaad Name
@@ -21,6 +28,10 @@ closures.make.run#4eb4d7969811407a Finished
 == caller_has_same_name
 entries: closures.caller_has_same_name#3b3708900cfdd0ae
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures.b = b#0 Function closures.py
+def closures.caller_has_same_name = caller_has_same_name#0 Function closures.py
+def closures.make = make#0 Function closures.py
+def closures.make.run = make.<locals>.run#0 Function closures.py
 closures.b#3bead9ecf1fd506a Finished
 closures.caller_has_same_name#3b3708900cfdd0ae Finished
   @81-88 -> closures.make#2eb25f2059adfaad Name
@@ -32,6 +43,9 @@ closures.make.run#4eb4d7969811407a Finished
 == late
 entries: closures.late#8d9d73633591e9d5
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures.b = b#0 Function closures.py
+def closures.late = late#0 Function closures.py
+def closures.late.run = late.<locals>.run#0 Function closures.py
 closures.b#3bead9ecf1fd506a Finished
 closures.late#8d9d73633591e9d5 Finished
   @68-73 -> closures.late.run#3d403a4d4d32ebd3 Name
@@ -41,6 +55,11 @@ closures.late.run#3d403a4d4d32ebd3 Finished
 == two_runs
 entries: closures.two_runs#2f71050a84096551
 stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures.a = a#0 Function closures.py
+def closures.b = b#0 Function closures.py
+def closures.make = make#0 Function closures.py
+def closures.make.run = make.<locals>.run#0 Function closures.py
+def closures.two_runs = two_runs#0 Function closures.py
 closures.a#2381aa686e32a75b Finished
 closures.b#3bead9ecf1fd506a Finished
 closures.make#2eb25f2059adfaad Finished
@@ -58,6 +77,10 @@ closures.two_runs#2f71050a84096551 Finished
 == setup
 entries: closures.setup#38be0da9125d6293
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures.a = a#0 Function closures.py
+def closures.pick = pick#0 Function closures.py
+def closures.setup = setup#0 Function closures.py
+def closures.setup.handler = setup.<locals>.handler#0 Function closures.py
 closures.a#2381aa686e32a75b Finished
 closures.pick#92e5836b7d567bd7 Finished
 closures.setup#38be0da9125d6293 Finished
@@ -69,6 +92,10 @@ closures.setup.handler#ccdb6259e92ac862 Finished
 == entry_closure
 entries: closures.entry_closure#9391b3a9f513ee87
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures.a = a#0 Function closures.py
+def closures.entry_closure = entry_closure#0 Function closures.py
+def closures.entry_closure.inner = entry_closure.<locals>.inner#0 Function closures.py
+def closures.pick = pick#0 Function closures.py
 closures.a#2381aa686e32a75b Finished
 closures.entry_closure#9391b3a9f513ee87 Finished
   @29-35 -> closures.pick#92e5836b7d567bd7 Name

@@ -1,6 +1,15 @@
 == main
 entries: keys.main#45d56cf5a3c4d8a8
 stats: walks 11, contexts 11, reuse_hits 6, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def keys.a = a#0 Function keys.py
+def keys.b = b#0 Function keys.py
+def keys.different = different#0 Function keys.py
+def keys.either = either#0 Function keys.py
+def keys.literals = literals#0 Function keys.py
+def keys.main = main#0 Function keys.py
+def keys.note = note#0 Function keys.py
+def keys.run = run#0 Function keys.py
+def keys.same_twice = same_twice#0 Function keys.py
 keys.a#6784e2d0feca9f6a Finished
 keys.b#f24b0c222be36ace Finished
 keys.different#56b2f2bd26d30436 Finished

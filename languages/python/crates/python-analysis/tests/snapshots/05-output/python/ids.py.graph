@@ -1,6 +1,11 @@
 == main
 entries: ids.main#76ec85d96f0925e0
 stats: walks 5, contexts 5, reuse_hits 2, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def ids.helper = helper#0 Function ids.py
+def ids.deeper = deeper#0 Function ids.py
+def ids.main = main#0 Function ids.py
+def ids.hidden = hidden#0 Function ids.py
+def ids.pick = pick#0 Function ids.py
 ids.helper#2d5168fce980b2f0 Finished
   @69-77 -> ids.hidden#687fb1248590a2f8 Name
 ids.deeper#da8493dee3edb464 Finished

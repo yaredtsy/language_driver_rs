@@ -88,6 +88,8 @@ impl Lang for Program {
         DefInfo::new(
             StableDef::Marked(self.names[f].clone()),
             &self.names[f],
+            &self.names[f],
+            0,
             DefKind::Function,
             "main.toy",
             Span::new(f as u32 * 100, f as u32 * 100 + 50),

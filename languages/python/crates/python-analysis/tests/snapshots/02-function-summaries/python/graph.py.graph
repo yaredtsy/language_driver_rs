@@ -1,6 +1,13 @@
 == main
 entries: graph.main#27fcd81216baf980
 stats: walks 8, contexts 8, reuse_hits 2, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def graph.a = a#0 Function graph.py
+def graph.b = b#0 Function graph.py
+def graph.main = main#0 Function graph.py
+def graph.read_a = read_a#0 Function graph.py
+def graph.read_b = read_b#0 Function graph.py
+def graph.run = run#0 Function graph.py
+def graph.twice = twice#0 Function graph.py
 graph.a#dd3ee6817bfde871 Finished
 graph.b#45ae73e3a0b7b8d5 Finished
 graph.main#27fcd81216baf980 Finished

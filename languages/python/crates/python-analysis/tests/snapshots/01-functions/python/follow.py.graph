@@ -1,6 +1,10 @@
 == main
 entries: follow.main#aca74f9d1aa0386b
 stats: walks 4, contexts 4, reuse_hits 2, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def follow.leaf = leaf#0 Function follow.py
+def follow.main = main#0 Function follow.py
+def follow.middle = middle#0 Function follow.py
+def follow.top = top#0 Function follow.py
 follow.leaf#1c0ddff796503ba4 Finished
 follow.main#aca74f9d1aa0386b Finished
   @16-21 -> follow.top#fbbdac06f15084e1 Name
@@ -14,6 +18,9 @@ follow.top#fbbdac06f15084e1 Finished
 == across_files
 entries: follow.across_files#1c4e0e52155ac550
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def follow.across_files = across_files#0 Function follow.py
+def util.chain = chain#0 Function util.py
+def util.helper = helper#0 Function util.py
 follow.across_files#1c4e0e52155ac550 Finished
   @24-36 -> util.chain#395be1e671c659a7 Name
 util.chain#395be1e671c659a7 Finished
@@ -23,6 +30,8 @@ util.helper#14a4c5adcf961389 Finished
 == no_caller_scope
 entries: follow.no_caller_scope#70bf2c6a6d20b9b7
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def follow.no_caller_scope = no_caller_scope#0 Function follow.py
+def follow.reads_x = reads_x#0 Function follow.py
 follow.no_caller_scope#70bf2c6a6d20b9b7 Finished
   @40-49 -> follow.reads_x#c9316d7028ef4137 Name
 follow.reads_x#c9316d7028ef4137 Finished

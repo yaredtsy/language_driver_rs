@@ -1,6 +1,10 @@
 == main
 entries: stable_ids.main#938a661f7f828428
 stats: walks 4, contexts 4, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def stable_ids.done = done#0 Function stable_ids.py
+def stable_ids.main = main#0 Function stable_ids.py
+def stable_ids.read_a = read_a#0 Function stable_ids.py
+def stable_ids.read_b = read_b#0 Function stable_ids.py
 stable_ids.done#839a0ed3766ab570 Finished
 stable_ids.main#938a661f7f828428 Finished
   @16-28 -> stable_ids.read_a#439d5fe102a1fb30 Name
@@ -13,6 +17,10 @@ stable_ids.read_b#93bc800832af3395 Finished
 == main2
 entries: stable_ids.main2#19fb5cb57f3c6cf9
 stats: walks 4, contexts 4, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def stable_ids.done = done#0 Function stable_ids.py
+def stable_ids.main2 = main2#0 Function stable_ids.py
+def stable_ids.read_a = read_a#0 Function stable_ids.py
+def stable_ids.read_b = read_b#0 Function stable_ids.py
 stable_ids.done#839a0ed3766ab570 Finished
 stable_ids.main2#19fb5cb57f3c6cf9 Finished
   @17-29 -> stable_ids.read_b#93bc800832af3395 Name

@@ -113,7 +113,7 @@ mod tests {
     }
 
     fn row(n: &str, kind: DefKind) -> DefInfo {
-        DefInfo::new(def_id(n), n, kind, "f", Span::new(0, 1))
+        DefInfo::new(def_id(n), n, n, 0, kind, "f", Span::new(0, 1))
     }
 
     fn edge(from: &str, to: &str) -> Edge {

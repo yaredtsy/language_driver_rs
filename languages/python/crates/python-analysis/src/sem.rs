@@ -43,8 +43,33 @@ pub(crate) struct Sem<'db> {
     pub db: &'db ProjectDatabase,
     /// Per file: a def's start offset to its `nth` among the defs with its qname.
     nth: RefCell<FxHashMap<File, Rc<FxHashMap<TextSize, u16>>>>,
+    /// Per file: the outline's names for its defs (D20).
+    named: RefCell<FxHashMap<File, Rc<NamedDefs>>>,
     /// The label a marker is read under (`ID: …` in a docstring), the caller's.
     marker: MarkerStyle<'static>,
+}
+
+/// The outline's names for the defs of one file: the one naming rule a request and an answer share (D20).
+#[derive(Default)]
+pub(crate) struct NamedDefs {
+    /// The start of a def's name to its `(qualname, occurrence)`.
+    by_name: FxHashMap<u32, (String, u16)>,
+}
+
+impl NamedDefs {
+    fn new(text: &str, marker: MarkerStyle<'_>) -> Self {
+        let mut seen: FxHashMap<&str, u16> = FxHashMap::default();
+        let outline = python_syntax::outline(text, marker);
+        let mut named = NamedDefs::default();
+        for def in &outline.defs {
+            let n = seen.entry(def.qualname.as_str()).or_insert(0);
+            named
+                .by_name
+                .insert(def.name_range.start, (def.qualname.clone(), *n));
+            *n += 1;
+        }
+        named
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -338,6 +363,7 @@ impl<'db> Sem<'db> {
         Sem {
             db,
             nth: RefCell::default(),
+            named: RefCell::default(),
             marker,
         }
     }
@@ -491,6 +517,34 @@ impl<'db> Sem<'db> {
             .copied()
             .unwrap_or(0);
         StableDef::Path { module, qname, nth }
+    }
+
+    /// The outline's names for the defs of `file`, read once.
+    fn named_defs(&self, file: File) -> Rc<NamedDefs> {
+        if let Some(found) = self.named.borrow().get(&file) {
+            return found.clone();
+        }
+        let table = Rc::new(NamedDefs::new(
+            source_text(self.db, file).as_str(),
+            self.marker,
+        ));
+        self.named.borrow_mut().insert(file, table.clone());
+        table
+    }
+
+    /// The outline's `(qualname, occurrence)` for a def or class: `None` for any other kind of definition, or when the outline
+    /// has no def at the start of its name.
+    pub(crate) fn outline_name(&self, def: Definition<'db>) -> Option<(String, u16)> {
+        let parsed = self.parsed(def);
+        let start = match def.kind(self.db) {
+            DefinitionKind::Function(f) => f.node(&parsed).name.range().start(),
+            DefinitionKind::Class(c) => c.node(&parsed).name.range().start(),
+            _ => return None,
+        };
+        self.named_defs(def.file(self.db))
+            .by_name
+            .get(&u32::from(start))
+            .cloned()
     }
 
     /// `nth` of every `def` and `class` in a file, by start offset: its place

@@ -1,6 +1,13 @@
 == main
 entries: wall.main#20244e9ac96917a2
 stats: walks 7, contexts 7, reuse_hits 4, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def wall.l1a = l1a#0 Function wall.py
+def wall.l1b = l1b#0 Function wall.py
+def wall.l2a = l2a#0 Function wall.py
+def wall.l2b = l2b#0 Function wall.py
+def wall.l3a = l3a#0 Function wall.py
+def wall.l3b = l3b#0 Function wall.py
+def wall.main = main#0 Function wall.py
 wall.l1a#5e6aa55136a895b2 Finished
   @15-20 -> wall.l2a#34be49ca7f0d9cf6 Name
   @25-30 -> wall.l2b#37e9037d3754ae18 Name

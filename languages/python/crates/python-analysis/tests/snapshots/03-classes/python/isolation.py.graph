@@ -1,6 +1,12 @@
 == two_alive
 entries: isolation.two_alive#459ff191303b9127
 stats: walks 4, contexts 4, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def isolation.CsvHandler = CsvHandler#0 Class isolation.py
+def isolation.JsonHandler = JsonHandler#0 Class isolation.py
+def isolation.Pipeline = Pipeline#0 Class isolation.py
+def isolation.Pipeline.__init__ = Pipeline.__init__#0 Function isolation.py
+def isolation.Pipeline.run = Pipeline.run#0 Function isolation.py
+def isolation.two_alive = two_alive#0 Function isolation.py
 isolation.Pipeline.__init__#3e7078441b73d34d Finished
 isolation.Pipeline.__init__#ed3c573b9a3ef18d Finished
 isolation.Pipeline.run#19a4033baa8a1bd6 Finished
@@ -16,6 +22,12 @@ isolation.two_alive#459ff191303b9127 Finished
 == one_site
 entries: isolation.one_site#645ae6ed164248bc
 stats: walks 5, contexts 5, reuse_hits 0, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 2}
+def isolation.CsvHandler = CsvHandler#0 Class isolation.py
+def isolation.JsonHandler = JsonHandler#0 Class isolation.py
+def isolation.Pipeline = Pipeline#0 Class isolation.py
+def isolation.Pipeline.__init__ = Pipeline.__init__#0 Function isolation.py
+def isolation.make = make#0 Function isolation.py
+def isolation.one_site = one_site#0 Function isolation.py
 isolation.Pipeline.__init__#3e7078441b73d34d Finished
 isolation.Pipeline.__init__#ed3c573b9a3ef18d Finished
 isolation.make#0649cc3f1c74b217 Finished
@@ -33,6 +45,9 @@ isolation.one_site#645ae6ed164248bc Finished
 == opaque
 entries: isolation.opaque#73f48bf8eec378a7
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def isolation.FileHandler = FileHandler#0 Class isolation.py
+def isolation.Logger.emit = Logger.emit#0 Function isolation.py
+def isolation.opaque = opaque#0 Function isolation.py
 isolation.Logger.emit#13fe3e42a0044f53 Finished
   @24-44 -> ? unknown_callee
 isolation.opaque#73f48bf8eec378a7 Finished
@@ -42,6 +57,9 @@ isolation.opaque#73f48bf8eec378a7 Finished
 == global_write
 entries: isolation.global_write#459165ac923db10b
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def isolation.FileHandler = FileHandler#0 Class isolation.py
+def isolation.Logger.emit = Logger.emit#0 Function isolation.py
+def isolation.global_write = global_write#0 Function isolation.py
 isolation.Logger.emit#13fe3e42a0044f53 Finished
   @24-44 -> ? unknown_callee
 isolation.global_write#459165ac923db10b Finished
@@ -51,6 +69,9 @@ isolation.global_write#459165ac923db10b Finished
 == global_method
 entries: isolation.global_method#8de3f6c6512a19e8
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def isolation.Greeter.greet = Greeter.greet#0 Function isolation.py
+def isolation.global_method = global_method#0 Function isolation.py
+def isolation.on_ok = on_ok#0 Function isolation.py
 isolation.Greeter.greet#d75dbc26212d446c Finished
   @29-33 -> isolation.on_ok#94ed222b4132c14c Type
 isolation.global_method#8de3f6c6512a19e8 Finished
@@ -60,6 +81,13 @@ isolation.on_ok#94ed222b4132c14c Finished
 == maybe_opaque
 entries: isolation.maybe_opaque#0c5d7adc4c5772ef
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def isolation.CsvHandler = CsvHandler#0 Class isolation.py
+def isolation.CsvHandler.process = CsvHandler.process#0 Function isolation.py
+def isolation.JsonHandler = JsonHandler#0 Class isolation.py
+def isolation.Pipeline = Pipeline#0 Class isolation.py
+def isolation.Pipeline.__init__ = Pipeline.__init__#0 Function isolation.py
+def isolation.Pipeline.run = Pipeline.run#0 Function isolation.py
+def isolation.maybe_opaque = maybe_opaque#0 Function isolation.py
 isolation.CsvHandler.process#e46adc730ea6551e Finished
 isolation.Pipeline.__init__#ed3c573b9a3ef18d Finished
 isolation.Pipeline.run#bd715d5acbee1770 Finished
@@ -74,12 +102,16 @@ isolation.maybe_opaque#0c5d7adc4c5772ef Finished
 == subclass_of
 entries: isolation.subclass_of#25e4923f2be152ad
 stats: walks 1, contexts 1, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 1, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def isolation.Logger = Logger#0 Class isolation.py
+def isolation.subclass_of = subclass_of#0 Function isolation.py
 isolation.subclass_of#25e4923f2be152ad Finished
   @23-29 -> new isolation.Logger init - Type
 
 == via_alias
 entries: isolation.via_alias#1856b1d86e066fd4
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def isolation.JsonHandler.process = JsonHandler.process#0 Function isolation.py
+def isolation.via_alias = via_alias#0 Function isolation.py
 isolation.JsonHandler.process#0eb7f07b28b7f3aa Finished
 isolation.via_alias#1856b1d86e066fd4 Finished
   @21-46 -> isolation.JsonHandler.process#0eb7f07b28b7f3aa Type

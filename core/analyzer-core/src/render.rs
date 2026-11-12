@@ -359,6 +359,8 @@ mod tests {
         DefInfo::new(
             marked(name),
             name,
+            name,
+            0,
             kind,
             "m.py",
             Span::new(n * 100, n * 100 + 50),

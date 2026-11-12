@@ -284,7 +284,7 @@ mod tests {
     }
 
     fn row(id: StableDef, qname: &str, kind: DefKind, start: u32, end: u32) -> DefInfo {
-        DefInfo::new(id, qname, kind, "m.py", Span::new(start, end))
+        DefInfo::new(id, qname, qname, 0, kind, "m.py", Span::new(start, end))
     }
 
     fn call(from: &str, at: u32, to: &str) -> Edge {

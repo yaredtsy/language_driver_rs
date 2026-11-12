@@ -1,6 +1,14 @@
 == main
 entries: state.main#2ceb106f1f372882
 stats: walks 6, contexts 6, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def state.CsvHandler = CsvHandler#0 Class state.py
+def state.JsonHandler = JsonHandler#0 Class state.py
+def state.Pipeline = Pipeline#0 Class state.py
+def state.Pipeline.__init__ = Pipeline.__init__#0 Function state.py
+def state.Pipeline.run = Pipeline.run#0 Function state.py
+def state.main = main#0 Function state.py
+def state.read_csv = read_csv#0 Function state.py
+def state.read_json = read_json#0 Function state.py
 state.Pipeline.__init__#7e53331b70101703 Finished
 state.Pipeline.__init__#ab099c1115104af9 Finished
 state.Pipeline.run#29b767300dff846b Finished
@@ -20,6 +28,11 @@ state.read_json#362dace93a857048 Finished
 == via_factory
 entries: state.via_factory#dfd9ec0caec38803
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def state.JsonHandler = JsonHandler#0 Class state.py
+def state.Pipeline = Pipeline#0 Class state.py
+def state.Pipeline.__init__ = Pipeline.__init__#0 Function state.py
+def state.make = make#0 Function state.py
+def state.via_factory = via_factory#0 Function state.py
 state.Pipeline.__init__#7e53331b70101703 Finished
 state.make#96ccbe70db1c69a2 Finished
   @24-35 -> new state.Pipeline init state.Pipeline.__init__#7e53331b70101703 Name
@@ -31,6 +44,12 @@ state.via_factory#dfd9ec0caec38803 Finished
 == either
 entries: state.either#23064977b70c0bcb
 stats: walks 4, contexts 4, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def state.CsvHandler = CsvHandler#0 Class state.py
+def state.JsonHandler = JsonHandler#0 Class state.py
+def state.Pipeline = Pipeline#0 Class state.py
+def state.Pipeline.__init__ = Pipeline.__init__#0 Function state.py
+def state.Pipeline.run = Pipeline.run#0 Function state.py
+def state.either = either#0 Function state.py
 state.Pipeline.__init__#7e53331b70101703 Finished
 state.Pipeline.__init__#ab099c1115104af9 Finished
 state.Pipeline.run#29b767300dff846b Finished

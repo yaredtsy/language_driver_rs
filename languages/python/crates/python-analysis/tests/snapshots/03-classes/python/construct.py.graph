@@ -1,6 +1,19 @@
 == main
 entries: construct.main#ae0bcb9eadc5b287
 stats: walks 8, contexts 8, reuse_hits 3, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def construct.Base.__init__ = Base.__init__#0 Function construct.py
+def construct.Child = Child#0 Class construct.py
+def construct.Pipeline = Pipeline#0 Class construct.py
+def construct.Pipeline.__init__ = Pipeline.__init__#0 Function construct.py
+def construct.Plain = Plain#0 Class construct.py
+def construct.Tree = Tree#0 Class construct.py
+def construct.Tree.__init__ = Tree.__init__#0 Function construct.py
+def construct.Wrapper = Wrapper#0 Class construct.py
+def construct.Wrapper.__init__ = Wrapper.__init__#0 Function construct.py
+def construct.log = log#0 Function construct.py
+def construct.main = main#0 Function construct.py
+def construct.make = make#0 Function construct.py
+def construct.setup = setup#0 Function construct.py
 construct.Base.__init__#a8df39052e4df5db Finished
   @28-33 -> construct.log#e91154806213b569 Name
 construct.Pipeline.__init__#b79a637b9678ba81 Finished

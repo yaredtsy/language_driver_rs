@@ -1,6 +1,21 @@
 == main
 entries: arguments.main#a334cbae20fc2242
 stats: walks 17, contexts 17, reuse_hits 3, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 2}
+def arguments.fallback = fallback#0 Function arguments.py
+def arguments.inner = inner#0 Function arguments.py
+def arguments.leak = leak#0 Function arguments.py
+def arguments.main = main#0 Function arguments.py
+def arguments.middle = middle#0 Function arguments.py
+def arguments.missing = missing#0 Function arguments.py
+def arguments.on_err = on_err#0 Function arguments.py
+def arguments.on_ok = on_ok#0 Function arguments.py
+def arguments.outer = outer#0 Function arguments.py
+def arguments.run = run#0 Function arguments.py
+def arguments.run_default = run_default#0 Function arguments.py
+def arguments.run_kw = run_kw#0 Function arguments.py
+def arguments.shadow = shadow#0 Function arguments.py
+def arguments.with_module = with_module#0 Function arguments.py
+def util.helper = helper#0 Function util.py
 arguments.fallback#3cb7ff838a245263 Finished
 arguments.inner#b0e7c9e2e0c16df1 Finished
   @19-23 -> arguments.on_err#7da838f8544fb8a0 Type
@@ -43,6 +58,12 @@ util.helper#14a4c5adcf961389 Finished
 == both
 entries: arguments.both#26b43b189b502abf
 stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def arguments.both = both#0 Function arguments.py
+def arguments.on_err = on_err#0 Function arguments.py
+def arguments.on_ok = on_ok#0 Function arguments.py
+def arguments.read_err = read_err#0 Function arguments.py
+def arguments.read_ok = read_ok#0 Function arguments.py
+def arguments.run = run#0 Function arguments.py
 arguments.both#26b43b189b502abf Finished
   @16-25 -> arguments.read_ok#4923b243824bbe58 Name
   @30-40 -> arguments.read_err#9004c4b25d10753c Name
@@ -60,6 +81,7 @@ arguments.run#ba0520d3c0a0ad2c Finished
 == entry
 entries: arguments.entry#7c092409dea6740b
 stats: walks 1, contexts 1, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def arguments.entry = entry#0 Function arguments.py
 arguments.entry#7c092409dea6740b Finished
   @19-23 -> ? unknown_callee
 

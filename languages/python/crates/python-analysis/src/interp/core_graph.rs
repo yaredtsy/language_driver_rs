@@ -25,9 +25,13 @@ fn def_info(s: &Solver<'_>, def: Definition<'_>) -> DefInfo {
     } else {
         DefKind::Function
     };
+    // no outline def at the name: an empty name, which no request can ask for, rather than a guess
+    let (qualname, occurrence) = s.sem.outline_name(def).unwrap_or_default();
     DefInfo::new(
         s.sem.stable_def(def),
         s.sem.qname(def),
+        qualname,
+        occurrence,
         kind,
         s.sem.relative_file(def),
         Span::new(u32::from(range.start()), u32::from(range.end())),

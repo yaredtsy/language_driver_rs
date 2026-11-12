@@ -1,6 +1,17 @@
 == main
 entries: returns.main#ce913e7726dfbcd4
 stats: walks 12, contexts 12, reuse_hits 3, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 2}
+def returns.a = a#0 Function returns.py
+def returns.b = b#0 Function returns.py
+def returns.fail = fail#0 Function returns.py
+def returns.gen = gen#0 Function returns.py
+def returns.ident = ident#0 Function returns.py
+def returns.log = log#0 Function returns.py
+def returns.main = main#0 Function returns.py
+def returns.nothing = nothing#0 Function returns.py
+def returns.pick = pick#0 Function returns.py
+def returns.pick_a = pick_a#0 Function returns.py
+def returns.through = through#0 Function returns.py
 returns.a#612f8b6cf054bb88 Finished
 returns.b#e68e057ed37122a2 Finished
 returns.fail#3b015905a80b50f9 Finished
@@ -34,6 +45,9 @@ returns.through#32d1f08cf624b5f0 Finished
 == amain
 entries: returns.amain#aa9cc113a676b5d6
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def returns.a = a#0 Function returns.py
+def returns.amain = amain#0 Function returns.py
+def returns.fetch = fetch#0 Function returns.py
 returns.a#612f8b6cf054bb88 Finished
 returns.amain#aa9cc113a676b5d6 Finished
   @23-40 -> returns.a#612f8b6cf054bb88 Type
@@ -43,6 +57,8 @@ returns.fetch#fa84efcb2ff67b59 Finished
 == early
 entries: returns.early#7f724feacb135452
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def returns.b = b#0 Function returns.py
+def returns.early = early#0 Function returns.py
 returns.b#e68e057ed37122a2 Finished
 returns.early#7f724feacb135452 Finished
   @67-70 -> returns.b#e68e057ed37122a2 Name

@@ -351,6 +351,8 @@ pub(crate) mod tests {
         DefInfo::new(
             StableDef::Marked(f.to_owned()),
             f,
+            f,
+            0,
             DefKind::Function,
             "toy.src",
             Span::new(start, start + 1),

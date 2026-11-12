@@ -109,6 +109,10 @@ pub struct DefInfo {
     pub id: StableDef,
     /// The language's qualified name, for display.
     pub qname: String,
+    /// The outline's name of this def in `file`. With `file` and `occurrence` it names the def in a request (D20).
+    pub qualname: String,
+    /// The number of defs with the same `qualname` before this one in `file`, in source order. 0-based (D18).
+    pub occurrence: u16,
     pub kind: DefKind,
     /// Path relative to the project root, with `/`.
     pub file: String,
@@ -120,6 +124,8 @@ impl DefInfo {
     pub fn new(
         id: StableDef,
         qname: impl Into<String>,
+        qualname: impl Into<String>,
+        occurrence: u16,
         kind: DefKind,
         file: impl Into<String>,
         range: Span,
@@ -127,6 +133,8 @@ impl DefInfo {
         DefInfo {
             id,
             qname: qname.into(),
+            qualname: qualname.into(),
+            occurrence,
             kind,
             file: file.into(),
             range,
@@ -327,6 +335,8 @@ pub(crate) mod tests {
         DefInfo::new(
             marked(name),
             name,
+            name,
+            0,
             DefKind::Function,
             "m.py",
             Span::new(0, 10),
@@ -407,6 +417,8 @@ pub(crate) mod tests {
             DefInfo::new(
                 marked("f"),
                 "f",
+                "f",
+                0,
                 DefKind::Function,
                 file,
                 Span::new(start, start + 5),

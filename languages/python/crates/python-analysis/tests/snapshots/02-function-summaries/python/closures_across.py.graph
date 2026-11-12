@@ -1,6 +1,11 @@
 == passed_along
 entries: closures_across.passed_along#850d4b4535e484a0
 stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures_across.a = a#0 Function closures_across.py
+def closures_across.call_it = call_it#0 Function closures_across.py
+def closures_across.make = make#0 Function closures_across.py
+def closures_across.make.run = make.<locals>.run#0 Function closures_across.py
+def closures_across.passed_along = passed_along#0 Function closures_across.py
 closures_across.a#151fcc7eb5fb7c50 Finished
 closures_across.call_it#5918c402352f8e99 Finished
   @21-25 -> closures_across.make.run#c05491ee4142edeb Path
@@ -14,6 +19,12 @@ closures_across.passed_along#850d4b4535e484a0 Finished
 == two_makers
 entries: closures_across.two_makers#d6c5aab6fb940921
 stats: walks 9, contexts 9, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures_across.a = a#0 Function closures_across.py
+def closures_across.b = b#0 Function closures_across.py
+def closures_across.call_it = call_it#0 Function closures_across.py
+def closures_across.make = make#0 Function closures_across.py
+def closures_across.make.run = make.<locals>.run#0 Function closures_across.py
+def closures_across.two_makers = two_makers#0 Function closures_across.py
 closures_across.a#151fcc7eb5fb7c50 Finished
 closures_across.b#9f30f51ea5257cab Finished
 closures_across.call_it#5918c402352f8e99 Finished
@@ -35,6 +46,11 @@ closures_across.two_makers#d6c5aab6fb940921 Finished
 == two_levels
 entries: closures_across.two_levels#3df9cd7afb1c575d
 stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures_across.b = b#0 Function closures_across.py
+def closures_across.make = make#0 Function closures_across.py
+def closures_across.make.run = make.<locals>.run#0 Function closures_across.py
+def closures_across.two_levels = two_levels#0 Function closures_across.py
+def closures_across.wrap = wrap#0 Function closures_across.py
 closures_across.b#9f30f51ea5257cab Finished
 closures_across.make#d7a5a37a233702da Finished
 closures_across.make.run#d262776c52eb25b4 Finished
@@ -48,6 +64,8 @@ closures_across.wrap#a9d5589ff2d045e1 Finished
 == outer
 entries: closures_across.outer#4e06254b666382ea
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures_across.outer = outer#0 Function closures_across.py
+def closures_across.outer.walk = outer.<locals>.walk#0 Function closures_across.py
 closures_across.outer#4e06254b666382ea Finished
   @110-120 -> closures_across.outer.walk#8325b17f86bfb016 Name
 closures_across.outer.walk#8325b17f86bfb016 Finished
@@ -56,6 +74,10 @@ closures_across.outer.walk#8325b17f86bfb016 Finished
 == chained
 entries: closures_across.chained#706395a5c8d3138f
 stats: walks 7, contexts 7, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def closures_across.a = a#0 Function closures_across.py
+def closures_across.chain = chain#0 Function closures_across.py
+def closures_across.chain.g = chain.<locals>.g#0 Function closures_across.py
+def closures_across.chained = chained#0 Function closures_across.py
 closures_across.a#151fcc7eb5fb7c50 Finished
 closures_across.chain#5df9d7c7d7072ab7 Finished
   @36-48 -> closures_across.chain#ea9f5b15d3798d51 Name
@@ -76,6 +98,9 @@ closures_across.chained#706395a5c8d3138f Finished
 == use_walker
 entries: closures_across.use_walker#7cdf75c3262d57f1
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures_across.make_walker = make_walker#0 Function closures_across.py
+def closures_across.make_walker.walk = make_walker.<locals>.walk#0 Function closures_across.py
+def closures_across.use_walker = use_walker#0 Function closures_across.py
 closures_across.make_walker#edf13ce73ef3f5c1 Finished
 closures_across.make_walker.walk#001a1c3a6ccf3cc3 Finished
   @21-28 -> closures_across.make_walker.walk#001a1c3a6ccf3cc3 Name
@@ -86,6 +111,10 @@ closures_across.use_walker#7cdf75c3262d57f1 Finished
 == use_default
 entries: closures_across.use_default#7f741c85065f2fef
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closures_across.a = a#0 Function closures_across.py
+def closures_across.use_default = use_default#0 Function closures_across.py
+def closures_across.with_default = with_default#0 Function closures_across.py
+def closures_across.with_default.walk = with_default.<locals>.walk#0 Function closures_across.py
 closures_across.a#151fcc7eb5fb7c50 Finished
 closures_across.use_default#7f741c85065f2fef Finished
   @23-37 -> closures_across.with_default#ca04a076c21634ae Name

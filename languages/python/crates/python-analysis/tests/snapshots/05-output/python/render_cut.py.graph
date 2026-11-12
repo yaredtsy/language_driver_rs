@@ -1,6 +1,10 @@
 == main
 entries: render_cut.main#4b339971b9866b3f
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def render_cut.a = a#0 Function render_cut.py
+def render_cut.b = b#0 Function render_cut.py
+def render_cut.c = c#0 Function render_cut.py
+def render_cut.main = main#0 Function render_cut.py
 render_cut.a#dd561d2c2f93591d Finished
 render_cut.b#cccafe37bb9602bc Finished
 render_cut.c#cc8f71f02b442cf4 Finished

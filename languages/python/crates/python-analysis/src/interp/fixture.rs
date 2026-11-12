@@ -1151,7 +1151,8 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
     }
 }
 
-/// A graph as reviewed text: each context with its digest, and under it every edge with what it rests on. The wire and the tree leave out
+/// A graph as reviewed text: every def row with the outline's name for it (D20), then each context with its digest, and under it every edge
+/// with what it rests on. The wire and the tree leave out
 /// what 570ab69 got wrong (a spurious `Unresolved` edge: the tree does not draw one), so this is the snapshot that sees edges, bases, reasons
 /// and the contexts' digests. A digest is shown by its first 8 bytes.
 fn graph_text(g: &analyzer_core::graph::Graph) -> String {
@@ -1172,6 +1173,14 @@ fn graph_text(g: &analyzer_core::graph::Graph) -> String {
         s.walks, s.contexts, s.reuse_hits, s.unresolved, s.cuts, s.language
     )
     .unwrap();
+    for d in &g.defs {
+        writeln!(
+            out,
+            "def {} = {}#{} {:?} {}",
+            d.qname, d.qualname, d.occurrence, d.kind, d.file
+        )
+        .unwrap();
+    }
     for c in &g.contexts {
         writeln!(out, "{} {:?}", ctx(&c.id), c.status).unwrap();
         for e in g.edges_from(&c.id) {
@@ -1395,6 +1404,103 @@ fn dump_unresolved_sites(db: &ProjectDatabase, project: &str, graph: &analyzer_c
         println!("TALLY {n:4} {answer}");
     }
     println!("=====END");
+}
+
+/// E1: every row of `graph.defs` names a def the outline of its file has: the `occurrence`th def with that `qualname`, and it is the same
+/// def (a class or not, and the same range). This is the one naming rule a request and an answer share (D20), so a row that is wrong is the bug.
+#[test]
+fn every_def_row_of_every_graph_names_a_def_of_its_files_outline() {
+    use crate::interp::call_graph;
+    let mut rows = 0;
+    for (fixture, entry, opts) in every_entry() {
+        let (db, file) = open_fixture(&fixture);
+        let Some(graph) = call_graph(&db, file, &entry, &opts) else {
+            continue;
+        };
+        let root = std::fs::canonicalize(format!("tests/fixtures/{fixture}")).unwrap();
+        let root = root.parent().unwrap();
+        for d in &graph.defs {
+            let text = std::fs::read_to_string(root.join(&d.file))
+                .unwrap_or_else(|_| panic!("{fixture} {entry}: no file {}", d.file));
+            let outline = python_syntax::outline(&text, opts.marker);
+            let same_name: Vec<_> = outline
+                .defs
+                .iter()
+                .filter(|o| o.qualname == d.qualname)
+                .collect();
+            let o = same_name.get(usize::from(d.occurrence)).unwrap_or_else(|| {
+                panic!(
+                    "{fixture} {entry}: `{}` occurrence {} is not in the outline of {} ({} defs of that name)",
+                    d.qualname,
+                    d.occurrence,
+                    d.file,
+                    same_name.len()
+                )
+            });
+            // the outline says `Method` where `DefInfo::kind` says `Function` (core_graph::def_info knows a class and a function): so the
+            // kind is compared as "a class or not". Open for E2, which puts the kind on the wire.
+            let is_class =
+                |k: &analyzer_core::outline::DefKind| *k == analyzer_core::outline::DefKind::Class;
+            assert_eq!(
+                (is_class(&o.kind), o.range),
+                (is_class(&d.kind), d.range),
+                "{fixture} {entry}: `{}` occurrence {} is another def than the row says",
+                d.qualname,
+                d.occurrence
+            );
+            rows += 1;
+        }
+    }
+    assert!(rows > 300, "only {rows} rows were checked");
+}
+
+/// E1: `occurrence` counts like the outline, `StableDef::Path::nth` does not. A function `top` with a nested `inner` and a class `top` with a
+/// method `inner`: the outline calls them `top.<locals>.inner` and `top.inner`, occurrence 0 for both, and `nth_of` counts both under
+/// `top.inner`, so their `nth` is 0 and 1. `nth` is hashed into every context digest (an identity outside the process): it is not touched, and
+/// this test pins the difference D18 had called "the same number".
+#[test]
+fn occurrence_is_the_outlines_count_and_nth_is_the_older_count_by_the_name_without_locals() {
+    use ruff_python_ast::visitor::source_order::{SourceOrderVisitor, TraversalSignal, walk_body};
+    use ruff_python_ast::{AnyNodeRef, StmtFunctionDef};
+    struct Inners<'a>(Vec<&'a StmtFunctionDef>);
+    impl<'a> SourceOrderVisitor<'a> for Inners<'a> {
+        fn enter_node(&mut self, node: AnyNodeRef<'a>) -> TraversalSignal {
+            if let AnyNodeRef::StmtFunctionDef(f) = node
+                && f.name.as_str() == "inner"
+            {
+                self.0.push(f);
+            }
+            TraversalSignal::Traverse
+        }
+    }
+    let (db, file) = open_fixture("08-entries/python/nth.py");
+    use ty_python_semantic::Db as _;
+    let program_file = db.program_file(file);
+    let parsed = ruff_db::parsed::parsed_module(&db, program_file.python_file(&db)).load(&db);
+    let mut inners = Inners(Vec::new());
+    walk_body(&mut inners, &parsed.syntax().body);
+    assert_eq!(inners.0.len(), 2);
+    let sem = Sem::new(&db, Options::default().marker);
+    let model = sem.model(program_file);
+    let rows: Vec<_> = inners
+        .0
+        .iter()
+        .map(|f| {
+            let def = sem.definition_of(&model, f);
+            let nth = match sem.stable_def(def) {
+                analyzer_core::graph::StableDef::Path { nth, .. } => nth,
+                other => panic!("no marker in the fixture, got {other:?}"),
+            };
+            (sem.outline_name(def).unwrap(), nth)
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            (("top.<locals>.inner".to_owned(), 0), 0),
+            (("top.inner".to_owned(), 0), 1)
+        ]
+    );
 }
 
 /// The graph of every `# expect:` entry of every fixture a test runs, in summary mode, equals its snapshot: `tests/snapshots/<fixture>.graph`,

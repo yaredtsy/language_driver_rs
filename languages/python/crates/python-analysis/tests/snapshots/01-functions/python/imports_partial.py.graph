@@ -1,6 +1,7 @@
 == no_submodule
 entries: imports_partial.no_submodule#3bf968e10205f5b7
 stats: walks 1, contexts 1, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def imports_partial.no_submodule = no_submodule#0 Function imports_partial.py
 imports_partial.no_submodule#3bf968e10205f5b7 Finished
   @24-42 -> ? unknown_callee
 

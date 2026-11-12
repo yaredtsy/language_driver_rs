@@ -1,6 +1,8 @@
 == process
 entries: entries.process#f7f5d1bda054ff33
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.Handler.handle = Handler.handle#0 Function entries.py
+def entries.process = process#0 Function entries.py
 entries.Handler.handle#d4560a327654e28c Finished
 entries.process#f7f5d1bda054ff33 Finished
   @34-44 -> entries.Handler.handle#d4560a327654e28c Type
@@ -8,18 +10,23 @@ entries.process#f7f5d1bda054ff33 Finished
 == Svc.run
 entries: entries.Svc.run#40751d33e45590dc
 stats: walks 1, contexts 1, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def entries.Svc.run = Svc.run#0 Function entries.py
 entries.Svc.run#40751d33e45590dc Finished
   @23-47 -> ? unknown_callee
 
 == Child.go
 entries: entries.Child.go#e863a0354219a261
 stats: walks 1, contexts 1, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def entries.Child.go = Child.go#0 Function entries.py
 entries.Child.go#e863a0354219a261 Finished
   @22-38 -> ? unknown_callee
 
 == Job.run
 entries: entries.Job.run#e9d1c91e4c425452
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.A.go = A.go#0 Function entries.py
+def entries.B.go = B.go#0 Function entries.py
+def entries.Job.run = Job.run#0 Function entries.py
 entries.A.go#4304bcb20810fcbe Finished
 entries.B.go#c3145d37cdd5d9fc Finished
 entries.Job.run#e9d1c91e4c425452 Finished
@@ -29,6 +36,10 @@ entries.Job.run#e9d1c91e4c425452 Finished
 == Reg.create
 entries: entries.Reg.create#862429178dc3a45a
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.Reg = Reg#0 Class entries.py
+def entries.Reg.__init__ = Reg.__init__#0 Function entries.py
+def entries.Reg.create = Reg.create#0 Function entries.py
+def entries.log = log#0 Function entries.py
 entries.Reg.__init__#fe217727046e04ef Finished
   @28-33 -> entries.log#3ddfaeaba6518404 Name
 entries.Reg.create#862429178dc3a45a Finished
@@ -38,12 +49,15 @@ entries.log#3ddfaeaba6518404 Finished
 == Reg.make
 entries: entries.Reg.make#7de6e63f938ef5f6
 stats: walks 1, contexts 1, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def entries.Reg.make = Reg.make#0 Function entries.py
 entries.Reg.make#7de6e63f938ef5f6 Finished
   @40-44 -> ? unknown_callee
 
 == Box.h
 entries: entries.Box.h#e7614f6110990cf3
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.Box.h = Box.h#0 Function entries.py
+def entries.JsonHandler.process = JsonHandler.process#0 Function entries.py
 entries.Box.h#e7614f6110990cf3 Finished
   @35-52 -> entries.JsonHandler.process#c99109ae577d308d Type
 entries.JsonHandler.process#c99109ae577d308d Finished
@@ -51,6 +65,9 @@ entries.JsonHandler.process#c99109ae577d308d Finished
 == outer.inner
 entries: entries.outer.inner#49e48ebe9462b4e1
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.A.go = A.go#0 Function entries.py
+def entries.B.go = B.go#0 Function entries.py
+def entries.outer.inner = outer.<locals>.inner#0 Function entries.py
 entries.A.go#4304bcb20810fcbe Finished
 entries.B.go#c3145d37cdd5d9fc Finished
 entries.outer.inner#49e48ebe9462b4e1 Finished
@@ -60,12 +77,15 @@ entries.outer.inner#49e48ebe9462b4e1 Finished
 == Svc.build.step
 entries: entries.Svc.build.step#220c48af990a9837
 stats: walks 1, contexts 1, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def entries.Svc.build.step = Svc.build.<locals>.step#0 Function entries.py
 entries.Svc.build.step#220c48af990a9837 Finished
   @24-48 -> ? unknown_callee
 
 == with_param.inner
 entries: entries.with_param.inner#db05c9a9cb5958e5
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.Handler.handle = Handler.handle#0 Function entries.py
+def entries.with_param.inner = with_param.<locals>.inner#0 Function entries.py
 entries.Handler.handle#d4560a327654e28c Finished
 entries.with_param.inner#db05c9a9cb5958e5 Finished
   @21-31 -> entries.Handler.handle#d4560a327654e28c Type
@@ -73,6 +93,8 @@ entries.with_param.inner#db05c9a9cb5958e5 Finished
 == with_default.inner
 entries: entries.with_default.inner#29267b5c22775f80
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.A.go = A.go#0 Function entries.py
+def entries.with_default.inner = with_default.<locals>.inner#0 Function entries.py
 entries.A.go#4304bcb20810fcbe Finished
 entries.with_default.inner#29267b5c22775f80 Finished
   @24-30 -> entries.A.go#4304bcb20810fcbe Type
@@ -80,6 +102,9 @@ entries.with_default.inner#29267b5c22775f80 Finished
 == siblings.inner
 entries: entries.siblings.inner#ecdfb3c356929e2c
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.log = log#0 Function entries.py
+def entries.siblings.helper = siblings.<locals>.helper#0 Function entries.py
+def entries.siblings.inner = siblings.<locals>.inner#0 Function entries.py
 entries.log#3ddfaeaba6518404 Finished
 entries.siblings.helper#b0364eb0ed9b1141 Finished
   @22-27 -> entries.log#3ddfaeaba6518404 Name
@@ -89,6 +114,9 @@ entries.siblings.inner#ecdfb3c356929e2c Finished
 == branches.inner
 entries: entries.branches.inner#a5c70426bddc034a
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.A.go = A.go#0 Function entries.py
+def entries.B.go = B.go#0 Function entries.py
+def entries.branches.inner = branches.<locals>.inner#0 Function entries.py
 entries.A.go#4304bcb20810fcbe Finished
 entries.B.go#c3145d37cdd5d9fc Finished
 entries.branches.inner#a5c70426bddc034a Finished
@@ -98,6 +126,8 @@ entries.branches.inner#a5c70426bddc034a Finished
 == recursive.walk
 entries: entries.recursive.walk#990d28f311c8fa5b
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.log = log#0 Function entries.py
+def entries.recursive.walk = recursive.<locals>.walk#0 Function entries.py
 entries.log#3ddfaeaba6518404 Finished
 entries.recursive.walk#990d28f311c8fa5b Finished
   @21-26 -> entries.log#3ddfaeaba6518404 Name
@@ -106,6 +136,9 @@ entries.recursive.walk#990d28f311c8fa5b Finished
 == a.b.c
 entries: entries.a.b.c#0c2eaf2f9ac543d5
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.A.go = A.go#0 Function entries.py
+def entries.B.go = B.go#0 Function entries.py
+def entries.a.b.c = a.<locals>.b.<locals>.c#0 Function entries.py
 entries.A.go#4304bcb20810fcbe Finished
 entries.B.go#c3145d37cdd5d9fc Finished
 entries.a.b.c#0c2eaf2f9ac543d5 Finished
@@ -115,6 +148,8 @@ entries.a.b.c#0c2eaf2f9ac543d5 Finished
 == make.Local.run
 entries: entries.make.Local.run#6d04f00bf311a899
 stats: walks 2, contexts 2, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.JsonHandler.process = JsonHandler.process#0 Function entries.py
+def entries.make.Local.run = make.<locals>.Local.run#0 Function entries.py
 entries.JsonHandler.process#c99109ae577d308d Finished
 entries.make.Local.run#6d04f00bf311a899 Finished
   @27-38 -> entries.JsonHandler.process#c99109ae577d308d Type
@@ -123,6 +158,8 @@ entries.make.Local.run#6d04f00bf311a899 Finished
 == Outer.Inner.m
 entries: entries.Outer.Inner.m#9875cb0e861a440e
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.JsonHandler.process = JsonHandler.process#0 Function entries.py
+def entries.Outer.Inner.m = Outer.Inner.m#0 Function entries.py
 entries.JsonHandler.process#c99109ae577d308d Finished
 entries.Outer.Inner.m#9875cb0e861a440e Finished
   @25-41 -> entries.JsonHandler.process#c99109ae577d308d Type
@@ -130,6 +167,8 @@ entries.Outer.Inner.m#9875cb0e861a440e Finished
 == Host.meth.Local.m
 entries: entries.Host.meth.Local.m#41427b27175208fb
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.Host.meth.Local.m = Host.meth.<locals>.Local.m#0 Function entries.py
+def entries.JsonHandler.process = JsonHandler.process#0 Function entries.py
 entries.Host.meth.Local.m#41427b27175208fb Finished
   @29-45 -> entries.JsonHandler.process#c99109ae577d308d Type
 entries.JsonHandler.process#c99109ae577d308d Finished
@@ -137,6 +176,11 @@ entries.JsonHandler.process#c99109ae577d308d Finished
 == fire
 entries: entries.fire#bf43c07c3bc9722a
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def entries.A = A#0 Class entries.py
+def entries.B = B#0 Class entries.py
+def entries.Holder = Holder#0 Class entries.py
+def entries.fire = fire#0 Function entries.py
+def entries.setup = setup#0 Function entries.py
 entries.fire#bf43c07c3bc9722a Finished
   @82-90 -> new entries.Holder init - Name
   @95-108 -> entries.setup#3dfa8fdc69d96d24 Name
@@ -148,6 +192,8 @@ entries.setup#3dfa8fdc69d96d24 Finished
 == Tree.walk
 entries: entries.Tree.walk#facbccd487365f8b
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def entries.Tree.walk = Tree.walk#0 Function entries.py
+def entries.log = log#0 Function entries.py
 entries.Tree.walk#facbccd487365f8b Finished
   @24-29 -> entries.log#3ddfaeaba6518404 Name
 entries.log#3ddfaeaba6518404 Finished

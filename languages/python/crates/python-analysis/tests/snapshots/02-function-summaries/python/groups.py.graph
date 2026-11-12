@@ -1,6 +1,18 @@
 == main
 entries: groups.main#d6e952a4f79f9d2c
 stats: walks 17, contexts 17, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def groups.a = a#0 Function groups.py
+def groups.b = b#0 Function groups.py
+def groups.binop = binop#0 Function groups.py
+def groups.c = c#0 Function groups.py
+def groups.combine = combine#0 Function groups.py
+def groups.done = done#0 Function groups.py
+def groups.f = f#0 Function groups.py
+def groups.g = g#0 Function groups.py
+def groups.main = main#0 Function groups.py
+def groups.num = num#0 Function groups.py
+def groups.parse_atom = parse_atom#0 Function groups.py
+def groups.parse_expr = parse_expr#0 Function groups.py
 groups.a#3df25c229d8b2cf9 Finished
   @35-39 -> groups.b#8f1ae5409bbbd366 Name
 groups.b#48b761e9e5e7f60f Finished
@@ -41,6 +53,10 @@ groups.parse_expr#4f21a4ec8f27d3c0 Finished
 == ping_entry
 entries: groups.ping_entry#1715d2527f02c715
 stats: walks 6, contexts 6, reuse_hits 2, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def groups.done = done#0 Function groups.py
+def groups.ping = ping#0 Function groups.py
+def groups.ping_entry = ping_entry#0 Function groups.py
+def groups.pong = pong#0 Function groups.py
 groups.done#458d0f3446922f11 Finished
 groups.ping#83dba2be0bbd9028 Finished
   @21-28 -> groups.pong#3f7595b0fccd1b41 Name
@@ -58,6 +74,10 @@ groups.pong#6670eaaa03c5bb3a Finished
 == merge_entry
 entries: groups.merge_entry#8d4afd5bfc73dcd4
 stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def groups.merge_entry = merge_entry#0 Function groups.py
+def groups.outer = outer#0 Function groups.py
+def groups.x = x#0 Function groups.py
+def groups.y = y#0 Function groups.py
 groups.merge_entry#8d4afd5bfc73dcd4 Finished
   @23-31 -> groups.outer#7b23e445c42ad9a9 Name
 groups.outer#2cf23c06000b6fbb Finished
@@ -78,6 +98,14 @@ groups.y#7fe55c592b2222d8 Finished
 == nested_entry
 entries: groups.nested_entry#5b51e0fcf9a49a76
 stats: walks 9, contexts 9, reuse_hits 5, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def groups.binop = binop#0 Function groups.py
+def groups.nested_atom = nested_atom#0 Function groups.py
+def groups.nested_combine = nested_combine#0 Function groups.py
+def groups.nested_entry = nested_entry#0 Function groups.py
+def groups.nested_expr = nested_expr#0 Function groups.py
+def groups.num = num#0 Function groups.py
+def groups.walk_back = walk_back#0 Function groups.py
+def groups.walk_list = walk_list#0 Function groups.py
 groups.binop#e9612107f6c23f94 Finished
 groups.nested_atom#685cc2f7c7e954be Finished
   @45-59 -> groups.nested_expr#6ff67ab3d17a2d2a Name
@@ -104,6 +132,14 @@ groups.walk_list#7f3c6e54f070eff2 Finished
 == up_entry
 entries: groups.up_entry#4fef43774b44367d
 stats: walks 9, contexts 9, reuse_hits 4, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def groups.binop = binop#0 Function groups.py
+def groups.helper = helper#0 Function groups.py
+def groups.helper2 = helper2#0 Function groups.py
+def groups.num = num#0 Function groups.py
+def groups.up_atom = up_atom#0 Function groups.py
+def groups.up_combine = up_combine#0 Function groups.py
+def groups.up_entry = up_entry#0 Function groups.py
+def groups.up_expr = up_expr#0 Function groups.py
 groups.binop#e9612107f6c23f94 Finished
 groups.helper#25383809d2dd9ecc Finished
   @40-50 -> groups.helper2#965f185dac6a7a0f Name

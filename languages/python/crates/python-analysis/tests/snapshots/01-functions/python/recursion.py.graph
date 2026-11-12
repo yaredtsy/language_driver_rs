@@ -1,6 +1,13 @@
 == main
 entries: recursion.main#fcf54c5592c2d603
 stats: walks 8, contexts 8, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def recursion.countdown = countdown#0 Function recursion.py
+def recursion.f = f#0 Function recursion.py
+def recursion.g = g#0 Function recursion.py
+def recursion.h = h#0 Function recursion.py
+def recursion.leaf = leaf#0 Function recursion.py
+def recursion.main = main#0 Function recursion.py
+def recursion.twice = twice#0 Function recursion.py
 recursion.countdown#09ba31f3f99b74a1 Finished
   @36-52 -> recursion.countdown#09ba31f3f99b74a1 Name
 recursion.countdown#711f20390c4b50a6 Finished

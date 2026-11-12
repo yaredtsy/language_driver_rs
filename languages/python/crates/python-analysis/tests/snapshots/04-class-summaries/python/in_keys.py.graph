@@ -1,6 +1,15 @@
 == main
 entries: in_keys.main#e0e8be6ced889574
 stats: walks 7, contexts 7, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def in_keys.Box = Box#0 Class in_keys.py
+def in_keys.Box.run = Box.run#0 Function in_keys.py
+def in_keys.CsvHandler = CsvHandler#0 Class in_keys.py
+def in_keys.CsvHandler.process = CsvHandler.process#0 Function in_keys.py
+def in_keys.JsonHandler = JsonHandler#0 Class in_keys.py
+def in_keys.JsonHandler.process = JsonHandler.process#0 Function in_keys.py
+def in_keys.csv_box = csv_box#0 Function in_keys.py
+def in_keys.json_box = json_box#0 Function in_keys.py
+def in_keys.main = main#0 Function in_keys.py
 in_keys.Box.run#3d3e202fad000209 Finished
   @23-45 -> in_keys.JsonHandler.process#201cf445de83e0b0 Type
 in_keys.Box.run#fa527ee471675d68 Finished
@@ -23,6 +32,11 @@ in_keys.main#e0e8be6ced889574 Finished
 == shared
 entries: in_keys.shared#9e82fd51344bd701
 stats: walks 3, contexts 3, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def in_keys.Box = Box#0 Class in_keys.py
+def in_keys.Box.run = Box.run#0 Function in_keys.py
+def in_keys.JsonHandler = JsonHandler#0 Class in_keys.py
+def in_keys.JsonHandler.process = JsonHandler.process#0 Function in_keys.py
+def in_keys.shared = shared#0 Function in_keys.py
 in_keys.Box.run#3d3e202fad000209 Finished
   @23-45 -> in_keys.JsonHandler.process#201cf445de83e0b0 Type
 in_keys.JsonHandler.process#201cf445de83e0b0 Finished
@@ -37,6 +51,12 @@ in_keys.shared#9e82fd51344bd701 Finished
 == passed
 entries: in_keys.passed#09b64dc0254771d0
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def in_keys.Box = Box#0 Class in_keys.py
+def in_keys.Box.run = Box.run#0 Function in_keys.py
+def in_keys.CsvHandler = CsvHandler#0 Class in_keys.py
+def in_keys.CsvHandler.process = CsvHandler.process#0 Function in_keys.py
+def in_keys.passed = passed#0 Function in_keys.py
+def in_keys.use = use#0 Function in_keys.py
 in_keys.Box.run#fa527ee471675d68 Finished
   @23-45 -> in_keys.CsvHandler.process#1ffc2e5f7f896afb Type
 in_keys.CsvHandler.process#1ffc2e5f7f896afb Finished
@@ -50,6 +70,12 @@ in_keys.use#1b61ab04a2516f66 Finished
 == deep
 entries: in_keys.deep#3ae4429bb2ce501e
 stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def in_keys.App = App#0 Class in_keys.py
+def in_keys.Config = Config#0 Class in_keys.py
+def in_keys.JsonHandler = JsonHandler#0 Class in_keys.py
+def in_keys.Service = Service#0 Class in_keys.py
+def in_keys.Service.run = Service.run#0 Function in_keys.py
+def in_keys.deep = deep#0 Function in_keys.py
 in_keys.Service.run#6eedec97f8e9c1db Finished
   @23-56 -> ? unknown_callee
 in_keys.deep#3ae4429bb2ce501e Finished
@@ -62,6 +88,10 @@ in_keys.deep#3ae4429bb2ce501e Finished
 == again
 entries: in_keys.again#331f6d83647e801d
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def in_keys.Runner = Runner#0 Class in_keys.py
+def in_keys.Runner.run = Runner.run#0 Function in_keys.py
+def in_keys.again = again#0 Function in_keys.py
+def in_keys.log = log#0 Function in_keys.py
 in_keys.Runner.run#eec7b5bc853bcf5a Finished
   @23-32 -> in_keys.log#6a6d621d0918afdf Type
 in_keys.again#331f6d83647e801d Finished
@@ -73,6 +103,9 @@ in_keys.log#6a6d621d0918afdf Finished
 == again_closure
 entries: in_keys.again_closure#be30bc3ca853e143
 stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def in_keys.again_closure = again_closure#0 Function in_keys.py
+def in_keys.again_closure.g = again_closure.<locals>.g#0 Function in_keys.py
+def in_keys.log = log#0 Function in_keys.py
 in_keys.again_closure#be30bc3ca853e143 Finished
   @30-50 -> in_keys.again_closure#be30bc3ca853e143 Name
   @102-105 -> in_keys.again_closure.g#e0475db088887449 Name

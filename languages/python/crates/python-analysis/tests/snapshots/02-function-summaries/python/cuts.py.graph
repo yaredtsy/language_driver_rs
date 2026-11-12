@@ -1,6 +1,13 @@
 == main
 entries: cuts.main#7e12d4900716ae98
 stats: walks 8, contexts 7, reuse_hits 0, unresolved 0, cuts {MaxDepth: 1}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def cuts.a = a#0 Function cuts.py
+def cuts.b = b#0 Function cuts.py
+def cuts.handler = handler#0 Function cuts.py
+def cuts.leaf = leaf#0 Function cuts.py
+def cuts.main = main#0 Function cuts.py
+def cuts.mid = mid#0 Function cuts.py
+def cuts.top = top#0 Function cuts.py
 cuts.a#cc6b5cfb2ab656d1 Incomplete(MaxDepth)
   @13-16 -> cuts.b#8f40f4d6e4353f39 Name
 cuts.b#8f40f4d6e4353f39 Incomplete(MaxDepth)

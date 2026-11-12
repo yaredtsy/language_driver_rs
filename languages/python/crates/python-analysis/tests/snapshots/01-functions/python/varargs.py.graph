@@ -1,6 +1,12 @@
 == main
 entries: varargs.main#221f7a8d1f3fd0f5
 stats: walks 7, contexts 7, reuse_hits 2, unresolved 3, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 3}
+def varargs.after_star = after_star#0 Function varargs.py
+def varargs.b = b#0 Function varargs.py
+def varargs.by_name = by_name#0 Function varargs.py
+def varargs.collect = collect#0 Function varargs.py
+def varargs.main = main#0 Function varargs.py
+def varargs.two = two#0 Function varargs.py
 varargs.after_star#c6f5cac4ed0dd7c7 Finished
   @31-35 -> varargs.b#9798c714bae452d4 Type
 varargs.b#9798c714bae452d4 Finished

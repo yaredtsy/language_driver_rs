@@ -1,6 +1,13 @@
 == outside
 entries: writes.outside#ab284c6f346e90b8
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def writes.CsvHandler = CsvHandler#0 Class writes.py
+def writes.JsonHandler = JsonHandler#0 Class writes.py
+def writes.JsonHandler.process = JsonHandler.process#0 Function writes.py
+def writes.Pipeline = Pipeline#0 Class writes.py
+def writes.Pipeline.__init__ = Pipeline.__init__#0 Function writes.py
+def writes.Pipeline.run = Pipeline.run#0 Function writes.py
+def writes.outside = outside#0 Function writes.py
 writes.JsonHandler.process#ad17a16458f0bde5 Finished
 writes.Pipeline.__init__#940f8708ce0193fa Finished
 writes.Pipeline.run#e9a21ba1950e8645 Finished
@@ -14,6 +21,12 @@ writes.outside#ab284c6f346e90b8 Finished
 == in_another_method
 entries: writes.in_another_method#1672a2aa47f2e5c8
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def writes.Controller = Controller#0 Class writes.py
+def writes.Controller.go = Controller.go#0 Function writes.py
+def writes.Controller.setup = Controller.setup#0 Function writes.py
+def writes.JsonHandler = JsonHandler#0 Class writes.py
+def writes.JsonHandler.process = JsonHandler.process#0 Function writes.py
+def writes.in_another_method = in_another_method#0 Function writes.py
 writes.Controller.go#7559cf3cc4a6df28 Finished
   @22-38 -> writes.JsonHandler.process#ad17a16458f0bde5 Type
 writes.Controller.setup#828f34b58d72569e Finished
@@ -27,6 +40,13 @@ writes.in_another_method#1672a2aa47f2e5c8 Finished
 == through_a_function
 entries: writes.through_a_function#53756446a216a726
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def writes.CsvHandler = CsvHandler#0 Class writes.py
+def writes.JsonHandler = JsonHandler#0 Class writes.py
+def writes.Pipeline = Pipeline#0 Class writes.py
+def writes.Pipeline.__init__ = Pipeline.__init__#0 Function writes.py
+def writes.Pipeline.run = Pipeline.run#0 Function writes.py
+def writes.install = install#0 Function writes.py
+def writes.through_a_function = through_a_function#0 Function writes.py
 writes.Pipeline.__init__#940f8708ce0193fa Finished
 writes.Pipeline.run#16e067b699668c83 Finished
   @23-45 -> ? unknown_callee
@@ -41,6 +61,13 @@ writes.through_a_function#53756446a216a726 Finished
 == on_one_path
 entries: writes.on_one_path#0fde55f537b4a0d9
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def writes.CsvHandler = CsvHandler#0 Class writes.py
+def writes.JsonHandler = JsonHandler#0 Class writes.py
+def writes.Pipeline = Pipeline#0 Class writes.py
+def writes.Pipeline.__init__ = Pipeline.__init__#0 Function writes.py
+def writes.Pipeline.run = Pipeline.run#0 Function writes.py
+def writes.maybe = maybe#0 Function writes.py
+def writes.on_one_path = on_one_path#0 Function writes.py
 writes.Pipeline.__init__#940f8708ce0193fa Finished
 writes.Pipeline.run#16e067b699668c83 Finished
   @23-45 -> ? unknown_callee
@@ -55,6 +82,13 @@ writes.on_one_path#0fde55f537b4a0d9 Finished
 == two_candidates
 entries: writes.two_candidates#1344a6e8d804cb8b
 stats: walks 4, contexts 4, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def writes.CsvHandler = CsvHandler#0 Class writes.py
+def writes.JsonHandler = JsonHandler#0 Class writes.py
+def writes.JsonHandler.process = JsonHandler.process#0 Function writes.py
+def writes.Pipeline = Pipeline#0 Class writes.py
+def writes.Pipeline.__init__ = Pipeline.__init__#0 Function writes.py
+def writes.Pipeline.run = Pipeline.run#0 Function writes.py
+def writes.two_candidates = two_candidates#0 Function writes.py
 writes.JsonHandler.process#ad17a16458f0bde5 Finished
 writes.Pipeline.__init__#940f8708ce0193fa Finished
 writes.Pipeline.run#491a9d94fadd74d4 Finished
