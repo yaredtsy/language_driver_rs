@@ -1119,6 +1119,7 @@ dependencies = [
 name = "python-cli"
 version = "0.0.0"
 dependencies = [
+ "analyzer-core",
  "python-analysis",
  "python-syntax",
 ]

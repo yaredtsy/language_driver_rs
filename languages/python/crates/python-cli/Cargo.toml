@@ -9,5 +9,6 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+analyzer-core = { workspace = true }
 python-syntax = { workspace = true }
 python-analysis = { workspace = true }

@@ -401,4 +401,4 @@ stop picking `__init__` itself, and read `call_site_file` instead of the parent'
 | 6 | ty resolves `from inherit_b import Base` inside the fixture project, and `Child()` reaches `Base.__init__` through `init_of` | E5: **yes**. Test (b) sees `helper` under `Child` from `make`, with its call site in `inherit_b.py` |
 | 7 | A class entry and a no-argument `Child()` callee give the same `init` context (same key), not only the same subtree | E5: **the same context**, function and digest. `the_constructor_context_of_a_class_entry_is_the_one_a_construction_has` compares `Root::Construct::init` of `Child` with the `init` of `make`'s `Construct` edge, and they are equal; the two objects are built at different sites and the digests are still equal, so for a constructor with no arguments the object's origin does not reach the key (shown for this case only) |
 
-Next: [`../06-roadmap.md`](../06-roadmap.md)
+Next: [`06-python-cli.md`](06-python-cli.md)
