@@ -444,3 +444,60 @@ fn construct_a_counter_that_is_not_about_constructions_does_not_print_under_thei
     assert!(!summary.notes.contains_key("some_later_counter"));
     assert!(!summary.to_string().contains("some_later_counter"));
 }
+
+#[test]
+fn object_arrows_a_property_arrow_of_a_const_literal_is_a_call_and_any_other_property_holder_is_still_d16()
+ {
+    let root = fixture("object-arrows");
+    let graph = graph_of(&root, "src/main.ts", "run");
+    check_invariants(&graph);
+    let found = edges_as_text(&graph, &root);
+    let run = |site: &str, to: &str| format!("run | {site} | {to}");
+    let in_run: Vec<String> = vec![
+        run("api.load", "call api.load"),
+        run("api[\"load\"]", "call api.load"),
+        run("api.tasks.update", "call api.tasks.update"),
+        run("wrapped.a", "call wrapped.a"),
+        run("documented.marked", "call documented.marked"),
+        // a `let`, a default export and a class property's literal hold arrows that are not defs: the old answer, with its reason
+        run("mutable.a", "unresolved function_typed_value"),
+        run("defaulted.fromDefault", "unresolved function_typed_value"),
+        run("Holder.config.read", "unresolved function_typed_value"),
+        // a union receiver: one target per member, as for methods
+        run("either.go", "call left.go"),
+        run("either.go", "call right.go"),
+        run("local.l", "call run.<locals>.local.l"),
+        // the literal that is an argument holds an anonymous function: its calls belong to `run`
+        run("other", "call other"),
+        run("register", "call register"),
+    ];
+    let mut expected = in_run.clone();
+    expected.extend(
+        [
+            "api.load | helper | call helper",
+            "api.tasks.update | helper | call helper",
+            "wrapped.a | helper | call helper",
+            "run.<locals>.local.l | other | call other",
+        ]
+        .map(str::to_owned),
+    );
+    let mut found_sorted = found.clone();
+    found_sorted.sort();
+    expected.sort();
+    assert_eq!(found_sorted, expected);
+    // in source order (the `other` of the local literal is the local def's, not `run`'s)
+    let in_run_found: Vec<&String> = found.iter().filter(|l| l.starts_with("run |")).collect();
+    assert_eq!(in_run_found.len(), in_run.len());
+    assert_eq!(graph.stats.unresolved, 3);
+    // the marker is the JSDoc line above the property, and it is the def's identity
+    let marked: Vec<(&StableDef, &str)> = graph
+        .defs
+        .iter()
+        .filter(|def| def.id.is_marked())
+        .map(|def| (&def.id, def.qname.as_str()))
+        .collect();
+    assert_eq!(
+        marked,
+        [(&StableDef::Marked("ARROW-0001".into()), "documented.marked")]
+    );
+}

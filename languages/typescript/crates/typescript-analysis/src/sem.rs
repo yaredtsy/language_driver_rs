@@ -1186,8 +1186,14 @@ mod resolve {
                     self.relative_path(file)
                         .unwrap_or_else(|| source_file.file_name().to_owned())
                 });
-                let own = declaration
-                    .name()
+                // an arrow held by a property of an object literal is named by the property
+                let named = if is_property_function_value(declaration) {
+                    declaration.parent()
+                } else {
+                    Some(declaration)
+                };
+                let own = named
+                    .and_then(|node| node.name())
                     .map(|name| name.text().to_owned())
                     .or_else(|| {
                         symbol_of_declaration(checker, declaration)
@@ -1210,6 +1216,11 @@ mod resolve {
             };
             match defs.def_of.get(&node).copied() {
                 Some(def) => Resolved::Def(Func { file, def }),
+                // A property that holds an arrow and is not a def by D21's rule (a `let`, a default export, an argument's literal): a holder of a
+                // function, declared in the project, as a callback property is. The outline says it is not a def on purpose, so this is not the bug below.
+                None if is_property_function_value(node) => {
+                    Resolved::Unknown(Why::FunctionTypedValue)
+                }
                 None => {
                     // a bug in one of the two rules (what the engine calls callable, what the outline calls a def): a test must find it,
                     // and a release counts it
@@ -1436,6 +1447,16 @@ mod resolve {
             && node.name().is_some_and(ast::is_identifier)
     }
 
+    /// An arrow or a function expression.
+    fn is_function_value(node: P<Node>) -> bool {
+        ast::is_arrow_function(node) || ast::is_function_expression(node)
+    }
+
+    /// An arrow or a function expression that is the value of a property of an object literal (`key: () => {}`).
+    fn is_property_function_value(node: P<Node>) -> bool {
+        is_function_value(node) && node.parent().is_some_and(ast::is_property_assignment)
+    }
+
     fn is_variable_like(node: Option<P<Node>>) -> bool {
         node.is_some_and(|node| {
             ast::is_property_declaration(node) || ast::is_variable_declaration(node)
@@ -1654,6 +1675,14 @@ mod resolve {
         {
             return vec![initializer];
         }
+        // the same addition as in `declarations_of` (D21): a member of a union that holds an arrow in an object literal
+        if ast::is_property_assignment(declaration)
+            && let Some(initializer) = declaration
+                .initializer()
+                .filter(|initializer| is_function_value(*initializer))
+        {
+            return vec![initializer];
+        }
         Vec::new()
     }
 
@@ -1666,6 +1695,8 @@ mod resolve {
             Some(declaration) if is_valid_call_hierarchy_declaration(Some(declaration)) => {
                 find_implementation_or_all_initial_declarations(checker, declaration)
             }
+            // `api["load"]()`: the signature of an arrow held by a property of an object literal (D21)
+            Some(declaration) if is_property_function_value(declaration) => vec![declaration],
             _ => Vec::new(),
         }
     }
@@ -2124,6 +2155,8 @@ mod tests {
         assert_eq!(found.get("Widget.decorated"), None);
         // an object-literal method is a def; a named function expression is a def; overloads have one body
         expect("table.load", &["f"]);
+        // an arrow held by a property of a `const` object literal is a def too (D21): its call is its own, no longer nobody's
+        expect("table.size", &["g"]);
         expect("expression_names", &["[1, 2].map"]);
         expect("expression_names.<locals>.named", &["g"]);
         expect("overloaded", &["f"]);
@@ -2154,6 +2187,7 @@ mod tests {
             "Widget.value",
             "Widget.constructor",
             "table.load",
+            "table.size",
             "expression_names",
             "expression_names.<locals>.named",
             "overloaded",
