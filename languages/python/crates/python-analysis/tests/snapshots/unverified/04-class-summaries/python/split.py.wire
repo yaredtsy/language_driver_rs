@@ -1,0 +1,25 @@
+# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
+# This pins what it says today so a change is noticed; it is not a right answer.
+
+== main
+split.main <split.py:main#0 Function>
+  split.JsonHandler <split.py:JsonHandler#0 Class> @47:9 in split.py
+  split.CsvHandler <split.py:CsvHandler#0 Class> @47:33 in split.py
+  split.build <split.py:build#0 Function> @48:5 in split.py
+    split.Job <split.py:Job#0 Class> @43:12 in split.py
+    split.JsonHandler.key <split.py:JsonHandler.key#0 Method> @43:19 in split.py
+      split.JsonKey <split.py:JsonKey#0 Class> @19:16 in split.py
+    split.CsvHandler.key <split.py:CsvHandler.key#0 Method> @43:19 in split.py
+      split.CsvKey <split.py:CsvKey#0 Class> @27:16 in split.py
+
+== main (merged)
+split.main <split.py:main#0 Function>
+  split.JsonHandler <split.py:JsonHandler#0 Class> @47:9 in split.py
+  split.CsvHandler <split.py:CsvHandler#0 Class> @47:33 in split.py
+  split.build <split.py:build#0 Function> @48:5 in split.py
+    split.Job <split.py:Job#0 Class> @43:12 in split.py
+    split.JsonHandler.key <split.py:JsonHandler.key#0 Method> @43:19 in split.py
+      split.JsonKey <split.py:JsonKey#0 Class> @19:16 in split.py
+    split.CsvHandler.key <split.py:CsvHandler.key#0 Method> @43:19 in split.py
+      split.CsvKey <split.py:CsvKey#0 Class> @27:16 in split.py
+

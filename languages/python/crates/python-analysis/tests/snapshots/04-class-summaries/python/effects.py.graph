@@ -1,0 +1,103 @@
+== ctor
+entries: effects.ctor#cb75e3704b5d0bcc
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def effects.JsonHandler = JsonHandler#0 Class effects.py
+def effects.Pipeline = Pipeline#0 Class effects.py
+def effects.Pipeline.__init__ = Pipeline.__init__#0 Method effects.py
+def effects.Pipeline.run = Pipeline.run#0 Method effects.py
+def effects.ctor = ctor#0 Function effects.py
+effects.Pipeline.__init__#8bd32fcd074b70ae Finished
+effects.Pipeline.run#d98856ee524fe3a2 Finished
+  @23-45 -> ? unknown_callee
+effects.ctor#cb75e3704b5d0bcc Finished
+  @16-39 -> new effects.Pipeline init effects.Pipeline.__init__#8bd32fcd074b70ae Name
+  @16-45 -> effects.Pipeline.run#d98856ee524fe3a2 Path
+  @25-38 -> new effects.JsonHandler init - Name
+
+== installed
+entries: effects.installed#2810a5330998c019
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def effects.CsvHandler = CsvHandler#0 Class effects.py
+def effects.JsonHandler = JsonHandler#0 Class effects.py
+def effects.Pipeline = Pipeline#0 Class effects.py
+def effects.Pipeline.__init__ = Pipeline.__init__#0 Method effects.py
+def effects.Pipeline.run = Pipeline.run#0 Method effects.py
+def effects.install = install#0 Function effects.py
+def effects.installed = installed#0 Function effects.py
+effects.Pipeline.__init__#f5a90c1c1f309deb Finished
+effects.Pipeline.run#d98856ee524fe3a2 Finished
+  @23-45 -> ? unknown_callee
+effects.install#51c2aaf506ef26fe Finished
+effects.installed#2810a5330998c019 Finished
+  @25-47 -> new effects.Pipeline init effects.Pipeline.__init__#f5a90c1c1f309deb Name
+  @34-46 -> new effects.CsvHandler init - Name
+  @52-77 -> effects.install#51c2aaf506ef26fe Name
+  @63-76 -> new effects.JsonHandler init - Name
+  @82-89 -> effects.Pipeline.run#d98856ee524fe3a2 Path
+
+== maybe_installed
+entries: effects.maybe_installed#f79bf479ecbecb69
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def effects.CsvHandler = CsvHandler#0 Class effects.py
+def effects.JsonHandler = JsonHandler#0 Class effects.py
+def effects.Pipeline = Pipeline#0 Class effects.py
+def effects.Pipeline.__init__ = Pipeline.__init__#0 Method effects.py
+def effects.Pipeline.run = Pipeline.run#0 Method effects.py
+def effects.maybe = maybe#0 Function effects.py
+def effects.maybe_installed = maybe_installed#0 Function effects.py
+effects.Pipeline.__init__#f5a90c1c1f309deb Finished
+effects.Pipeline.run#d98856ee524fe3a2 Finished
+  @23-45 -> ? unknown_callee
+effects.maybe#8a35026cd89d88fd Finished
+effects.maybe_installed#f79bf479ecbecb69 Finished
+  @32-54 -> new effects.Pipeline init effects.Pipeline.__init__#f5a90c1c1f309deb Name
+  @41-53 -> new effects.CsvHandler init - Name
+  @59-85 -> effects.maybe#8a35026cd89d88fd Name
+  @68-81 -> new effects.JsonHandler init - Name
+  @90-97 -> effects.Pipeline.run#d98856ee524fe3a2 Path
+
+== fresh_installed
+entries: effects.fresh_installed#7b9fa6ab32051fda
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def effects.CsvHandler = CsvHandler#0 Class effects.py
+def effects.JsonHandler = JsonHandler#0 Class effects.py
+def effects.Pipeline = Pipeline#0 Class effects.py
+def effects.Pipeline.__init__ = Pipeline.__init__#0 Method effects.py
+def effects.Pipeline.run = Pipeline.run#0 Method effects.py
+def effects.fresh = fresh#0 Function effects.py
+def effects.fresh_installed = fresh_installed#0 Function effects.py
+effects.Pipeline.__init__#f5a90c1c1f309deb Finished
+effects.Pipeline.run#d98856ee524fe3a2 Finished
+  @23-45 -> ? unknown_callee
+effects.fresh#23f6cdcdaa046cf2 Finished
+  @30-43 -> new effects.JsonHandler init - Name
+effects.fresh_installed#7b9fa6ab32051fda Finished
+  @31-53 -> new effects.Pipeline init effects.Pipeline.__init__#f5a90c1c1f309deb Name
+  @40-52 -> new effects.CsvHandler init - Name
+  @58-66 -> effects.fresh#23f6cdcdaa046cf2 Name
+  @71-78 -> effects.Pipeline.run#d98856ee524fe3a2 Path
+
+== through_two
+entries: effects.through_two#38de9a6555f52aae
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def effects.CsvHandler = CsvHandler#0 Class effects.py
+def effects.JsonHandler = JsonHandler#0 Class effects.py
+def effects.Pipeline = Pipeline#0 Class effects.py
+def effects.Pipeline.__init__ = Pipeline.__init__#0 Method effects.py
+def effects.Pipeline.run = Pipeline.run#0 Method effects.py
+def effects.install = install#0 Function effects.py
+def effects.outer_install = outer_install#0 Function effects.py
+def effects.through_two = through_two#0 Function effects.py
+effects.Pipeline.__init__#f5a90c1c1f309deb Finished
+effects.Pipeline.run#d98856ee524fe3a2 Finished
+  @23-45 -> ? unknown_callee
+effects.install#51c2aaf506ef26fe Finished
+effects.outer_install#b108c63f9f133162 Finished
+  @29-42 -> effects.install#51c2aaf506ef26fe Name
+effects.through_two#38de9a6555f52aae Finished
+  @27-49 -> new effects.Pipeline init effects.Pipeline.__init__#f5a90c1c1f309deb Name
+  @36-48 -> new effects.CsvHandler init - Name
+  @54-85 -> effects.outer_install#b108c63f9f133162 Name
+  @71-84 -> new effects.JsonHandler init - Name
+  @90-97 -> effects.Pipeline.run#d98856ee524fe3a2 Path
+

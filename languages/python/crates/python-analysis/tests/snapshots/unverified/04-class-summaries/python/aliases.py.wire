@@ -1,0 +1,48 @@
+# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
+# This pins what it says today so a change is noticed; it is not a right answer.
+
+== same
+aliases.same <aliases.py:same#0 Function>
+  aliases.Box <aliases.py:Box#0 Class> @27:9 in aliases.py
+  aliases.CsvHandler <aliases.py:CsvHandler#0 Class> @27:13 in aliases.py
+  aliases.set_and_read <aliases.py:set_and_read#0 Function> @28:5 in aliases.py
+    aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @22:11 in aliases.py
+
+== same (merged)
+aliases.same <aliases.py:same#0 Function>
+  aliases.Box <aliases.py:Box#0 Class> @27:9 in aliases.py
+  aliases.CsvHandler <aliases.py:CsvHandler#0 Class> @27:13 in aliases.py
+  aliases.set_and_read <aliases.py:set_and_read#0 Function> @28:5 in aliases.py
+    aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @22:11 in aliases.py
+
+== different
+aliases.different <aliases.py:different#0 Function>
+  aliases.Box <aliases.py:Box#0 Class> @32:9 in aliases.py
+  aliases.CsvHandler <aliases.py:CsvHandler#0 Class> @32:13 in aliases.py
+  aliases.Box <aliases.py:Box#0 Class> @33:9 in aliases.py
+  aliases.CsvHandler <aliases.py:CsvHandler#0 Class> @33:13 in aliases.py
+  aliases.set_and_read <aliases.py:set_and_read#0 Function> @34:5 in aliases.py
+    aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @22:11 in aliases.py
+
+== different (merged)
+aliases.different <aliases.py:different#0 Function>
+  aliases.Box <aliases.py:Box#0 Class> x2 @32:9 in aliases.py
+  aliases.CsvHandler <aliases.py:CsvHandler#0 Class> x2 @32:13 in aliases.py
+  aliases.set_and_read <aliases.py:set_and_read#0 Function> @34:5 in aliases.py
+    aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @22:11 in aliases.py
+
+== nested
+aliases.nested <aliases.py:nested#0 Function>
+  aliases.Node <aliases.py:Node#0 Class> @47:9 in aliases.py
+  aliases.Node <aliases.py:Node#0 Class> @48:9 in aliases.py
+  aliases.Node.link <aliases.py:Node.link#0 Method> @49:5 in aliases.py
+  aliases.Node.touch <aliases.py:Node.touch#0 Method> @50:5 in aliases.py
+    aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @42:19 in aliases.py
+
+== nested (merged)
+aliases.nested <aliases.py:nested#0 Function>
+  aliases.Node <aliases.py:Node#0 Class> x2 @47:9 in aliases.py
+  aliases.Node.link <aliases.py:Node.link#0 Method> @49:5 in aliases.py
+  aliases.Node.touch <aliases.py:Node.touch#0 Method> @50:5 in aliases.py
+    aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @42:19 in aliases.py
+

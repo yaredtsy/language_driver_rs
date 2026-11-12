@@ -1,0 +1,56 @@
+== same
+entries: aliases.same#6796727d326baa54
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def aliases.Box = Box#0 Class aliases.py
+def aliases.Box.__init__ = Box.__init__#0 Method aliases.py
+def aliases.CsvHandler = CsvHandler#0 Class aliases.py
+def aliases.JsonHandler = JsonHandler#0 Class aliases.py
+def aliases.same = same#0 Function aliases.py
+def aliases.set_and_read = set_and_read#0 Function aliases.py
+aliases.Box.__init__#bb34cabed0f88b66 Finished
+aliases.same#6796727d326baa54 Finished
+  @20-37 -> new aliases.Box init aliases.Box.__init__#bb34cabed0f88b66 Name
+  @24-36 -> new aliases.CsvHandler init - Name
+  @42-60 -> aliases.set_and_read#0064f90425735602 Name
+aliases.set_and_read#0064f90425735602 Finished
+  @34-47 -> new aliases.JsonHandler init - Name
+  @52-65 -> ? unknown_callee
+
+== different
+entries: aliases.different#c091222949672601
+stats: walks 3, contexts 3, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def aliases.Box = Box#0 Class aliases.py
+def aliases.Box.__init__ = Box.__init__#0 Method aliases.py
+def aliases.CsvHandler = CsvHandler#0 Class aliases.py
+def aliases.JsonHandler = JsonHandler#0 Class aliases.py
+def aliases.different = different#0 Function aliases.py
+def aliases.set_and_read = set_and_read#0 Function aliases.py
+aliases.Box.__init__#bb34cabed0f88b66 Finished
+aliases.different#c091222949672601 Finished
+  @25-42 -> new aliases.Box init aliases.Box.__init__#bb34cabed0f88b66 Name
+  @29-41 -> new aliases.CsvHandler init - Name
+  @51-68 -> new aliases.Box init aliases.Box.__init__#bb34cabed0f88b66 Name
+  @55-67 -> new aliases.CsvHandler init - Name
+  @73-91 -> aliases.set_and_read#0064f90425735602 Name
+aliases.set_and_read#0064f90425735602 Finished
+  @34-47 -> new aliases.JsonHandler init - Name
+  @52-65 -> ? unknown_callee
+
+== nested
+entries: aliases.nested#8d663d3205872b16
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def aliases.JsonHandler = JsonHandler#0 Class aliases.py
+def aliases.Node = Node#0 Class aliases.py
+def aliases.Node.link = Node.link#0 Method aliases.py
+def aliases.Node.touch = Node.touch#0 Method aliases.py
+def aliases.nested = nested#0 Function aliases.py
+aliases.Node.link#c20e0624b5b082aa Finished
+aliases.Node.touch#1bc0cc8130247843 Finished
+  @42-55 -> new aliases.JsonHandler init - Name
+  @64-85 -> ? unknown_callee
+aliases.nested#8d663d3205872b16 Finished
+  @22-28 -> new aliases.Node init - Name
+  @37-43 -> new aliases.Node init - Name
+  @48-57 -> aliases.Node.link#c20e0624b5b082aa Path
+  @62-72 -> aliases.Node.touch#1bc0cc8130247843 Path
+

@@ -80,7 +80,9 @@ language_driver_rs
 │   ├── python-cli                 PY7: outline, calls (tree, --graph, --wire [--merged]), the script ─ 06-python-cli.md
 │   ├── the root                   a fix: the root is the folder asked for (D26) ───── 07-the-root.md
 │   ├── the engine's callee        a fix: where the walk cannot call, the engine's def (D27) ─ 08-the-engines-callee.md
-│   └── a def past an unknown base a fix: the engine's def beside Unknown, a likely call (D28) ─ 09-a-def-past-an-unknown-base.md
+│   ├── a def past an unknown base a fix: the engine's def beside Unknown, a likely call (D28) ─ 09-a-def-past-an-unknown-base.md
+│   ├── class summaries            objects that cross a call (Q-PY1): pylspt's part 04, CS0–CS9 ─ 10-class-summaries/
+│   └── PY9: the driver's needs    cancel, the project kept open, environmentInputs; no frontier ─ 11-driver-needs.md
 │
 ├── THE ROADMAP ───────────────────────────────────── 06-roadmap.md
 │   └── B0 bootstrap, then three tracks; what blocks what

@@ -1,0 +1,82 @@
+== use_walk
+entries: recursion_objects.use_walk#748887c4af7394f2
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def recursion_objects.Handle = Handle#0 Class recursion_objects.py
+def recursion_objects.use_walk = use_walk#0 Function recursion_objects.py
+def recursion_objects.walk = walk#0 Function recursion_objects.py
+recursion_objects.use_walk#748887c4af7394f2 Finished
+  @20-27 -> recursion_objects.walk#d5eae5f752b5621a Name
+recursion_objects.walk#d5eae5f752b5621a Finished
+  @24-34 -> recursion_objects.walk#d5eae5f752b5621a Name
+  @57-66 -> ? unknown_callee
+  @99-107 -> new recursion_objects.Handle init - Name
+
+== visitor
+entries: recursion_objects.visitor#4e37d1816584b80d
+stats: walks 6, contexts 6, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def recursion_objects.Node.accept = Node.accept#0 Method recursion_objects.py
+def recursion_objects.Report = Report#0 Class recursion_objects.py
+def recursion_objects.Report.emit = Report.emit#0 Method recursion_objects.py
+def recursion_objects.Visitor = Visitor#0 Class recursion_objects.py
+def recursion_objects.Visitor.visit = Visitor.visit#0 Method recursion_objects.py
+def recursion_objects.Visitor.visit_children = Visitor.visit_children#0 Method recursion_objects.py
+def recursion_objects.Visitor.visit_node = Visitor.visit_node#0 Method recursion_objects.py
+def recursion_objects.visitor = visitor#0 Function recursion_objects.py
+recursion_objects.Node.accept#6551f668c3ca721a Finished
+  @40-53 -> recursion_objects.Visitor.visit#6212ff90eed6103c Type
+recursion_objects.Report.emit#a1a2adf7063ebcb9 Finished
+recursion_objects.Visitor.visit#6212ff90eed6103c Finished
+  @37-58 -> recursion_objects.Visitor.visit_node#54d37dc5db03a17f Type
+recursion_objects.Visitor.visit_children#7c8651a93d13a0c3 Finished
+  @46-68 -> recursion_objects.Node.accept#6551f668c3ca721a Type
+  @125-133 -> new recursion_objects.Report init - Name
+recursion_objects.Visitor.visit_node#54d37dc5db03a17f Finished
+  @42-67 -> recursion_objects.Visitor.visit_children#7c8651a93d13a0c3 Type
+recursion_objects.visitor#4e37d1816584b80d Finished
+  @33-42 -> new recursion_objects.Visitor init - Name
+  @47-61 -> recursion_objects.Node.accept#6551f668c3ca721a Type
+  @66-80 -> recursion_objects.Report.emit#a1a2adf7063ebcb9 Type
+
+== identity_limit
+entries: recursion_objects.identity_limit#f7d0b12952051fef
+stats: walks 5, contexts 5, reuse_hits 2, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def recursion_objects.Branch = Branch#0 Class recursion_objects.py
+def recursion_objects.Branch.__init__ = Branch.__init__#0 Method recursion_objects.py
+def recursion_objects.JsonHandler = JsonHandler#0 Class recursion_objects.py
+def recursion_objects.Leaf = Leaf#0 Class recursion_objects.py
+def recursion_objects.Leaf.__init__ = Leaf.__init__#0 Method recursion_objects.py
+def recursion_objects.build = build#0 Function recursion_objects.py
+def recursion_objects.identity_limit = identity_limit#0 Function recursion_objects.py
+recursion_objects.Branch.__init__#f02048bab407f0ac Finished
+recursion_objects.Leaf.__init__#c308236d63eefff0 Finished
+recursion_objects.build#d519ef649cc60fe6 Finished
+  @42-65 -> new recursion_objects.Branch init recursion_objects.Branch.__init__#f02048bab407f0ac Name
+  @49-64 -> recursion_objects.build#d519ef649cc60fe6 Name
+  @77-84 -> new recursion_objects.Leaf init recursion_objects.Leaf.__init__#c308236d63eefff0 Name
+recursion_objects.build#dd50735197290046 Finished
+  @42-65 -> new recursion_objects.Branch init recursion_objects.Branch.__init__#f02048bab407f0ac Name
+  @49-64 -> recursion_objects.build#d519ef649cc60fe6 Name
+  @77-84 -> new recursion_objects.Leaf init recursion_objects.Leaf.__init__#c308236d63eefff0 Name
+recursion_objects.identity_limit#f7d0b12952051fef Finished
+  @26-49 -> recursion_objects.build#dd50735197290046 Name
+  @26-67 -> ? unknown_callee
+  @35-48 -> new recursion_objects.JsonHandler init - Name
+
+== tree_fill
+entries: recursion_objects.tree_fill#e0b7c8486648e5ea
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 2}
+def recursion_objects.JsonHandler = JsonHandler#0 Class recursion_objects.py
+def recursion_objects.Tree = Tree#0 Class recursion_objects.py
+def recursion_objects.Tree.fill = Tree.fill#0 Method recursion_objects.py
+def recursion_objects.tree_fill = tree_fill#0 Function recursion_objects.py
+recursion_objects.Tree.fill#5e18d10b13a44f81 Finished
+  @48-67 -> recursion_objects.Tree.fill#5e18d10b13a44f81 Type
+  @80-96 -> ? unknown_callee
+recursion_objects.Tree.fill#c1de0906fbb3496d Finished
+  @48-67 -> recursion_objects.Tree.fill#5e18d10b13a44f81 Type
+  @80-96 -> ? unknown_callee
+recursion_objects.tree_fill#e0b7c8486648e5ea Finished
+  @21-27 -> new recursion_objects.Tree init - Name
+  @21-50 -> recursion_objects.Tree.fill#c1de0906fbb3496d Path
+  @36-49 -> new recursion_objects.JsonHandler init - Name
+

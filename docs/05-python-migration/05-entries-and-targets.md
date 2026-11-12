@@ -380,8 +380,8 @@ the path unchanged: never fail and never guess (rule 8).
 
 | Thing | Why not | Where it goes |
 |---|---|---|
-| A cancel flag for Python (`Cut::Cancelled` is never set from outside) | a different seam (row M18: core's cancel, "later Python") | its own step after TS5 |
-| The solver recursing to `max_stack` = 256 | not a bug in the answer; the driver must give its request thread a big enough stack until the solver is iterative | driver, then a Python step |
+| A cancel flag for Python (`Cut::Cancelled` is never set from outside) | a different seam (row M18: core's cancel, "later Python") | **PY9.1**, [`11-driver-needs.md`](11-driver-needs.md) §3 |
+| The solver recursing to `max_stack` = 256 | not a bug in the answer; the driver must give its request thread a big enough stack until the solver is iterative | measured in **PY9.0**, the driver's part in [`11-driver-needs.md`](11-driver-needs.md) §6, §8 |
 | A TypeScript class as the entry | no user yet; `Root::Construct` makes it possible without another core change | TS5 |
 | `python-cli calls` | **built** (PY7). It takes `--occurrence <n>`, with **no default**: a name that matches several defs is listed and the exit code is 2, the first is never picked | [`06-python-cli.md`](06-python-cli.md) §3.1 |
 | The driver-host findings (timeout on write, cancel before request, lost exit reason) and the driver-only ones (`catch_unwind`, UNC paths) | they are in `vnoc`, not here | `vnoc` `docs/14-call-trees.md` |

@@ -722,6 +722,48 @@ fn p04_01_in_keys() {
     assert_eq!((st.walks, st.reuse_hits), (3, 1));
 }
 
+/// Inline mode only until CS2 (objects coming back).
+#[test]
+fn p04_02_coming_back() {
+    check("04-class-summaries/python/coming_back.py");
+}
+
+/// Inline mode only until CS3 (effects).
+#[test]
+fn p04_03_effects() {
+    check("04-class-summaries/python/effects.py");
+}
+
+/// Inline mode only until CS4 (resolve, then write).
+#[test]
+fn p04_04_resolve_first() {
+    check("04-class-summaries/python/resolve_first.py");
+}
+
+/// Inline mode only until CS5 (deep writes).
+#[test]
+fn p04_05_deep_write() {
+    check("04-class-summaries/python/deep_write.py");
+}
+
+/// Inline mode only until CS6 (split by type).
+#[test]
+fn p04_06_split() {
+    check("04-class-summaries/python/split.py");
+}
+
+/// Inline mode only until CS7 (aliases).
+#[test]
+fn p04_07_aliases() {
+    check("04-class-summaries/python/aliases.py");
+}
+
+/// Inline mode only until CS8 (recursion with objects).
+#[test]
+fn p04_08_recursion_objects() {
+    check("04-class-summaries/python/recursion_objects.py");
+}
+
 #[test]
 fn p07_accessors_run_in_summary_mode_as_they_do_inline() {
     check_both("07-accessors/python/accessors.py");
@@ -1253,12 +1295,13 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
             _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 29 programs are verified in both modes and 6 only inline; 35 are run at all; 43 have `# expect:` blocks (eight were never run,
-    // even at the pin: `every_entry` skips them)
+    // 29 programs are verified in both modes and 13 only inline (six of `03-classes/`, seven of `04-class-summaries/`); 42 are run at
+    // all; 43 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
+    // `every_entry` skips it)
     let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
     assert_eq!(
         (verified, by_fixture.len() - verified),
-        (29, 6),
+        (29, 13),
         "a program was added or lost"
     );
     for (fixture, verified, text) in by_fixture {
@@ -1674,7 +1717,7 @@ fn the_graph_of_every_fixture_equals_its_snapshot() {
     }
     assert_eq!(
         (by_fixture.len(), entries),
-        (35, 129),
+        (42, 149),
         "an entry was added or lost"
     );
     for (fixture, text) in by_fixture {
@@ -1818,6 +1861,10 @@ fn constructor_effects_spike() {
             if !this_file.contains(&format!("check(\"{fixture}\")")) {
                 continue;
             }
+            // the part 04 programs say on purpose where summary differs from inline, so inline is not their answer
+            if !fixture.starts_with("03-classes/") {
+                continue;
+            }
             let (db, file) = open_fixture(&fixture);
             let inline_opts = Options {
                 mode: Mode::Inline,
@@ -1899,6 +1946,11 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
     for (fixture, entry, opts) in every_entry() {
         if !this_file.contains(&format!("check(\"{fixture}\")")) {
             continue; // verified in both modes: the snapshots are its guard
+        }
+        // the part 04 programs say on purpose where summary differs from inline, so inline is not their answer: they are pinned against
+        // their own blocks (`what_summary_mode_gives_on_the_part_04_programs_against_their_blocks`)
+        if !fixture.starts_with("03-classes/") {
+            continue;
         }
         entries += 1;
         let (db, file) = open_fixture(&fixture);
@@ -1989,5 +2041,74 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
     assert_eq!(
         errors,
         ["03-classes/python/entries.py outer.inner -> entries.A.go"]
+    );
+}
+
+/// The programs of `04-class-summaries/` checked in inline mode only (CS0): what summary mode gives on each block that is its own (`# expect:`
+/// and `# expect summary:`), compared with the block as `failures` compares in summary mode. Pinned against the blocks, not against inline
+/// mode: `split.py` and the `# expect summary:` entries say on purpose where summary differs from inline. A step that fixes an entry removes
+/// it from the list; an entry added is a regression.
+#[test]
+fn what_summary_mode_gives_on_the_part_04_programs_against_their_blocks() {
+    let this_file = include_str!("fixture.rs");
+    let mut fixtures: Vec<(String, Options)> = Vec::new();
+    for (fixture, _, opts) in every_entry() {
+        if fixture.starts_with("04-class-summaries/")
+            && this_file.contains(&format!("check(\"{fixture}\")"))
+            && fixtures.last().is_none_or(|(f, _)| *f != fixture)
+        {
+            fixtures.push((fixture, opts));
+        }
+    }
+    let (mut blocks, mut failing) = (0, Vec::new());
+    for (fixture, opts) in &fixtures {
+        let (db, file) = open_fixture(fixture);
+        let source = std::fs::read_to_string(format!("tests/fixtures/{fixture}")).unwrap();
+        let module = fixture.rsplit('/').next().unwrap().trim_end_matches(".py");
+        for e in expectations(&source)
+            .into_iter()
+            .filter(|e| e.mode.is_none_or(|m| m == Mode::Summary))
+        {
+            let got = call_tree(&db, file, &e.entry, opts)
+                .map(|(t, _)| to_text(&t, module))
+                .unwrap_or_else(|| format!("(no function `{}`)\n", e.entry));
+            blocks += 1;
+            if sorted_siblings(&got) != sorted_siblings(&e.tree) {
+                println!(
+                    "--- {fixture}: {}\nexpected:\n{}got:\n{got}",
+                    e.entry, e.tree
+                ); // --show-output
+                failing.push(format!("{fixture} {}", e.entry));
+            }
+        }
+    }
+    assert_eq!(
+        (fixtures.len(), blocks),
+        (7, 20),
+        "the part 04 programs checked inline only, and their summary-mode blocks"
+    );
+    // 20 blocks are summary mode's; these 16 fail. The four that pass: `aliases.py nested` (its summary block is the known limit),
+    // `recursion_objects.py` identity_limit and tree_fill (their blocks pin known limits), and `recursion_objects.py` visitor, whose
+    // `Report.emit` comes from ty's type of `v.found` (a `Type` edge), not from the walk.
+    assert_eq!(
+        failing,
+        [
+            "04-class-summaries/python/aliases.py same",
+            "04-class-summaries/python/aliases.py different",
+            "04-class-summaries/python/coming_back.py identity",
+            "04-class-summaries/python/coming_back.py built_inside",
+            "04-class-summaries/python/coming_back.py built_with_arg",
+            "04-class-summaries/python/coming_back.py two_from_one_site",
+            "04-class-summaries/python/deep_write.py main",
+            "04-class-summaries/python/effects.py ctor",
+            "04-class-summaries/python/effects.py installed",
+            "04-class-summaries/python/effects.py maybe_installed",
+            "04-class-summaries/python/effects.py fresh_installed",
+            "04-class-summaries/python/effects.py through_two",
+            "04-class-summaries/python/recursion_objects.py use_walk",
+            "04-class-summaries/python/resolve_first.py replacing",
+            "04-class-summaries/python/resolve_first.py swapping",
+            "04-class-summaries/python/split.py main",
+        ]
     );
 }

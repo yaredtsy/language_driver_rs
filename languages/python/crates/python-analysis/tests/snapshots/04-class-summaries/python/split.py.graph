@@ -1,0 +1,28 @@
+== main
+entries: split.main#c030e3b86e3aaa4a
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def split.CsvHandler = CsvHandler#0 Class split.py
+def split.CsvHandler.key = CsvHandler.key#0 Method split.py
+def split.CsvKey = CsvKey#0 Class split.py
+def split.Job = Job#0 Class split.py
+def split.Job.__init__ = Job.__init__#0 Method split.py
+def split.JsonHandler = JsonHandler#0 Class split.py
+def split.JsonHandler.key = JsonHandler.key#0 Method split.py
+def split.JsonKey = JsonKey#0 Class split.py
+def split.build = build#0 Function split.py
+def split.main = main#0 Function split.py
+split.CsvHandler.key#253d065cad98760e Finished
+  @30-38 -> new split.CsvKey init - Name
+split.Job.__init__#c7ca433f06e07426 Finished
+split.JsonHandler.key#0a04f8e23a9b1124 Finished
+  @30-39 -> new split.JsonKey init - Name
+split.build#942904f9535f5053 Finished
+  @25-40 -> new split.Job init split.Job.__init__#c7ca433f06e07426 Name
+  @32-39 -> split.CsvHandler.key#253d065cad98760e Type
+  @32-39 -> split.JsonHandler.key#0a04f8e23a9b1124 Type
+split.main#c030e3b86e3aaa4a Finished
+  @21-34 -> new split.JsonHandler init - Name
+  @45-57 -> new split.CsvHandler init - Name
+  @62-70 -> split.build#942904f9535f5053 Name
+  @62-75 -> ? unknown_callee
+

@@ -24,6 +24,7 @@ PY5  python-analysis (ty + the solver), old renderer kept        │
 PY6  switch to the core renderer; compare on all 41 fixtures     │
 PY7  python-cli + the golden run  ◄──────────────────────────────┘ compared with the baseline
 PY8  docs; tag python-v0.2.0; archive pylspt
+PY9  what the driver needs: cancel, the project kept open, environmentInputs (11-driver-needs.md)
 ```
 
 Two rules decide it, both from the PA plan:
@@ -48,6 +49,7 @@ renderer against 41 real cases ([`../06-roadmap.md`](../06-roadmap.md) §3).
 | **PY6** | new | render through `analyzer_core::render`; a test renders every fixture both ways and compares; fix what differs; delete the old renderer; turn on the scenarios at `Level::Precise` | the comparison test passed on all 41 before it was deleted (keep that commit's CI run as the record); `scenarios` passes |
 | **PY7** | new | `python-cli` with subcommands; `scripts/run-on-project.sh` | `calls --wire` and `calls --wire --merged` on the Jarvis project equal the golden wire (`out/golden/wire*.json`) as JSON: no golden graph and no golden tree were ever made, the wire is the output (D17); [`06-python-cli.md`](06-python-cli.md) §4 is the run |
 | **PY8** | both | `languages/python/docs/architecture.md`, the curated `call-tree/` and `ruff-and-ty/`; **tag `python-v0.2.0`**; pylspt gets a README pointer and is archived on GitHub | no link in `languages/python/docs/` points outside the repo or to a missing file; the old repo page says "archived" |
+| **PY9** | both | [`11-driver-needs.md`](11-driver-needs.md): `Options::cancel` (core's `Cancel`), `Project::refresh`, `Project::environment_inputs`, `python-cli calls --repeat`; then the vnoc driver keeps one project per root on a worker thread with a measured stack | a cancel stops the work (`Incomplete(Cancelled)`); a kept project follows an edit on disk after `refresh` and never takes a parent config (D26); the warm and cold numbers in `ENGINE.md` |
 
 ## 3. Two steps in more detail
 

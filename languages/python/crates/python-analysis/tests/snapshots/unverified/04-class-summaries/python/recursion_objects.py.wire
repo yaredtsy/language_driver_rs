@@ -1,0 +1,67 @@
+# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
+# This pins what it says today so a change is noticed; it is not a right answer.
+
+== use_walk
+recursion_objects.use_walk <recursion_objects.py:use_walk#0 Function>
+  recursion_objects.walk <recursion_objects.py:walk#0 Function> @18:5 in recursion_objects.py
+    recursion_objects.walk <recursion_objects.py:walk#0 Function> [recursive] @12:9 in recursion_objects.py
+    recursion_objects.Handle <recursion_objects.py:Handle#0 Class> @14:12 in recursion_objects.py
+
+== use_walk (merged)
+recursion_objects.use_walk <recursion_objects.py:use_walk#0 Function>
+  recursion_objects.walk <recursion_objects.py:walk#0 Function> @18:5 in recursion_objects.py
+    recursion_objects.walk <recursion_objects.py:walk#0 Function> [recursive] @12:9 in recursion_objects.py
+    recursion_objects.Handle <recursion_objects.py:Handle#0 Class> @14:12 in recursion_objects.py
+
+== visitor
+recursion_objects.visitor <recursion_objects.py:visitor#0 Function>
+  recursion_objects.Visitor <recursion_objects.py:Visitor#0 Class> @46:9 in recursion_objects.py
+  recursion_objects.Node.accept <recursion_objects.py:Node.accept#0 Method> @47:5 in recursion_objects.py
+    recursion_objects.Visitor.visit <recursion_objects.py:Visitor.visit#0 Method> @30:9 in recursion_objects.py
+      recursion_objects.Visitor.visit_node <recursion_objects.py:Visitor.visit_node#0 Method> @35:9 in recursion_objects.py
+        recursion_objects.Visitor.visit_children <recursion_objects.py:Visitor.visit_children#0 Method> @38:9 in recursion_objects.py
+          recursion_objects.Node.accept <recursion_objects.py:Node.accept#0 Method> [recursive] @41:9 in recursion_objects.py
+          recursion_objects.Report <recursion_objects.py:Report#0 Class> @42:22 in recursion_objects.py
+  recursion_objects.Report.emit <recursion_objects.py:Report.emit#0 Method> @48:5 in recursion_objects.py
+
+== visitor (merged)
+recursion_objects.visitor <recursion_objects.py:visitor#0 Function>
+  recursion_objects.Visitor <recursion_objects.py:Visitor#0 Class> @46:9 in recursion_objects.py
+  recursion_objects.Node.accept <recursion_objects.py:Node.accept#0 Method> @47:5 in recursion_objects.py
+    recursion_objects.Visitor.visit <recursion_objects.py:Visitor.visit#0 Method> @30:9 in recursion_objects.py
+      recursion_objects.Visitor.visit_node <recursion_objects.py:Visitor.visit_node#0 Method> @35:9 in recursion_objects.py
+        recursion_objects.Visitor.visit_children <recursion_objects.py:Visitor.visit_children#0 Method> @38:9 in recursion_objects.py
+          recursion_objects.Node.accept <recursion_objects.py:Node.accept#0 Method> [recursive] @41:9 in recursion_objects.py
+          recursion_objects.Report <recursion_objects.py:Report#0 Class> @42:22 in recursion_objects.py
+  recursion_objects.Report.emit <recursion_objects.py:Report.emit#0 Method> @48:5 in recursion_objects.py
+
+== identity_limit
+recursion_objects.identity_limit <recursion_objects.py:identity_limit#0 Function>
+  recursion_objects.build <recursion_objects.py:build#0 Function> @73:5 in recursion_objects.py
+    recursion_objects.Branch <recursion_objects.py:Branch#0 Class> @68:16 in recursion_objects.py
+    recursion_objects.build <recursion_objects.py:build#0 Function> [recursive] @68:23 in recursion_objects.py
+    recursion_objects.Leaf <recursion_objects.py:Leaf#0 Class> @69:12 in recursion_objects.py
+  recursion_objects.JsonHandler <recursion_objects.py:JsonHandler#0 Class> @73:14 in recursion_objects.py
+
+== identity_limit (merged)
+recursion_objects.identity_limit <recursion_objects.py:identity_limit#0 Function>
+  recursion_objects.build <recursion_objects.py:build#0 Function> @73:5 in recursion_objects.py
+    recursion_objects.Branch <recursion_objects.py:Branch#0 Class> @68:16 in recursion_objects.py
+    recursion_objects.build <recursion_objects.py:build#0 Function> [recursive] @68:23 in recursion_objects.py
+    recursion_objects.Leaf <recursion_objects.py:Leaf#0 Class> @69:12 in recursion_objects.py
+  recursion_objects.JsonHandler <recursion_objects.py:JsonHandler#0 Class> @73:14 in recursion_objects.py
+
+== tree_fill
+recursion_objects.tree_fill <recursion_objects.py:tree_fill#0 Function>
+  recursion_objects.Tree <recursion_objects.py:Tree#0 Class> @85:5 in recursion_objects.py
+  recursion_objects.Tree.fill <recursion_objects.py:Tree.fill#0 Method> @85:5 in recursion_objects.py
+    recursion_objects.Tree.fill <recursion_objects.py:Tree.fill#0 Method> [recursive] @79:13 in recursion_objects.py
+  recursion_objects.JsonHandler <recursion_objects.py:JsonHandler#0 Class> @85:20 in recursion_objects.py
+
+== tree_fill (merged)
+recursion_objects.tree_fill <recursion_objects.py:tree_fill#0 Function>
+  recursion_objects.Tree <recursion_objects.py:Tree#0 Class> @85:5 in recursion_objects.py
+  recursion_objects.Tree.fill <recursion_objects.py:Tree.fill#0 Method> @85:5 in recursion_objects.py
+    recursion_objects.Tree.fill <recursion_objects.py:Tree.fill#0 Method> [recursive] @79:13 in recursion_objects.py
+  recursion_objects.JsonHandler <recursion_objects.py:JsonHandler#0 Class> @85:20 in recursion_objects.py
+
