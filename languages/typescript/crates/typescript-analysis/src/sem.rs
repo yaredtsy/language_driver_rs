@@ -475,6 +475,7 @@ impl Sem {
             refs: Vec::new(),
             accesses: Vec::new(),
             destructured: Vec::new(),
+            assigns: Vec::new(),
         };
         collector.body_of(node);
         let accessors = self.accessor_sites(&collector.accesses, collector.text);
@@ -489,13 +490,14 @@ impl Sem {
             call_apply: collector.call_apply,
             refs: collector.refs,
             destructured: collector.destructured,
+            assigns: collector.assigns,
         });
         self.bodies.borrow_mut().insert(node, Arc::clone(&made));
         Some(made)
     }
 
     /// The class's own `constructor`, a def of the same file whose parent is the class. `None` when the class declares none, or when `class` is not a
-    /// class. What a construction runs is `init_of`, which also looks at the base classes.
+    /// class. What a construction runs is `init_chain`, which also looks at the base classes.
     pub(crate) fn constructor_of<'p>(
         &'p self,
         class: Func<'p>,
@@ -662,11 +664,14 @@ struct Collector<'a> {
     /// The elements of an object destructuring of a variable (`const { a, b: { c } } = x`): each reads a property without a property access, so an accessor
     /// among them is run by no site (`Uncovered::DestructuredAccessor`, counted by `Sem::handed_over`).
     destructured: Vec<P<Node>>,
+    /// The assignments whose left side is an object pattern (`({ load } = api)`): the pattern and the value it takes from (`note_assignment`).
+    assigns: Vec<(P<Node>, P<Node>)>,
 }
 
 /// What reading one def's body found. `sites` is the calls; `nested` and `refs` are what the body hands over (`Sem::handed_over`).
 struct Body {
     destructured: Vec<P<Node>>,
+    assigns: Vec<(P<Node>, P<Node>)>,
     sites: Vec<CallNode>,
     nested: Vec<(usize, bool)>,
     lits: Vec<P<Node>>,
@@ -864,6 +869,8 @@ impl Collector<'_> {
                     });
                 }
             }
+            // `({ load } = api)`: the names on the left take members of the value on the right, and no edge follows them
+            Kind::BinaryExpression => self.note_assignment(node),
             // `a["k"]` handed over: no edge covers it (a counted remainder)
             Kind::ElementAccessExpression if is_handed_over(node) => {
                 self.elems.push(node);
@@ -904,6 +911,16 @@ impl Collector<'_> {
             {
                 self.note_destructured(nested);
             }
+        }
+    }
+
+    /// `({ a, b: c } = value)`: an assignment whose left side is an object pattern. Remembered with its two sides, for `Sem::handed_over`.
+    fn note_assignment(&mut self, node: P<Node>) {
+        let binary = node.as_binary_expression();
+        if binary.operator_token.kind() == Kind::EqualsToken
+            && binary.left().kind() == Kind::ObjectLiteralExpression
+        {
+            self.assigns.push((binary.left(), binary.right()));
         }
     }
 
@@ -1408,7 +1425,7 @@ mod resolve {
     use analyzer_core::graph::{DefInfo, StableDef};
     use analyzer_core::outline::DefKind;
     use tsrs_ast::{Symbol, SymbolFlags};
-    use tsrs_checker::{Checker, TypeFlags};
+    use tsrs_checker::{Checker, Type, TypeFlags};
     use tsrs_compiler::Context;
 
     use super::*;
@@ -1422,6 +1439,15 @@ mod resolve {
         External { package: String, name: String },
         /// The engine gives no declaration to enter.
         Unknown(Why),
+    }
+
+    /// What is known about a site beyond what it resolves to, found while the declarations were at hand.
+    #[derive(Clone, Copy, Default)]
+    pub(crate) struct SiteFacts {
+        /// The site is a JSX element: a class it constructs is a class component.
+        pub(crate) jsx: bool,
+        /// The callee is a getter (`b.fn()`): the edge is to the getter, and the call of what it returns has no edge.
+        pub(crate) getter_result: bool,
     }
 
     /// What runs when a class is constructed: the first constructor up its chain of base classes, since a class with none uses its base's.
@@ -1461,6 +1487,18 @@ mod resolve {
         Class,
         /// `const { value } = box` where `value` is a getter: the getter runs, and there is no property access to be its site.
         DestructuredAccessor,
+        /// `const { a, ...others } = api; use(others)`: the rest object holds defs of `api`, handed over by the name, and a rest element is not followed.
+        RestElement,
+        /// `({ load } = api); use(load)`: the target takes a def of `api`, handed over by its name, and an assignment target is not followed.
+        AssignmentDestructuring,
+        /// One site of an instance field initializer of a class that a construction runs: the construction draws the constructor, not the initializers.
+        ConstructInitializerSite,
+        /// One site of a decorator of a class declared inside a walked body: the decorators run when the body does, and the class's own body is not a part of it.
+        LocalClassDecoratorSite,
+        /// `<Cls />` where `Cls` is a class with a `render` method of the project: the framework calls `render`, and nothing in the project does.
+        ClassComponentRender,
+        /// `b.fn()` where `fn` is a getter: the one edge is the getter, and the call of what it returns is a second call.
+        GetterResultCall,
     }
 
     impl Uncovered {
@@ -1472,6 +1510,12 @@ mod resolve {
                 Uncovered::CallApply => "uncovered_call_apply",
                 Uncovered::Class => "uncovered_class",
                 Uncovered::DestructuredAccessor => "uncovered_destructured_accessor",
+                Uncovered::RestElement => "uncovered_rest_element",
+                Uncovered::AssignmentDestructuring => "uncovered_assignment_destructuring",
+                Uncovered::ConstructInitializerSite => "uncovered_construct_initializer_sites",
+                Uncovered::LocalClassDecoratorSite => "uncovered_local_class_decorator_sites",
+                Uncovered::ClassComponentRender => "uncovered_class_component_render",
+                Uncovered::GetterResultCall => "uncovered_getter_result_calls",
             }
         }
     }
@@ -1521,30 +1565,49 @@ mod resolve {
     impl Sem {
         /// What the site at `site_index` of `func` calls, as the engine's call hierarchy would say. Never empty: a site with no target is one
         /// `Unknown`. A union receiver, or merged declarations, give one `Resolved` per declaration, in (file, offset) order (rule 9).
+        #[cfg(test)]
         pub(crate) fn callee(
             &self,
             func: Func<'_>,
             site_index: usize,
             style: MarkerStyle<'_>,
         ) -> Vec<Resolved<'_>> {
+            self.callee_with_facts(func, site_index, style).0
+        }
+
+        /// `callee`, and what else is known about the site while the declarations are at hand (`SiteFacts`).
+        pub(crate) fn callee_with_facts(
+            &self,
+            func: Func<'_>,
+            site_index: usize,
+            style: MarkerStyle<'_>,
+        ) -> (Vec<Resolved<'_>>, SiteFacts) {
+            let mut facts = SiteFacts::default();
             let Some(calls) = self.body(func, style) else {
-                return vec![Resolved::Unknown(Why::NoDeclaration)];
+                return (vec![Resolved::Unknown(Why::NoDeclaration)], facts);
             };
             let Some(call) = calls.sites.get(site_index) else {
                 debug_assert!(false, "a site index outside the def's sites");
-                return vec![Resolved::Unknown(Why::NoDeclaration)];
+                return (vec![Resolved::Unknown(Why::NoDeclaration)], facts);
             };
+            facts.jsx = call.kind == SiteKind::Jsx;
             let _scope = self._region.enter();
             // one checker, so one handle at a time: it is dropped before this returns
             let mut checker = self.program.get_type_checker(&Context::default());
             let callee = call.expr;
             if let SiteKind::Accessor(access) = call.kind {
-                return self.accessor_targets(&mut checker, callee, access, style);
+                return (
+                    self.accessor_targets(&mut checker, callee, access, style),
+                    facts,
+                );
             }
             if call.kind == SiteKind::Decorator
                 && unwrap_expression(callee).kind() == Kind::CallExpression
             {
-                return self.decorator_result_targets(&mut checker, call.call, style);
+                return (
+                    self.decorator_result_targets(&mut checker, call.call, style),
+                    facts,
+                );
             }
             let mut declarations =
                 self.prefer_project_bodies(declarations_of(&mut checker, callee));
@@ -1567,10 +1630,17 @@ mod resolve {
             }
             if declarations.is_empty() {
                 if let Some(external) = self.external_declarations(&mut checker, callee) {
-                    return external;
+                    return (external, facts);
                 }
-                return vec![Resolved::Unknown(why_unknown(&mut checker, callee))];
+                return (
+                    vec![Resolved::Unknown(why_unknown(&mut checker, callee))],
+                    facts,
+                );
             }
+            // the engine names the getter itself for `b.fn()`: one edge, and what the getter returns is called by a second call that has none
+            facts.getter_result = declarations
+                .iter()
+                .any(|declaration| declaration.kind() == Kind::GetAccessor);
             let mut found: Vec<Resolved<'_>> = Vec::new();
             for declaration in declarations {
                 let resolved = self.classify(&mut checker, declaration, style);
@@ -1582,7 +1652,7 @@ mod resolve {
                 // a member of the union that has no declaration to enter is not dropped
                 found.push(Resolved::Unknown(Why::UnionReceiver));
             }
-            found
+            (found, facts)
         }
 
         /// The property accesses of a body that run an accessor, as sites: for each candidate the checker's symbol of the property is asked, and it is a site when
@@ -1716,7 +1786,7 @@ mod resolve {
             callee: P<Node>,
         ) -> Option<Vec<Resolved<'_>>> {
             // `super(…)` names the base class's constructor: the checker's symbol for the keyword is the constructor's *type* (`ErrorConstructor`), and
-            // the same class must not have two names (`new Error()` is `Error`), so the base is read from the `extends` expression, as `init_of` does
+            // the same class must not have two names (`new Error()` is `Error`), so the base is read from the `extends` expression, as `init_chain` does
             let callee = if callee.kind() == Kind::SuperKeyword {
                 let class = ast::find_ancestor(Some(callee), ast::is_class_like)?;
                 ast::get_class_extends_heritage_element(class)?.expression()?
@@ -1833,9 +1903,26 @@ mod resolve {
 
         /// What constructing `class` runs: its own constructor, or the one it inherits. `Nothing` is an answer (no class up the chain declares one);
         /// `External` and `Unknown` are limits, and the caller counts them (rule 8) so that "no constructor to enter" is never read as "no constructor".
-        pub(crate) fn init_of<'p>(&'p self, class: Func<'p>, style: MarkerStyle<'_>) -> Init<'p> {
-            let mut class = class;
+        /// With it, the classes the search went through: `class`, then each base class whose constructor it looked for, in order. A construction runs the
+        /// instance field initializers of each of them (a class with no constructor of its own runs its base class's, and the base's initializers with it), and
+        /// the last one is the class whose constructor is entered, if any.
+        pub(crate) fn init_chain<'p>(
+            &'p self,
+            class: Func<'p>,
+            style: MarkerStyle<'_>,
+        ) -> (Init<'p>, Vec<Func<'p>>) {
             let mut seen = vec![class];
+            let init = self.init_walk(class, style, &mut seen);
+            (init, seen)
+        }
+
+        fn init_walk<'p>(
+            &'p self,
+            class: Func<'p>,
+            style: MarkerStyle<'_>,
+            seen: &mut Vec<Func<'p>>,
+        ) -> Init<'p> {
+            let mut class = class;
             loop {
                 if let Some(constructor) = self.constructor_of(class, style) {
                     return Init::Enter(constructor);
@@ -1941,8 +2028,31 @@ mod resolve {
                     }
                 }
             }
+            // a class declared in this body: its decorators run when the body does, and the class's own body is not a part of it
+            if let Some(defs) = self.file_defs(func.file, style) {
+                for &(def, _) in &body.nested {
+                    if defs.outline.defs[def].kind == DefKind::Class {
+                        let class = Func {
+                            file: func.file,
+                            def,
+                        };
+                        uncovered.extend(std::iter::repeat_n(
+                            Uncovered::LocalClassDecoratorSite,
+                            self.decorator_sites(class, style),
+                        ));
+                    }
+                }
+            }
             let _scope = self._region.enter();
             let mut checker = self.program.get_type_checker(&Context::default());
+            // the variables an object pattern on the left of `=` assigns a def to (`({ load } = api)`)
+            let mut assigned: Vec<P<Symbol>> = Vec::new();
+            let mut patterns: Vec<Span> = Vec::new();
+            for &(left, right) in &body.assigns {
+                patterns.push(own_span(func.file.node.text(), left));
+                let ty = checker.get_type_at_location(right);
+                self.assigned_defs(&mut checker, left, ty, style, &mut assigned);
+            }
             // what no edge covers: the function behind a `bind`, a `call` or an `apply`, and behind an element access with a literal key
             for &target in &body.binds {
                 if !self
@@ -1991,6 +2101,14 @@ mod resolve {
                 let Some(mut symbol) = symbol else {
                     continue;
                 };
+                // a target of the pattern itself is where the def is taken, not where it is handed over
+                if !patterns
+                    .iter()
+                    .any(|pattern| pattern.start <= span.start && span.end <= pattern.end)
+                    && assigned.contains(&symbol)
+                {
+                    uncovered.push(Uncovered::AssignmentDestructuring);
+                }
                 if symbol.flags().intersects(SymbolFlags::Alias) {
                     symbol = checker.get_aliased_symbol(symbol);
                 }
@@ -1998,6 +2116,17 @@ mod resolve {
                 let mut declarations = Vec::new();
                 for declaration in symbol.declarations().to_vec() {
                     if declaration.kind() == Kind::BindingElement {
+                        // `...others`: the rest object holds the members the pattern did not name; any that is a def goes with it, and no edge says so
+                        if declaration
+                            .as_binding_element()
+                            .dot_dot_dot_token()
+                            .is_some()
+                        {
+                            let ty = checker.get_type_of_symbol(symbol);
+                            if self.holds_defs(&mut checker, ty, style) {
+                                uncovered.push(Uncovered::RestElement);
+                            }
+                        }
                         declarations.extend(bound_member(&mut checker, declaration));
                     } else {
                         declarations.push(declaration);
@@ -2058,6 +2187,172 @@ mod resolve {
                 handed: found,
                 uncovered,
             }
+        }
+
+        /// Whether a member of `ty` is a project function with a body: the properties' own declarations, mapped as a call maps them.
+        fn holds_defs(&self, checker: &mut Checker, ty: P<Type>, style: MarkerStyle<'_>) -> bool {
+            let properties = checker.get_properties_of_type_exported(ty).to_vec();
+            properties.into_iter().any(|property| {
+                property
+                    .declarations()
+                    .to_vec()
+                    .into_iter()
+                    .any(|declaration| {
+                        !self
+                            .functions_of_declaration(checker, declaration, style)
+                            .0
+                            .is_empty()
+                    })
+            })
+        }
+
+        /// The variables that the object pattern `left` (the left of `=`) assigns a def of its value to: `load` in `({ load } = api)` and `({ load: go } = api)`,
+        /// `run` in `({ inner: { run } } = deep)`, where the member of `ty` that the key names is a project function. A key that is not a name, a member the type
+        /// does not have and a target that is not a variable are not followed.
+        fn assigned_defs(
+            &self,
+            checker: &mut Checker,
+            left: P<Node>,
+            ty: P<Type>,
+            style: MarkerStyle<'_>,
+            out: &mut Vec<P<Symbol>>,
+        ) {
+            for &member in left.properties() {
+                let Some(key) = member
+                    .name()
+                    .filter(|name| ast::is_identifier(*name) || ast::is_string_literal_like(*name))
+                else {
+                    continue;
+                };
+                let (target, nested) = match member.kind() {
+                    Kind::ShorthandPropertyAssignment => (None, None),
+                    Kind::PropertyAssignment => {
+                        let value = member.initializer().map(unwrap_expression);
+                        match value {
+                            Some(value) if value.kind() == Kind::ObjectLiteralExpression => {
+                                (None, Some(value))
+                            }
+                            Some(value) => (Some(value), None),
+                            None => continue,
+                        }
+                    }
+                    _ => continue,
+                };
+                let Some(property) = checker.get_property_of_type_exported(ty, key.text()) else {
+                    continue;
+                };
+                if let Some(nested) = nested {
+                    let inner = checker.get_type_of_symbol(property);
+                    self.assigned_defs(checker, nested, inner, style, out);
+                    continue;
+                }
+                let is_def = property
+                    .declarations()
+                    .to_vec()
+                    .into_iter()
+                    .any(|declaration| {
+                        !self
+                            .functions_of_declaration(checker, declaration, style)
+                            .0
+                            .is_empty()
+                    });
+                if !is_def {
+                    continue;
+                }
+                let variable = match target {
+                    None => checker.get_shorthand_assignment_value_symbol(Some(member)),
+                    Some(target) => checker.get_symbol_at_location_exported(target),
+                };
+                if let Some(variable) = variable
+                    && !out.contains(&variable)
+                {
+                    out.push(variable);
+                }
+            }
+        }
+
+        /// How many sites of `class`'s own body are in decorators: the decorators of the class, of its members and of the parameters of its constructor and
+        /// methods, and the calls and accessors inside them (`@factory(1)` is two sites: the call of `factory`, and of its result).
+        fn decorator_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> usize {
+            let Some(body) = self.body(class, style) else {
+                return 0;
+            };
+            let text = class.file.node.text();
+            let decorators: Vec<Span> = body
+                .sites
+                .iter()
+                .filter(|site| site.kind == SiteKind::Decorator)
+                .map(|site| own_span(text, site.call))
+                .collect();
+            body.sites
+                .iter()
+                .filter(|site| {
+                    decorators
+                        .iter()
+                        .any(|d| d.start <= site.span.start && site.span.end <= d.end)
+                })
+                .count()
+        }
+
+        /// How many sites of `class`'s own body are in the initializers of its **instance** fields (`x = make()`): what a construction runs and does not
+        /// draw. An arrow or a function expression held by a field is a def, so its calls are not in the class's body and not counted.
+        pub(crate) fn initializer_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> usize {
+            let (Some(body), Some(defs)) =
+                (self.body(class, style), self.file_defs(class.file, style))
+            else {
+                return 0;
+            };
+            let Some(node) = defs.nodes[class.def] else {
+                return 0;
+            };
+            let text = class.file.node.text();
+            let initializers: Vec<Span> = node
+                .members()
+                .iter()
+                .filter(|member| {
+                    member.kind() == Kind::PropertyDeclaration && !ast::is_static(**member)
+                })
+                .filter_map(|member| member.initializer())
+                .map(|initializer| own_span(text, initializer))
+                .collect();
+            body.sites
+                .iter()
+                .filter(|site| {
+                    initializers
+                        .iter()
+                        .any(|i| i.start <= site.span.start && site.span.end <= i.end)
+                })
+                .count()
+        }
+
+        /// Whether `class` has a `render` that is a project function with a body, its own or inherited from a class of the project: what a framework calls on
+        /// a class component.
+        pub(crate) fn has_render(&self, class: Func<'_>, style: MarkerStyle<'_>) -> bool {
+            let Some(node) = self
+                .file_defs(class.file, style)
+                .and_then(|defs| defs.nodes[class.def])
+            else {
+                return false;
+            };
+            let _scope = self._region.enter();
+            let mut checker = self.program.get_type_checker(&Context::default());
+            let Some(symbol) = checker.get_symbol_of_declaration_exported(node) else {
+                return false;
+            };
+            let ty = checker.get_declared_type_of_symbol_exported(symbol);
+            let Some(render) = checker.get_property_of_type_exported(ty, "render") else {
+                return false;
+            };
+            render
+                .declarations()
+                .to_vec()
+                .into_iter()
+                .any(|declaration| {
+                    !self
+                        .functions_of_declaration(&mut checker, declaration, style)
+                        .0
+                        .is_empty()
+                })
         }
 
         /// The project functions with a body that `node` (a name, an access, a shorthand property) names, and how many project classes: the symbol's

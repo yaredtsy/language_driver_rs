@@ -9,7 +9,7 @@ use typescript_syntax::MarkerStyle;
 
 use crate::calls::TypeScript;
 use crate::env::Env;
-use crate::sem::{Func, Init, Resolved, Sem};
+use crate::sem::{Func, Init, Resolved, Sem, Uncovered};
 
 /// The reason of an `Unresolved` edge, and the key of its counter in `Stats.language`, for a def whose node is missing from the program's tree: a bug
 /// in one of the two parses, which must show on the graph and not as a body with no calls.
@@ -75,10 +75,13 @@ fn resolve<'p>(
     env: &Env,
 ) -> Vec<Target<TypeScript<'p>>> {
     resolve_from_env(lang, f, site_index, env).unwrap_or_else(|| {
-        lang.sem
-            .callee(f, site_index, lang.style)
+        let (found, facts) = lang.sem.callee_with_facts(f, site_index, lang.style);
+        if facts.getter_result {
+            lang.note_uncovered(&[Uncovered::GetterResultCall]);
+        }
+        found
             .into_iter()
-            .map(|resolved| target(lang, resolved))
+            .map(|resolved| target(lang, resolved, facts.jsx))
             .collect()
     })
 }
@@ -94,13 +97,23 @@ fn resolve_from_env<'p>(
 }
 
 /// What the engine said one declaration of a site is, in the solver's terms.
-fn target<'p>(lang: &TypeScript<'p>, resolved: Resolved<'p>) -> Target<TypeScript<'p>> {
+fn target<'p>(lang: &TypeScript<'p>, resolved: Resolved<'p>, jsx: bool) -> Target<TypeScript<'p>> {
     match resolved {
         // A class reached by `new` (or by `super(x)`, which names the base class) has nothing to walk as a body: it is a construction, and its `init` is
         // the constructor that runs, its own or the one it inherits. A function reached by `new` is a function: its body is the constructor, so it is a
         // call.
         Resolved::Def(def) if lang.sem.def(def, lang.style).kind == DefKind::Class => {
-            let init = match lang.sem.init_of(def, lang.style) {
+            let (init, chain) = lang.sem.init_chain(def, lang.style);
+            // what the construction runs and does not draw: the instance field initializers of each class it goes through, and a class component's `render`
+            let undrawn: usize = chain
+                .iter()
+                .map(|class| lang.sem.initializer_sites(*class, lang.style))
+                .sum();
+            lang.note_uncovered(&vec![Uncovered::ConstructInitializerSite; undrawn]);
+            if jsx && lang.sem.has_render(def, lang.style) {
+                lang.note_uncovered(&[Uncovered::ClassComponentRender]);
+            }
+            let init = match init {
                 Init::Enter(init) => Some((init, ())),
                 Init::Nothing => None,
                 // no constructor to enter, and it is a limit rather than an answer: say so on the graph (rule 8)

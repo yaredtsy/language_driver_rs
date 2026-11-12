@@ -291,6 +291,15 @@ impl fmt::Display for Breakdown {
                 ("call_apply", "call/apply"),
                 ("class", "class"),
                 ("destructured_accessor", "destructured accessor"),
+                ("rest_element", "rest element"),
+                ("assignment_destructuring", "assignment destructuring"),
+                (
+                    "construct_initializer_sites",
+                    "construction initializer sites",
+                ),
+                ("local_class_decorator_sites", "local class decorator sites"),
+                ("class_component_render", "class component render"),
+                ("getter_result_calls", "getter result calls"),
             ];
             let parts: Vec<String> = labels
                 .iter()

@@ -759,6 +759,137 @@ fn uncovered_what_no_edge_covers_is_a_number_per_kind() {
     row("argMethod", &[]);
 }
 
+/// `uncovered`, for a file of the `uncovered` fixture (the counters of TS4 step 7: what a destructuring, a construction, a class declared in a function and a
+/// getter's result leave out of the tree).
+fn uncovered_in(file: &str, entry: &str) -> Vec<(String, u64)> {
+    let root = fixture("uncovered");
+    let graph = graph_of(&root, file, entry);
+    check_invariants(&graph);
+    breakdown(&graph).uncovered.into_iter().collect()
+}
+
+/// One row: the entry's counters (the whole graph under it), written before the run.
+fn row_in(file: &str, entry: &str, expected: &[(&str, u64)]) {
+    let expected: Vec<(String, u64)> = expected
+        .iter()
+        .map(|(kind, n)| ((*kind).to_owned(), *n))
+        .collect();
+    assert_eq!(uncovered_in(file, entry), expected, "{file} {entry}");
+}
+
+#[test]
+fn uncovered_a_rest_element_or_an_assignment_target_that_takes_a_def_is_counted_where_it_is_handed_over()
+ {
+    let file = "src/members.ts";
+    row_in(file, "restTakesFunctions", &[("rest_element", 1)]);
+    row_in(file, "restHandedTwice", &[("rest_element", 2)]);
+    row_in(file, "restHoldsNoDef", &[]);
+    row_in(file, "restHoldsOnlyWhatIsNamed", &[]);
+    row_in(file, "restIsCalled", &[]);
+    row_in(file, "restIsNotUsed", &[]);
+    row_in(file, "namedElement", &[]);
+    row_in(
+        file,
+        "assignedAndHanded",
+        &[("assignment_destructuring", 1)],
+    );
+    row_in(
+        file,
+        "assignedRenamedHandedTwice",
+        &[("assignment_destructuring", 2)],
+    );
+    row_in(file, "assignedNested", &[("assignment_destructuring", 1)]);
+    row_in(file, "assignedAndCalled", &[]);
+    row_in(file, "assignedNotAFunction", &[]);
+    row_in(file, "assignedNeverUsed", &[]);
+    row_in(file, "assignedPlainly", &[]);
+    row_in(file, "comparedNotAssigned", &[]);
+    // the breakdown says each one by its name
+    let text = breakdown(&graph_of(
+        &fixture("uncovered"),
+        file,
+        "assignedRenamedHandedTwice",
+    ))
+    .to_string();
+    assert!(
+        text.contains("not covered by an edge (counted, not drawn): assignment destructuring 2"),
+        "{text}"
+    );
+}
+
+#[test]
+fn uncovered_a_construction_does_not_draw_the_sites_of_the_instance_field_initializers() {
+    let file = "src/classes.tsx";
+    let counter = "construct_initializer_sites";
+    row_in(file, "constructsPlain", &[]);
+    row_in(file, "constructsWithField", &[(counter, 1)]);
+    row_in(file, "constructsTwice", &[(counter, 2)]);
+    row_in(file, "constructsWithTwoFields", &[(counter, 3)]);
+    row_in(file, "constructsArrowField", &[]);
+    // the reason it reads 0: the arrow a field holds is a def of its own (its qualname is `WithArrowField.onClick`), and what it calls is its own
+    expect_edges(
+        &fixture("uncovered"),
+        file,
+        "WithArrowField.onClick",
+        &["side | call side"],
+    );
+    row_in(file, "constructsWrappedArrow", &[(counter, 2)]);
+    row_in(file, "constructsWithConstructor", &[(counter, 1)]);
+    row_in(file, "constructsStaticOnly", &[]);
+    row_in(file, "constructsParameterProperty", &[]);
+    row_in(file, "constructsDerivedNoConstructor", &[(counter, 2)]);
+    row_in(file, "constructsDerivedConstructor", &[(counter, 2)]);
+    row_in(file, "constructsGrandchild", &[(counter, 2)]);
+    row_in(file, "constructsMixed", &[(counter, 1)]);
+    row_in(file, "constructsExternal", &[]);
+}
+
+#[test]
+fn uncovered_the_decorators_of_a_class_declared_in_a_function_are_in_no_tree_of_it() {
+    let file = "src/classes.tsx";
+    let counter = "local_class_decorator_sites";
+    row_in(file, "declaresDecorated", &[(counter, 1)]);
+    row_in(file, "declaresTwo", &[(counter, 2)]);
+    row_in(file, "declaresDecoratedMember", &[(counter, 1)]);
+    row_in(file, "declaresFactoryDecorated", &[(counter, 2)]);
+    row_in(file, "declaresDecoratedWithOtherSites", &[(counter, 1)]);
+    row_in(file, "declaresPlain", &[]);
+    row_in(file, "usesTopDecorated", &[]);
+}
+
+#[test]
+fn uncovered_a_class_component_is_constructed_and_its_render_is_not_drawn() {
+    let file = "src/classes.tsx";
+    let counter = "class_component_render";
+    row_in(file, "showsWidget", &[(counter, 1)]);
+    row_in(file, "showsDerivedWidget", &[(counter, 1)]);
+    row_in(file, "showsArrowWidget", &[(counter, 1)]);
+    row_in(file, "showsTwice", &[(counter, 2)]);
+    row_in(file, "showsLibraryComponent", &[]);
+    row_in(file, "showsFunctionComponent", &[]);
+    row_in(file, "constructsWidget", &[]);
+}
+
+#[test]
+fn uncovered_what_a_getter_returns_is_called_by_a_second_call_that_is_counted() {
+    let file = "src/getters.ts";
+    let counter = "getter_result_calls";
+    row_in(file, "callsResult", &[(counter, 1)]);
+    row_in(file, "callsResultTwice", &[(counter, 2)]);
+    row_in(file, "callsMethod", &[]);
+    row_in(file, "readsGetter", &[]);
+    row_in(file, "constructsResult", &[(counter, 1)]);
+    row_in(file, "callsExternalResult", &[(counter, 1)]);
+    row_in(file, "callsAnonymousExternalResult", &[(counter, 1)]);
+    // still one edge, to the getter: the count is not a second edge on the same span
+    expect_edges(
+        &fixture("uncovered"),
+        file,
+        "callsResult",
+        &["b.fn | call get Holder.fn"],
+    );
+}
+
 #[test]
 fn uncovered_a_function_handed_over_by_bind_or_an_access_has_no_edge_yet() {
     // what the counter says is missing is missing: no passed edge for any of these
