@@ -396,8 +396,9 @@ by its own patterns, `possibly_matches_file_name`). `disableSolutionSearching` o
 The outline (`typescript_syntax::outline_with_nodes`) is made from the **text** of each program file, a second parse; the program has its own tree of the same text. A def is joined to its node by the node's **span**
 (first token to end, trivia skipped: `tsrs_scanner::skip_trivia` from `pos`), which `typescript-syntax` reports with each def, plus a kind a def can name (`FunctionDeclaration`, `FunctionExpression`,
 `ArrowFunction`, `ClassDeclaration`, `ClassExpression`, `MethodDeclaration`, `Constructor`, `GetAccessor`, `SetAccessor`, `InterfaceDeclaration`, `MethodSignature`, `EnumDeclaration`,
-`TypeAliasDeclaration`, `ModuleDeclaration`). The two parses agree: the 44 files of the TS1 fixture suite (ts, tsx, js, jsx, including a `.d.ts`, a file with a syntax error and `.mjs` / `.cjs`) hold 292 defs, and
-every one maps to exactly one node and back. Dropping `ArrowFunction` from the kinds gives 36 failures; not skipping trivia gives 314.
+`TypeAliasDeclaration`, `ModuleDeclaration`). The two parses agree: the 48 files of the TS1 fixture suite (ts, tsx, js, jsx, including a `.d.ts`, a file with a syntax error and `.mjs` / `.cjs`) hold 334 defs, and
+every one maps to exactly one node and back (checked 2026-11-12; at 44 files it was 292, and D21's four fixtures and the two rows of `object_literals.ts` are the other 42). Dropping `ArrowFunction` from the kinds gave 36
+failures and not skipping trivia gave 314, both measured on the 292.
 
 - **The node is not where `Def::range` starts.** An overloaded def's range runs from its first signature and its node is the implementation (what the checker returns too); `const f = () => {}` has the whole
   statement as its range and the arrow as its node; a modifier (`export`) is inside a node's span.
@@ -563,3 +564,42 @@ frame is one line (`add` becomes `enter`).
 
 **Calls leave the enclosing def, as they do for `const handler = () => {}`.** A `const` object literal **inside a function** (`const local = { l: () => other() }`) now owns the arrow's calls: `run` shows them only if something
 calls `local.l` through a name the checker resolves (fixture: it does). Passed on without being called (`register(local)`), they are in no tree. Same trade as the named const arrow, which was already a def.
+
+### Defs handed over and not called (a counter, TS4 after D21)
+
+**The gap.** Three things the owner and the review found are one: a def that is *handed over* instead of called. (a) A D21 arrow in a local `const` literal that is passed on (`useEnhancedTreeLayout`'s
+`onToggle: () => toggleNodeExpansion(nodeId)`); (b) a method of an object literal that is an argument (Q-TS2); (c) a function named in a value position, `onClick={handleClose}`. In each the def exists, nothing
+calls it through a name the checker follows, so no edge reaches it and what it calls is in no tree. **This step only counts them; it adds no edge, node or context and changes no tree.** How such a def shows in the tree is the
+owner's decision (Q-TS3 in `docs/07`).
+
+**What is counted** (`Stats.language["def_written_not_called"]` and `["def_named_not_called"]`, `Breakdown.handed_written` / `handed_named`, one line in the breakdown when either is above 0). A *distinct def* of a
+**walked body** (a context of the graph) that is a function with a body (a function declaration, a function expression, an arrow, a method; not a class, an accessor, a constructor or a signature) and that **no edge of
+the graph reaches** (`Context`, or the `init` of a `Construct`):
+
+- **written inside an expression**: the def is made where an expression is, with no name of its own to reach it by: a method or an arrow property of a literal (`run({ onSuccess() {} })`, `local = { traverse: () => {} }`), a
+  named function expression (`xs.map(function step() {})`). Counted for being written there.
+- **referenced by name**: a project function with a body that an identifier, a property access or a shorthand property names **without calling it**: `onClick={handleClose}`, `xs.map(parse)`, `register(api.load)`,
+  `register(widget.method)`, `{ f }`, `{...{ onKeyDown: onKey }}`. Found through the checker's symbol for the name (and `callable_declarations`, the same mapping a call uses). A function of its own name that nothing names
+  (`const unused = () => {}`) is dead code and is **not** counted (the first version counted it: the by-name rows passed for the wrong reason until a control row, `neverUsed`, and a mutation showed it).
+- A def that is both (made in an expression and also named) is counted **once, as written**, even when the two happen in different bodies of the tree (`writtenHereNamedInAClosure`).
+
+**Not counted, on purpose** (a callee, a tag and a decorator are *called*, not handed over): the names being called, a JSX element's tag and an attribute's name, a tagged template's tag, a decorator (step 6 makes the last three
+sites). **Not looked at, so the count is a lower bound**: an element access (`api["load"]` as a value), `f.bind(…)` and `f.call(…)` (a callee's object is the thing called); a write to a function-valued property
+(`a.b = handler` is read as a reference); and, **in a graph with one entry**, the defs *inside* a handed-over body, because that body is not walked (`handleBack` is handed over and calls `handleClose`: `handleClose` is counted
+not called, and the defs `handleBack` itself hands over are not counted at all). A graph that has every def as an entry walks every body, so it has no such gap.
+
+Pinned in `tests/fixtures/handed-over/`: 21 rows of `main.ts` (one function per shape, the expected pair `(written, named)` written from the rules before the run) and `panel.tsx` (JSX attribute, spread attribute, element
+tag). **Mutation-checked**: the callee/tag/decorator suppression, the written rule, the shorthand record, "only written nested defs", "written wins", the subtraction of reached defs and the use of call edges, each makes a row
+red. One was caught only by writing the control: a callee suppression test with a `declare function` passes whatever the code does, because a function with no body is never counted; the controls are functions with bodies.
+
+**The numbers** (V-NOC frontend, 2026-11-12; `typescript-analysis` `measure_handed_over`, an ignored test driven by `TS_MEASURE_ROOT`, `TS_MEASURE_FILE`, `TS_MEASURE_ENTRY`, `TS_MEASURE_LIST`):
+
+| graph | entries | graph time | edges | handed over, not called |
+|---|---|---|---|---|
+| `TaskDetailPanel` | 1 | 16–18 ms (unchanged by the counter) | 81 call, 2 construct, 111 external, 38 unresolved (unchanged) | **0 written, 7 by name** |
+| the whole frontend, every function, method and class an entry | 1084 | 200 ms | 1185 call, 3 construct, 2399 external, 1009 unresolved | **3 written, 89 by name** |
+
+The 7 of `TaskDetailPanel` are its handlers passed as props (`handleClose`, `handleBack`, `applySuggestions`, `commitDescription`, `navigateToTask`, `openSuggest`, `toggleSubtaskDone`); each was checked against the
+source, and `handleClose` is also *called*, but only inside `handleBack`, which is handed over and not walked, so that call is in no tree. The 3 written of the frontend are `useEnhancedTreeLayout`'s
+`onToggle` (the review's loss), `CreateProjectDialog.onSubmit`'s `onSuccess` (Q-TS2's shape) and `FlameGraph`'s `itemData.scale` (a property arrow in a local literal passed on). Of the first 40 of the 89 by name (listed in path order), the ones read are event handlers
+(`onDrop`, `handleCopy`, `onAbort`) and React components used as values (`DynamicIcon`, `CalendarDayButton`, `IconComp`); the rest were not read. "Not called" there means *called by nothing in the project*, since every def is an entry.
