@@ -14,7 +14,7 @@ use analyzer_core::solve::{Cancel, Lang, Limits, Solver, Summary};
 use crate::Project;
 use crate::env::Env;
 use crate::key::Key;
-use crate::sem::{Func, Sem};
+use crate::sem::{Func, Handed, Sem};
 use crate::walk;
 
 /// How to build a graph. The marker style is how a def's marker is read (`ID: …` in its JSDoc).
@@ -48,7 +48,7 @@ pub(crate) struct TypeScript<'p> {
 }
 
 impl<'p> TypeScript<'p> {
-    fn new(sem: &'p Sem, style: MarkerStyle<'p>) -> Self {
+    pub(crate) fn new(sem: &'p Sem, style: MarkerStyle<'p>) -> Self {
         TypeScript {
             sem,
             style,
@@ -57,12 +57,14 @@ impl<'p> TypeScript<'p> {
         }
     }
 
-    /// Remember the functions `f`'s body hands over instead of calling. A function written inside an expression and also named is counted once, as written.
-    pub(crate) fn note_handed_over(&self, f: Func<'p>) {
-        let mut handed = self.handed.borrow_mut();
-        for held in self.sem.handed_over(f, self.style) {
+    /// Remember the functions a walked body hands over (`Sem::handed_over`). A function written inside an expression and also named is counted once, as
+    /// written. A name has an edge (D22), so a def named is reached and is not counted: what is left is the def written inside an expression, until it has
+    /// an edge too.
+    pub(crate) fn note_handed_over(&self, handed: &[Handed<'p>]) {
+        let mut known = self.handed.borrow_mut();
+        for held in handed {
             let id = self.sem.describe(held.func, self.style).id;
-            *handed.entry(id).or_insert(false) |= held.written;
+            *known.entry(id).or_insert(false) |= held.written;
         }
     }
 

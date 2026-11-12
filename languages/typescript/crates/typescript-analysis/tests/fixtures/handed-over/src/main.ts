@@ -64,6 +64,78 @@ export function shorthand() {
   register({ f });
 }
 
+// ---- where a name is handed over: an argument, a property value, an array element, an initializer, an assignment, a return, a JSX value, through wrappers
+declare class Box {
+  constructor(f: unknown);
+}
+declare const holder: { cb: unknown };
+
+export function inArray() {
+  const handler = () => {};
+  register([handler]);
+}
+export function inVariable() {
+  const handler = () => {};
+  const alias = handler;
+  register(alias);
+}
+export function inReturn() {
+  const handler = () => {};
+  return handler;
+}
+export function inConciseArrow() {
+  const handler = () => {};
+  register(() => handler);
+}
+export function inConditional() {
+  const a = () => {};
+  const b = () => {};
+  register(flag ? a : b);
+}
+export function inLogical() {
+  const handler = () => {};
+  register(flag && handler);
+}
+export function inWrappers() {
+  const handler = () => {};
+  register(handler as unknown);
+  register((handler));
+  register(handler!);
+}
+export function inAssignment() {
+  const handler = () => {};
+  holder.cb = handler;
+}
+export function inNew() {
+  const handler = () => {};
+  new Box(handler);
+}
+export function inProperty() {
+  const handler = () => {};
+  register({ cb: handler });
+}
+// the same def named twice in one body: two hand-overs, each at its own site
+export function namedTwice() {
+  const handler = () => {};
+  register(handler);
+  register(handler);
+}
+
+// ---- a name that is read, not handed over: no edge
+export function readNotHandedOver() {
+  const handler = () => {};
+  if (handler) {
+    register(1);
+  }
+  register(typeof handler === "function");
+  register(handler === sharedHelper);
+  register(!handler);
+  register(handler ? 1 : 2);
+  register(handler && 1);
+  register(handler.length);
+  register(`${handler}`);
+}
+
 // ---- not counted: called, or not a def, or not a hand-over
 export function neverUsed() {
   // a def of its own name that nothing names: dead code, not a hand-over

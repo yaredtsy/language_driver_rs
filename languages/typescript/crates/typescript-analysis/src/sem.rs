@@ -469,7 +469,6 @@ impl Sem {
             sites: Vec::new(),
             nested: Vec::new(),
             refs: Vec::new(),
-            called: false,
         };
         collector.body_of(node);
         collector.sites.sort_by_key(|call| call.span);
@@ -633,17 +632,16 @@ struct Collector<'a> {
     sites: Vec<CallNode>,
     /// The defs the walk stopped at (they are in `def_of`), with whether each is written inside an expression.
     nested: Vec<(usize, bool)>,
-    /// The nodes that name a value without calling it: an identifier or a property access in a value position, or a shorthand property.
-    refs: Vec<P<Node>>,
-    /// While walking what is being called (a callee, a tag, a decorator): a name there is the thing called, not a thing handed over.
-    called: bool,
+    /// The names in a position where a value is **handed over** (`is_handed_over`): an identifier or a property access, or a shorthand property, with the
+    /// span of the name. What each names is asked of the checker later (`Sem::handed_over`).
+    refs: Vec<(Span, P<Node>)>,
 }
 
-/// What reading one def's body found. `sites` is the walk the call graph is made from; `nested` and `refs` only feed a count (`Sem::handed_over`).
+/// What reading one def's body found. `sites` is the calls; `nested` and `refs` are what the body hands over (`Sem::handed_over`).
 struct Body {
     sites: Vec<CallNode>,
     nested: Vec<(usize, bool)>,
-    refs: Vec<P<Node>>,
+    refs: Vec<(Span, P<Node>)>,
 }
 
 /// A call or a `new` found in a body: the span of its callee (or class) expression (absolute, in the file) and the call node. Kept privately by `Sem`, per def, so
@@ -682,7 +680,17 @@ impl Collector<'_> {
         match node.kind() {
             // cannot contain a callable node; a name that is not being called may be a function handed over
             Kind::Identifier => {
-                self.reference(node);
+                // `{ f }` names a value and is a declaration name at once: the shorthand is what the checker is asked about (its symbol for the
+                // name is the property; `get_shorthand_assignment_value_symbol` is the variable)
+                match node.parent() {
+                    Some(parent)
+                        if parent.kind() == Kind::ShorthandPropertyAssignment
+                            && parent.name() == Some(node) =>
+                    {
+                        self.reference(node, parent)
+                    }
+                    _ => self.reference(node, node),
+                }
                 return;
             }
             Kind::ImportEqualsDeclaration
@@ -711,7 +719,7 @@ impl Collector<'_> {
                     });
                 }
                 // not the type arguments
-                self.collect_callee(node.expression());
+                self.collect(node.expression());
                 for &argument in node.arguments() {
                     self.collect(Some(argument));
                 }
@@ -725,7 +733,7 @@ impl Collector<'_> {
                         call: node,
                     });
                 }
-                self.collect_callee(node.expression());
+                self.collect(node.expression());
                 for &argument in node.arguments() {
                     self.collect(Some(argument));
                 }
@@ -733,21 +741,8 @@ impl Collector<'_> {
             }
             // `a.b`: the access is the name (its own name child is not looked at); the object is walked
             Kind::PropertyAccessExpression if !ast::is_part_of_type_node(node) => {
-                if !is_jsx_tag(node) {
-                    self.reference(node);
-                }
+                self.reference(node, node);
                 self.collect(node.expression());
-                return;
-            }
-            // a tag and a decorator are called (step 6 makes them sites), so their names are not handed over
-            Kind::TaggedTemplateExpression => {
-                let tagged = node.as_tagged_template_expression();
-                self.collect_callee(Some(tagged.tag));
-                self.collect(Some(tagged.template));
-                return;
-            }
-            Kind::Decorator => {
-                self.collect_callee(node.expression());
                 return;
             }
             _ => {}
@@ -761,45 +756,10 @@ impl Collector<'_> {
         });
     }
 
-    /// Walk what is being called: its names are not handed over, and what is inside a call there (`f(g)(h)`'s `g`) is again a value.
-    fn collect_callee(&mut self, callee: Option<P<Node>>) {
-        let outer = std::mem::replace(&mut self.called, true);
-        self.collect(callee);
-        self.called = outer;
-    }
-
-    /// A name in a value position that is not being called: a candidate for a function handed over.
-    fn reference(&mut self, node: P<Node>) {
-        if self.called {
-            return;
-        }
-        let parent = node.parent();
-        match parent.map(|parent| parent.kind()) {
-            // an element's tag and an attribute's name are not values (the tag becomes a site in step 6); a label is not a value
-            Some(
-                Kind::JsxOpeningElement
-                | Kind::JsxSelfClosingElement
-                | Kind::JsxClosingElement
-                | Kind::JsxAttribute
-                | Kind::JsxNamespacedName
-                | Kind::LabeledStatement
-                | Kind::BreakStatement
-                | Kind::ContinueStatement,
-            ) => {}
-            // `{ f }` names a value and is a declaration name at once: the shorthand is the reference (the checker's symbol for its name is the
-            // property, and `get_shorthand_assignment_value_symbol` is the variable)
-            Some(Kind::ShorthandPropertyAssignment) => {
-                if let Some(parent) = parent
-                    && parent.name() == Some(node)
-                {
-                    self.refs.push(parent);
-                }
-            }
-            _ => {
-                if !ast::is_declaration_name(node) {
-                    self.refs.push(node);
-                }
-            }
+    /// A name where a value is handed over: remembered with the span of the name, and the node to ask the checker about.
+    fn reference(&mut self, name: P<Node>, asked: P<Node>) {
+        if is_handed_over(name) {
+            self.refs.push((own_span(self.text, name), asked));
         }
     }
 
@@ -870,14 +830,61 @@ fn is_written_in_expression(node: P<Node>) -> bool {
         .is_none_or(|parent| parent.kind() != Kind::VariableDeclaration)
 }
 
-/// The tag of an element: `<a.B />`.
-fn is_jsx_tag(node: P<Node>) -> bool {
-    node.parent().is_some_and(|parent| {
-        matches!(
-            parent.kind(),
-            Kind::JsxOpeningElement | Kind::JsxSelfClosingElement | Kind::JsxClosingElement
-        )
-    })
+/// Whether the value `name` stands for is **handed over** where it is written, and not called, read or tested: an argument of a call or of `new`, the
+/// value of a property (`key: f`, and `{ f }`), an element of an array, an initializer or the right side of `=`, the value a function returns (`return
+/// f`, an arrow's concise body), a JSX attribute's value or a JSX child. Through the wrappers that keep the value (`(f)`, `f as T`, `f satisfies T`,
+/// `<T>f`, `f!`), the branches of a conditional, and the right side of `&&`, `||` and `??`.
+///
+/// Not a hand-over, though it names the value: a callee (`f()`, `(a ? f : g)()`), a tagged template's tag, a decorator, a JSX tag, a condition (`if (f)`,
+/// `f ? a : b`), `typeof f`, a comparison, `!f`, the object of an access (`f.length`, `f[0]`), a template's substitution. Those are the language's other
+/// sites or reads of the def, and drawing them as "passed" would say the def is given to something.
+fn is_handed_over(name: P<Node>) -> bool {
+    let mut at = name;
+    loop {
+        let Some(parent) = at.parent() else {
+            return false;
+        };
+        match parent.kind() {
+            Kind::ParenthesizedExpression
+            | Kind::AsExpression
+            | Kind::SatisfiesExpression
+            | Kind::TypeAssertionExpression
+            | Kind::NonNullExpression => at = parent,
+            Kind::ConditionalExpression => {
+                if parent.as_conditional_expression().condition == at {
+                    return false;
+                }
+                at = parent;
+            }
+            Kind::BinaryExpression => {
+                let binary = parent.as_binary_expression();
+                if binary.right() != at {
+                    return false;
+                }
+                match binary.operator_token.kind() {
+                    Kind::EqualsToken => return true,
+                    Kind::AmpersandAmpersandToken
+                    | Kind::BarBarToken
+                    | Kind::QuestionQuestionToken => at = parent,
+                    _ => return false,
+                }
+            }
+            Kind::CallExpression | Kind::NewExpression => {
+                return parent.expression() != Some(at);
+            }
+            Kind::PropertyAssignment
+            | Kind::VariableDeclaration
+            | Kind::Parameter
+            | Kind::BindingElement
+            | Kind::PropertyDeclaration => return parent.initializer() == Some(at),
+            Kind::ArrowFunction => return parent.body() == Some(at),
+            Kind::ShorthandPropertyAssignment
+            | Kind::ArrayLiteralExpression
+            | Kind::ReturnStatement
+            | Kind::JsxExpression => return true,
+            _ => return false,
+        }
+    }
 }
 
 /// `f(x)`, `a.b(x)`, `a?.b(x)`, `super(x)`. Not `import("./m")` and not `require("./m")`: that is loading a module, not calling into a function.
@@ -1114,13 +1121,16 @@ mod resolve {
         Unknown,
     }
 
-    /// A def of a walked body that is handed over: made where an expression is, or named, and not called by the walk of this body.
+    /// A def a walked body hands over: made where an expression is, or named where a value is handed over (`is_handed_over`).
     #[derive(Clone, Copy, PartialEq, Eq)]
     pub(crate) struct Handed<'p> {
         pub(crate) func: Func<'p>,
-        /// Written inside an expression (a method or arrow of a literal, a named function expression) and not reached by a name of its own. Otherwise it
-        /// was reached by name (`onClick={handleClose}`, `xs.map(parse)`, `{ f }`).
+        /// Written inside an expression (a method or arrow of a literal, a named function expression) and not named: it has no place in the body where
+        /// its name is. Otherwise it was named (`onClick={handleClose}`, `xs.map(parse)`, `{ f }`) and `at` says where.
         pub(crate) written: bool,
+        /// The span of the name, in the file (absolute); `None` for a def that is written inside an expression. One `Handed` for each place a def is
+        /// named, so a def named twice is two, each at its own site (D22).
+        pub(crate) at: Option<Span>,
     }
 
     /// Why a site has no target. Each is counted apart in `Stats.language` (D16, rule 8), so a missing edge can be explained from a number.
@@ -1441,11 +1451,10 @@ mod resolve {
             }
         }
 
-        /// The functions `func`'s body hands over instead of calling: the defs it writes inside an expression, and the project functions it names without
-        /// calling (an argument, a property value, a JSX attribute, a shorthand property). Only functions with a body: a method or arrow, a function
-        /// declaration. Whether anything calls them elsewhere is the caller's question (the graph's edges): this only says what the body does. A name that
-        /// is called is not here, and neither is a JSX tag, a tagged template's tag or a decorator (step 6 makes those sites). Not looked at: an element
-        /// access (`api["load"]`), `f.bind(…)` and `f.call(…)` (a callee's object is the thing called).
+        /// The functions `func`'s body hands over instead of calling: the defs it writes inside an expression (no place for a name: `at` is `None`), and the
+        /// project functions it names where a value is handed over (`is_handed_over`: an argument, a property value, an element, an initializer, a return, a
+        /// JSX value, a shorthand property), each with the span of the name. Only functions with a body. Whether anything calls them is the caller's
+        /// question (the graph's edges). Not looked at: an element access (`api["load"]`), `f.bind(…)` and `f.call(…)`, and a class named as a value.
         pub(crate) fn handed_over<'p>(
             &'p self,
             func: Func<'p>,
@@ -1455,14 +1464,8 @@ mod resolve {
                 return Vec::new();
             };
             let mut found: Vec<Handed<'p>> = Vec::new();
-            let mut add =
-                |handed: Handed<'p>| match found.iter_mut().find(|h| h.func == handed.func) {
-                    // written wins: a function made in an expression and also named is one function
-                    Some(known) => known.written |= handed.written,
-                    None => found.push(handed),
-                };
             for &(def, written) in &body.nested {
-                // a def with a name of its own is handed over only if something names it (below); one made inside an expression is handed over by
+                // a def with a name of its own is handed over only where something names it (below); one made inside an expression is handed over by
                 // being written there
                 if !written {
                     continue;
@@ -1472,9 +1475,10 @@ mod resolve {
                     def,
                 };
                 if self.is_function_with_body(held, style) {
-                    add(Handed {
+                    found.push(Handed {
                         func: held,
                         written,
+                        at: None,
                     });
                 }
             }
@@ -1483,7 +1487,8 @@ mod resolve {
             }
             let _scope = self._region.enter();
             let mut checker = self.program.get_type_checker(&Context::default());
-            for &node in &body.refs {
+            // in source order, as the body names them
+            for &(span, node) in &body.refs {
                 let symbol = if node.kind() == Kind::ShorthandPropertyAssignment {
                     checker.get_shorthand_assignment_value_symbol(Some(node))
                 } else {
@@ -1515,11 +1520,14 @@ mod resolve {
                             continue;
                         };
                         let held = Func { file, def };
-                        if self.is_function_with_body(held, style) {
-                            add(Handed {
-                                func: held,
-                                written: false,
-                            });
+                        let handed = Handed {
+                            func: held,
+                            written: false,
+                            at: Some(span),
+                        };
+                        // one edge for each place and def: the declarations of one symbol can name a def twice
+                        if self.is_function_with_body(held, style) && !found.contains(&handed) {
+                            found.push(handed);
                         }
                     }
                 }
@@ -2034,7 +2042,7 @@ mod resolve {
     }
 }
 
-pub(crate) use resolve::{Init, Resolved};
+pub(crate) use resolve::{Handed, Init, Resolved};
 
 #[cfg(test)]
 mod tests {

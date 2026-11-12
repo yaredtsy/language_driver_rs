@@ -48,7 +48,20 @@ pub(crate) fn body<'p>(
         }
         found.push(SiteCalls::new(site, resolve(lang, f, index, env)));
     }
-    lang.note_handed_over(f);
+    // What the body hands over is a site too (D22): the def's context, at the name, marked passed. It is walked like a call, so what it calls is in the
+    // graph, and the edge says it is not one. Placed among the calls by where the name is.
+    let handed = lang.sem.handed_over(f, lang.style);
+    let start = lang.sem.def(f, lang.style).range.start;
+    for held in &handed {
+        if let Some(at) = held.at {
+            found.push(SiteCalls::passed(
+                Site::new(at.start.saturating_sub(start), at.end.saturating_sub(start)),
+                vec![Target::Call(held.func, ())],
+            ));
+        }
+    }
+    found.sort_by_key(|calls| (calls.site.start, calls.site.end));
+    lang.note_handed_over(&handed);
     Summary::complete(found)
 }
 
@@ -176,5 +189,24 @@ mod tests {
         assert_eq!(method.len(), 1);
         assert_eq!(load.len(), 1);
         assert_eq!(method[0].end - method[0].start, load[0].end - load[0].start);
+    }
+
+    #[test]
+    fn the_hand_overs_of_a_body_are_sites_among_its_calls_in_source_order() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/handed-over");
+        let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+        let both = sem
+            .entry("src/main.ts", "constArrowCalled", 0, STYLE)
+            .unwrap();
+        let lang = TypeScript::new(&sem, STYLE);
+        let summary = body(&lang, both, &Env, &Cancel::new());
+        // `register(both); both();`: the call of `register`, the hand-over of `both` (the argument), then the call of `both`
+        let shape: Vec<bool> = summary.sites.iter().map(|s| s.passed).collect();
+        assert_eq!(shape, [false, true, false]);
+        let starts: Vec<u32> = summary.sites.iter().map(|s| s.site.start).collect();
+        assert!(starts.windows(2).all(|w| w[0] < w[1]), "{starts:?}");
+        // the hand-over names one def, as a call target, so the solver walks it
+        assert_eq!(summary.sites[1].targets.len(), 1);
+        assert!(matches!(summary.sites[1].targets[0], Target::Call(..)));
     }
 }

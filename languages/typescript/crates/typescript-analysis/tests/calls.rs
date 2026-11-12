@@ -6,7 +6,7 @@ use analyzer_testkit::graph::check_invariants;
 use analyzer_testkit::scenarios::{Level, Subject, run};
 use typescript_analysis::{
     Basis, Cancel, Edge, EdgeTo, Entry, Frame, Graph, MarkerStyle, Options, Project, Reason,
-    RenderOptions, StableDef, WireOptions, WireStyle, breakdown, call_graph, wire,
+    RenderOptions, StableDef, WireOptions, WireStyle, breakdown, call_graph, render, to_text, wire,
 };
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
@@ -503,58 +503,150 @@ fn object_arrows_a_property_arrow_of_a_const_literal_is_a_call_and_any_other_pro
     );
 }
 
-/// `(written inside an expression, referenced by name)`: the defs of a walked body that are handed over and that no edge of the graph reaches.
-fn handed(root: &Path, file: &str, entry: &str) -> (u64, u64) {
+/// `(written inside an expression, referenced by name, passed edges)` of the graph of `entry`: the defs a walked body hands over that no edge reaches, and the
+/// edges that hand a def over (D22). A def handed over by name has an edge, so the second number is 0 when the edges are right.
+fn handed(root: &Path, file: &str, entry: &str) -> (u64, u64, u64) {
     let graph = graph_of(root, file, entry);
     check_invariants(&graph);
     let summary = breakdown(&graph);
-    (summary.handed_written, summary.handed_named)
+    (summary.handed_written, summary.handed_named, summary.passed)
 }
 
 #[test]
-fn handed_a_def_that_is_written_or_named_and_not_called_in_the_tree_is_counted_once_per_shape() {
+fn passed_each_hand_over_is_an_edge_at_its_name_and_a_read_is_not() {
     let root = fixture("handed-over");
-    let rows: [(&str, (u64, u64)); 21] = [
-        // written inside an expression: a method or an arrow property of a literal, a named function expression
-        ("argMethod", (1, 0)),
-        ("localLiteral", (1, 0)),
-        ("namedFunctionExpression", (1, 0)),
-        // written and named: once, as written
-        ("writtenAndNamed", (1, 0)),
-        ("writtenHereNamedInAClosure", (1, 0)),
+    let rows: &[(&str, (u64, u64, u64))] = &[
+        // written inside an expression: step 4's. Counted, no edge yet
+        ("argMethod", (1, 0, 0)),
+        ("localLiteral", (1, 0, 0)),
+        ("namedFunctionExpression", (1, 0, 0)),
+        // written and also named: the name hands it over, so an edge reaches it and it is no longer counted
+        ("writtenAndNamed", (0, 0, 1)),
+        ("writtenHereNamedInAClosure", (0, 0, 1)),
         // referenced by name: a const arrow, a function declaration, an import, a property arrow, a method, a shorthand property
-        ("constArrowByName", (0, 1)),
-        ("declByName", (0, 1)),
-        ("importedByName", (0, 1)),
-        ("propertyArrowByName", (0, 1)),
-        ("methodByName", (0, 1)),
-        ("shorthand", (0, 1)),
-        // not counted: called, not a def (D21 rule 2), an anonymous function, a tagged template's tag (step 6's site)
-        ("literalCalled", (0, 0)),
-        ("constArrowCalled", (0, 0)),
-        ("argArrowProperty", (0, 0)),
-        ("anonymousArrow", (0, 0)),
-        ("taggedTemplate", (0, 0)),
-        // a function of its own name that nothing names is dead code
-        ("neverUsed", (0, 0)),
-        // a callee the engine cannot resolve is still the thing called; a decorator is called
-        ("unresolvedCallee", (0, 0)),
-        ("Decorated", (0, 0)),
-        // handed over here, called by another def of the same tree
-        ("calledElsewhereInTheTree", (0, 0)),
-        // a callee is not a reference
-        ("callsIt", (0, 0)),
+        ("constArrowByName", (0, 0, 1)),
+        ("declByName", (0, 0, 1)),
+        ("importedByName", (0, 0, 1)),
+        ("propertyArrowByName", (0, 0, 1)),
+        ("methodByName", (0, 0, 1)),
+        ("shorthand", (0, 0, 1)),
+        // the positions of a hand-over: an element, an initializer, a return, a concise arrow body, both branches, a logical right side, three wrappers, an
+        // assignment, a `new` argument, a property value
+        ("inArray", (0, 0, 1)),
+        ("inVariable", (0, 0, 1)),
+        ("inReturn", (0, 0, 1)),
+        ("inConciseArrow", (0, 0, 1)),
+        ("inConditional", (0, 0, 2)),
+        ("inLogical", (0, 0, 1)),
+        ("inWrappers", (0, 0, 3)),
+        ("inAssignment", (0, 0, 1)),
+        ("inNew", (0, 0, 1)),
+        ("inProperty", (0, 0, 1)),
+        // named twice in one body: two edges, each at its own site
+        ("namedTwice", (0, 0, 2)),
+        // a name that is read: a condition, `typeof`, a comparison, `!`, a ternary's condition, a property of it, a template: no edge
+        ("readNotHandedOver", (0, 0, 0)),
+        // called, not a def (D21 rule 2), an anonymous function, a tagged template's tag (step 6's site), a decorator, a callee the engine cannot resolve
+        ("literalCalled", (0, 0, 0)),
+        ("argArrowProperty", (0, 0, 0)),
+        ("anonymousArrow", (0, 0, 0)),
+        ("taggedTemplate", (0, 0, 0)),
+        ("unresolvedCallee", (0, 0, 0)),
+        ("Decorated", (0, 0, 0)),
+        // a function of its own name that nothing names is dead code: unreached and uncounted
+        ("neverUsed", (0, 0, 0)),
+        // called and passed in one body: both edges (the pass counts, the call does not)
+        ("constArrowCalled", (0, 0, 1)),
+        // handed over here, and called by another def of the same tree: both are in it
+        ("calledElsewhereInTheTree", (0, 0, 1)),
+        // a callee is not a hand-over
+        ("callsIt", (0, 0, 0)),
     ];
     for (entry, expected) in rows {
-        assert_eq!(handed(&root, "src/main.ts", entry), expected, "{entry}");
+        assert_eq!(handed(&root, "src/main.ts", entry), *expected, "{entry}");
     }
 }
 
 #[test]
-fn handed_jsx_attributes_are_references_by_name_and_an_elements_tag_is_not() {
+fn passed_jsx_attributes_are_hand_overs_and_an_elements_tag_is_not() {
     let root = fixture("handed-over");
     // `onClick={handleClose}` and `{...{ onKeyDown: onKey }}`; `<Close />` is step 6's call, not a hand-over
-    assert_eq!(handed(&root, "src/panel.tsx", "Panel"), (0, 2));
+    assert_eq!(handed(&root, "src/panel.tsx", "Panel"), (0, 0, 2));
+}
+
+#[test]
+fn passed_the_edges_name_the_def_at_the_name_and_a_call_stays_a_call() {
+    let root = fixture("handed-over");
+    let listing = |entry: &str| edges_as_text(&graph_of(&root, "src/main.ts", entry), &root);
+    assert_eq!(
+        listing("constArrowByName"),
+        [
+            "constArrowByName | register | call register",
+            "constArrowByName | handler | pass constArrowByName.<locals>.handler",
+        ]
+    );
+    // called and passed in one body: both edges, each at its own site, in source order
+    assert_eq!(
+        listing("constArrowCalled"),
+        [
+            "constArrowCalled | register | call register",
+            "constArrowCalled | both | pass constArrowCalled.<locals>.both",
+            "constArrowCalled | both | call constArrowCalled.<locals>.both",
+        ]
+    );
+    // named twice: two edges at two sites
+    assert_eq!(
+        listing("namedTwice"),
+        [
+            "namedTwice | register | call register",
+            "namedTwice | handler | pass namedTwice.<locals>.handler",
+            "namedTwice | register | call register",
+            "namedTwice | handler | pass namedTwice.<locals>.handler",
+        ]
+    );
+    // an import, a property arrow of a literal (D21), a method of a class, a shorthand property
+    assert_eq!(
+        listing("importedByName")[1],
+        "importedByName | util | pass util"
+    );
+    assert_eq!(
+        listing("propertyArrowByName")[1],
+        "propertyArrowByName | api.load | pass api.load"
+    );
+    assert_eq!(
+        listing("methodByName")[1],
+        "methodByName | widget.method | pass Widget.method"
+    );
+    assert_eq!(
+        listing("shorthand")[1],
+        "shorthand | f | pass shorthand.<locals>.f"
+    );
+    // three wrappers, three sites, all the name `handler`
+    assert_eq!(
+        listing("inWrappers")
+            .iter()
+            .filter(|l| l.contains("| handler | pass"))
+            .count(),
+        3
+    );
+}
+
+#[test]
+fn passed_the_tree_draws_the_def_under_the_one_that_hands_it_over_marked_passed() {
+    let root = fixture("handed-over");
+    let graph = graph_of(&root, "src/main.ts", "constArrowCalled");
+    let tree = render(&graph, &graph.entries[0], &RenderOptions::default());
+    assert_eq!(
+        to_text(&tree),
+        "constArrowCalled\n  register\n  constArrowCalled.<locals>.both [Passed]\n  constArrowCalled.<locals>.both\n"
+    );
+    // what a handed-over def calls is under it: `calledElsewhere...` hands `sharedHelper` over, and `callsIt` calls it
+    let graph = graph_of(&root, "src/main.ts", "calledElsewhereInTheTree");
+    let tree = render(&graph, &graph.entries[0], &RenderOptions::default());
+    assert_eq!(
+        to_text(&tree),
+        "calledElsewhereInTheTree\n  register\n  sharedHelper [Passed]\n  callsIt\n    sharedHelper\n"
+    );
 }
 
 #[test]

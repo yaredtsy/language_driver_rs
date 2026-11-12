@@ -603,3 +603,41 @@ The 7 of `TaskDetailPanel` are its handlers passed as props (`handleClose`, `han
 source, and `handleClose` is also *called*, but only inside `handleBack`, which is handed over and not walked, so that call is in no tree. The 3 written of the frontend are `useEnhancedTreeLayout`'s
 `onToggle` (the review's loss), `CreateProjectDialog.onSubmit`'s `onSuccess` (Q-TS2's shape) and `FlameGraph`'s `itemData.scale` (a property arrow in a local literal passed on). Of the first 40 of the 89 by name (listed in path order), the ones read are event handlers
 (`onDrop`, `handleCopy`, `onAbort`) and React components used as values (`DynamicIcon`, `CalendarDayButton`, `IconComp`); the rest were not read. "Not called" there means *called by nothing in the project*, since every def is an entry.
+
+### Passed edges, by name (D22 step 3)
+
+A project function named where a value is **handed over** is now an edge: from the def that names it, at the name, to the def's context, **passed** (`SiteCalls::passed`, drawn `[Passed]`, `passed: true` on the wire).
+The solver walks it like a call, so what it calls is in the tree. Pinned in `tests/fixtures/handed-over/` (`main.ts`, `panel.tsx`) and in `walk.rs` (the sites of a body, in source order).
+
+**What is a hand-over is an allowlist, not "named and not called".** The counter before this step took every named, non-called reference, which was fine for a number and wrong for an edge: `if (handler)`, `typeof handler`,
+`handler === other`, `!handler` and `handler.length` read a def, they do not give it to anything, and an edge would say they did. `is_handed_over` (`sem.rs`) says where a value is handed over: an argument of a call or
+`new`, a property value (and `{ f }`), an array element, an initializer or the right of `=`, a return or an arrow's concise body, a JSX attribute value or child; through `(f)`, `f as T`, `f satisfies T`, `<T>f`, `f!`, a
+conditional's branches and the right of `&&`, `||`, `??`. A callee, a tag, a decorator and a condition are not on it. This replaced the "walk the callee with a flag" suppression of the counter, which the allowlist makes
+unnecessary. *Our choice, not the engine's;* the engine has no notion of it. It is narrow on purpose: a position not listed is not an edge, and shows nowhere (it is not counted either).
+
+**What the checker says.** The name is resolved with the checker's symbol (`get_shorthand_assignment_value_symbol` for `{ f }`, whose symbol for the name is the property) and the same `callable_declarations` a call uses, then kept
+if it is a **function with a body of the project**. Each place a def is named is its own edge (`namedTwice`: two). A def both called and named in one body has both edges (`constArrowCalled`).
+
+**Mutation-checked**: every guard of the allowlist (a ternary's condition, either side of an operator, a comparison, a callee, any other position, the `!` wrapper, the concise arrow body, the shorthand), the source order of a
+body's sites and "a hand-over is passed, not a call" each turns a named row red. Two were caught only after a row was added for them: a def on the **left** of `&&` (`handler && 1`), and the order of `Summary.sites`, which the graph
+and the renderer both sort away, so only a test of `walk::body` itself sees it.
+
+**The numbers** (V-NOC frontend, 2026-11-12):
+
+| | before | after |
+|---|---|---|
+| `TaskDetailPanel`: edges | 81 call, 2 construct, 111 external, 38 unresolved | 84 call, 2 construct, 122 external, 48 unresolved, **15 passed** |
+| `TaskDetailPanel`: contexts | 41 | **50** |
+| `TaskDetailPanel`: graph time | 16–18 ms | 16 ms (23 once in five runs) |
+| `TaskDetailPanel`: handed over, not called | 0 written, 7 by name | 0 written, **0 by name** |
+| whole frontend (1084 entries): edges | 1185 call, 3 construct, 2399 external, 1009 unresolved | the same, **143 passed** |
+| whole frontend: handed over, not called | 3 written, 89 by name | 3 written, **0 by name** |
+| whole frontend: graph time | 200 ms | 132 ms (a different run, not a speed-up: the same walks plus the edges) |
+
+The 7 handlers of `TaskDetailPanel` are edges (8 passed nodes at the top, `navigateToTask` twice), and **`handleClose`'s call inside `handleBack` is in the tree**: `handleBack [Passed]` has `handleClose` under it, and
+`handleClose [Passed]` is its own node, since `onClick={handleClose}` hands it over too. The extra 9 contexts are the bodies the hand-overs now reach (the 7 handlers, `taskMutationError`, which `useTasks.ts` hands to a mutation's `onError` seven times
+(seven of the passed nodes), and what they reach; I did not list the ninth); the extra 10 unresolved are all `function_typed_value`, state setters called inside those bodies, which were not walked before. The graph is bigger and no slower.
+
+`def_named_not_called` is 0 **because every named hand-over now has an edge**; it is kept as a cross-check (a nonzero value would mean the edge builder and the counter disagree), not as evidence of coverage. What is
+still counted is what has no edge: a def written inside an expression (`def_written_not_called`, step 4), and step 5 adds what no step covers (an element access, `f.bind(…)`, `f.call(…)`, a class named as a value).
+
