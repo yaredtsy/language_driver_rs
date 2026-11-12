@@ -106,15 +106,21 @@ goes last: nothing that was `<` or `>` before changes.
 | Where | Change |
 |---|---|
 | `sem.rs` | `Sem::likely_def(ty, file) -> Option<Type<'db>>`: `ty` is `Type::Intersection`, and its positive parts are **exactly one** type whose shape is `Function`, `BoundMethod` or `Class`, plus one or more of shape `Unknown`. It returns that one part. Anything else is `None`. Negative parts are ignored: they say what a value is not, which does not change which def was found `[check]` |
-| `interp/call.rs`, `or_engine_callee` | today: exact or not. New third answer: when the type (or every member of a union) is exact **or** `likely_def` gives a part, and at least one is likely, the values are `lift` of the exact parts and of the likely parts, and the site is **likely** |
-| `interp/call.rs`, `call_values` · `interp/defer.rs`, `DeferredOp::Call` | the parameter and field `named: bool` becomes a small enum, `How { Named, Typed, Likely }`. `Likely` gives `Basis::Likely` for every target the site calls (`Call`, `Construct`, `External`); the two others are today's `true` and `false`. No other line of `call_values` changes |
-| `interp/core_graph.rs` | a counter, `Stats.language["likely_callee"]`: the number of edges with `Basis::Likely` |
+| `interp/call.rs`, `or_engine_callee` | today: exact or not. New third answer: when the type (or every member of a union) is exact **or** `likely_def` gives a part, and at least one is likely, the values are `lift` of the exact parts and of the likely parts, and the site is **likely**. It returns `(Values, bool)`: the values, and whether the site is likely |
+| `interp/call.rs`, `eval_call`, `call_values`, `call_project`, `call_accessor` · `interp/defer.rs`, `DeferredOp::Call` | the parameter and field `named: bool` becomes a small enum, `How { Named, Typed, Likely }` (in `call.rs`, `pub(crate)`). `eval_call` sets it: `Likely` when `or_engine_callee` said so, else `Named` when `names_a_def` (summary mode only, as today), else `Typed`. `Likely` gives `Basis::Likely` for every target the site calls: `Call` (functions **and** methods: the methods loop passes `How::Likely` instead of today's `false`), `Construct` and `External`. In `call_project` the `Likely` arm is the **first** arm of the basis `match`, before `Name`, `Path` and `Type`. `Named` and `Typed` are today's `true` and `false`; `call_accessor` passes `Typed`. No other line of `call_values` changes |
+| `interp/core_graph.rs` | a counter, `Stats.language["likely_callee"]`: the number of edges with `Basis::Likely`, counted in the loop that builds the edges (next to `unresolved`), and inserted in `stats` **only when it is above 0**, as `effects_applied` is |
 
 - The basis is the site's, not each value's. A site where the walk holds one callable value and the engine adds a likely one is all
   `Likely`: rare, and the mark errs on the side of doubt.
-- `sem.rs` is the only place that knows how the engine writes the doubt (rule 4). `IntersectionType::iter_positive` is public; nothing is
-  added to the vendored engine `[check]`.
-- The counter is a new key in the `language` map, so the stats line of **every `.graph` snapshot gains one key** and nothing else.
+- `sem.rs` is the only place that knows how the engine writes the doubt (rule 4). `Type::Intersection` and
+  `IntersectionType::iter_positive` are public (`ty_python_semantic::types`, `pub use self::set_theoretic::IntersectionType`, read at
+  `43cf9a2`); nothing is added to the vendored engine.
+- The values stay as they are everywhere else: `lift` and `shape` do not change, so a context key never sees the doubt. Only the callee
+  position reads it, as R3's rule does.
+- **No snapshot moves.** The counter is absent when 0, so the stats line of a `.graph` snapshot is unchanged. No fixture with an
+  `# expect:` block has a base the engine cannot see `[check]`, so no edge moves either. The fixture harness's `summary_tree` drops
+  `Mark::Likely` (its `_ => None` arm); that is right, since the `# expect:` blocks do not speak of it.
+- Inline mode goes through `eval_call` too, so it also calls the likely def. It has no basis, so it shows the call without a mark.
 
 ## 4. The fixtures
 
@@ -172,8 +178,8 @@ The TypeScript session works in `core/` too: the owner coordinates before this s
 | | |
 |---|---|
 | Change | §3.2 |
-| Failing tests | `tests/api.rs`, project `11-likely-callee`, with `call_graph` and `call_wire`. **Red today, each because the site is `Unresolved`:** (a) `classmethod.py`: an edge to a context of `Mixin.find` with basis `Likely`; `stats.language["likely_callee"]` is 1; the wire's child has `"likely"` in `marks` and `leaf` under it without the mark. (b) `instance.py`: the same for `Mixin.save`. (c) `built_here.py`: an edge to `Mixin.save`. **Green before and after:** (d) `own.py`: an edge to `Model.own`, not `Likely`, counter 0. (e) `either_unknown.py` and (f) `untyped.py`: one `Unresolved` edge, counter 0. **Unit, `sem.rs`:** (g) `likely_def` on the type of `Model.find` gives the bound method; on the type of `Model.own` and on `Unknown` it gives `None` |
-| Snapshots | every `.graph` snapshot gains the key `"likely_callee": 0` in its stats line. Nothing else may change: if an edge or a wire line moves, stop and report it |
+| Failing tests | `tests/api.rs`, project `11-likely-callee`, with `call_graph` and `call_wire`. **Red today, each because the site is `Unresolved`:** (a) `classmethod.py`: an edge to a context of `Mixin.find` with basis `Likely`; `stats.language["likely_callee"]` is 1; the wire's child has `"likely"` in `marks` and `leaf` under it without the mark. (b) `instance.py`: the same for `Mixin.save`. (c) `built_here.py`: an edge to `Mixin.save`. **Green before and after:** (d) `own.py`: an edge to `Model.own`, not `Likely`, and no `likely_callee` key. (e) `either_unknown.py` and (f) `untyped.py`: one `Unresolved` edge, and no `likely_callee` key. **Unit, `sem.rs`:** (g) `likely_def` on the type of `Model.find` gives the bound method; on the type of `Model.own` and on `Unknown` it gives `None` |
+| Snapshots | **none changes** (§3.2). If one does, stop and report the fixture, the site, before and after: do not accept it |
 | Docs | D28 in `docs/07-decisions-and-questions.md`. CLAUDE.md rule 8 gains "(one stated exception: D28)". [`07-the-root.md`](07-the-root.md) §6, first row: "R2, this file". `docs/README.md`. `languages/python/ENGINE.md`: the engine writes "found past an unknown base" as an intersection with `Unknown`, and which accessor reads it |
 | Proof | `cargo test` in `languages/python`; `cargo clippy -p python-analysis --all-targets -- -D warnings`. By hand, the project of §1 (the owner gives the folder): entry `get_files` of `app/api/file.py` has more than one context, line 162 is not in the unresolved list, and its edge is `Likely`. Report the helper's tally for `FilesResource.post` before and after |
 
@@ -195,11 +201,11 @@ After R2b is pushed and CI is green, the V-NOC driver takes the new `rev`, and i
 |---|---|---|
 | 1 | Nothing in core, TypeScript or Python orders or compares `Basis` so that a fourth variant, written last, changes an answer | R2a. **Holds.** The only ordering is the derived `Ord` of `EdgeTo` and `Edge` (the sort of `Graph::edges`), which a new last variant moves only between two edges that differ in nothing but the basis. The only reads of a basis are `EdgeTo::basis()` (one test in `solve.rs`) and the renderer's new `== Basis::Likely`; no `match` on `Basis` outside core, and none in core had to change. Python's `summary_tree` matches `Mark` with a `_ => None` arm, so it drops `Likely`: nothing emits it yet, R2b decides |
 | 2 | The text form and the wire take a new mark with no other change (`Mark::as_str`, the wire's `marks`) | R2a tests (c), (d). **Holds, with one correction.** `to_text` and `Frame::marks` took it with no change. The wire writes **`"likely"`**, lowercase, like every mark (the plan said `"Likely"`). The V-NOC driver's agent should be told that spelling (claim 8) |
-| 3 | With an unresolved import as a base, the engine types `Model.find` as `(bound method …) & Unknown`, an intersection whose positive parts are the method and `Unknown` | R2b test (g); if the fixture gives another type, find a base that gives this one and report |
-| 4 | `Type::Intersection` and `iter_positive` are reachable from `sem.rs` with no change to the vendored engine | R2b |
-| 5 | A method defined in the class itself, before the unknown base, is typed exactly | R2b test (d) |
-| 6 | The walk's own lookup (`eval_attribute` on a class or an object it holds) gives a value `or_engine_callee` sees as "cannot call" in all three red fixtures | R2b tests (a) to (c) |
-| 7 | Ignoring negative parts is right: say whether any intersection with a negative part reaches `likely_def` in the test run | R2b, report only |
+| 3 | With an unresolved import as a base, the engine types `Model.find` as `(bound method …) & Unknown`, an intersection whose positive parts are the method and `Unknown` | R2b test (g). **Holds.** `Model.find` is `(bound method <class 'Model'>.find() -> Unknown) & Unknown` (`-> Unknown`: the method has no annotation), and `likely_def` gives `bound method <class 'Model'>.find() -> Unknown`, whose def is `base.Mixin.find`. `Model.save` on an object reads the same way |
+| 4 | `Type::Intersection` and `iter_positive` are reachable from `sem.rs` with no change to the vendored engine | R2b. **Holds.** Nothing in `vendor/` changed. `iter_negative` is `pub(crate)`: negative parts cannot be read from `sem.rs`, only ignored |
+| 5 | A method defined in the class itself, before the unknown base, is typed exactly | R2b test (d). **Holds.** `m.own` is `bound method Model.own() -> Unknown`: an edge with `Basis::Type`, no `likely_callee` key |
+| 6 | The walk's own lookup (`eval_attribute` on a class or an object it holds) gives a value `or_engine_callee` sees as "cannot call" in all three red fixtures | R2b tests (a) to (c). **Holds.** All three were `Unresolved` before the change and are `Likely` edges after it, which only `or_engine_callee` makes. In `built_here.py` the construction is `Name` (the walk holds the class) and the call to `save` is `Likely` |
+| 7 | Ignoring negative parts is right: say whether any intersection with a negative part reaches `likely_def` in the test run | R2b. **None did.** With a print in `likely_def` (removed after), the whole Python test run had two intersections reach it, both from `11-likely-callee`: `Model.find` and `Model.save`, as above, with no `~` part. No fixture with an `# expect:` block reached it (§3.2's `[check]`) |
 | 8 | The V-NOC driver tolerates a mark it does not know | `vnoc`, not here |
 
 Next: [`../06-roadmap.md`](../06-roadmap.md)

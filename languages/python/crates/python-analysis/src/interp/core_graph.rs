@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use analyzer_core::graph::{
-    Context, ContextId as Id, Cut as CCut, DefInfo, Edge, EdgeTo, External, Graph, Reason, Root,
-    Site, Stats as CStats, Status as CStatus,
+    Basis, Context, ContextId as Id, Cut as CCut, DefInfo, Edge, EdgeTo, External, Graph, Reason,
+    Root, Site, Stats as CStats, Status as CStatus,
 };
 use analyzer_core::outline::DefKind;
 use analyzer_core::text::Span;
@@ -69,7 +69,10 @@ fn status(s: &Solver<'_>, c: ContextId) -> CStatus {
 /// Why Python's `Unresolved` edges are: the callee's value is `Unknown`, or no value at all. One reason, and the counter of the same name.
 const UNKNOWN_CALLEE: &str = "unknown_callee";
 
-fn stats(old: &Stats, unresolved: u64) -> CStats {
+/// The edges whose def the engine found past a base it could not see (D28, `Basis::Likely`). Absent when there are none.
+const LIKELY_CALLEE: &str = "likely_callee";
+
+fn stats(old: &Stats, unresolved: u64, likely: u64) -> CStats {
     let mut cuts = BTreeMap::new();
     let mut add = |k: CCut, n: u32| {
         if n > 0 {
@@ -106,6 +109,9 @@ fn stats(old: &Stats, unresolved: u64) -> CStats {
         }
     }
     out.language.insert(UNKNOWN_CALLEE.to_owned(), unresolved);
+    if likely > 0 {
+        out.language.insert(LIKELY_CALLEE.to_owned(), likely);
+    }
     out
 }
 
@@ -140,7 +146,7 @@ pub(crate) fn core_graph<'db>(s: &Solver<'db>, entries: &[EntryRoot<'db>]) -> Gr
     let ids: FxHashMap<ContextId, Id> = reached.iter().map(|&c| (c, s.stable_id(c))).collect();
     // 3. the rows; `Graph::new` sorts them and keeps one per definition
     let (mut defs, mut contexts, mut edges) = (Vec::new(), Vec::new(), Vec::new());
-    let mut unresolved = 0u64;
+    let (mut unresolved, mut likely) = (0u64, 0u64);
     for entry in entries {
         if let EntryRoot::Construct { class, .. } = entry {
             defs.push(def_info(s, *class));
@@ -183,6 +189,9 @@ pub(crate) fn core_graph<'db>(s: &Solver<'db>, entries: &[EntryRoot<'db>]) -> Gr
                         EdgeTo::Unresolved(Reason::new(UNKNOWN_CALLEE))
                     }
                 };
+                if to.basis() == Some(Basis::Likely) {
+                    likely += 1;
+                }
                 edges.push(Edge::new(ids[&c].clone(), site, to));
             }
         }
@@ -202,6 +211,6 @@ pub(crate) fn core_graph<'db>(s: &Solver<'db>, entries: &[EntryRoot<'db>]) -> Gr
         defs,
         contexts,
         edges,
-        stats(&s.stats, unresolved),
+        stats(&s.stats, unresolved, likely),
     )
 }

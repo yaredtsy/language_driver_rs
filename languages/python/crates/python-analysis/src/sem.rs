@@ -497,6 +497,29 @@ impl<'db> Sem<'db> {
         }
     }
 
+    /// The def the engine found past something it could not see (D28): `ty` is an intersection whose positive parts are exactly one
+    /// function, bound method or class, and `Unknown` beside it. That is how the engine writes a method found after a base class it
+    /// cannot resolve: if that base defines the name, its own runs instead. The one part is returned; anything else is `None`.
+    pub(crate) fn likely_def(&self, ty: Type<'db>, file: ProgramFile<'db>) -> Option<Type<'db>> {
+        // Negative parts say what the value is not; they do not change which def was found, so only the positive ones are read.
+        let Type::Intersection(parts) = ty else {
+            return None;
+        };
+        let (mut def, mut unknown) = (None, false);
+        for part in parts.iter_positive(self.db) {
+            match self.shape(part, file) {
+                Shape::Unknown => unknown = true,
+                Shape::Function(_) | Shape::BoundMethod { .. } | Shape::Class(_)
+                    if def.is_none() =>
+                {
+                    def = Some(part)
+                }
+                _ => return None,
+            }
+        }
+        def.filter(|_| unknown)
+    }
+
     /// The docstring `ID:` of a project `def` or `class`. The one reader `scan` uses.
     pub(crate) fn docstring_id(&self, def: Definition<'db>) -> Option<String> {
         if !self.is_project(def) {
@@ -1556,5 +1579,95 @@ mod plain_paths {
         bytes.push(0xff);
         let path = PathBuf::from(std::ffi::OsString::from_vec(bytes));
         assert_eq!(plain(path.clone()), path);
+    }
+}
+
+#[cfg(test)]
+mod likely_def_tests {
+    //! `Sem::likely_def` on the engine's own types, in the `11-likely-callee` project: the one reader of how the engine writes "found
+    //! past an unknown base" (D28).
+    use super::{Sem, Type, open, open_project};
+    use analyzer_core::edit::MarkerStyle;
+    use ruff_db::parsed::parsed_module;
+    use ruff_db::system::SystemPath;
+    use ruff_python_ast::visitor::source_order::{SourceOrderVisitor, TraversalSignal, walk_body};
+    use ruff_python_ast::{AnyNodeRef, ExprRef};
+    use ty_project::ProjectDatabase;
+    use ty_python_core::ProgramFile;
+    use ty_python_semantic::types::ProgramEnvironment;
+
+    const DIR: &str = "tests/fixtures/11-likely-callee/python";
+
+    /// The project, leaked to `'static`: only a `#[test]` calls it, which is short-lived.
+    fn project() -> &'static ProjectDatabase {
+        let dir = std::fs::canonicalize(DIR).unwrap();
+        let dir = SystemPath::from_std_path(&dir).unwrap();
+        Box::leak(Box::new(open_project(dir).unwrap()))
+    }
+
+    /// The engine's type of the first attribute `.attr` in `file`.
+    fn attribute_type<'db>(
+        db: &'db ProjectDatabase,
+        sem: &Sem<'db>,
+        file: &str,
+        attr: &str,
+    ) -> (Type<'db>, ProgramFile<'db>) {
+        struct Finder<'a> {
+            attr: &'a str,
+            found: Option<ruff_python_ast::ExprAttribute>,
+        }
+        impl<'n> SourceOrderVisitor<'n> for Finder<'_> {
+            fn enter_node(&mut self, node: AnyNodeRef<'n>) -> TraversalSignal {
+                if let AnyNodeRef::ExprAttribute(a) = node
+                    && self.found.is_none()
+                    && a.attr.as_str() == self.attr
+                {
+                    self.found = Some(a.clone());
+                }
+                TraversalSignal::Traverse
+            }
+        }
+        let path = std::fs::canonicalize(format!("{DIR}/{file}")).unwrap();
+        let (_, pf) = open(db, SystemPath::from_std_path(&path).unwrap()).unwrap();
+        let parsed = parsed_module(db, pf.python_file(db)).load(db);
+        let mut finder = Finder { attr, found: None };
+        walk_body(&mut finder, &parsed.syntax().body);
+        let found = finder.found.expect("the fixture has the attribute");
+        (sem.type_of(&sem.model(pf), ExprRef::from(&found)), pf)
+    }
+
+    fn shown<'db>(db: &'db ProjectDatabase, pf: ProgramFile<'db>, ty: Type<'db>) -> String {
+        ty.display(db, &ProgramEnvironment::from_file(pf))
+            .to_string()
+    }
+
+    /// A classmethod found past the unknown base: the engine's type is the bound method `&` `Unknown`, and the bound method is the part.
+    #[test]
+    fn the_part_of_a_def_found_past_an_unknown_base_is_the_def() {
+        let db = project();
+        let sem = Sem::new(db, MarkerStyle::docstring("ID"));
+        let (ty, pf) = attribute_type(db, &sem, "classmethod.py", "find");
+        assert_eq!(
+            shown(db, pf, ty),
+            "(bound method <class 'Model'>.find() -> Unknown) & Unknown"
+        );
+        let part = sem.likely_def(ty, pf).expect("one def beside Unknown");
+        assert_eq!(
+            shown(db, pf, part),
+            "bound method <class 'Model'>.find() -> Unknown"
+        );
+        let def = sem.callee_definition(part, pf).expect("a bound method");
+        assert_eq!(sem.qname(def), "base.Mixin.find");
+    }
+
+    /// A method found before the unknown base is exact, and `Unknown` alone has no part.
+    #[test]
+    fn an_exact_def_and_unknown_have_no_part() {
+        let db = project();
+        let sem = Sem::new(db, MarkerStyle::docstring("ID"));
+        let (ty, pf) = attribute_type(db, &sem, "own.py", "own");
+        assert_eq!(shown(db, pf, ty), "bound method Model.own() -> Unknown");
+        assert!(sem.likely_def(ty, pf).is_none());
+        assert!(sem.likely_def(Type::unknown(), pf).is_none());
     }
 }

@@ -99,6 +99,15 @@ or `discover` fails, it uses `ProjectMetadata::new(<name of dir>, dir)`: the pro
   (and unset) is off. Off, `discover` runs no `uv` process. On, it runs `uv` once per `discover`, and the V-NOC driver opens the project on every
   request. A uv workspace root above `dir` is a parent root, so it is ignored like any other. Read, not run.
 
+## A def found past an unknown base (D28)
+
+The engine writes "found past a base it cannot see" as an intersection (`Type::Intersection`) whose positive parts are the def it found and
+`Unknown`: `Model.find`, with `class Model(Hidden, Mixin)` and `Hidden` an unresolved import, is
+`(bound method <class 'Model'>.find() -> Unknown) & Unknown` (R2b test, `sem.rs`). `Sem::likely_def` reads it with
+`IntersectionType::iter_positive`, which is public (`ty_python_semantic::types`); nothing is added to the copy. `iter_negative` is
+`pub(crate)`, so negative parts cannot be read from here: they are ignored. A method the class defines itself, before the unknown base,
+is typed exactly (`bound method Model.own() -> Unknown`).
+
 ## Toolchain
 
 `vendor/ruff/rust-toolchain.toml` says 1.98.0 and ruff's `rust-version` is 1.96. It is ignored here (the repo root's `rust-toolchain.toml` decides,

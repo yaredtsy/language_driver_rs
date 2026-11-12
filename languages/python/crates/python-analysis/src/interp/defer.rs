@@ -3,6 +3,7 @@ use ruff_index::IndexVec;
 use smallvec::smallvec;
 
 use crate::interp::bind::EvaluatedArgs;
+use crate::interp::call::How;
 use crate::interp::env::Env;
 use crate::interp::key::ContextId;
 use crate::interp::solver::{Got, Solver};
@@ -32,8 +33,8 @@ pub(crate) enum DeferredOp<'db> {
         fallback: Values<'db>,
         /// The `CallEdge` pushed at this point of the walk, refilled by every replay.
         edge: usize,
-        /// The callee expression names a def or a class (`Basis::Name`).
-        named: bool,
+        /// How the site knows what it calls (`How::Named`: the callee expression names a def or a class).
+        how: How,
     },
 }
 
@@ -84,7 +85,7 @@ impl<'db> Walk<'db> {
                     args,
                     fallback,
                     edge,
-                    named,
+                    how,
                 } => {
                     let now = self.now.as_ref().expect("set above");
                     let callee = substitute(&callee, now);
@@ -105,7 +106,7 @@ impl<'db> Walk<'db> {
                         None,
                         &fallback,
                         Some(edge),
-                        named,
+                        how,
                         &mut d.before.clone(),
                     )
                 }

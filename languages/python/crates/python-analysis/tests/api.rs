@@ -597,3 +597,85 @@ fn a_def_with_unknown_beside_it_stays_unresolved() {
         "{edges:?}"
     );
 }
+
+const LIKELY_CALLEE: &str = "tests/fixtures/11-likely-callee/python";
+
+/// The graph of `run` of `file` in the `11-likely-callee` project.
+fn likely_graph(file: &str) -> Graph {
+    let project = Project::open(LIKELY_CALLEE).unwrap();
+    call_graph(&project, file, &first("run"), &Options::default()).unwrap()
+}
+
+/// The unmerged wire of `run` of `file` in the `11-likely-callee` project.
+fn likely_wire(file: &str) -> python_analysis::Frame {
+    let project = Project::open(LIKELY_CALLEE).unwrap();
+    call_wire(&project, file, &first("run"), &Options::default(), false).unwrap()
+}
+
+/// The `likely_callee` counter, `None` when the graph has no such key.
+fn likely_count(graph: &Graph) -> Option<u64> {
+    graph.stats.language.get("likely_callee").copied()
+}
+
+/// The one child of `run` carries the mark, and `leaf` under it does not: the mark is on that node only.
+fn assert_marked_once(file: &str, method: &str) {
+    let frame = likely_wire(file);
+    assert_eq!(frame.children.len(), 1, "{file}");
+    let call = &frame.children[0];
+    assert_eq!(call.target_qname, method);
+    assert_eq!(call.marks, ["likely"]);
+    assert_eq!(call.children.len(), 1, "{file}");
+    assert_eq!(call.children[0].target_qname, "base.leaf");
+    assert!(call.children[0].marks.is_empty(), "{file}");
+}
+
+#[test]
+fn a_classmethod_found_past_an_unknown_base_is_a_likely_call() {
+    let graph = likely_graph("classmethod.py");
+    assert_eq!(edges_of_entry(&graph), ["base.Mixin.find Likely"]);
+    assert_eq!(likely_count(&graph), Some(1));
+    assert_eq!(graph.stats.unresolved, 0);
+    assert_marked_once("classmethod.py", "base.Mixin.find");
+}
+
+#[test]
+fn a_method_found_past_an_unknown_base_is_a_likely_call() {
+    let graph = likely_graph("instance.py");
+    assert_eq!(edges_of_entry(&graph), ["base.Mixin.save Likely"]);
+    assert_eq!(likely_count(&graph), Some(1));
+    assert_eq!(graph.stats.unresolved, 0);
+    assert_marked_once("instance.py", "base.Mixin.save");
+}
+
+#[test]
+fn a_method_found_past_an_unknown_base_on_an_object_built_here_is_a_likely_call() {
+    let graph = likely_graph("built_here.py");
+    // the class is named, so its construction is certain; the method on the new object is the engine's, past the unknown base
+    assert_eq!(
+        edges_of_entry(&graph),
+        ["new base.Model Name init=-", "base.Mixin.save Likely"].map(String::from)
+    );
+    assert_eq!(likely_count(&graph), Some(1));
+    assert_eq!(graph.stats.unresolved, 0);
+}
+
+#[test]
+fn a_method_found_before_the_unknown_base_is_certain() {
+    let graph = likely_graph("own.py");
+    assert_eq!(edges_of_entry(&graph), ["base.Model.own Type"]);
+    assert_eq!(likely_count(&graph), None);
+}
+
+#[test]
+fn a_union_with_unknown_stays_unresolved() {
+    let graph = likely_graph("either_unknown.py");
+    assert_eq!(edges_of_entry(&graph), ["unresolved unknown_callee"]);
+    assert_eq!(likely_count(&graph), None);
+}
+
+#[test]
+fn an_untyped_receiver_stays_unresolved() {
+    let graph = likely_graph("untyped.py");
+    assert_eq!(edges_of_entry(&graph), ["unresolved unknown_callee"]);
+    assert_eq!(likely_count(&graph), None);
+}

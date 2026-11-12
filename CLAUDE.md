@@ -52,7 +52,7 @@ Toolchain: 1.99.1 (`rust-toolchain.toml`). Run `cargo fmt` and `cargo clippy -p 
 7. **The answer is a graph.** An analyzer's public call function returns `analyzer_core::graph::Graph`; a tree is always
    `analyzer_core::render::render(&graph, …)`. Never return a tree directly.
 8. **Never guess, never fail.** Fallible analysis steps return `Option`, not `Result`. An unknown call target is an `Unresolved` edge, never
-   dropped and never guessed. Every limit that cuts is marked and counted in `Stats`.
+   dropped and never guessed (one stated exception: D28). Every limit that cuts is marked and counted in `Stats`.
 9. **Same input, same output.** Never iterate a hash map to produce output; sort by stable ids, or by (file, offset).
 10. **Qualname rules are frozen at a language's first tag.** They are stored in users' files. Adding a kind of def is fine; changing how an
     existing def is named is not.

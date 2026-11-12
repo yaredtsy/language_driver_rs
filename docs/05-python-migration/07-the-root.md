@@ -131,7 +131,7 @@ engine said there:
 
 | Pattern | Example | What the engine says | Today |
 |---|---|---|---|
-| a method found after a base class that is not resolvable | `File.get_multiple_by_owner(…)`, `class File(SAModel, OwnedResourceMixin)`, the method is the mixin's | `(bound method <class 'File'>.get_multiple_by_owner…) & Unknown` | `Unresolved` ("a type that names no def") |
+| a method found after a base class that is not resolvable | `File.get_multiple_by_owner(…)`, `class File(SAModel, OwnedResourceMixin)`, the method is the mixin's | `(bound method <class 'File'>.get_multiple_by_owner…) & Unknown` | R2: [`09-a-def-past-an-unknown-base.md`](09-a-def-past-an-unknown-base.md), a likely call (`Unresolved` before it, "a type that names no def") |
 | a call through what a decorator returns | `require_session(self._post_common_logic)(…)`, `def require_session(func: F) -> F` | the bound method, a def of the project | R3: [`08-the-engines-callee.md`](08-the-engines-callee.md) (`Unresolved` before it) |
 | a def under `functools.wraps` | `File.acreate(…)` | `_Wrapped[…]` | `Unresolved` |
 | a method of an untyped value | `row.split(…)` | `Unknown` | `Unresolved`; a library call, not in the tree anyway |

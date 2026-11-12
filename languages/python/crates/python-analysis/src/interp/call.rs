@@ -13,10 +13,22 @@ use crate::interp::value::{ActivationId, OriginId, OriginKey};
 use crate::interp::walk::{Walk, contains_yield};
 use crate::sem::Definition;
 use crate::sem::Shape;
+use crate::sem::Type;
 use analyzer_core::graph::Basis;
 use ruff_python_ast::{Expr, ExprCall, ExprRef, StmtFunctionDef};
 use ruff_text_size::{Ranged, TextRange};
 use smallvec::{SmallVec, smallvec};
+
+/// How a call site knows what it calls: the basis of every edge it has.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum How {
+    /// The callee expression names a def or a class (`Basis::Name`).
+    Named,
+    /// Through the walk's values or the engine's exact type (`Basis::Type`, or `Basis::Path` for what the walk built).
+    Typed,
+    /// The engine found the def past a base it could not see (D28, `Basis::Likely`).
+    Likely,
+}
 
 pub(crate) struct InlineRun<'db> {
     pub children: Vec<Node>,
@@ -33,10 +45,16 @@ impl<'db> Walk<'db> {
         env: &mut Env<'db>,
     ) -> Values<'db> {
         let callees = self.eval(sol, &call.func, env);
-        let callees = self.or_engine_callee(sol, &call.func, callees);
+        let (callees, likely) = self.or_engine_callee(sol, &call.func, callees);
         let args = self.eval_arguments(sol, &call.arguments, env);
         let site = SiteId::new(call.range(), self.frame.def_start);
-        let named = sol.opts.mode == Mode::Summary && self.names_a_def(sol, &call.func);
+        let how = if likely {
+            How::Likely
+        } else if sol.opts.mode == Mode::Summary && self.names_a_def(sol, &call.func) {
+            How::Named
+        } else {
+            How::Typed
+        };
         if sol.opts.mode == Mode::Summary && self.needs_defer(sol, &callees, &args, env) {
             // It can't be keyed yet: record it, and find its value in the fixpoint.
             let ty = sol.sem.type_of(&self.frame.model, ExprRef::from(call));
@@ -53,7 +71,7 @@ impl<'db> Walk<'db> {
                     args,
                     fallback,
                     edge,
-                    named,
+                    how,
                 },
                 env,
             );
@@ -67,7 +85,7 @@ impl<'db> Walk<'db> {
             Some(call),
             &Values::new(),
             None,
-            named,
+            how,
             env,
         )
     }
@@ -80,12 +98,15 @@ impl<'db> Walk<'db> {
     /// The engine's type is taken only when it is exact: a function, a bound method or a class (`Function`, `BoundMethod`, `Class`), or a
     /// union of only those. Anything else (a `Callable`, a type variable, `Unknown` or a union with it) leaves `walked` as it is, so the site
     /// stays `Unresolved`. Values the walk can call are kept, and the engine is not asked when there are none to replace.
+    ///
+    /// One more answer is taken (D28): a def the engine found past a base it could not see (`Sem::likely_def`), alone or as a member of
+    /// such a union. Its def is lifted, and the `bool` says the site is likely. A union with plain `Unknown` still leaves `walked` as it is.
     fn or_engine_callee(
         &mut self,
         sol: &mut Solver<'db>,
         callee: &Expr,
         walked: Values<'db>,
-    ) -> Values<'db> {
+    ) -> (Values<'db>, bool) {
         let file = self.frame.file;
         let cannot_call = |v: &AbstractValue<'db>| match *v {
             AbstractValue::Unknown => true,
@@ -93,7 +114,7 @@ impl<'db> Walk<'db> {
             _ => false,
         };
         if !walked.iter().any(cannot_call) {
-            return walked;
+            return (walked, false);
         }
         let t = sol.sem.type_of(&self.frame.model, ExprRef::from(callee));
         let exact = |t| {
@@ -102,18 +123,42 @@ impl<'db> Walk<'db> {
                 Shape::Function(_) | Shape::BoundMethod { .. } | Shape::Class(_)
             )
         };
-        let all_exact = match sol.sem.shape(t, file) {
-            Shape::Union(members) => !members.is_empty() && members.into_iter().all(exact),
-            _ => exact(t),
+        let members = match sol.sem.shape(t, file) {
+            Shape::Union(members) => members,
+            _ => vec![t],
         };
-        if !all_exact {
-            return walked;
+        // Each member is exact, or a def the engine found past a base it could not see (D28): then the site is likely.
+        let mut likely: Vec<Type<'db>> = Vec::new();
+        for &m in &members {
+            if exact(m) {
+                continue;
+            }
+            match sol.sem.likely_def(m, file) {
+                Some(part) => likely.push(part),
+                None => return (walked, false),
+            }
         }
+        if members.is_empty() {
+            return (walked, false);
+        }
+        let is_likely = !likely.is_empty();
+        // all exact: the type as it is; else the exact members and the likely parts, lifted one by one
+        let lifted: Vec<Type<'db>> = if is_likely {
+            members
+                .into_iter()
+                .filter(|&m| exact(m))
+                .chain(likely)
+                .collect()
+        } else {
+            vec![t]
+        };
         // `cannot_call` and `exact` read `sol`; `lift` needs it mutably, so they are finished with before it.
         let mut out: Values<'db> = walked.into_iter().filter(|v| !cannot_call(v)).collect();
-        out.extend(self.lift(sol, t));
+        for m in lifted {
+            out.extend(self.lift(sol, m));
+        }
         dedup(&mut out);
-        out
+        (out, is_likely)
     }
 
     /// Does the code name what this callee expression calls? ty says: its type is a function or a class (the `def` or `class` itself), or a
@@ -228,7 +273,7 @@ impl<'db> Walk<'db> {
         call: Option<&ExprCall>,
         fallback: &Values<'db>,
         edge: Option<usize>,
-        named: bool, // the callee expression names a def or a class: `Basis::Name` for what it calls
+        how: How, // the basis of what it calls: `Named` when the callee expression names a def or a class
         env: &mut Env<'db>,
     ) -> Values<'db> {
         // One node per function, in definition order: the join order is an accident.
@@ -255,7 +300,7 @@ impl<'db> Walk<'db> {
                 AbstractValue::Function(d) | AbstractValue::Class(d) => {
                     ask_ty = true;
                     externals.push(d);
-                    if named {
+                    if how == How::Named {
                         named_externals.push(d);
                     }
                 }
@@ -301,7 +346,7 @@ impl<'db> Walk<'db> {
                     enclosing,
                     None,
                     args,
-                    named,
+                    how,
                     &mut edge_targets,
                     &*env,
                 ),
@@ -330,7 +375,12 @@ impl<'db> Walk<'db> {
                     None,
                     Some(recv),
                     args,
-                    false,
+                    // a method is reached through a receiver: never named
+                    if how == How::Likely {
+                        How::Likely
+                    } else {
+                        How::Typed
+                    },
                     &mut edge_targets,
                     &*env,
                 )),
@@ -349,7 +399,11 @@ impl<'db> Walk<'db> {
                     class,
                     range,
                     args,
-                    if named { Basis::Name } else { Basis::Type },
+                    match how {
+                        How::Named => Basis::Name,
+                        How::Typed => Basis::Type,
+                        How::Likely => Basis::Likely,
+                    },
                     &mut edge_targets,
                     env,
                 )),
@@ -358,7 +412,9 @@ impl<'db> Walk<'db> {
         if sol.opts.mode == Mode::Summary {
             // every call site gets an edge, even when nothing is walked
             edge_targets.extend(externals.into_iter().map(|d| {
-                let basis = if named_externals.contains(&d) {
+                let basis = if how == How::Likely {
+                    Basis::Likely
+                } else if named_externals.contains(&d) {
                     Basis::Name
                 } else {
                     Basis::Type
@@ -569,7 +625,7 @@ impl<'db> Walk<'db> {
         enclosing: Option<ActivationId>,
         receiver: Option<AbstractValue<'db>>,
         args: &EvaluatedArgs<'db>,
-        named: bool, // a def or a closure the callee expression names (no receiver)
+        how: How, // `Named`: a def or a closure the callee expression names (no receiver)
         targets: &mut SmallVec<[Target<'db>; 2]>,
         env: &Env<'db>,
     ) -> Values<'db> {
@@ -580,12 +636,14 @@ impl<'db> Walk<'db> {
         let runs = !args.has_empty();
         let bound = self.bind_for_callee(sol, def, node, receiver, args, enclosing);
         let ctx = sol.key(self, def, &bound, enclosing, env);
-        // Name when the callee expression names the def or the closure. Path when the walk itself holds what the call rests on: an object it
+        // Likely when the engine found the def past a base it could not see (D28): first, whatever the receiver. Name when the callee
+        // expression names the def or the closure. Path when the walk itself holds what the call rests on: an object it
         // built here, or a closure it made and called through a variable. Everything else is the engine's answer through a type: a method on
         // an object ty typed, and a method on an input object of this context (`self` of a walked method, an argument), whose class the key
         // gave.
         let basis = match receiver {
-            None if named => Basis::Name,
+            _ if how == How::Likely => Basis::Likely,
+            None if how == How::Named => Basis::Name,
             Some(AbstractValue::Instance { origin, .. })
                 if self.origins[origin].is_built_here() =>
             {
@@ -636,7 +694,7 @@ impl<'db> Walk<'db> {
                     args,
                     fallback: Values::new(), // a project callee never asks ty
                     edge,
-                    named: false, // a getter or setter is reached through a receiver
+                    how: How::Typed, // a getter or setter is reached through a receiver
                 },
                 env,
             );
@@ -650,7 +708,7 @@ impl<'db> Walk<'db> {
             None,
             &Values::new(),
             None,
-            false,
+            How::Typed,
             env,
         )
     }
