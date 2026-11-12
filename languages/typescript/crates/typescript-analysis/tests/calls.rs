@@ -584,6 +584,16 @@ fn passed_each_hand_over_is_an_edge_at_its_name_and_a_read_is_not() {
         ("calledElsewhereInTheTree", (0, 0, 1)),
         // a callee is not a hand-over
         ("callsIt", (0, 0, 0)),
+        // a destructuring initializer is a read; a bound name handed over is the member's edge, at the name (a rest element and an assignment target are not
+        // followed)
+        ("destructureOnly", (0, 0, 0)),
+        ("destructureThenPass", (0, 0, 1)),
+        ("destructureTwice", (0, 0, 2)),
+        ("destructureRenamed", (0, 0, 1)),
+        ("destructureNested", (0, 0, 1)),
+        ("destructureCalled", (0, 0, 0)),
+        ("destructureRest", (0, 0, 0)),
+        ("destructureAssign", (0, 0, 0)),
     ];
     for (entry, expected) in rows {
         assert_eq!(handed(&root, "src/main.ts", entry), *expected, "{entry}");

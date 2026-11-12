@@ -932,7 +932,12 @@ fn handed_position(value: P<Node>, creating: bool) -> bool {
                     return false;
                 }
                 match binary.operator_token.kind() {
-                    Kind::EqualsToken => return true,
+                    Kind::EqualsToken => {
+                        return !matches!(
+                            binary.left().kind(),
+                            Kind::ObjectLiteralExpression | Kind::ArrayLiteralExpression
+                        );
+                    }
                     Kind::AmpersandAmpersandToken
                     | Kind::BarBarToken
                     | Kind::QuestionQuestionToken => at = parent,
@@ -941,6 +946,13 @@ fn handed_position(value: P<Node>, creating: bool) -> bool {
             }
             Kind::CallExpression | Kind::NewExpression => {
                 return parent.expression() != Some(at);
+            }
+            // `const { load } = api` and `({ load } = api)` read the members they name: the names are followed (`bound_member`), the initializer hands nothing over
+            Kind::VariableDeclaration | Kind::Parameter
+                if parent.initializer() == Some(at)
+                    && parent.name().is_some_and(ast::is_binding_pattern) =>
+            {
+                return false;
             }
             Kind::PropertyAssignment
             | Kind::VariableDeclaration
@@ -1640,7 +1652,16 @@ mod resolve {
                 if symbol.flags().intersects(SymbolFlags::Alias) {
                     symbol = checker.get_aliased_symbol(symbol);
                 }
+                // a name bound by destructuring (`const { load } = api`) stands for the member it names: the declarations of that member
+                let mut declarations = Vec::new();
                 for declaration in symbol.declarations().to_vec() {
+                    if declaration.kind() == Kind::BindingElement {
+                        declarations.extend(bound_member(&mut checker, declaration));
+                    } else {
+                        declarations.push(declaration);
+                    }
+                }
+                for declaration in declarations {
                     // a name that holds an object literal (`const local = { traverse: () => {} }`, a nested `local.data`) hands over that literal's
                     // function members, at the name
                     if (is_variable_like(Some(declaration))
@@ -1888,6 +1909,53 @@ mod resolve {
                     && (ast::is_function_declaration(*declaration)
                         || ast::is_method_declaration(*declaration))
             })
+    }
+
+    /// The declarations of the member a destructured name stands for: `load` in `const { load } = api` is `api`'s `load`, `inner` in `const { a: { inner } } = api`
+    /// is the `inner` of `api.a`. The property is looked up on the type of the initializer, so a member the type does not have (an index signature, a rest
+    /// element, a computed key, an array pattern, a parameter with no initializer) gives nothing: those are not followed.
+    fn bound_member(checker: &mut Checker, element: P<Node>) -> Vec<P<Node>> {
+        let mut keys = Vec::new();
+        let mut at = element;
+        // from the element up through its patterns to the variable that is initialized
+        let initializer = loop {
+            let Some(pattern) = at.parent() else {
+                return Vec::new();
+            };
+            if pattern.kind() != Kind::ObjectBindingPattern
+                || at.as_binding_element().dot_dot_dot_token().is_some()
+            {
+                return Vec::new();
+            }
+            let key = at.property_name().or(at.name());
+            match key {
+                Some(key) if ast::is_identifier(key) || ast::is_string_literal_like(key) => {
+                    keys.push(key.text().to_string())
+                }
+                _ => return Vec::new(),
+            }
+            let Some(holder) = pattern.parent() else {
+                return Vec::new();
+            };
+            match holder.kind() {
+                Kind::BindingElement => at = holder,
+                Kind::VariableDeclaration => match holder.initializer() {
+                    Some(initializer) => break initializer,
+                    None => return Vec::new(),
+                },
+                _ => return Vec::new(),
+            }
+        };
+        let mut ty = checker.get_type_at_location(initializer);
+        let mut property = None;
+        for key in keys.iter().rev() {
+            property = checker.get_property_of_type_exported(ty, key);
+            match property {
+                Some(found) => ty = checker.get_type_of_symbol(found),
+                None => return Vec::new(),
+            }
+        }
+        property.map_or_else(Vec::new, |symbol| symbol.declarations().to_vec())
     }
 
     /// Why the engine has no declaration for this callee: syntax first (a computed name), then the type the checker gives it.

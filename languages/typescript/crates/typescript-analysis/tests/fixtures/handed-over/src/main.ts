@@ -1,4 +1,4 @@
-import { api, util } from "./lib";
+import { api, deep, util } from "./lib";
 
 declare function register(o: unknown): void;
 function tag(s: TemplateStringsArray) {}
@@ -314,4 +314,43 @@ export function calledElsewhereInTheTree() {
 }
 function callsIt() {
   sharedHelper();
+}
+
+// ---- a destructuring initializer is a read (`api` hands nothing over); the names it binds stand for the members they name, so a bound name handed over is that member's edge
+export function destructureOnly() {
+  const { load } = api;
+}
+export function destructureThenPass() {
+  const { load } = api;
+  register(load);
+}
+export function destructureTwice() {
+  const { load } = api;
+  register(load);
+  register(load);
+}
+export function destructureRenamed() {
+  const { load: fetchIt } = api;
+  register(fetchIt);
+}
+export function destructureNested() {
+  const {
+    inner: { run },
+  } = deep;
+  register(run);
+}
+export function destructureCalled() {
+  const { load } = api;
+  load();
+}
+export function destructureRest() {
+  // a rest element is not one member (this one is named like a member on purpose): not followed
+  const { ...load } = api;
+  register(load);
+}
+export function destructureAssign() {
+  // assignment destructuring is a read too, and its targets are not followed
+  let load: () => void;
+  ({ load } = api);
+  register(load);
 }
