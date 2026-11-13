@@ -555,7 +555,10 @@ mod tests {
                 "onParameter | call onParameter",
             ]
         );
-        assert_eq!(sem.definition_sites(class, STYLE), from_the_class.len());
+        assert_eq!(
+            sem.definition_sites(class, STYLE).len(),
+            from_the_class.len()
+        );
     }
 
     /// A measurement on a real project, not a check. `TS_MEASURE_ROOT=<dir> TS_MEASURE_FILE=<a file of it> [TS_MEASURE_ENTRY=<qualname in that file>]

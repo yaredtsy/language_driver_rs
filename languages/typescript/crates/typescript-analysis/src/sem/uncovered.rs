@@ -60,20 +60,20 @@ impl Uncovered {
 }
 
 impl Sem {
-    /// How many sites are in the computed member names of `class` (`[key()] = …`, `[make()]() {}`), when `class` is a class at the top of a file. A class's own
+    /// The sites in the computed member names of `class` (`[key()] = …`, `[make()]() {}`), as the span of each in the file, when `class` is a class at the top of a file. A class's own
     /// body never reads its member names, and a class nested in a body has them read by the def around it (`Collector::collect`, which draws them there); a
     /// class at the top has no def around it, so the sites are in no tree. Calls, constructions, tags and JSX elements: an accessor in a name is not asked of the
     /// checker here.
-    pub(crate) fn computed_name_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> usize {
+    pub(crate) fn computed_name_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> Vec<Span> {
         let Some(defs) = self.file_defs(class.file, style) else {
-            return 0;
+            return Vec::new();
         };
         let def = &defs.outline.defs[class.def];
         let Some(node) = defs.nodes[class.def] else {
-            return 0;
+            return Vec::new();
         };
         if def.kind != DefKind::Class || def.parent.is_some() {
-            return 0;
+            return Vec::new();
         }
         let _scope = self._region.enter();
         let mut collector = Collector::new(class.file.node.text(), &defs.def_of, node);
@@ -85,30 +85,38 @@ impl Sem {
                 collector.collect(name.expression());
             }
         }
-        collector.sites.len()
+        collector.sites.iter().map(|site| site.span).collect()
     }
 
-    /// How many sites run when `class` is defined, when `class` is a class at the top of a file: the sites of its own body that are not in an instance field
+    /// The sites that run when `class` is defined, as the span of each, when `class` is a class at the top of a file: the sites of its own body that are not in an instance field
     /// initializer (`initializer_sites`, which a construction runs). What is left is the decorators of the class, of its members and of the parameters of its
     /// constructor and methods, the `extends` expression, the static field initializers and the static blocks (`Collector::body_of`). A class nested in a body or
     /// a namespace is 0 here: the def around it reads its computed names and nothing else of it, and its decorators have `decorator_sites`.
-    pub(crate) fn definition_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> usize {
+    pub(crate) fn definition_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> Vec<Span> {
         let (Some(body), Some(defs)) = (self.body(class, style), self.file_defs(class.file, style))
         else {
-            return 0;
+            return Vec::new();
         };
         let def = &defs.outline.defs[class.def];
+        let Some(node) = defs.nodes[class.def] else {
+            return Vec::new();
+        };
         if def.kind != DefKind::Class || def.parent.is_some() {
-            return 0;
+            return Vec::new();
         }
-        body.sites.len() - self.initializer_sites(class, style)
+        let initializers = instance_initializers(class.file.node.text(), node);
+        body.sites
+            .iter()
+            .map(|site| site.span)
+            .filter(|span| !is_within(&initializers, *span))
+            .collect()
     }
 
-    /// How many sites of `class`'s own body are in decorators: the decorators of the class, of its members and of the parameters of its constructor and
+    /// The sites of `class`'s own body that are in decorators, as the span of each: the decorators of the class, of its members and of the parameters of its constructor and
     /// methods, and the calls and accessors inside them (`@factory(1)` is two sites: the call of `factory`, and of its result).
-    pub(super) fn decorator_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> usize {
+    pub(super) fn decorator_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> Vec<Span> {
         let Some(body) = self.body(class, style) else {
-            return 0;
+            return Vec::new();
         };
         let text = class.file.node.text();
         let decorators: Vec<Span> = body
@@ -119,42 +127,27 @@ impl Sem {
             .collect();
         body.sites
             .iter()
-            .filter(|site| {
-                decorators
-                    .iter()
-                    .any(|d| d.start <= site.span.start && site.span.end <= d.end)
-            })
-            .count()
+            .map(|site| site.span)
+            .filter(|span| is_within(&decorators, *span))
+            .collect()
     }
 
-    /// How many sites of `class`'s own body are in the initializers of its **instance** fields (`x = make()`): what a construction runs and does not
+    /// The sites of `class`'s own body that are in the initializers of its **instance** fields, as the span of each (`x = make()`): what a construction runs and does not
     /// draw. An arrow or a function expression held by a field is a def, so its calls are not in the class's body and not counted.
-    pub(crate) fn initializer_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> usize {
+    pub(crate) fn initializer_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> Vec<Span> {
         let (Some(body), Some(defs)) = (self.body(class, style), self.file_defs(class.file, style))
         else {
-            return 0;
+            return Vec::new();
         };
         let Some(node) = defs.nodes[class.def] else {
-            return 0;
+            return Vec::new();
         };
-        let text = class.file.node.text();
-        let initializers: Vec<Span> = node
-            .members()
-            .iter()
-            .filter(|member| {
-                member.kind() == Kind::PropertyDeclaration && !ast::is_static(**member)
-            })
-            .filter_map(|member| member.initializer())
-            .map(|initializer| own_span(text, initializer))
-            .collect();
+        let initializers = instance_initializers(class.file.node.text(), node);
         body.sites
             .iter()
-            .filter(|site| {
-                initializers
-                    .iter()
-                    .any(|i| i.start <= site.span.start && site.span.end <= i.end)
-            })
-            .count()
+            .map(|site| site.span)
+            .filter(|span| is_within(&initializers, *span))
+            .collect()
     }
 
     /// Whether `class` has a `render` that is a project function with a body, its own or inherited from a class of the project: what a framework calls on
@@ -186,4 +179,22 @@ impl Sem {
                     .is_empty()
             })
     }
+}
+
+/// The spans of the initializers of `class`'s instance fields (`x = make()`).
+fn instance_initializers(text: &str, class: P<Node>) -> Vec<Span> {
+    class
+        .members()
+        .iter()
+        .filter(|member| member.kind() == Kind::PropertyDeclaration && !ast::is_static(**member))
+        .filter_map(|member| member.initializer())
+        .map(|initializer| own_span(text, initializer))
+        .collect()
+}
+
+/// Whether `inner` lies inside one of `outer`.
+fn is_within(outer: &[Span], inner: Span) -> bool {
+    outer
+        .iter()
+        .any(|span| span.start <= inner.start && inner.end <= span.end)
 }

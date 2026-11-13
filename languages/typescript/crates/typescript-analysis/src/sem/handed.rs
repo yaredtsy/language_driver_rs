@@ -179,7 +179,7 @@ impl Sem {
                     };
                     uncovered.extend(std::iter::repeat_n(
                         Uncovered::LocalClassDecoratorSite,
-                        self.decorator_sites(class, style),
+                        self.decorator_sites(class, style).len(),
                     ));
                 }
             }
