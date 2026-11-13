@@ -80,15 +80,15 @@ inline mode joins the two callees' states and holds only the two new ones. A wro
 
 README §7 question 2. When CS3e's gate holds (`extra` 0 on the fixtures and the three projects):
 
-### CS4b. Effects on
+### CS4b. Effects on (done: the flag is gone, `Options::effects` no longer exists)
 
 | | |
 |---|---|
 | Change | `lib.rs`, `Options::solver`: `effects: true`. Then delete the option itself: one mechanism (README §5 rule 5). The harness's `summary()` stops setting it |
 | Tests | `tests/api.rs` pins move where a class program is an entry: each move read. `tests/snapshots/` moves only where CS3e already showed the new tree |
-| Golden | run the golden (`GOLDEN=out/golden scripts/run-on-project.sh python …`). The spike did not move Jarvis (207 / 207). If it moves now, **stop and report** the difference before regenerating it |
+| Golden | run the golden (`GOLDEN=out/golden scripts/run-on-project.sh python …`). The spike did not move Jarvis (207 / 207). If it moves now, **stop and report** the difference before regenerating it. **Measured:** 207 / 207 nodes, only `contexts` differ (11 of 207 frames, 8 of 66 merged), so the golden was regenerated |
 | Proof | `cargo test` in `languages/python`; `scripts/check-all.sh python`; the three projects' numbers in `languages/python/ENGINE.md` |
-| After | the V-NOC driver's agent is told: the wire format is unchanged (version 2, D23); trees on class-heavy code are larger (FastAPI 436 → 970 nodes) |
+| After | the V-NOC driver's agent is told: the wire format is unchanged (version 2, D23); trees on class-heavy code are larger (FastAPI 458 → 1019 nodes, the same as inline mode (CS3e)) |
 
 This is a natural point for a tag (`python-v0.3.0`), and for stopping to measure before CS5–CS8 (README §7 question 5).
 

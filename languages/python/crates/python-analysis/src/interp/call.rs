@@ -808,7 +808,7 @@ impl<'db> Walk<'db> {
                 let ctx = sol.key(self, init_def, &bound, None, env);
                 // its value is never used; its writes are effects. Asked either way: this walks `__init__`, and its context needs a slot.
                 match sol.get(ctx) {
-                    Got::Ready(res) if sol.opts.effects => {
+                    Got::Ready(res) => {
                         let call = CallSite {
                             ctx,
                             site,
@@ -821,8 +821,7 @@ impl<'db> Walk<'db> {
                         self.apply(sol, plan, env);
                     }
                     // running: nothing waits on a constructor, so its effects are not carried (CS8)
-                    Got::Pending if sol.opts.effects => self.note_effects_in_cycle(sol, (site, 0)),
-                    _ => {}
+                    Got::Pending => self.note_effects_in_cycle(sol, (site, 0)),
                 }
                 init = Some(ctx);
             }

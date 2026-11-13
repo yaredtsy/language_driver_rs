@@ -1,4 +1,4 @@
-use super::{BodyScope, EntryKind, Name, PropertyParts, Scope, Shape};
+use super::{BodyScope, Name, PropertyParts, Scope, Shape};
 use ruff_python_ast::StmtFunctionDef;
 use ty_python_core::definition::Definition;
 use ty_python_core::scope::{NodeWithScopeRef, ScopeKind};
@@ -65,18 +65,6 @@ impl<'db> super::Sem<'db> {
         chain.reverse();
         chain.push(Scope::Function(def));
         chain
-    }
-
-    /// The class `def` is a classmethod of: what its first parameter, `cls`, holds when it is the entry. `None` for a method, a static
-    /// method, a function, and a method of a class nested in a function (no way to say which class there).
-    pub(crate) fn classmethod_class(&self, def: Definition<'db>) -> Option<Definition<'db>> {
-        let chain = self.scope_chain(def);
-        match chain.iter().rev().nth(1)? {
-            Scope::Class(c) => {
-                matches!(self.entry_kind(*c, def), EntryKind::ClassMethod).then_some(*c)
-            }
-            Scope::Function(_) => None,
-        }
     }
 
     /// `__init__` as found through the MRO, if it is a `def` somewhere.

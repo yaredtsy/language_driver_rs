@@ -245,11 +245,10 @@ pub(super) fn inline() -> Options {
         ..Options::default()
     }
 }
-/// Summary mode as the harness runs it: with effects on. The request path (`lib.rs`) has them off until the owner's yes.
+/// Summary mode as the harness runs it.
 pub(super) fn summary() -> Options {
     Options {
         mode: Mode::Summary,
-        effects: true,
         ..Options::default()
     }
 }
@@ -1649,7 +1648,7 @@ fn edges_say_what_they_rest_on() {
 /// A weak write marks what it may have dropped, and only that. `outside` writes one object (a strong write) and its answer is complete:
 /// no `Unresolved` edge anywhere, in `Pipeline.run` either, where the object's attributes come back from its fingerprint (that is not a
 /// write, and adds no `Unknown`). `two_candidates` writes one of two objects onto an attribute this path holds nothing for: its read is
-/// an `Unresolved` site next to the written handler. That is with effects off; with them on (CS3b), the constructors have written
+/// an `Unresolved` site next to the written handler. That is without effects; with them (CS3b), the constructors have written
 /// `Csv` onto both objects, so the weak write joins onto what is there and the read has no `Unknown` to mark.
 #[test]
 fn a_weak_write_marks_what_it_may_have_dropped_and_a_strong_one_marks_nothing() {
@@ -1661,14 +1660,9 @@ fn a_weak_write_marks_what_it_may_have_dropped_and_a_strong_one_marks_nothing() 
             .filter(|e| matches!(e.to, analyzer_core::graph::EdgeTo::Unresolved(_)))
             .count()
     };
-    let off = Options {
-        effects: false,
-        ..summary()
-    };
-    assert_eq!(unresolved("outside", &off), 0);
-    assert!(unresolved("two_candidates", &off) > 0);
-    assert_eq!(unresolved("outside", &summary()), 0);
-    assert_eq!(unresolved("two_candidates", &summary()), 0);
+    let opts = summary();
+    assert_eq!(unresolved("outside", &opts), 0);
+    assert_eq!(unresolved("two_candidates", &opts), 0);
 }
 
 /// The golden wire of a real project. Not run by default: it needs a project that is not in the repo and the files in `out/golden/`, and the
@@ -2013,11 +2007,7 @@ fn dump_graph_of_a_real_project() {
     );
     let db = open_project(SystemPath::new(&project)).unwrap();
     let (file, _) = open(&db, &SystemPath::new(&project).join(file)).unwrap();
-    // `PYTHON_DUMP_EFFECTS=1`: with the effects of part 04, step 3 (off without it, as the request path is)
-    let opts = Options {
-        effects: std::env::var("PYTHON_DUMP_EFFECTS").is_ok(),
-        ..summary()
-    };
+    let opts = summary();
     let started = std::time::Instant::now();
     let graph = call_graph(&db, file, &entry, &opts).unwrap();
     println!("solve_ms {}", started.elapsed().as_millis());

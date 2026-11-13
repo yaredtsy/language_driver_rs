@@ -63,7 +63,6 @@ impl Options {
             only_marked: self.only_marked,
             wire: self.wire.clone(),
             marker: self.marker,
-            effects: false,
             cancel: self.cancel.clone(),
             #[cfg(test)]
             cancel_at_walk: None,

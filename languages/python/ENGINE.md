@@ -407,6 +407,28 @@ every digest alone. In the fixtures one digest moved on purpose: `set_and_read` 
 parameter that is also a closure's free value: `f(x)` where `f` reads `x`; summary draws `CsvHandler.process`, inline `JsonHandler.process`). The second was
 found by a scratch program while answering 07 §5 claim 2, and is pinned so it stays said.
 
+## CS4b: effects are on for every request
+
+Measured 2026-11-13 at `8de962a` plus the CS4b change, the same entries and method as CS7 (`dump_graph`, `PYTHON_DUMP_GAP=1`, the debug test binary; the
+Jarvis golden through `scripts/run-on-project.sh`). `Options::effects` is deleted: summary mode always computes a summary's effects and applies them, and
+`solve` always runs the one prologue. Inline mode never read the flag (`solve` is summary mode's start; inline starts through its own `prologue` call).
+`PYTHON_DUMP_EFFECTS` is gone from `dump_graph`: it always runs with effects, so a "before" is a checkout before this commit. The request path
+(`python-cli`, `lib.rs`) therefore has effects on; the wire format is unchanged (version 2).
+
+| Project | nodes | contexts | unresolved | `extra` | `rounds_capped` | `effects_in_cycle` | `deep_write` | `deep_return` | solve ms |
+|---|---|---|---|---|---|---|---|---|---|
+| Jarvis | 207 | 71 | 32 | 0 | 0 | 0 | 0 | 0 | 172 |
+| Flask service | 266 | 70 | 81 | 0 | 0 | 0 | 0 | 0 | 290 |
+| FastAPI | 1019 | 103 | 52 | 0 | 1 | 0 | 0 | 0 | 271 |
+
+These are CS7's effects-on rows (`create_cloned_field` is still the one `Incomplete(MaxRounds)` cut; Flask is still 41 nodes short of inline, 1 topmost,
+silent). Time is noise at this size. **The golden of Jarvis moved, in `contexts` only:** with the default options now effects on, `wire.json` and
+`wire-merged.json` have the same 207 and 66 frames, and with `contexts` left out they are equal; the `contexts` of 11 of the 207 frames (8 of the 66)
+differ (digests, and how many contexts a frame holds), 55 distinct (digest, function) pairs before and 58 after. No name, id, kind or call site moved.
+No fixture snapshot and no `tests/api.rs` pin moved (the suite passes unchanged: lib 130 and 2 ignored, api 52, cli 29); the fixtures ran with effects on
+since CS3b. `a_weak_write_marks_what_it_may_have_dropped_and_a_strong_one_marks_nothing` lost its effects-off half (`two_candidates` has an `Unresolved`
+site without effects); what it says with effects on is kept. `Sem::classmethod_class` was only the effects-off start of an entry and is deleted.
+
 ## Toolchain
 
 `vendor/ruff/rust-toolchain.toml` says 1.98.0 and ruff's `rust-version` is 1.96. It is ignored here (the repo root's `rust-toolchain.toml` decides,

@@ -246,11 +246,7 @@ impl<'db> Walk<'db> {
             )
         };
         // after the returns, before the objects are described: an object only an effect reaches is numbered after the returns' objects
-        let effects = if s.opts.effects {
-            self.effects(s, resolved, &mut numbering)
-        } else {
-            Vec::new()
-        };
+        let effects = self.effects(s, resolved, &mut numbering);
         let objects = self.describe_objects(s, resolved, &mut numbering);
         FunctionResult {
             calls: self.frame.calls.clone(),

@@ -104,9 +104,6 @@ pub(crate) struct Options {
     pub wire: WireStyle,
     /// The label a marker is read under (`ID: …` in a docstring), the same style `python_syntax::outline` takes.
     pub marker: MarkerStyle<'static>,
-    /// Off on the request path, on in the harness: a callee's writes onto the objects its caller can see (an `__init__` onto `self`,
-    /// `install(p, h)` onto `p`) are recorded in its summary and applied by the caller. Until the owner's yes after CS4.
-    pub effects: bool,
     /// The caller's request to stop, and its own deadline. Checked before every walk, never inside one.
     pub cancel: analyzer_core::solve::Cancel,
     /// Tests only: fire `cancel` when this many walks have been made, so a test can stop a request at a known place without a thread.
@@ -179,7 +176,6 @@ impl Default for Options {
             only_marked: false, // the harness; requests set it
             wire: WireStyle::default(),
             marker: MarkerStyle::docstring("ID"),
-            effects: false,
             cancel: analyzer_core::solve::Cancel::default(),
             #[cfg(test)]
             cancel_at_walk: None,
@@ -291,28 +287,18 @@ pub(crate) fn solve<'db>(
     // does the binding, exactly as step 02 did.
     let mut w = Walk::new(&s, def);
     let mut env = env::Env::default();
-    // With effects, the one prologue of inline mode starts the entry: the parents run (hidden), a method's object has its `__init__` run
-    // on it, and a closure's free values are read from the run it was defined in. Without them an entry starts as it always did: a
-    // classmethod's `cls`, nothing else.
-    let (receiver, enclosing) = if opts.effects {
-        let start = w.prologue(&mut s, def, &mut env);
-        (start.receiver, start.enclosing)
-    } else {
-        let receiver = s
-            .sem
-            .classmethod_class(def)
-            .map(value::AbstractValue::Class);
-        (receiver, None)
-    };
+    // The one prologue of inline mode starts the entry: the parents run (hidden), a method's object has its `__init__` run on it, and a
+    // closure's free values are read from the run it was defined in.
+    let start = w.prologue(&mut s, def, &mut env);
     let bound = w.bind_parameters(
         &mut s,
         def,
         node,
-        receiver,
+        start.receiver,
         &bind::EvaluatedArgs::default(),
-        enclosing,
+        start.enclosing,
     );
-    let root_ctx = s.key(&w, def, &bound, enclosing, &env);
+    let root_ctx = s.key(&w, def, &bound, start.enclosing, &env);
     s.get(root_ctx);
     Some((s, EntryRoot::Context(root_ctx)))
 }

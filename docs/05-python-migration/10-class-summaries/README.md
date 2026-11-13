@@ -165,13 +165,13 @@ The rows where this repo already decided something else. Each step file has its 
 ```
 CS0  baseline: seven programs run once, pinned (33d65ca) ──────────────── DONE
 CS1  objects in keys ─────────────────────────────────────────────────── DONE
-CS2  objects coming back, and the resolve → plan → apply seam ────────── 02
-CS3  effects: every write onto an input, the one prologue ────────────── 03   ← replaces the spike
-CS4  resolve, then write: the proof ──────────────────────────────────── 04
- ──  owner: effects on by default (the wire changes) ─────────────────── §7 question 2
-CS5  deep writes ─────────────────────────────────────────────────────── 05   needs a core decision (§7 question 3)
+CS2  objects coming back, and the resolve → plan → apply seam ────────── DONE (99c60b3, b2bc150)
+CS3  effects: every write onto an input, the one prologue ────────────── DONE (253783e … 5b907ff; the flag is off on requests)
+CS4  resolve, then write: the proof ──────────────────────────────────── DONE (a28baf1; CS4.1 0eb5fa6: each callee an arm)
+CS5  deep writes ─────────────────────────────────────────────────────── DONE with B (6ec20e7); A (core `Cut::MaxPath`) is §7 question 3
+CS7  aliases ─────────────────────────────────────────────────────────── DONE (8de962a); a free value aliasing a parameter is a known limit
+ ──  owner: effects on by default (the wire changes) ─────────────────── §7 question 2: on. CS4b DONE (04 §5): the flag is gone
 CS6  split by type (CPA) ─────────────────────────────────────────────── 06   measure the cost first
-CS7  aliases ─────────────────────────────────────────────────────────── 07
 CS8  recursion with objects ──────────────────────────────────────────── 08
 CS9  the gate: every fixture, both modes, every difference named ─────── 09
 ```
@@ -196,7 +196,7 @@ lists its commits, failing tests and proof in the form of [`../09-a-def-past-an-
 | # | Question | Recommendation |
 |---|---|---|
 | 1 | Q-PY1: tag `python-v0.2.0` before this work, saying the limit in the README, or after | **before**: nothing gets worse, the work is several steps |
-| 2 | When effects go on by default. It changes the wire: the snapshots, the FastAPI tree (436 → 970), maybe the golden (Jarvis did not move in the spike) | ~~at the end of CS4, if `extra` is 0 on the fixtures and the three projects~~ **Changed at CS3b (2026-11-13): not before CS5 §2 row 1 and CS7.** With effects on, two summary-only wrong edges appear, unmarked, where before there was a marked gap: `deep_write.py main` (a write past the key's depth lands on an `OPAQUE` object and is dropped, so the caller keeps the old `CsvHandler`) and `aliases.py same` (the key does not say the two arguments are one object, so the callee reads the old handler). Both are the stated targets of CS5 (`track_entry_attr`, which needs no core decision; only the mark past `max_path` does) and CS7. `split.py main`'s mix is drawn by inline mode too (CS6; a known kind, like §8's narrowing) |
+| 2 | When effects go on by default. It changes the wire: the snapshots, the FastAPI tree (458 → 1019), maybe the golden (Jarvis did not move in the spike) | ~~at the end of CS4, if `extra` is 0 on the fixtures and the three projects~~ **Changed at CS3b (2026-11-13): not before CS5 §2 row 1 and CS7.** With effects on, two summary-only wrong edges appear, unmarked, where before there was a marked gap: `deep_write.py main` (a write past the key's depth lands on an `OPAQUE` object and is dropped, so the caller keeps the old `CsvHandler`) and `aliases.py same` (the key does not say the two arguments are one object, so the callee reads the old handler). Both are the stated targets of CS5 (`track_entry_attr`, which needs no core decision; only the mark past `max_path` does) and CS7. `split.py main`'s mix is drawn by inline mode too (CS6; a known kind, like §8's narrowing) **ANSWERED (owner, 2026-11-13): on.** After CS7 the summary-only wrong edges left are known limits that real code did not hit (a deep write past `max_path`: `deep_write` 0 on the three projects; a parameter aliasing a closure's free value, `alias_free.py`). CS4b (04 §5) turns it on |
 | 3 | A deep write past `max_path` (CS5): its mark. Core's `Cut` has no variant for it; `MaxRounds` would be a lie | a new `Cut` variant in core, as R2a added `Basis::Likely` (coordinate with the TypeScript session); or only a counter, unmarked, if core must not move |
 | 4 | Above the split cap (CS6) the combinations collapse into a union, which is today's behaviour and can pair values that never met | count it (`cpa_collapses`), no mark: it is what every call does today |
 | 5 | Steps 5 to 8: build them, or stop after CS4 | decide on CS4's numbers. **After CS3b:** CS5 §2 row 1 and CS7 are needed for question 2 either way; CS6 and CS8 stay this question |
