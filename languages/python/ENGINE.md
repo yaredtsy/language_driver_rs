@@ -268,6 +268,38 @@ not narrow:
 So the 20 are edges Python does not take (a v2 field never reaches `v1.is_pv1_scalar_field`), and both modes agree on them. They are not new
 imprecision: the `v1.is_scalar_field` caller was already in the tree before CS2b. They are what "no narrowing" costs.
 
+## Class summaries, CS3e: effects on
+
+Measured 2026-11-13 at `9c22dec` plus the gate, with the `dump_graph` test (`PYTHON_DUMP_GAP=1`, with and without `PYTHON_DUMP_EFFECTS=1`; the
+debug test binary, two runs each, the second one given; the request path, `python-cli`, still has effects off). Same entries as CS2: Jarvis
+`CallGraphGenerator.do_pass`, Flask `FilesResource.post` in `app/api/file.py`, FastAPI `APIRouter.include_router` in `fastapi/routing.py`. Nodes are
+the unmerged tree's; `missing` and `extra` are against inline mode's tree (`compare_with_inline`).
+
+| Project | nodes (inline) | contexts | walks | unresolved | solve ms | missing | extra | `MaxRounds` cuts |
+|---|---|---|---|---|---|---|---|---|
+| Jarvis, effects off | 207 (207) | 55 | 55 | 30 | 79 | 0 | 0 | 0 |
+| Jarvis, **on** | 207 (207) | 71 | 71 | 32 | 122 | 0 | 0 | 0 |
+| Flask service, off | 266 (307) | 70 | 70 | 81 | 297 | 41 | 0 | 0 |
+| Flask service, **on** | 266 (307) | 70 | 70 | 81 | 174 | 41 | 0 | 0 |
+| FastAPI, off | 458 (1019) | 70 | 70 | 29 | 182 | 561 | 0 | 0 |
+| FastAPI, **on** | **1019 (1019)** | 104 | 104 | 52 | 175 | 0 | 0 | 1 |
+
+Time is noise at this size: the two runs of one case differ by up to 40% in either direction (Jarvis off 109 and 79, on 83 and 122), and nothing
+about effects makes a solve slower that these runs can see.
+
+- **FastAPI is complete against inline mode** with effects on: 1019 nodes, 0 missing, 0 extra. The spike's 436 → 970 (CS0) and CS2's 458 are
+  now 1019, and the 22 nodes of CS2's `v2.ModelField.type_` (a branch the walk does not narrow, README §8) are in inline mode's tree too, so they
+  are not `extra`.
+- **Jarvis** gains no node and loses none; its golden is `equal` (the request path has effects off). Two more unresolved sites, both stdlib calls
+  the engine cannot type, `importlib.machinery.all_suffixes()` and `importlib.machinery.FileFinder.path_hook(...)` at `machinery/imports.py:262-263`: a
+  function the walk now reaches, because `__init__`'s objects are known. 16 more contexts, and the same 207 nodes: keys split on what objects hold,
+  and the renderer joins the siblings.
+- **Flask** does not move at all (87 effects applied, same tree): its 41 missing nodes are the gap it had, 1 topmost, silent (not at an `Unresolved`
+  site), unchanged by effects.
+- **One group is cut**: `fastapi.utils.create_cloned_field` is `Incomplete(MaxRounds)` (32 rounds): it clones a field and its `sub_fields`
+  recursively, so every round builds objects the round before did not name (README §8 "an object does not keep its identity around a cycle": CS8). It is
+  marked and counted; effects off had no such cut. Not caused by CS3d (the same cut with the effects comparison left out).
+
 ## Toolchain
 
 `vendor/ruff/rust-toolchain.toml` says 1.98.0 and ruff's `rust-version` is 1.96. It is ignored here (the repo root's `rust-toolchain.toml` decides,

@@ -736,12 +736,12 @@ fn p03_02_methods() {
 }
 #[test]
 fn p03_03_state() {
-    check("03-classes/python/state.py");
+    check_both("03-classes/python/state.py");
 }
 
 #[test]
 fn p03_04_isolation() {
-    check("03-classes/python/isolation.py");
+    check_both("03-classes/python/isolation.py");
 }
 
 /// `subclass_of`'s tree would also come out right from a plain class literal.
@@ -756,11 +756,11 @@ fn p03_04_subclass_of_arm_runs() {
 }
 #[test]
 fn p03_05_writes() {
-    check("03-classes/python/writes.py");
+    check_both("03-classes/python/writes.py");
 }
 #[test]
 fn p03_06_special() {
-    check("03-classes/python/special.py");
+    check_both("03-classes/python/special.py");
 }
 
 #[test]
@@ -771,7 +771,7 @@ fn p03_07_fanout_counted() {
 
 #[test]
 fn p03_07_chains() {
-    check("03-classes/python/chains.py");
+    check_both("03-classes/python/chains.py");
 }
 
 /// Remove the `ignore` when step 03.08 is built. Covers methods, classmethods,
@@ -1483,13 +1483,13 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
             _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 37 programs are verified in both modes and 10 only inline (five of `03-classes/`, five of `04-class-summaries/`); 47 are run at
+    // 42 programs are verified in both modes and 5 only inline (all in `04-class-summaries/`); 47 are run at
     // all; 48 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
     // `every_entry` skips it)
     let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
     assert_eq!(
         (verified, by_fixture.len() - verified),
-        (37, 10),
+        (42, 5),
         "a program was added or lost"
     );
     for (fixture, verified, text) in by_fixture {
@@ -1605,7 +1605,9 @@ fn dump_graph_of_a_real_project() {
         effects: std::env::var("PYTHON_DUMP_EFFECTS").is_ok(),
         ..summary()
     };
+    let started = std::time::Instant::now();
     let graph = call_graph(&db, file, &entry, &opts).unwrap();
+    println!("solve_ms {}", started.elapsed().as_millis());
     println!("=====BEGIN graph\n{}=====END", graph_text(&graph));
     if std::env::var("PYTHON_DUMP_UNRESOLVED").is_ok() {
         dump_unresolved_sites(&db, &project, &graph);
@@ -2018,217 +2020,24 @@ fn compare_with_inline(
     }
 }
 
-/// The sketch of the CS3e gate (replaced there). With `Options::effects` on: (1) every program verified in both modes still gives its
-/// tree (the safety net), (2) the class programs' gaps against inline mode, entry by entry, with it off and on, and what moved.
-#[test]
-fn constructor_effects_spike() {
-    use analyzer_core::render::{RenderOptions, render};
-    let this_file = include_str!("fixture.rs");
-    let with_effects = |o: &Options| Options {
-        effects: true,
-        ..o.clone()
-    };
-    let without_effects = |o: &Options| Options {
-        effects: false,
-        ..o.clone()
-    };
-
-    // 1. programs verified in both modes: the trees do not change
-    let mut seen = BTreeSet::new();
-    for (fixture, _, opts) in every_entry() {
-        if this_file.contains(&format!("check(\"{fixture}\")")) || !seen.insert(fixture.clone()) {
-            continue;
-        }
-        let report = failures(&fixture, &with_effects(&opts));
-        assert!(
-            report.is_empty(),
-            "effects broke a verified program:\n{report}"
-        );
-    }
-
-    // 2. the class programs: what is missing against inline mode, per entry
-    let gap_of = |effects: bool| {
-        let mut rows: Vec<(String, usize, Gap)> = Vec::new();
-        for (fixture, entry, opts) in every_entry() {
-            if !this_file.contains(&format!("check(\"{fixture}\")")) {
-                continue;
-            }
-            // the part 04 programs say on purpose where summary differs from inline, so inline is not their answer
-            if !fixture.starts_with("03-classes/") {
-                continue;
-            }
-            let (db, file) = open_fixture(&fixture);
-            let inline_opts = Options {
-                mode: Mode::Inline,
-                ..opts.clone()
-            };
-            let opts = if effects {
-                with_effects(&opts)
-            } else {
-                without_effects(&opts)
-            };
-            let inline = call_tree(&db, file, &entry, &inline_opts).unwrap().0;
-            let graph = call_graph(&db, file, &entry, &opts).unwrap();
-            let summary = render(&graph, &graph.entries[0], &RenderOptions::default());
-            let mut gap = Gap::default();
-            compare_with_inline(&entry, &inline, &summary, &graph, &mut gap);
-            let applied = graph
-                .stats
-                .language
-                .get("effects_applied")
-                .copied()
-                .unwrap_or(0) as usize;
-            rows.push((format!("{fixture} {entry}"), applied, gap));
-        }
-        rows
-    };
-    let (off, on) = (gap_of(false), gap_of(true));
-    let sum = |rows: &[(String, usize, Gap)]| {
-        (
-            rows.iter()
-                .filter(|r| r.2.missing > 0 || r.2.extra > 0)
-                .count(),
-            rows.iter().map(|r| r.2.missing).sum::<usize>(),
-            rows.iter().map(|r| r.2.highest_missing).sum::<usize>(),
-            rows.iter().map(|r| r.2.extra).sum::<usize>(),
-        )
-    };
-    println!(
-        "EFFECTS off: (failing entries, missing nodes, topmost, extra) = {:?}",
-        sum(&off)
-    );
-    println!(
-        "EFFECTS on:  (failing entries, missing nodes, topmost, extra) = {:?}",
-        sum(&on)
-    );
-    for ((name, _, before), (_, applied, after)) in off.iter().zip(&on) {
-        let (b, a) = (before.missing + before.extra, after.missing + after.extra);
-        if (before.missing, before.extra) != (after.missing, after.extra) {
-            println!(
-                "EFFECTS moved {name}: missing {} -> {}, extra {} -> {} ({applied} effects applied){}",
-                before.missing,
-                after.missing,
-                before.extra,
-                after.extra,
-                if a > b { "  <-- WORSE" } else { "" }
-            );
-        }
-    }
-    let two_alive = on
-        .iter()
-        .find(|r| r.0 == "03-classes/python/isolation.py two_alive")
-        .expect("isolation.two_alive is run");
-    assert_eq!(
-        (two_alive.2.missing, two_alive.2.extra),
-        (0, 0),
-        "isolation.two_alive is green with effects on"
-    );
-}
-
-/// The six programs summary mode cannot answer completely (class summaries, part 04 of pylspt: steps 2 to 8 are not built). For every
-/// entry of them, against inline mode: what is missing, whether each topmost missing node sits at a call site that the summary graph marks
-/// `Unresolved`, and what summary mode has that inline mode does not. The numbers are pinned: a fix moves them, and the diff is the review.
+/// The gap test, at its end (CS3e). It pinned, entry by entry, what summary mode missed against inline mode on the six class programs of
+/// `03-classes/` that were checked in inline mode only: 48 entries, 21 failing at CS3a (35 nodes missing, 2 extra). Effects (CS3b), the
+/// mixed-callee fix, the one prologue (CS3c) and a `super()` that counts as a use of `self` took it to 0, and the six are `check_both`.
+/// What is left of the gap is said in their blocks and nowhere else: `state.py` `either` has an `# expect inline:` block (a
+/// `Pipeline.run` for each object) and an `# expect summary:` block (one, with both handlers: rule 7, README §5, no information lost; CS6
+/// may split it), and `entries.py` `Svc.build.step` has the same split for the key's depth (`fp_depth`, row 11 of 03 §7). So this test
+/// only has to hold that no `03-classes/` program goes back to inline-only: that would be a gap nobody measures.
 #[test]
 fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there() {
-    use analyzer_core::render::{RenderOptions, render};
     let this_file = include_str!("fixture.rs");
-    let (mut entries, mut failing, mut total) = (0, 0, Gap::default());
-    for (fixture, entry, opts) in every_entry() {
-        if !this_file.contains(&format!("check(\"{fixture}\")")) {
-            continue; // verified in both modes: the snapshots are its guard
-        }
-        // the part 04 programs say on purpose where summary differs from inline, so inline is not their answer: they are pinned against
-        // their own blocks (`what_summary_mode_gives_on_the_part_04_programs_against_their_blocks`)
-        if !fixture.starts_with("03-classes/") {
-            continue;
-        }
-        entries += 1;
-        let (db, file) = open_fixture(&fixture);
-        let inline_opts = Options {
-            mode: Mode::Inline,
-            ..opts.clone()
-        };
-        let inline = call_tree(&db, file, &entry, &inline_opts).unwrap().0;
-        let graph = call_graph(&db, file, &entry, &opts).unwrap();
-        let summary = render(&graph, &graph.entries[0], &RenderOptions::default());
-        let mut gap = Gap::default();
-        compare_with_inline(&entry, &inline, &summary, &graph, &mut gap);
-        failing += usize::from(gap.missing > 0 || gap.extra > 0);
-        if gap.missing > 0 || gap.extra > 0 {
-            println!(
-                "fails: {fixture} {entry} (missing {}, extra {})",
-                gap.missing, gap.extra
-            ); // --show-output
-        }
-        total.missing += gap.missing;
-        total.highest_missing += gap.highest_missing;
-        total.at_unresolved += gap.at_unresolved;
-        total.nodes_at_unresolved += gap.nodes_at_unresolved;
-        total.nodes_elsewhere += gap.nodes_elsewhere;
-        total.extra += gap.extra;
-        for line in gap.not_at_unresolved {
-            total.not_at_unresolved.push(format!("{fixture} {line}"));
-        }
-        for line in gap.extras {
-            total.extras.push(format!("{fixture} {line}"));
-        }
-    }
-    println!(
-        "{entries} entries, {failing} fail: {} nodes missing ({} under an Unresolved call site, {} elsewhere), {} topmost, {} of those at an Unresolved call site; {} extra",
-        total.missing,
-        total.nodes_at_unresolved,
-        total.nodes_elsewhere,
-        total.highest_missing,
-        total.at_unresolved,
-        total.extra
-    );
-    // With effects on (CS3b) 15 of the 21 entries that failed were right; with the one prologue (CS3c) `entries.py` is checked in both modes
-    // (`check_both`) and leaves this test, with its 20 entries, so 28 entries are left. `chains.py` `inherited` and `via_super` were right
-    // once a zero-argument `super()` counted as a use of the first parameter (`relevant_params`): `self` was keyed `Unknown`, so nothing was
-    // written onto it and `super().build()` had no `cls`. One entry fails: `state.py` `either` (rule 7, below).
-    assert_eq!((entries, failing), (28, 1));
-    assert_eq!(total.missing, 2, "nodes inline finds and summary does not");
-    assert_eq!(total.highest_missing, 1, "the topmost of them");
-    assert_eq!(
-        total.at_unresolved, 0,
-        "topmost missing nodes at a call site the graph marks Unresolved"
-    );
-    assert_eq!(
-        (total.nodes_at_unresolved, total.nodes_elsewhere),
-        (0, 2),
-        "of the missing nodes: under an Unresolved call site, and elsewhere"
-    );
-    assert_eq!(total.missing, 0 + 2);
-
-    // The claim "every missing node is under an Unresolved call site" is false, and this is why. `either`: inline lists one Pipeline.run
-    // per object, summary joins them (rule 7), so it is not lost information. (Two property getters of `special.py` `main` were on this
-    // list until CS2: `r` comes from a classmethod that returns an object, which summary mode could not follow, so the getter had no
-    // receiver to run on.) A fix removes lines from this list; a regression adds one.
-    //
-    // Weak writes used to be on it (`maybe_opaque`, `two_candidates`): a write that may be on one of several objects, onto an attribute
-    // this path holds nothing for, kept only the written handler and dropped the other with no mark. `bind_attr` now joins `Unknown`, so
-    // the read is an Unresolved site next to the written handler. That marks the alternative, it does not find it: both programs missed a
-    // node, and the constructor effects of CS3b are what find it.
-    //
-    // KNOWN LIMIT, unmarked: `Env::join` (`union_into`) treats a name one arm never assigned as nothing, not as `Unknown`. A write on one
-    // branch of an `if` onto an object whose attribute the other branch's path holds nothing for is joined without a mark. Marking it
-    // would add an Unresolved edge to every read of an attribute a branch happens to write, so it is left until constructor effects make
-    // an absent attribute the exception.
-    assert_eq!(
-        total.not_at_unresolved,
-        ["03-classes/python/state.py either -> state.Pipeline.run"]
-    );
-    // Edges summary mode has and inline mode does not: one. `state.py` `either -> Pipeline.run -> CsvHandler.process` is rule 7's join, not a
-    // wrong call: Python makes both calls (one per branch), inline draws a `Pipeline.run` for each object and summary draws the one node, with
-    // both handlers under it. Before effects that node had no child, and the same join showed as the missing nodes above.
-    //
-    // `entries.py` is out of this test since CS3c, and so are its two lines: `outer.inner -> A.go` (an error from ty's static type, gone now
-    // that the prologue runs `outer` first) and `Job.run -> B.go` (gone at CS3b: the entry starts on a `Job` its `__init__` ran on, so `h` is
-    // A; B.go, reachable if `configure` ran first, stays out by the entry rule "only __init__ is part of the start").
-    assert_eq!(total.extra, 1);
-    assert_eq!(
-        total.extras,
-        ["03-classes/python/state.py either/state.Pipeline.run -> state.CsvHandler.process"]
+    let inline_only: BTreeSet<String> = every_entry()
+        .into_iter()
+        .map(|(fixture, _, _)| fixture)
+        .filter(|f| f.starts_with("03-classes/") && this_file.contains(&format!("check(\"{f}\")")))
+        .collect();
+    assert!(
+        inline_only.is_empty(),
+        "checked in inline mode only again: {inline_only:?}"
     );
 }
 

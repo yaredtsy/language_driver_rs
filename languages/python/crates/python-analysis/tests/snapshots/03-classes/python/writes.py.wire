@@ -1,6 +1,3 @@
-# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
-# This pins what it says today so a change is noticed; it is not a right answer.
-
 == outside
 writes.outside <writes.py:outside#0 Function>
   writes.Pipeline <writes.py:Pipeline#0 Class> @42:9 in writes.py

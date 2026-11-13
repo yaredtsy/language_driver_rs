@@ -1,6 +1,3 @@
-# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
-# This pins what it says today so a change is noticed; it is not a right answer.
-
 == main
 special.main <special.py:main#0 Function>
   special.Registry.make <special.py:Registry.make#0 Method> @47:5 in special.py

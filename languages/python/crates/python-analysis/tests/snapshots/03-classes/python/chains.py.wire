@@ -1,6 +1,3 @@
-# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
-# This pins what it says today so a change is noticed; it is not a right answer.
-
 == chain
 chains.chain <chains.py:chain#0 Function>
   chains.Session <chains.py:Session#0 Class> @43:9 in chains.py
