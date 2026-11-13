@@ -68,13 +68,13 @@ impl OriginKey {
 }
 
 /// Where an input object sits: a root, then steps from it.
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub(crate) struct Path {
     pub root: Root,
     pub steps: SmallVec<[Step; 2]>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub(crate) enum Root {
     Param(u8),
     /// Free value `i` of the walked closure itself.
@@ -83,7 +83,7 @@ pub(crate) enum Root {
     Default(u8),
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub(crate) enum Step {
     Attr(Name),
     /// Free value `n` of the closure at the path so far.

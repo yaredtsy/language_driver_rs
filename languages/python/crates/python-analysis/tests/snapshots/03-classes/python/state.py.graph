@@ -1,66 +1,81 @@
 == main
 entries: state.main#2ceb106f1f372882
-stats: walks 6, contexts 6, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 9, contexts 9, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def state.CsvHandler = CsvHandler#0 Class state.py
+def state.CsvHandler.process = CsvHandler.process#0 Method state.py
 def state.JsonHandler = JsonHandler#0 Class state.py
+def state.JsonHandler.process = JsonHandler.process#0 Method state.py
 def state.Pipeline = Pipeline#0 Class state.py
 def state.Pipeline.__init__ = Pipeline.__init__#0 Method state.py
 def state.Pipeline.run = Pipeline.run#0 Method state.py
 def state.main = main#0 Function state.py
 def state.read_csv = read_csv#0 Function state.py
 def state.read_json = read_json#0 Function state.py
+state.CsvHandler.process#18523845a9933223 Finished
+state.JsonHandler.process#c4dafaf2ef344301 Finished
 state.Pipeline.__init__#7e53331b70101703 Finished
 state.Pipeline.__init__#ab099c1115104af9 Finished
-state.Pipeline.run#29b767300dff846b Finished
-  @29-55 -> ? unknown_callee
+state.Pipeline.run#6e669a02686b3f95 Finished
+  @29-55 -> state.CsvHandler.process#18523845a9933223 Type
+state.Pipeline.run#aeaf82a261b080d8 Finished
+  @29-55 -> state.JsonHandler.process#c4dafaf2ef344301 Type
 state.main#2ceb106f1f372882 Finished
   @16-27 -> state.read_json#362dace93a857048 Name
   @32-42 -> state.read_csv#8252f927d56f8490 Name
 state.read_csv#8252f927d56f8490 Finished
   @20-42 -> new state.Pipeline init state.Pipeline.__init__#ab099c1115104af9 Name
-  @20-49 -> state.Pipeline.run#29b767300dff846b Path
+  @20-49 -> state.Pipeline.run#6e669a02686b3f95 Path
   @29-41 -> new state.CsvHandler init - Name
 state.read_json#362dace93a857048 Finished
   @21-44 -> new state.Pipeline init state.Pipeline.__init__#7e53331b70101703 Name
-  @21-51 -> state.Pipeline.run#29b767300dff846b Path
+  @21-51 -> state.Pipeline.run#aeaf82a261b080d8 Path
   @30-43 -> new state.JsonHandler init - Name
 
 == via_factory
 entries: state.via_factory#dfd9ec0caec38803
-stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def state.JsonHandler = JsonHandler#0 Class state.py
+def state.JsonHandler.process = JsonHandler.process#0 Method state.py
 def state.Pipeline = Pipeline#0 Class state.py
 def state.Pipeline.__init__ = Pipeline.__init__#0 Method state.py
 def state.Pipeline.run = Pipeline.run#0 Method state.py
 def state.make = make#0 Function state.py
 def state.via_factory = via_factory#0 Function state.py
+state.JsonHandler.process#c4dafaf2ef344301 Finished
 state.Pipeline.__init__#7e53331b70101703 Finished
-state.Pipeline.run#29b767300dff846b Finished
-  @29-55 -> ? unknown_callee
+state.Pipeline.run#aeaf82a261b080d8 Finished
+  @29-55 -> state.JsonHandler.process#c4dafaf2ef344301 Type
 state.make#96ccbe70db1c69a2 Finished
   @24-35 -> new state.Pipeline init state.Pipeline.__init__#7e53331b70101703 Name
 state.via_factory#dfd9ec0caec38803 Finished
   @23-42 -> state.make#96ccbe70db1c69a2 Name
-  @23-49 -> state.Pipeline.run#29b767300dff846b Path
+  @23-49 -> state.Pipeline.run#aeaf82a261b080d8 Path
   @28-41 -> new state.JsonHandler init - Name
 
 == either
 entries: state.either#23064977b70c0bcb
-stats: walks 4, contexts 4, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def state.CsvHandler = CsvHandler#0 Class state.py
+def state.CsvHandler.process = CsvHandler.process#0 Method state.py
 def state.JsonHandler = JsonHandler#0 Class state.py
+def state.JsonHandler.process = JsonHandler.process#0 Method state.py
 def state.Pipeline = Pipeline#0 Class state.py
 def state.Pipeline.__init__ = Pipeline.__init__#0 Method state.py
 def state.Pipeline.run = Pipeline.run#0 Method state.py
 def state.either = either#0 Function state.py
+state.CsvHandler.process#18523845a9933223 Finished
+state.JsonHandler.process#c4dafaf2ef344301 Finished
 state.Pipeline.__init__#7e53331b70101703 Finished
 state.Pipeline.__init__#ab099c1115104af9 Finished
-state.Pipeline.run#29b767300dff846b Finished
-  @29-55 -> ? unknown_callee
+state.Pipeline.run#6e669a02686b3f95 Finished
+  @29-55 -> state.CsvHandler.process#18523845a9933223 Type
+state.Pipeline.run#aeaf82a261b080d8 Finished
+  @29-55 -> state.JsonHandler.process#c4dafaf2ef344301 Type
 state.either#23064977b70c0bcb Finished
   @37-60 -> new state.Pipeline init state.Pipeline.__init__#7e53331b70101703 Name
   @46-59 -> new state.JsonHandler init - Name
   @83-105 -> new state.Pipeline init state.Pipeline.__init__#ab099c1115104af9 Name
   @92-104 -> new state.CsvHandler init - Name
-  @110-118 -> state.Pipeline.run#29b767300dff846b Path
+  @110-118 -> state.Pipeline.run#6e669a02686b3f95 Path
+  @110-118 -> state.Pipeline.run#aeaf82a261b080d8 Path
 

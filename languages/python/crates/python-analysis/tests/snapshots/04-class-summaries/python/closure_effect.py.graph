@@ -1,0 +1,20 @@
+== main
+entries: closure_effect.main#06d5e067973747b5
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closure_effect.Box = Box#0 Class closure_effect.py
+def closure_effect.Box.__init__ = Box.__init__#0 Method closure_effect.py
+def closure_effect.Csv = Csv#0 Class closure_effect.py
+def closure_effect.Json = Json#0 Class closure_effect.py
+def closure_effect.Json.process = Json.process#0 Method closure_effect.py
+def closure_effect.main = main#0 Function closure_effect.py
+def closure_effect.main.swap = main.<locals>.swap#0 Function closure_effect.py
+closure_effect.Box.__init__#06066587c70c9c1c Finished
+closure_effect.Json.process#6ccc0dfcd05e7b54 Finished
+closure_effect.main#06d5e067973747b5 Finished
+  @20-30 -> new closure_effect.Box init closure_effect.Box.__init__#06066587c70c9c1c Name
+  @24-29 -> new closure_effect.Csv init - Name
+  @106-112 -> closure_effect.main.swap#2704d3cfe4a0331a Name
+  @117-130 -> closure_effect.Json.process#6ccc0dfcd05e7b54 Path
+closure_effect.main.swap#2704d3cfe4a0331a Finished
+  @26-32 -> new closure_effect.Json init - Name
+

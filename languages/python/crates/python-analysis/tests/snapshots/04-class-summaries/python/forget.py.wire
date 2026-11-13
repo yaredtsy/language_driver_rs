@@ -1,0 +1,30 @@
+== main
+forget.main <forget.py:main#0 Function>
+  forget.P <forget.py:P#0 Class> @33:9 in forget.py
+  forget.Json <forget.py:Json#0 Class> @33:11 in forget.py
+  forget.wipe <forget.py:wipe#0 Function> @34:5 in forget.py
+  forget.Handler.process <forget.py:Handler.process#0 Method> @35:5 in forget.py
+
+== main (merged)
+forget.main <forget.py:main#0 Function>
+  forget.P <forget.py:P#0 Class> @33:9 in forget.py
+  forget.Json <forget.py:Json#0 Class> @33:11 in forget.py
+  forget.wipe <forget.py:wipe#0 Function> @34:5 in forget.py
+  forget.Handler.process <forget.py:Handler.process#0 Method> @35:5 in forget.py
+
+== main2
+forget.main2 <forget.py:main2#0 Function>
+  forget.P <forget.py:P#0 Class> @39:9 in forget.py
+  forget.Json <forget.py:Json#0 Class> @39:11 in forget.py
+  forget.wipe_twice <forget.py:wipe_twice#0 Function> @40:5 in forget.py
+    forget.wipe <forget.py:wipe#0 Function> @29:5 in forget.py
+  forget.Handler.process <forget.py:Handler.process#0 Method> @41:5 in forget.py
+
+== main2 (merged)
+forget.main2 <forget.py:main2#0 Function>
+  forget.P <forget.py:P#0 Class> @39:9 in forget.py
+  forget.Json <forget.py:Json#0 Class> @39:11 in forget.py
+  forget.wipe_twice <forget.py:wipe_twice#0 Function> @40:5 in forget.py
+    forget.wipe <forget.py:wipe#0 Function> @29:5 in forget.py
+  forget.Handler.process <forget.py:Handler.process#0 Method> @41:5 in forget.py
+

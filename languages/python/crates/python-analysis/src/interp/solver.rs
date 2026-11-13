@@ -535,12 +535,6 @@ pub(crate) fn walk_context<'db>(s: &mut Solver<'db>, ctx: ContextId) -> Walk<'db
     let mut w = Walk::new(s, func);
     w.generator = contains_yield(&node.body);
     let env = w.materialize(s, ctx, node);
-    if s.opts.constructor_effects {
-        w.inputs = crate::interp::bind::param_names(node)
-            .map(|n| env.get(n).cloned().unwrap_or_default())
-            .collect();
-        w.start_attrs = env.attrs.clone();
-    }
     if let Some(end) = w.walk_stmts(s, &node.body, env) {
         let none = w.none_value(s);
         w.frame.returns.extend(none); // fell off the end

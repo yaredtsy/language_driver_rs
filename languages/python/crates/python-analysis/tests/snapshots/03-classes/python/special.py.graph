@@ -1,7 +1,8 @@
 == main
 entries: special.main#45cf4468e015cb83
-stats: walks 8, contexts 8, reuse_hits 2, unresolved 3, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 3}
+stats: walks 9, contexts 9, reuse_hits 4, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def special.JsonHandler = JsonHandler#0 Class special.py
+def special.JsonHandler.handle = JsonHandler.handle#0 Method special.py
 def special.Registry = Registry#0 Class special.py
 def special.Registry.__init__ = Registry.__init__#0 Method special.py
 def special.Registry.active = Registry.active#0 Method special.py
@@ -11,52 +12,55 @@ def special.Registry.get_h = Registry.get_h#0 Method special.py
 def special.Registry.make = Registry.make#0 Method special.py
 def special.main = main#0 Function special.py
 def special.on_ok = on_ok#0 Function special.py
+special.JsonHandler.handle#36a5f774d714ec97 Finished
 special.Registry.__init__#63bab7ddc5509f58 Finished
-special.Registry.active#8578b5af6ea81323 Finished
+special.Registry.active#b25f2822ebf02dee Finished
 special.Registry.create#cc5214c8ba215f48 Finished
   @52-58 -> new special.Registry init special.Registry.__init__#63bab7ddc5509f58 Type
-special.Registry.fire#198c65b041dd8459 Finished
-  @24-35 -> special.Registry.active#8578b5af6ea81323 Type
-  @24-44 -> ? unknown_callee
-special.Registry.get_h#bd24240793c3b150 Finished
+special.Registry.fire#a3c7d13057210a96 Finished
+  @24-35 -> special.Registry.active#b25f2822ebf02dee Type
+  @24-44 -> special.JsonHandler.handle#36a5f774d714ec97 Type
+special.Registry.get_h#93e02e24ff12bb05 Finished
 special.Registry.make#b22582d478919ba4 Finished
   @40-44 -> special.on_ok#fb0f6cb50ab9ee12 Type
 special.main#45cf4468e015cb83 Finished
   @16-36 -> special.Registry.make#b22582d478919ba4 Name
   @73-103 -> special.Registry.create#cc5214c8ba215f48 Type
   @89-102 -> new special.JsonHandler init - Name
-  @127-135 -> special.Registry.active#8578b5af6ea81323 Path
-  @127-144 -> ? unknown_callee
-  @187-195 -> special.Registry.fire#198c65b041dd8459 Path
+  @127-135 -> special.Registry.active#b25f2822ebf02dee Path
+  @127-144 -> special.JsonHandler.handle#36a5f774d714ec97 Path
+  @187-195 -> special.Registry.fire#a3c7d13057210a96 Path
   @200-213 -> special.Registry.make#b22582d478919ba4 Type
-  @275-284 -> special.Registry.get_h#bd24240793c3b150 Path
-  @275-293 -> ? unknown_callee
+  @275-284 -> special.Registry.get_h#93e02e24ff12bb05 Path
+  @275-293 -> special.JsonHandler.handle#36a5f774d714ec97 Path
 special.on_ok#fb0f6cb50ab9ee12 Finished
 
 == swap
 entries: special.swap#348fe6a531e46048
-stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def special.Box = Box#0 Class special.py
 def special.Box.__init__ = Box.__init__#0 Method special.py
 def special.Box.handler = Box.handler#0 Method special.py
 def special.Box.handler = Box.handler#1 Method special.py
 def special.CsvHandler = CsvHandler#0 Class special.py
+def special.CsvHandler.handle = CsvHandler.handle#0 Method special.py
 def special.JsonHandler = JsonHandler#0 Class special.py
 def special.swap = swap#0 Function special.py
 special.Box.__init__#b682f90e8992af10 Finished
-special.Box.handler#e537fac17b2c38cc Finished
-special.Box.handler#46e056c11a20641f Finished
+special.Box.handler#cf1df4e1c70fb5b8 Finished
+special.Box.handler#43743775ccbe4789 Finished
+special.CsvHandler.handle#8ccb42fa88925c3d Finished
 special.swap#348fe6a531e46048 Finished
   @20-38 -> new special.Box init special.Box.__init__#b682f90e8992af10 Name
   @24-37 -> new special.JsonHandler init - Name
-  @43-52 -> special.Box.handler#46e056c11a20641f Path
+  @43-52 -> special.Box.handler#43743775ccbe4789 Path
   @55-67 -> new special.CsvHandler init - Name
-  @126-135 -> special.Box.handler#e537fac17b2c38cc Path
-  @126-144 -> ? unknown_callee
+  @126-135 -> special.Box.handler#cf1df4e1c70fb5b8 Path
+  @126-144 -> special.CsvHandler.handle#8ccb42fa88925c3d Path
 
 == lazy
 entries: special.lazy#8e30c6be79136b78
-stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
 def special.JsonHandler = JsonHandler#0 Class special.py
 def special.Lazy = Lazy#0 Class special.py
 def special.Lazy.__init__ = Lazy.__init__#0 Method special.py

@@ -5,13 +5,11 @@ use crate::interp::bind::{Bound, EvaluatedArgs};
 use crate::interp::defer::DeferredOp;
 use crate::interp::env::Env;
 use crate::interp::solver::{Got, Solver};
-use crate::interp::summary::{
-    CallEdge, CallSite, EffectValue, FunctionResult, PlainVal, SiteId, Target,
-};
+use crate::interp::summary::{CallEdge, CallSite, SiteId, Target};
 use crate::interp::tree::Node;
 use crate::interp::value::dedup;
 use crate::interp::value::{AbstractValue, Values};
-use crate::interp::value::{ActivationId, Made, OriginId, OriginKey};
+use crate::interp::value::{ActivationId, Made, OriginKey};
 use crate::interp::walk::{Walk, contains_yield};
 use crate::sem::Definition;
 use crate::sem::Shape;
@@ -328,6 +326,9 @@ impl<'db> Walk<'db> {
         classes.sort_by_key(|&c| sol.sem.def_position(c));
         externals.sort_by_key(|&d| sol.sem.def_position(d));
         externals.dedup();
+        // The callee is one def and nothing else: a write it made on every path is a write Python made. Known here, before the first
+        // callee's effects are applied: the callees are all collected (and sorted) above.
+        let strong_ok = targets.len() + methods.len() + classes.len() == 1 && !ask_ty;
         let mut edge_targets: SmallVec<[Target<'db>; 2]> = SmallVec::new();
         let mut out = Values::new();
         // Callees at one site are alternatives: each starts from the state before the call.
@@ -361,6 +362,7 @@ impl<'db> Walk<'db> {
                     &mut edge_targets,
                     env,
                     &before,
+                    strong_ok,
                 ),
             };
             out.extend(v);
@@ -398,6 +400,7 @@ impl<'db> Walk<'db> {
                     &mut edge_targets,
                     env,
                     &before,
+                    strong_ok,
                 )),
             }
         }
@@ -421,6 +424,7 @@ impl<'db> Walk<'db> {
                     },
                     &mut edge_targets,
                     env,
+                    strong_ok,
                 )),
             }
         }
@@ -648,6 +652,7 @@ impl<'db> Walk<'db> {
         targets: &mut SmallVec<[Target<'db>; 2]>,
         env: &mut Env<'db>,
         before: &Env<'db>, // the env when the call began: what a `Ref` reads
+        strong_ok: bool,   // the site has one callee, so a write it made on every path replaces
     ) -> Values<'db> {
         let parsed = sol.sem.parsed(def);
         let Some(node) = sol.sem.function_node(def, &parsed) else {
@@ -682,9 +687,10 @@ impl<'db> Walk<'db> {
                     t,
                     bound: &bound,
                     enclosing,
+                    strong_ok,
                 };
                 let plan = self.resolve(sol, &res, &call, before);
-                self.apply(plan, env)
+                self.apply(sol, plan, env)
             }
             Got::Pending if self.replaying => Values::new(), // the solver flagged the reader
             Got::Pending => {
@@ -750,8 +756,9 @@ impl<'db> Walk<'db> {
         )
     }
 
-    /// Summary mode: a new object here, and `__init__` keyed on it. With `constructor_effects`, what `__init__` wrote onto `self` is
-    /// written onto the new object, from the arguments of this call (a spike: part 04, step 3).
+    /// Summary mode: a new object here, and `__init__` keyed on it. With `Options::effects`, what `__init__` wrote is applied like the
+    /// effects of any callee: `self` is slot 0, so `self.h = h` writes onto the new object, and an object `__init__` built is described
+    /// and written too.
     // the construct site's inputs: the class and its site, the arguments, what the class expression rests on, and the walk's state
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn construct_summary(
@@ -763,6 +770,7 @@ impl<'db> Walk<'db> {
         basis: Basis, // `Name` when the class expression names the class
         targets: &mut SmallVec<[Target<'db>; 2]>,
         env: &mut Env<'db>,
+        strong_ok: bool, // the site has one callee
     ) -> Values<'db> {
         let origin = self.origins.intern(OriginKey::New {
             site,
@@ -777,11 +785,24 @@ impl<'db> Walk<'db> {
             if let Some(node) = sol.sem.function_node(init_def, &parsed) {
                 let bound = self.bind_for_callee(sol, init_def, node, Some(obj), args, None);
                 let ctx = sol.key(self, init_def, &bound, None, env);
-                // its value is never used; its writes are effects (step 03)
-                if let Got::Ready(res) = sol.get(ctx)
-                    && sol.opts.constructor_effects
-                {
-                    self.apply_effects(sol, origin, &res, &bound, env);
+                // its value is never used; its writes are effects. Asked either way: this walks `__init__`, and its context needs a slot.
+                match sol.get(ctx) {
+                    Got::Ready(res) if sol.opts.effects => {
+                        let call = CallSite {
+                            ctx,
+                            site,
+                            t: 0,
+                            bound: &bound,
+                            enclosing: None,
+                            strong_ok,
+                        };
+                        let before = env.clone();
+                        let plan = self.resolve(sol, &res, &call, &before);
+                        self.apply(sol, plan, env);
+                    }
+                    // running: nothing waits on a constructor, so its effects are not carried (CS8)
+                    Got::Pending if sol.opts.effects => self.note_effects_in_cycle(sol, (site, 0)),
+                    _ => {}
                 }
                 init = Some(ctx);
             }
@@ -792,44 +813,5 @@ impl<'db> Walk<'db> {
         } else {
             smallvec![obj]
         }
-    }
-
-    /// Write what `res` says `__init__` wrote onto `self` onto the object `origin`. A `Param(k)` is what this call passed for slot `k`.
-    /// Joined, not replaced: the same site builds the object again in a loop. A write whose values are all `Unknown` is left out: the
-    /// attribute stays absent, and a read of it asks ty, which may know what the walk does not.
-    fn apply_effects(
-        &mut self,
-        sol: &mut Solver<'db>,
-        origin: OriginId,
-        res: &FunctionResult<'db>,
-        bound: &Bound<'db>,
-        env: &mut Env<'db>,
-    ) {
-        sol.stats.effects_dropped += res.effects_dropped;
-        for e in &res.effects {
-            let vals: Values<'db> = match &e.value {
-                EffectValue::Param(k) => bound.slots.get(*k).cloned().unwrap_or_default(),
-                EffectValue::Plain(p) => smallvec![plain_value(p)],
-            };
-            if vals.iter().all(|v| matches!(v, AbstractValue::Unknown)) {
-                continue;
-            }
-            env.join_attr(origin, &e.attr, vals);
-            sol.stats.effects_applied += 1;
-        }
-    }
-}
-
-fn plain_value<'db>(p: &PlainVal<'db>) -> AbstractValue<'db> {
-    match *p {
-        PlainVal::Function(d) => AbstractValue::Function(d),
-        PlainVal::Class(d) => AbstractValue::Class(d),
-        PlainVal::Module(t) => AbstractValue::Module(t),
-        PlainVal::Ty(t) => AbstractValue::Ty(t),
-        PlainVal::Opaque(class) => AbstractValue::Instance {
-            class,
-            origin: OriginId::OPAQUE,
-        },
-        PlainVal::Unknown => AbstractValue::Unknown,
     }
 }

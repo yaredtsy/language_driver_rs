@@ -40,6 +40,7 @@ writes.through_a_function <writes.py:through_a_function#0 Function>
   writes.install <writes.py:install#0 Function> @55:5 in writes.py
   writes.JsonHandler <writes.py:JsonHandler#0 Class> @55:16 in writes.py
   writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @56:5 in writes.py
+    writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @21:9 in writes.py
 
 == through_a_function (merged)
 writes.through_a_function <writes.py:through_a_function#0 Function>
@@ -48,6 +49,7 @@ writes.through_a_function <writes.py:through_a_function#0 Function>
   writes.install <writes.py:install#0 Function> @55:5 in writes.py
   writes.JsonHandler <writes.py:JsonHandler#0 Class> @55:16 in writes.py
   writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @56:5 in writes.py
+    writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @21:9 in writes.py
 
 == on_one_path
 writes.on_one_path <writes.py:on_one_path#0 Function>
@@ -56,6 +58,8 @@ writes.on_one_path <writes.py:on_one_path#0 Function>
   writes.maybe <writes.py:maybe#0 Function> @61:5 in writes.py
   writes.JsonHandler <writes.py:JsonHandler#0 Class> @61:14 in writes.py
   writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @62:5 in writes.py
+    writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @21:9 in writes.py
+    writes.CsvHandler.process <writes.py:CsvHandler.process#0 Method> @21:9 in writes.py
 
 == on_one_path (merged)
 writes.on_one_path <writes.py:on_one_path#0 Function>
@@ -64,6 +68,8 @@ writes.on_one_path <writes.py:on_one_path#0 Function>
   writes.maybe <writes.py:maybe#0 Function> @61:5 in writes.py
   writes.JsonHandler <writes.py:JsonHandler#0 Class> @61:14 in writes.py
   writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @62:5 in writes.py
+    writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @21:9 in writes.py
+    writes.CsvHandler.process <writes.py:CsvHandler.process#0 Method> @21:9 in writes.py
 
 == two_candidates
 writes.two_candidates <writes.py:two_candidates#0 Function>
@@ -74,6 +80,7 @@ writes.two_candidates <writes.py:two_candidates#0 Function>
   writes.JsonHandler <writes.py:JsonHandler#0 Class> @69:17 in writes.py
   writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @70:5 in writes.py
     writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @21:9 in writes.py
+    writes.CsvHandler.process <writes.py:CsvHandler.process#0 Method> @21:9 in writes.py
 
 == two_candidates (merged)
 writes.two_candidates <writes.py:two_candidates#0 Function>
@@ -82,4 +89,5 @@ writes.two_candidates <writes.py:two_candidates#0 Function>
   writes.JsonHandler <writes.py:JsonHandler#0 Class> @69:17 in writes.py
   writes.Pipeline.run <writes.py:Pipeline.run#0 Method> @70:5 in writes.py
     writes.JsonHandler.process <writes.py:JsonHandler.process#0 Method> @21:9 in writes.py
+    writes.CsvHandler.process <writes.py:CsvHandler.process#0 Method> @21:9 in writes.py
 

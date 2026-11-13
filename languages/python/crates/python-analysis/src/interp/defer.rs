@@ -98,9 +98,10 @@ impl<'db> Walk<'db> {
                             t,
                             bound: &bound,
                             enclosing,
+                            strong_ok: false, // a replay applies no effect
                         };
                         let plan = self.resolve(sol, &res, &call, &env);
-                        self.apply(plan, &mut env)
+                        self.apply(sol, plan, &mut env)
                     }
                     Got::Pending => Values::new(), // the solver flagged it: the round is abandoned
                 },

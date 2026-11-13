@@ -12,6 +12,12 @@ split.main <split.py:main#0 Function>
     split.CsvHandler.key <split.py:CsvHandler.key#0 Method> @43:19 in split.py
       split.CsvKey <split.py:CsvKey#0 Class> @27:16 in split.py
   split.Job.go <split.py:Job.go#0 Method> @48:5 in split.py
+    split.JsonHandler.process <split.py:JsonHandler.process#0 Method> @39:9 in split.py
+      split.JsonKey.encode <split.py:JsonKey.encode#0 Method> @22:9 in split.py
+      split.CsvKey.encode <split.py:CsvKey.encode#0 Method> @22:9 in split.py
+    split.CsvHandler.process <split.py:CsvHandler.process#0 Method> @39:9 in split.py
+      split.JsonKey.encode <split.py:JsonKey.encode#0 Method> @30:9 in split.py
+      split.CsvKey.encode <split.py:CsvKey.encode#0 Method> @30:9 in split.py
 
 == main (merged)
 split.main <split.py:main#0 Function>
@@ -24,4 +30,10 @@ split.main <split.py:main#0 Function>
     split.CsvHandler.key <split.py:CsvHandler.key#0 Method> @43:19 in split.py
       split.CsvKey <split.py:CsvKey#0 Class> @27:16 in split.py
   split.Job.go <split.py:Job.go#0 Method> @48:5 in split.py
+    split.JsonHandler.process <split.py:JsonHandler.process#0 Method> @39:9 in split.py
+      split.JsonKey.encode <split.py:JsonKey.encode#0 Method> @22:9 in split.py
+      split.CsvKey.encode <split.py:CsvKey.encode#0 Method> @22:9 in split.py
+    split.CsvHandler.process <split.py:CsvHandler.process#0 Method> @39:9 in split.py
+      split.JsonKey.encode <split.py:JsonKey.encode#0 Method> @30:9 in split.py
+      split.CsvKey.encode <split.py:CsvKey.encode#0 Method> @30:9 in split.py
 

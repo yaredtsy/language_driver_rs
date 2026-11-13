@@ -10,6 +10,7 @@ deep_write.main <deep_write.py:main#0 Function>
   deep_write.CsvHandler <deep_write.py:CsvHandler#0 Class> @41:35 in deep_write.py
   deep_write.rewire <deep_write.py:rewire#0 Function> @42:5 in deep_write.py
     deep_write.JsonHandler <deep_write.py:JsonHandler#0 Class> @37:29 in deep_write.py
+  deep_write.CsvHandler.process <deep_write.py:CsvHandler.process#0 Method> @43:5 in deep_write.py
 
 == main (merged)
 deep_write.main <deep_write.py:main#0 Function>
@@ -20,4 +21,5 @@ deep_write.main <deep_write.py:main#0 Function>
   deep_write.CsvHandler <deep_write.py:CsvHandler#0 Class> @41:35 in deep_write.py
   deep_write.rewire <deep_write.py:rewire#0 Function> @42:5 in deep_write.py
     deep_write.JsonHandler <deep_write.py:JsonHandler#0 Class> @37:29 in deep_write.py
+  deep_write.CsvHandler.process <deep_write.py:CsvHandler.process#0 Method> @43:5 in deep_write.py
 

@@ -1,0 +1,14 @@
+== main
+cycle_effect.main <cycle_effect.py:main#0 Function>
+  cycle_effect.Walker <cycle_effect.py:Walker#0 Class> @18:9 in cycle_effect.py
+  cycle_effect.Walker.step <cycle_effect.py:Walker.step#0 Method> @19:5 in cycle_effect.py
+    cycle_effect.Handler <cycle_effect.py:Handler#0 Class> @13:22 in cycle_effect.py
+    cycle_effect.Walker.step <cycle_effect.py:Walker.step#0 Method> [recursive] @14:13 in cycle_effect.py
+
+== main (merged)
+cycle_effect.main <cycle_effect.py:main#0 Function>
+  cycle_effect.Walker <cycle_effect.py:Walker#0 Class> @18:9 in cycle_effect.py
+  cycle_effect.Walker.step <cycle_effect.py:Walker.step#0 Method> @19:5 in cycle_effect.py
+    cycle_effect.Handler <cycle_effect.py:Handler#0 Class> @13:22 in cycle_effect.py
+    cycle_effect.Walker.step <cycle_effect.py:Walker.step#0 Method> [recursive] @14:13 in cycle_effect.py
+

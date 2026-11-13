@@ -1,6 +1,6 @@
 == outside
 entries: writes.outside#ab284c6f346e90b8
-stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def writes.CsvHandler = CsvHandler#0 Class writes.py
 def writes.JsonHandler = JsonHandler#0 Class writes.py
 def writes.JsonHandler.process = JsonHandler.process#0 Method writes.py
@@ -20,14 +20,14 @@ writes.outside#ab284c6f346e90b8 Finished
 
 == in_another_method
 entries: writes.in_another_method#1672a2aa47f2e5c8
-stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def writes.Controller = Controller#0 Class writes.py
 def writes.Controller.go = Controller.go#0 Method writes.py
 def writes.Controller.setup = Controller.setup#0 Method writes.py
 def writes.JsonHandler = JsonHandler#0 Class writes.py
 def writes.JsonHandler.process = JsonHandler.process#0 Method writes.py
 def writes.in_another_method = in_another_method#0 Function writes.py
-writes.Controller.go#7559cf3cc4a6df28 Finished
+writes.Controller.go#90079091873b297d Finished
   @22-38 -> writes.JsonHandler.process#ad17a16458f0bde5 Type
 writes.Controller.setup#828f34b58d72569e Finished
   @34-47 -> new writes.JsonHandler init - Name
@@ -35,70 +35,79 @@ writes.JsonHandler.process#ad17a16458f0bde5 Finished
 writes.in_another_method#1672a2aa47f2e5c8 Finished
   @33-45 -> new writes.Controller init - Name
   @50-59 -> writes.Controller.setup#828f34b58d72569e Path
-  @64-70 -> writes.Controller.go#7559cf3cc4a6df28 Path
+  @64-70 -> writes.Controller.go#90079091873b297d Path
 
 == through_a_function
 entries: writes.through_a_function#53756446a216a726
-stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
-def writes.CsvHandler = CsvHandler#0 Class writes.py
-def writes.JsonHandler = JsonHandler#0 Class writes.py
-def writes.Pipeline = Pipeline#0 Class writes.py
-def writes.Pipeline.__init__ = Pipeline.__init__#0 Method writes.py
-def writes.Pipeline.run = Pipeline.run#0 Method writes.py
-def writes.install = install#0 Function writes.py
-def writes.through_a_function = through_a_function#0 Function writes.py
-writes.Pipeline.__init__#940f8708ce0193fa Finished
-writes.Pipeline.run#16e067b699668c83 Finished
-  @23-45 -> ? unknown_callee
-writes.install#5e592b91c9749e3a Finished
-writes.through_a_function#53756446a216a726 Finished
-  @34-56 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Name
-  @43-55 -> new writes.CsvHandler init - Name
-  @61-86 -> writes.install#5e592b91c9749e3a Name
-  @72-85 -> new writes.JsonHandler init - Name
-  @91-98 -> writes.Pipeline.run#16e067b699668c83 Path
-
-== on_one_path
-entries: writes.on_one_path#0fde55f537b4a0d9
-stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
-def writes.CsvHandler = CsvHandler#0 Class writes.py
-def writes.JsonHandler = JsonHandler#0 Class writes.py
-def writes.Pipeline = Pipeline#0 Class writes.py
-def writes.Pipeline.__init__ = Pipeline.__init__#0 Method writes.py
-def writes.Pipeline.run = Pipeline.run#0 Method writes.py
-def writes.maybe = maybe#0 Function writes.py
-def writes.on_one_path = on_one_path#0 Function writes.py
-writes.Pipeline.__init__#940f8708ce0193fa Finished
-writes.Pipeline.run#16e067b699668c83 Finished
-  @23-45 -> ? unknown_callee
-writes.maybe#6fa8d8f56df2faa0 Finished
-writes.on_one_path#0fde55f537b4a0d9 Finished
-  @28-50 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Name
-  @37-49 -> new writes.CsvHandler init - Name
-  @55-81 -> writes.maybe#6fa8d8f56df2faa0 Name
-  @64-77 -> new writes.JsonHandler init - Name
-  @86-93 -> writes.Pipeline.run#16e067b699668c83 Path
-
-== two_candidates
-entries: writes.two_candidates#1344a6e8d804cb8b
-stats: walks 4, contexts 4, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def writes.CsvHandler = CsvHandler#0 Class writes.py
 def writes.JsonHandler = JsonHandler#0 Class writes.py
 def writes.JsonHandler.process = JsonHandler.process#0 Method writes.py
 def writes.Pipeline = Pipeline#0 Class writes.py
 def writes.Pipeline.__init__ = Pipeline.__init__#0 Method writes.py
 def writes.Pipeline.run = Pipeline.run#0 Method writes.py
-def writes.two_candidates = two_candidates#0 Function writes.py
+def writes.install = install#0 Function writes.py
+def writes.through_a_function = through_a_function#0 Function writes.py
 writes.JsonHandler.process#ad17a16458f0bde5 Finished
 writes.Pipeline.__init__#940f8708ce0193fa Finished
-writes.Pipeline.run#491a9d94fadd74d4 Finished
+writes.Pipeline.run#e9a21ba1950e8645 Finished
   @23-45 -> writes.JsonHandler.process#ad17a16458f0bde5 Type
-  @23-45 -> ? unknown_callee
+writes.install#72f5e88d82f20e28 Finished
+writes.through_a_function#53756446a216a726 Finished
+  @34-56 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Name
+  @43-55 -> new writes.CsvHandler init - Name
+  @61-86 -> writes.install#72f5e88d82f20e28 Name
+  @72-85 -> new writes.JsonHandler init - Name
+  @91-98 -> writes.Pipeline.run#e9a21ba1950e8645 Path
+
+== on_one_path
+entries: writes.on_one_path#0fde55f537b4a0d9
+stats: walks 6, contexts 6, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def writes.CsvHandler = CsvHandler#0 Class writes.py
+def writes.CsvHandler.process = CsvHandler.process#0 Method writes.py
+def writes.JsonHandler = JsonHandler#0 Class writes.py
+def writes.JsonHandler.process = JsonHandler.process#0 Method writes.py
+def writes.Pipeline = Pipeline#0 Class writes.py
+def writes.Pipeline.__init__ = Pipeline.__init__#0 Method writes.py
+def writes.Pipeline.run = Pipeline.run#0 Method writes.py
+def writes.maybe = maybe#0 Function writes.py
+def writes.on_one_path = on_one_path#0 Function writes.py
+writes.CsvHandler.process#c131899242bc7e67 Finished
+writes.JsonHandler.process#ad17a16458f0bde5 Finished
+writes.Pipeline.__init__#940f8708ce0193fa Finished
+writes.Pipeline.run#c7339b3f7e0ad5bf Finished
+  @23-45 -> writes.CsvHandler.process#c131899242bc7e67 Type
+  @23-45 -> writes.JsonHandler.process#ad17a16458f0bde5 Type
+writes.maybe#59ec2a9dc5b12367 Finished
+writes.on_one_path#0fde55f537b4a0d9 Finished
+  @28-50 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Name
+  @37-49 -> new writes.CsvHandler init - Name
+  @55-81 -> writes.maybe#59ec2a9dc5b12367 Name
+  @64-77 -> new writes.JsonHandler init - Name
+  @86-93 -> writes.Pipeline.run#c7339b3f7e0ad5bf Path
+
+== two_candidates
+entries: writes.two_candidates#1344a6e8d804cb8b
+stats: walks 5, contexts 5, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def writes.CsvHandler = CsvHandler#0 Class writes.py
+def writes.CsvHandler.process = CsvHandler.process#0 Method writes.py
+def writes.JsonHandler = JsonHandler#0 Class writes.py
+def writes.JsonHandler.process = JsonHandler.process#0 Method writes.py
+def writes.Pipeline = Pipeline#0 Class writes.py
+def writes.Pipeline.__init__ = Pipeline.__init__#0 Method writes.py
+def writes.Pipeline.run = Pipeline.run#0 Method writes.py
+def writes.two_candidates = two_candidates#0 Function writes.py
+writes.CsvHandler.process#c131899242bc7e67 Finished
+writes.JsonHandler.process#ad17a16458f0bde5 Finished
+writes.Pipeline.__init__#940f8708ce0193fa Finished
+writes.Pipeline.run#c7339b3f7e0ad5bf Finished
+  @23-45 -> writes.CsvHandler.process#c131899242bc7e67 Type
+  @23-45 -> writes.JsonHandler.process#ad17a16458f0bde5 Type
 writes.two_candidates#1344a6e8d804cb8b Finished
   @31-53 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Name
   @40-52 -> new writes.CsvHandler init - Name
   @62-84 -> new writes.Pipeline init writes.Pipeline.__init__#940f8708ce0193fa Name
   @71-83 -> new writes.CsvHandler init - Name
   @123-136 -> new writes.JsonHandler init - Name
-  @185-192 -> writes.Pipeline.run#491a9d94fadd74d4 Path
+  @185-192 -> writes.Pipeline.run#c7339b3f7e0ad5bf Path
 

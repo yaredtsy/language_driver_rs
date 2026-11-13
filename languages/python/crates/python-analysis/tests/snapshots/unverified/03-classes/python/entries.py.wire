@@ -11,9 +11,11 @@ entries.process <entries.py:process#0 Function>
 
 == Svc.run
 entries.Svc.run <entries.py:Svc.run#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @47:9 in entries.py
 
 == Svc.run (merged)
 entries.Svc.run <entries.py:Svc.run#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @47:9 in entries.py
 
 == Child.go
 entries.Child.go <entries.py:Child.go#0 Method>
@@ -24,12 +26,10 @@ entries.Child.go <entries.py:Child.go#0 Method>
 == Job.run
 entries.Job.run <entries.py:Job.run#0 Method>
   entries.A.go <entries.py:A.go#0 Method> @77:9 in entries.py
-  entries.B.go <entries.py:B.go#0 Method> @77:9 in entries.py
 
 == Job.run (merged)
 entries.Job.run <entries.py:Job.run#0 Method>
   entries.A.go <entries.py:A.go#0 Method> @77:9 in entries.py
-  entries.B.go <entries.py:B.go#0 Method> @77:9 in entries.py
 
 == Reg.create
 entries.Reg.create <entries.py:Reg.create#0 Method>
@@ -158,6 +158,8 @@ entries.fire <entries.py:fire#0 Function>
   entries.setup <entries.py:setup#0 Function> @221:5 in entries.py
     entries.A <entries.py:A#0 Class> @210:9 in entries.py
     entries.B <entries.py:B#0 Class> @216:9 in entries.py
+  entries.setup.cb <entries.py:setup.<locals>.cb#0 Function> @222:5 in entries.py
+    entries.B.go <entries.py:B.go#0 Method> @213:9 in entries.py
 
 == fire (merged)
 entries.fire <entries.py:fire#0 Function>
@@ -165,6 +167,8 @@ entries.fire <entries.py:fire#0 Function>
   entries.setup <entries.py:setup#0 Function> @221:5 in entries.py
     entries.A <entries.py:A#0 Class> @210:9 in entries.py
     entries.B <entries.py:B#0 Class> @216:9 in entries.py
+  entries.setup.cb <entries.py:setup.<locals>.cb#0 Function> @222:5 in entries.py
+    entries.B.go <entries.py:B.go#0 Method> @213:9 in entries.py
 
 == Tree.walk
 entries.Tree.walk <entries.py:Tree.walk#0 Method>

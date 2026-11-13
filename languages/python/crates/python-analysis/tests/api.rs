@@ -1079,3 +1079,22 @@ fn a_method_on_an_object_a_callee_built_rests_on_the_path() {
         .map(String::from)
     );
 }
+
+/// A read after a callee wrote a value of no known type onto the attribute: the engine's declared type answers (`Handler`, a `Type` edge),
+/// never `Json.process`. The request path has effects off, so the constructor's write is not applied and nothing is there to be stale; the
+/// harness runs the same program with effects on (`p04_03_forget`), where the strong write of `Unknown` removes what the attribute held,
+/// and gives the same edge.
+#[test]
+fn a_read_after_a_write_of_nothing_known_asks_the_declared_type() {
+    let project = Project::open(CLASS_SUMMARIES).unwrap();
+    for entry in ["main", "main2"] {
+        let graph = call_graph(&project, "forget.py", &first(entry), &Options::default()).unwrap();
+        let edges = edges_of_entry(&graph);
+        let reads: Vec<&str> = edges
+            .iter()
+            .map(String::as_str)
+            .filter(|e| e.contains("process"))
+            .collect();
+        assert_eq!(reads, ["forget.Handler.process Type"], "{entry}");
+    }
+}

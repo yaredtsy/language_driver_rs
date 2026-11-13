@@ -87,9 +87,9 @@ pub(crate) struct Stats {
     pub annotation_fallbacks: u32, // a parameter that started from its annotation
     pub types_dropped: u32,        // a type left out of a key: no one-to-one stable form
     pub lifted_subclass_of: u32,   // `lift` reached a `type[X]` (tests: the arm runs)
-    pub effects_applied: u32,      // an `__init__` write replayed on a new object
-    pub effects_dropped: u32,      // a value an `__init__` wrote that an effect cannot say
-    pub ref_unresolved: u32,       // a `Ref` or `Obj` no caller resolved (until CS2b: all)
+    pub effects_applied: u32,      // a callee's write onto an object the caller holds, applied
+    pub effects_in_cycle: u32, // a call site whose callee's effects were not carried (a cycle or a replay), until CS8
+    pub ref_unresolved: u32,   // a `Ref` or `Obj` no caller resolved (until CS2b: all)
 }
 pub(crate) use crate::wire::WireStyle;
 
@@ -104,9 +104,9 @@ pub(crate) struct Options {
     pub wire: WireStyle,
     /// The label a marker is read under (`ID: …` in a docstring), the same style `python_syntax::outline` takes.
     pub marker: MarkerStyle<'static>,
-    /// SPIKE, off by default: an `__init__`'s writes onto `self` are recorded in its summary and replayed at the construct site, and a
-    /// method entry starts on an object its `__init__` has run on (the entry prologue). Part 04, step 3.
-    pub constructor_effects: bool,
+    /// Off on the request path, on in the harness: a callee's writes onto the objects its caller can see (an `__init__` onto `self`,
+    /// `install(p, h)` onto `p`) are recorded in its summary and applied by the caller. Until the owner's yes after CS4.
+    pub effects: bool,
     /// The caller's request to stop, and its own deadline. Checked before every walk, never inside one.
     pub cancel: analyzer_core::solve::Cancel,
     /// Tests only: fire `cancel` when this many walks have been made, so a test can stop a request at a known place without a thread.
@@ -168,7 +168,7 @@ impl Default for Options {
             only_marked: false, // the harness; requests set it
             wire: WireStyle::default(),
             marker: MarkerStyle::docstring("ID"),
-            constructor_effects: false,
+            effects: false,
             cancel: analyzer_core::solve::Cancel::default(),
             #[cfg(test)]
             cancel_at_walk: None,
@@ -284,7 +284,7 @@ pub(crate) fn solve<'db>(
         Some(class) => Some(value::AbstractValue::Class(class)),
         // The entry prologue (spike): an instance method starts on an object its `__init__` has run on, hidden. Only `__init__` is part of
         // the start (the entry rule), and with its defaults: the entry is called with no arguments.
-        None if opts.constructor_effects => match s.sem.method_class(def) {
+        None if opts.effects => match s.sem.method_class(def) {
             Some(class) => {
                 let site = s.sem.def_range(class);
                 let mut hidden = smallvec::SmallVec::new();
@@ -296,6 +296,7 @@ pub(crate) fn solve<'db>(
                     analyzer_core::graph::Basis::Type, // hidden: no edge is drawn
                     &mut hidden,
                     &mut env,
+                    true,
                 );
                 s.stats.prologue_walks += 1;
                 built.first().copied()
@@ -338,6 +339,7 @@ fn solve_class<'db>(
         analyzer_core::graph::Basis::Type,
         &mut targets,
         &mut env,
+        true,
     );
     let init = targets.iter().find_map(|t| match t {
         summary::Target::Construct { init, .. } => *init,

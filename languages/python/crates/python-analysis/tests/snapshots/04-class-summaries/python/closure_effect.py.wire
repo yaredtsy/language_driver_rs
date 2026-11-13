@@ -1,0 +1,16 @@
+== main
+closure_effect.main <closure_effect.py:main#0 Function>
+  closure_effect.Box <closure_effect.py:Box#0 Class> @21:9 in closure_effect.py
+  closure_effect.Csv <closure_effect.py:Csv#0 Class> @21:13 in closure_effect.py
+  closure_effect.main.swap <closure_effect.py:main.<locals>.swap#0 Function> @26:5 in closure_effect.py
+    closure_effect.Json <closure_effect.py:Json#0 Class> @24:15 in closure_effect.py
+  closure_effect.Json.process <closure_effect.py:Json.process#0 Method> @27:5 in closure_effect.py
+
+== main (merged)
+closure_effect.main <closure_effect.py:main#0 Function>
+  closure_effect.Box <closure_effect.py:Box#0 Class> @21:9 in closure_effect.py
+  closure_effect.Csv <closure_effect.py:Csv#0 Class> @21:13 in closure_effect.py
+  closure_effect.main.swap <closure_effect.py:main.<locals>.swap#0 Function> @26:5 in closure_effect.py
+    closure_effect.Json <closure_effect.py:Json#0 Class> @24:15 in closure_effect.py
+  closure_effect.Json.process <closure_effect.py:Json.process#0 Method> @27:5 in closure_effect.py
+

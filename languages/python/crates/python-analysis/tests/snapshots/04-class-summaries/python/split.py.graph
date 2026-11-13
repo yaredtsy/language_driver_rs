@@ -1,24 +1,37 @@
 == main
 entries: split.main#c030e3b86e3aaa4a
-stats: walks 6, contexts 6, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 10, contexts 10, reuse_hits 2, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def split.CsvHandler = CsvHandler#0 Class split.py
 def split.CsvHandler.key = CsvHandler.key#0 Method split.py
+def split.CsvHandler.process = CsvHandler.process#0 Method split.py
 def split.CsvKey = CsvKey#0 Class split.py
+def split.CsvKey.encode = CsvKey.encode#0 Method split.py
 def split.Job = Job#0 Class split.py
 def split.Job.__init__ = Job.__init__#0 Method split.py
 def split.Job.go = Job.go#0 Method split.py
 def split.JsonHandler = JsonHandler#0 Class split.py
 def split.JsonHandler.key = JsonHandler.key#0 Method split.py
+def split.JsonHandler.process = JsonHandler.process#0 Method split.py
 def split.JsonKey = JsonKey#0 Class split.py
+def split.JsonKey.encode = JsonKey.encode#0 Method split.py
 def split.build = build#0 Function split.py
 def split.main = main#0 Function split.py
 split.CsvHandler.key#253d065cad98760e Finished
   @30-38 -> new split.CsvKey init - Name
+split.CsvHandler.process#c0b5e96f79ab2bcc Finished
+  @30-40 -> split.CsvKey.encode#211c9e8731cb2108 Type
+  @30-40 -> split.JsonKey.encode#48ca43cc72ba164f Type
+split.CsvKey.encode#211c9e8731cb2108 Finished
 split.Job.__init__#0060158dc25b6317 Finished
-split.Job.go#7f0306211279e0b2 Finished
-  @22-44 -> ? unknown_callee
+split.Job.go#85cb1b10727ed71d Finished
+  @22-44 -> split.CsvHandler.process#c0b5e96f79ab2bcc Type
+  @22-44 -> split.JsonHandler.process#87c47fbb9ea53f22 Type
 split.JsonHandler.key#0a04f8e23a9b1124 Finished
   @30-39 -> new split.JsonKey init - Name
+split.JsonHandler.process#87c47fbb9ea53f22 Finished
+  @30-40 -> split.CsvKey.encode#211c9e8731cb2108 Type
+  @30-40 -> split.JsonKey.encode#48ca43cc72ba164f Type
+split.JsonKey.encode#48ca43cc72ba164f Finished
 split.build#942904f9535f5053 Finished
   @25-40 -> new split.Job init split.Job.__init__#0060158dc25b6317 Name
   @32-39 -> split.CsvHandler.key#253d065cad98760e Type
@@ -27,5 +40,5 @@ split.main#c030e3b86e3aaa4a Finished
   @21-34 -> new split.JsonHandler init - Name
   @45-57 -> new split.CsvHandler init - Name
   @62-70 -> split.build#942904f9535f5053 Name
-  @62-75 -> split.Job.go#7f0306211279e0b2 Path
+  @62-75 -> split.Job.go#85cb1b10727ed71d Path
 

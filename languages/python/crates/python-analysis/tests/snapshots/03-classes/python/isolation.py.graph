@@ -1,38 +1,50 @@
 == two_alive
 entries: isolation.two_alive#459ff191303b9127
-stats: walks 4, contexts 4, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def isolation.CsvHandler = CsvHandler#0 Class isolation.py
+def isolation.CsvHandler.process = CsvHandler.process#0 Method isolation.py
 def isolation.JsonHandler = JsonHandler#0 Class isolation.py
+def isolation.JsonHandler.process = JsonHandler.process#0 Method isolation.py
 def isolation.Pipeline = Pipeline#0 Class isolation.py
 def isolation.Pipeline.__init__ = Pipeline.__init__#0 Method isolation.py
 def isolation.Pipeline.run = Pipeline.run#0 Method isolation.py
 def isolation.two_alive = two_alive#0 Function isolation.py
+isolation.CsvHandler.process#e46adc730ea6551e Finished
+isolation.JsonHandler.process#0eb7f07b28b7f3aa Finished
 isolation.Pipeline.__init__#3e7078441b73d34d Finished
 isolation.Pipeline.__init__#ed3c573b9a3ef18d Finished
-isolation.Pipeline.run#19a4033baa8a1bd6 Finished
-  @29-55 -> ? unknown_callee
+isolation.Pipeline.run#4281619a28153d83 Finished
+  @29-55 -> isolation.JsonHandler.process#0eb7f07b28b7f3aa Type
+isolation.Pipeline.run#c9ed24bc8297ad95 Finished
+  @29-55 -> isolation.CsvHandler.process#e46adc730ea6551e Type
 isolation.two_alive#459ff191303b9127 Finished
   @25-48 -> new isolation.Pipeline init isolation.Pipeline.__init__#ed3c573b9a3ef18d Name
   @34-47 -> new isolation.JsonHandler init - Name
   @57-79 -> new isolation.Pipeline init isolation.Pipeline.__init__#3e7078441b73d34d Name
   @66-78 -> new isolation.CsvHandler init - Name
-  @84-92 -> isolation.Pipeline.run#19a4033baa8a1bd6 Path
-  @97-105 -> isolation.Pipeline.run#19a4033baa8a1bd6 Path
+  @84-92 -> isolation.Pipeline.run#4281619a28153d83 Path
+  @97-105 -> isolation.Pipeline.run#c9ed24bc8297ad95 Path
 
 == one_site
 entries: isolation.one_site#645ae6ed164248bc
-stats: walks 6, contexts 6, reuse_hits 1, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 9, contexts 9, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def isolation.CsvHandler = CsvHandler#0 Class isolation.py
+def isolation.CsvHandler.process = CsvHandler.process#0 Method isolation.py
 def isolation.JsonHandler = JsonHandler#0 Class isolation.py
+def isolation.JsonHandler.process = JsonHandler.process#0 Method isolation.py
 def isolation.Pipeline = Pipeline#0 Class isolation.py
 def isolation.Pipeline.__init__ = Pipeline.__init__#0 Method isolation.py
 def isolation.Pipeline.run = Pipeline.run#0 Method isolation.py
 def isolation.make = make#0 Function isolation.py
 def isolation.one_site = one_site#0 Function isolation.py
+isolation.CsvHandler.process#e46adc730ea6551e Finished
+isolation.JsonHandler.process#0eb7f07b28b7f3aa Finished
 isolation.Pipeline.__init__#3e7078441b73d34d Finished
 isolation.Pipeline.__init__#ed3c573b9a3ef18d Finished
-isolation.Pipeline.run#19a4033baa8a1bd6 Finished
-  @29-55 -> ? unknown_callee
+isolation.Pipeline.run#4281619a28153d83 Finished
+  @29-55 -> isolation.JsonHandler.process#0eb7f07b28b7f3aa Type
+isolation.Pipeline.run#c9ed24bc8297ad95 Finished
+  @29-55 -> isolation.CsvHandler.process#e46adc730ea6551e Type
 isolation.make#0649cc3f1c74b217 Finished
   @24-35 -> new isolation.Pipeline init isolation.Pipeline.__init__#ed3c573b9a3ef18d Name
 isolation.make#490e923a887007ff Finished
@@ -42,8 +54,8 @@ isolation.one_site#645ae6ed164248bc Finished
   @29-42 -> new isolation.JsonHandler init - Name
   @52-70 -> isolation.make#490e923a887007ff Name
   @57-69 -> new isolation.CsvHandler init - Name
-  @75-83 -> isolation.Pipeline.run#19a4033baa8a1bd6 Path
-  @88-96 -> isolation.Pipeline.run#19a4033baa8a1bd6 Path
+  @75-83 -> isolation.Pipeline.run#4281619a28153d83 Path
+  @88-96 -> isolation.Pipeline.run#c9ed24bc8297ad95 Path
 
 == opaque
 entries: isolation.opaque#73f48bf8eec378a7
@@ -83,24 +95,26 @@ isolation.on_ok#94ed222b4132c14c Finished
 
 == maybe_opaque
 entries: isolation.maybe_opaque#0c5d7adc4c5772ef
-stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def isolation.CsvHandler = CsvHandler#0 Class isolation.py
 def isolation.CsvHandler.process = CsvHandler.process#0 Method isolation.py
 def isolation.JsonHandler = JsonHandler#0 Class isolation.py
+def isolation.JsonHandler.process = JsonHandler.process#0 Method isolation.py
 def isolation.Pipeline = Pipeline#0 Class isolation.py
 def isolation.Pipeline.__init__ = Pipeline.__init__#0 Method isolation.py
 def isolation.Pipeline.run = Pipeline.run#0 Method isolation.py
 def isolation.maybe_opaque = maybe_opaque#0 Function isolation.py
 isolation.CsvHandler.process#e46adc730ea6551e Finished
+isolation.JsonHandler.process#0eb7f07b28b7f3aa Finished
 isolation.Pipeline.__init__#ed3c573b9a3ef18d Finished
-isolation.Pipeline.run#bd715d5acbee1770 Finished
+isolation.Pipeline.run#d8f8084b5671293b Finished
   @29-55 -> isolation.CsvHandler.process#e46adc730ea6551e Type
-  @29-55 -> ? unknown_callee
+  @29-55 -> isolation.JsonHandler.process#0eb7f07b28b7f3aa Type
 isolation.maybe_opaque#0c5d7adc4c5772ef Finished
   @29-52 -> new isolation.Pipeline init isolation.Pipeline.__init__#ed3c573b9a3ef18d Name
   @38-51 -> new isolation.JsonHandler init - Name
   @120-132 -> new isolation.CsvHandler init - Name
-  @195-203 -> isolation.Pipeline.run#bd715d5acbee1770 Path
+  @195-203 -> isolation.Pipeline.run#d8f8084b5671293b Path
 
 == subclass_of
 entries: isolation.subclass_of#25e4923f2be152ad

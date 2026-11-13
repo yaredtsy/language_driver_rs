@@ -104,7 +104,7 @@ fn stats(old: &Stats, unresolved: u64, likely: u64) -> CStats {
     }
     for (name, n) in [
         ("effects_applied", old.effects_applied),
-        ("effects_dropped", old.effects_dropped),
+        ("effects_in_cycle", old.effects_in_cycle),
         ("ref_unresolved", old.ref_unresolved),
     ] {
         if n > 0 {

@@ -1,6 +1,6 @@
 == main
 entries: construct.main#ae0bcb9eadc5b287
-stats: walks 8, contexts 8, reuse_hits 3, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+stats: walks 8, contexts 8, reuse_hits 3, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_in_cycle": 1, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def construct.Base.__init__ = Base.__init__#0 Method construct.py
 def construct.Child = Child#0 Class construct.py
 def construct.Pipeline = Pipeline#0 Class construct.py

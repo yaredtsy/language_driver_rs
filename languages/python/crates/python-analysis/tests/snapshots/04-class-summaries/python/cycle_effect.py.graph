@@ -1,0 +1,17 @@
+== main
+entries: cycle_effect.main#1bd9c1ce9984326d
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "effects_in_cycle": 1, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def cycle_effect.Handler = Handler#0 Class cycle_effect.py
+def cycle_effect.Walker = Walker#0 Class cycle_effect.py
+def cycle_effect.Walker.step = Walker.step#0 Method cycle_effect.py
+def cycle_effect.main = main#0 Function cycle_effect.py
+cycle_effect.Walker.step#11cd380744c62e2f Finished
+  @58-67 -> new cycle_effect.Handler init - Name
+  @126-142 -> cycle_effect.Walker.step#b0da19b1873dcc65 Type
+cycle_effect.Walker.step#b0da19b1873dcc65 Finished
+  @58-67 -> new cycle_effect.Handler init - Name
+  @126-142 -> cycle_effect.Walker.step#b0da19b1873dcc65 Type
+cycle_effect.main#1bd9c1ce9984326d Finished
+  @20-28 -> new cycle_effect.Walker init - Name
+  @33-42 -> cycle_effect.Walker.step#11cd380744c62e2f Path
+

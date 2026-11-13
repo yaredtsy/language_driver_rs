@@ -1,5 +1,5 @@
 use ruff_python_ast::name::Name;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 // src/interp/walk.rs
 use crate::interp::defer::Deferred;
 use crate::interp::env::Env;
@@ -14,7 +14,7 @@ use crate::sem::{Definition, SemanticModel};
 use ruff_index::IndexVec;
 use ruff_python_ast::visitor::{Visitor, walk_expr, walk_pattern, walk_stmt};
 use ruff_python_ast::{Expr, ExprRef, Pattern, Stmt};
-use ruff_text_size::TextSize;
+use ruff_text_size::{TextRange, TextSize};
 use smallvec::smallvec;
 use ty_python_core::ProgramFile;
 
@@ -37,10 +37,8 @@ pub(crate) struct Walk<'db> {
     pub now: Option<IndexVec<DeferId, Values<'db>>>,
     /// The body yields: its call returns a generator, whatever it returns.
     pub generator: bool,
-    /// What each parameter slot held when the body began, in `Bound` order: what an `__init__`'s effects are written against.
-    pub inputs: Vec<Values<'db>>,
-    /// What each object held when the body began (the attributes the key gave it).
-    pub start_attrs: rpds::HashTrieMap<(OriginId, Name), Values<'db>>,
+    /// The call sites (and callee index) whose effects were not carried, already counted in `Stats::effects_in_cycle`.
+    pub effects_in_cycle: FxHashSet<(TextRange, u8)>,
     /// What the new objects a deferred call applied hold, written during replays. A replay's env is dropped after each operation, so
     /// this is where the next operation, and `finish_round`, read them. A new object has one origin per call site and callee: each round
     /// writes the same keys again.
@@ -94,8 +92,7 @@ impl<'db> Walk<'db> {
             replaying: false,
             now: None,
             generator: false,
-            inputs: Vec::new(),
-            start_attrs: Default::default(),
+            effects_in_cycle: FxHashSet::default(),
             replay_attrs: Default::default(),
         }
     }

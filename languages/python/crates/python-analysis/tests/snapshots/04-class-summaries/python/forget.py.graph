@@ -1,0 +1,41 @@
+== main
+entries: forget.main#1840c18e859e8d4d
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def forget.Handler.process = Handler.process#0 Method forget.py
+def forget.Json = Json#0 Class forget.py
+def forget.P = P#0 Class forget.py
+def forget.P.__init__ = P.__init__#0 Method forget.py
+def forget.main = main#0 Function forget.py
+def forget.wipe = wipe#0 Function forget.py
+forget.Handler.process#6da22ff961277096 Finished
+forget.P.__init__#9e506303b15465ff Finished
+forget.main#1840c18e859e8d4d Finished
+  @20-29 -> new forget.P init forget.P.__init__#9e506303b15465ff Name
+  @22-28 -> new forget.Json init - Name
+  @34-41 -> forget.wipe#75ddacb866cab609 Name
+  @46-59 -> forget.Handler.process#6da22ff961277096 Type
+forget.wipe#75ddacb866cab609 Finished
+  @23-32 -> ? unknown_callee
+
+== main2
+entries: forget.main2#b92cdebe81ad7a5e
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 3, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def forget.Handler.process = Handler.process#0 Method forget.py
+def forget.Json = Json#0 Class forget.py
+def forget.P = P#0 Class forget.py
+def forget.P.__init__ = P.__init__#0 Method forget.py
+def forget.main2 = main2#0 Function forget.py
+def forget.wipe = wipe#0 Function forget.py
+def forget.wipe_twice = wipe_twice#0 Function forget.py
+forget.Handler.process#6da22ff961277096 Finished
+forget.P.__init__#9e506303b15465ff Finished
+forget.main2#b92cdebe81ad7a5e Finished
+  @21-30 -> new forget.P init forget.P.__init__#9e506303b15465ff Name
+  @23-29 -> new forget.Json init - Name
+  @35-48 -> forget.wipe_twice#fdb0acb343dc9f77 Name
+  @53-66 -> forget.Handler.process#6da22ff961277096 Type
+forget.wipe#75ddacb866cab609 Finished
+  @23-32 -> ? unknown_callee
+forget.wipe_twice#fdb0acb343dc9f77 Finished
+  @23-30 -> forget.wipe#75ddacb866cab609 Name
+

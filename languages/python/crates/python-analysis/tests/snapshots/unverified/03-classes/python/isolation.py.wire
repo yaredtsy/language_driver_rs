@@ -8,7 +8,9 @@ isolation.two_alive <isolation.py:two_alive#0 Function>
   isolation.Pipeline <isolation.py:Pipeline#0 Class> @60:9 in isolation.py
   isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @60:18 in isolation.py
   isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @61:5 in isolation.py
+    isolation.JsonHandler.process <isolation.py:JsonHandler.process#0 Method> @30:9 in isolation.py
   isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @62:5 in isolation.py
+    isolation.CsvHandler.process <isolation.py:CsvHandler.process#0 Method> @30:9 in isolation.py
 
 == two_alive (merged)
 isolation.two_alive <isolation.py:two_alive#0 Function>
@@ -16,6 +18,8 @@ isolation.two_alive <isolation.py:two_alive#0 Function>
   isolation.JsonHandler <isolation.py:JsonHandler#0 Class> @59:18 in isolation.py
   isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @60:18 in isolation.py
   isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> x2 @61:5 in isolation.py
+    isolation.JsonHandler.process <isolation.py:JsonHandler.process#0 Method> @30:9 in isolation.py
+    isolation.CsvHandler.process <isolation.py:CsvHandler.process#0 Method> @30:9 in isolation.py
 
 == one_site
 isolation.one_site <isolation.py:one_site#0 Function>
@@ -26,7 +30,9 @@ isolation.one_site <isolation.py:one_site#0 Function>
     isolation.Pipeline <isolation.py:Pipeline#0 Class> @66:12 in isolation.py
   isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @71:14 in isolation.py
   isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @72:5 in isolation.py
+    isolation.JsonHandler.process <isolation.py:JsonHandler.process#0 Method> @30:9 in isolation.py
   isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @73:5 in isolation.py
+    isolation.CsvHandler.process <isolation.py:CsvHandler.process#0 Method> @30:9 in isolation.py
 
 == one_site (merged)
 isolation.one_site <isolation.py:one_site#0 Function>
@@ -35,6 +41,8 @@ isolation.one_site <isolation.py:one_site#0 Function>
   isolation.JsonHandler <isolation.py:JsonHandler#0 Class> @70:14 in isolation.py
   isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @71:14 in isolation.py
   isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> x2 @72:5 in isolation.py
+    isolation.JsonHandler.process <isolation.py:JsonHandler.process#0 Method> @30:9 in isolation.py
+    isolation.CsvHandler.process <isolation.py:CsvHandler.process#0 Method> @30:9 in isolation.py
 
 == opaque
 isolation.opaque <isolation.py:opaque#0 Function>
@@ -72,6 +80,7 @@ isolation.maybe_opaque <isolation.py:maybe_opaque#0 Function>
   isolation.JsonHandler <isolation.py:JsonHandler#0 Class> @91:18 in isolation.py
   isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @96:17 in isolation.py
   isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @97:5 in isolation.py
+    isolation.JsonHandler.process <isolation.py:JsonHandler.process#0 Method> @30:9 in isolation.py
     isolation.CsvHandler.process <isolation.py:CsvHandler.process#0 Method> @30:9 in isolation.py
 
 == maybe_opaque (merged)
@@ -80,6 +89,7 @@ isolation.maybe_opaque <isolation.py:maybe_opaque#0 Function>
   isolation.JsonHandler <isolation.py:JsonHandler#0 Class> @91:18 in isolation.py
   isolation.CsvHandler <isolation.py:CsvHandler#0 Class> @96:17 in isolation.py
   isolation.Pipeline.run <isolation.py:Pipeline.run#0 Method> @97:5 in isolation.py
+    isolation.JsonHandler.process <isolation.py:JsonHandler.process#0 Method> @30:9 in isolation.py
     isolation.CsvHandler.process <isolation.py:CsvHandler.process#0 Method> @30:9 in isolation.py
 
 == subclass_of

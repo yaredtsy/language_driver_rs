@@ -1,16 +1,15 @@
-# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
-# This pins what it says today so a change is noticed; it is not a right answer.
-
 == ctor
 effects.ctor <effects.py:ctor#0 Function>
   effects.Pipeline <effects.py:Pipeline#0 Class> @42:5 in effects.py
   effects.Pipeline.run <effects.py:Pipeline.run#0 Method> @42:5 in effects.py
+    effects.JsonHandler.process <effects.py:JsonHandler.process#0 Method> @21:9 in effects.py
   effects.JsonHandler <effects.py:JsonHandler#0 Class> @42:14 in effects.py
 
 == ctor (merged)
 effects.ctor <effects.py:ctor#0 Function>
   effects.Pipeline <effects.py:Pipeline#0 Class> @42:5 in effects.py
   effects.Pipeline.run <effects.py:Pipeline.run#0 Method> @42:5 in effects.py
+    effects.JsonHandler.process <effects.py:JsonHandler.process#0 Method> @21:9 in effects.py
   effects.JsonHandler <effects.py:JsonHandler#0 Class> @42:14 in effects.py
 
 == installed
@@ -20,6 +19,7 @@ effects.installed <effects.py:installed#0 Function>
   effects.install <effects.py:install#0 Function> @47:5 in effects.py
   effects.JsonHandler <effects.py:JsonHandler#0 Class> @47:16 in effects.py
   effects.Pipeline.run <effects.py:Pipeline.run#0 Method> @48:5 in effects.py
+    effects.JsonHandler.process <effects.py:JsonHandler.process#0 Method> @21:9 in effects.py
 
 == installed (merged)
 effects.installed <effects.py:installed#0 Function>
@@ -28,6 +28,7 @@ effects.installed <effects.py:installed#0 Function>
   effects.install <effects.py:install#0 Function> @47:5 in effects.py
   effects.JsonHandler <effects.py:JsonHandler#0 Class> @47:16 in effects.py
   effects.Pipeline.run <effects.py:Pipeline.run#0 Method> @48:5 in effects.py
+    effects.JsonHandler.process <effects.py:JsonHandler.process#0 Method> @21:9 in effects.py
 
 == maybe_installed
 effects.maybe_installed <effects.py:maybe_installed#0 Function>
@@ -36,6 +37,8 @@ effects.maybe_installed <effects.py:maybe_installed#0 Function>
   effects.maybe <effects.py:maybe#0 Function> @53:5 in effects.py
   effects.JsonHandler <effects.py:JsonHandler#0 Class> @53:14 in effects.py
   effects.Pipeline.run <effects.py:Pipeline.run#0 Method> @54:5 in effects.py
+    effects.JsonHandler.process <effects.py:JsonHandler.process#0 Method> @21:9 in effects.py
+    effects.CsvHandler.process <effects.py:CsvHandler.process#0 Method> @21:9 in effects.py
 
 == maybe_installed (merged)
 effects.maybe_installed <effects.py:maybe_installed#0 Function>
@@ -44,6 +47,8 @@ effects.maybe_installed <effects.py:maybe_installed#0 Function>
   effects.maybe <effects.py:maybe#0 Function> @53:5 in effects.py
   effects.JsonHandler <effects.py:JsonHandler#0 Class> @53:14 in effects.py
   effects.Pipeline.run <effects.py:Pipeline.run#0 Method> @54:5 in effects.py
+    effects.JsonHandler.process <effects.py:JsonHandler.process#0 Method> @21:9 in effects.py
+    effects.CsvHandler.process <effects.py:CsvHandler.process#0 Method> @21:9 in effects.py
 
 == fresh_installed
 effects.fresh_installed <effects.py:fresh_installed#0 Function>
@@ -52,6 +57,7 @@ effects.fresh_installed <effects.py:fresh_installed#0 Function>
   effects.fresh <effects.py:fresh#0 Function> @59:5 in effects.py
     effects.JsonHandler <effects.py:JsonHandler#0 Class> @34:17 in effects.py
   effects.Pipeline.run <effects.py:Pipeline.run#0 Method> @60:5 in effects.py
+    effects.JsonHandler.process <effects.py:JsonHandler.process#0 Method> @21:9 in effects.py
 
 == fresh_installed (merged)
 effects.fresh_installed <effects.py:fresh_installed#0 Function>
@@ -60,6 +66,7 @@ effects.fresh_installed <effects.py:fresh_installed#0 Function>
   effects.fresh <effects.py:fresh#0 Function> @59:5 in effects.py
     effects.JsonHandler <effects.py:JsonHandler#0 Class> @34:17 in effects.py
   effects.Pipeline.run <effects.py:Pipeline.run#0 Method> @60:5 in effects.py
+    effects.JsonHandler.process <effects.py:JsonHandler.process#0 Method> @21:9 in effects.py
 
 == through_two
 effects.through_two <effects.py:through_two#0 Function>
@@ -69,6 +76,7 @@ effects.through_two <effects.py:through_two#0 Function>
     effects.install <effects.py:install#0 Function> @38:5 in effects.py
   effects.JsonHandler <effects.py:JsonHandler#0 Class> @65:22 in effects.py
   effects.Pipeline.run <effects.py:Pipeline.run#0 Method> @66:5 in effects.py
+    effects.JsonHandler.process <effects.py:JsonHandler.process#0 Method> @21:9 in effects.py
 
 == through_two (merged)
 effects.through_two <effects.py:through_two#0 Function>
@@ -78,4 +86,5 @@ effects.through_two <effects.py:through_two#0 Function>
     effects.install <effects.py:install#0 Function> @38:5 in effects.py
   effects.JsonHandler <effects.py:JsonHandler#0 Class> @65:22 in effects.py
   effects.Pipeline.run <effects.py:Pipeline.run#0 Method> @66:5 in effects.py
+    effects.JsonHandler.process <effects.py:JsonHandler.process#0 Method> @21:9 in effects.py
 

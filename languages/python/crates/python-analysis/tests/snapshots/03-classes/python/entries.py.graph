@@ -8,30 +8,29 @@ entries.process#f7f5d1bda054ff33 Finished
   @34-44 -> entries.Handler.handle#d4560a327654e28c Type
 
 == Svc.run
-entries: entries.Svc.run#40751d33e45590dc
-stats: walks 1, contexts 1, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+entries: entries.Svc.run#761a0abc5a1a4064
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 1, "types_dropped": 0, "unknown_callee": 0}
+def entries.JsonHandler.process = JsonHandler.process#0 Method entries.py
 def entries.Svc.run = Svc.run#0 Method entries.py
-entries.Svc.run#40751d33e45590dc Finished
-  @23-47 -> ? unknown_callee
+entries.JsonHandler.process#c99109ae577d308d Finished
+entries.Svc.run#761a0abc5a1a4064 Finished
+  @23-47 -> entries.JsonHandler.process#c99109ae577d308d Type
 
 == Child.go
-entries: entries.Child.go#e863a0354219a261
-stats: walks 1, contexts 1, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+entries: entries.Child.go#3e00257e20680fec
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 1, "types_dropped": 0, "unknown_callee": 1}
 def entries.Child.go = Child.go#0 Method entries.py
-entries.Child.go#e863a0354219a261 Finished
+entries.Child.go#3e00257e20680fec Finished
   @22-38 -> ? unknown_callee
 
 == Job.run
-entries: entries.Job.run#e9d1c91e4c425452
-stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+entries: entries.Job.run#7502b8f4f7bd0b4e
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 1, "types_dropped": 0, "unknown_callee": 0}
 def entries.A.go = A.go#0 Method entries.py
-def entries.B.go = B.go#0 Method entries.py
 def entries.Job.run = Job.run#0 Method entries.py
 entries.A.go#4304bcb20810fcbe Finished
-entries.B.go#c3145d37cdd5d9fc Finished
-entries.Job.run#e9d1c91e4c425452 Finished
+entries.Job.run#7502b8f4f7bd0b4e Finished
   @23-34 -> entries.A.go#4304bcb20810fcbe Type
-  @23-34 -> entries.B.go#c3145d37cdd5d9fc Type
 
 == Reg.create
 entries: entries.Reg.create#862429178dc3a45a
@@ -54,11 +53,11 @@ entries.Reg.make#7de6e63f938ef5f6 Finished
   @40-44 -> ? unknown_callee
 
 == Box.h
-entries: entries.Box.h#e7614f6110990cf3
-stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+entries: entries.Box.h#3a82eae084cb1fc9
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 1, "types_dropped": 0, "unknown_callee": 0}
 def entries.Box.h = Box.h#0 Method entries.py
 def entries.JsonHandler.process = JsonHandler.process#0 Method entries.py
-entries.Box.h#e7614f6110990cf3 Finished
+entries.Box.h#3a82eae084cb1fc9 Finished
   @35-52 -> entries.JsonHandler.process#c99109ae577d308d Type
 entries.JsonHandler.process#c99109ae577d308d Finished
 
@@ -146,27 +145,27 @@ entries.a.b.c#0c2eaf2f9ac543d5 Finished
   @56-62 -> entries.B.go#c3145d37cdd5d9fc Type
 
 == make.Local.run
-entries: entries.make.Local.run#6d04f00bf311a899
-stats: walks 2, contexts 2, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+entries: entries.make.Local.run#e7974897bee1167f
+stats: walks 3, contexts 3, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 1, "types_dropped": 0, "unknown_callee": 0}
 def entries.JsonHandler.process = JsonHandler.process#0 Method entries.py
 def entries.make.Local.run = make.<locals>.Local.run#0 Method entries.py
 entries.JsonHandler.process#c99109ae577d308d Finished
-entries.make.Local.run#6d04f00bf311a899 Finished
+entries.make.Local.run#e7974897bee1167f Finished
   @27-38 -> entries.JsonHandler.process#c99109ae577d308d Type
   @82-99 -> entries.JsonHandler.process#c99109ae577d308d Type
 
 == Outer.Inner.m
-entries: entries.Outer.Inner.m#9875cb0e861a440e
-stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+entries: entries.Outer.Inner.m#5d2e633cb0c3b9d8
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 1, "types_dropped": 0, "unknown_callee": 0}
 def entries.JsonHandler.process = JsonHandler.process#0 Method entries.py
 def entries.Outer.Inner.m = Outer.Inner.m#0 Method entries.py
 entries.JsonHandler.process#c99109ae577d308d Finished
-entries.Outer.Inner.m#9875cb0e861a440e Finished
+entries.Outer.Inner.m#5d2e633cb0c3b9d8 Finished
   @25-41 -> entries.JsonHandler.process#c99109ae577d308d Type
 
 == Host.meth.Local.m
 entries: entries.Host.meth.Local.m#41427b27175208fb
-stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 1, "types_dropped": 0, "unknown_callee": 0}
 def entries.Host.meth.Local.m = Host.meth.<locals>.Local.m#0 Method entries.py
 def entries.JsonHandler.process = JsonHandler.process#0 Method entries.py
 entries.Host.meth.Local.m#41427b27175208fb Finished
@@ -175,23 +174,28 @@ entries.JsonHandler.process#c99109ae577d308d Finished
 
 == fire
 entries: entries.fire#bf43c07c3bc9722a
-stats: walks 2, contexts 2, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def entries.A = A#0 Class entries.py
 def entries.B = B#0 Class entries.py
+def entries.B.go = B.go#0 Method entries.py
 def entries.Holder = Holder#0 Class entries.py
 def entries.fire = fire#0 Function entries.py
 def entries.setup = setup#0 Function entries.py
+def entries.setup.cb = setup.<locals>.cb#0 Function entries.py
+entries.B.go#c3145d37cdd5d9fc Finished
 entries.fire#bf43c07c3bc9722a Finished
   @82-90 -> new entries.Holder init - Name
   @95-108 -> entries.setup#3dfa8fdc69d96d24 Name
-  @113-124 -> ? unknown_callee
+  @113-124 -> entries.setup.cb#a05beb184da04893 Path
 entries.setup#3dfa8fdc69d96d24 Finished
   @27-30 -> new entries.A init - Name
   @150-153 -> new entries.B init - Name
+entries.setup.cb#a05beb184da04893 Finished
+  @18-24 -> entries.B.go#c3145d37cdd5d9fc Type
 
 == Tree.walk
 entries: entries.Tree.walk#facbccd487365f8b
-stats: walks 2, contexts 2, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_in_cycle": 1, "lifted_subclass_of": 0, "prologue_walks": 1, "types_dropped": 0, "unknown_callee": 0}
 def entries.Tree.walk = Tree.walk#0 Method entries.py
 def entries.log = log#0 Function entries.py
 entries.Tree.walk#facbccd487365f8b Finished

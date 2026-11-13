@@ -7,6 +7,7 @@ aliases.same <aliases.py:same#0 Function>
   aliases.CsvHandler <aliases.py:CsvHandler#0 Class> @27:13 in aliases.py
   aliases.set_and_read <aliases.py:set_and_read#0 Function> @28:5 in aliases.py
     aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @22:11 in aliases.py
+    aliases.CsvHandler.process <aliases.py:CsvHandler.process#0 Method> @23:5 in aliases.py
 
 == same (merged)
 aliases.same <aliases.py:same#0 Function>
@@ -14,6 +15,7 @@ aliases.same <aliases.py:same#0 Function>
   aliases.CsvHandler <aliases.py:CsvHandler#0 Class> @27:13 in aliases.py
   aliases.set_and_read <aliases.py:set_and_read#0 Function> @28:5 in aliases.py
     aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @22:11 in aliases.py
+    aliases.CsvHandler.process <aliases.py:CsvHandler.process#0 Method> @23:5 in aliases.py
 
 == different
 aliases.different <aliases.py:different#0 Function>
@@ -23,6 +25,7 @@ aliases.different <aliases.py:different#0 Function>
   aliases.CsvHandler <aliases.py:CsvHandler#0 Class> @33:13 in aliases.py
   aliases.set_and_read <aliases.py:set_and_read#0 Function> @34:5 in aliases.py
     aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @22:11 in aliases.py
+    aliases.CsvHandler.process <aliases.py:CsvHandler.process#0 Method> @23:5 in aliases.py
 
 == different (merged)
 aliases.different <aliases.py:different#0 Function>
@@ -30,6 +33,7 @@ aliases.different <aliases.py:different#0 Function>
   aliases.CsvHandler <aliases.py:CsvHandler#0 Class> x2 @32:13 in aliases.py
   aliases.set_and_read <aliases.py:set_and_read#0 Function> @34:5 in aliases.py
     aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @22:11 in aliases.py
+    aliases.CsvHandler.process <aliases.py:CsvHandler.process#0 Method> @23:5 in aliases.py
 
 == nested
 aliases.nested <aliases.py:nested#0 Function>

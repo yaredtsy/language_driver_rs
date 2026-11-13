@@ -73,6 +73,13 @@ impl<'db> Env<'db> {
         };
         self.attrs.insert_mut(key, v);
     }
+    /// A strong write whose values are all `Unknown`, as an effect says it: the object no longer holds what it held, so the attribute is
+    /// removed and a read of it asks the engine's declared type. It is a write: `Must` is recorded.
+    pub(crate) fn forget_attr(&mut self, origin: OriginId, name: &Name) {
+        let key = (origin, name.clone());
+        self.attrs.remove_mut(&key);
+        self.written.insert_mut(key, Write::Must);
+    }
     /// Rebuilding an object from a fingerprint: what the attribute is, added to what an earlier member of a union already put there. Not a
     /// write: nothing here may have been missed, so unlike a weak `bind_attr` it adds no `Unknown`.
     pub(crate) fn join_attr(&mut self, origin: OriginId, name: &Name, v: Values<'db>) {
@@ -222,5 +229,18 @@ mod tests {
         env.join_attr(obj(), &attr(), unknown());
         assert_eq!(written_of(&env), None);
         assert!(env.written.is_empty());
+    }
+
+    #[test]
+    fn a_forgotten_attribute_is_absent_and_written_must() {
+        let mut env = Env::default();
+        env.bind_attr(obj(), &attr(), unknown(), true);
+        env.forget_attr(obj(), &attr());
+        assert!(env.attrs.get(&(obj(), attr())).is_none());
+        assert_eq!(written_of(&env), Some(Write::Must));
+        // on an object that never held it, too: it is still a write
+        let mut env = Env::default();
+        env.forget_attr(obj(), &attr());
+        assert_eq!(written_of(&env), Some(Write::Must));
     }
 }

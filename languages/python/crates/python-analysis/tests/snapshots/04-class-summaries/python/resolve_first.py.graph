@@ -1,38 +1,46 @@
 == replacing
 entries: resolve_first.replacing#cda5b9e4601af61f
-stats: walks 3, contexts 3, reuse_hits 0, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 2}
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def resolve_first.Box = Box#0 Class resolve_first.py
 def resolve_first.Box.__init__ = Box.__init__#0 Method resolve_first.py
 def resolve_first.Box.replace = Box.replace#0 Method resolve_first.py
 def resolve_first.CsvHandler = CsvHandler#0 Class resolve_first.py
+def resolve_first.CsvHandler.process = CsvHandler.process#0 Method resolve_first.py
 def resolve_first.JsonHandler = JsonHandler#0 Class resolve_first.py
+def resolve_first.JsonHandler.process = JsonHandler.process#0 Method resolve_first.py
 def resolve_first.replacing = replacing#0 Function resolve_first.py
 resolve_first.Box.__init__#c16986b4e0c3e30b Finished
-resolve_first.Box.replace#94d734a76c39ecc6 Finished
+resolve_first.Box.replace#90f65fd67514fa61 Finished
+resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Finished
+resolve_first.JsonHandler.process#78d8030f4d400860 Finished
 resolve_first.replacing#cda5b9e4601af61f Finished
   @25-43 -> new resolve_first.Box init resolve_first.Box.__init__#c16986b4e0c3e30b Name
   @29-42 -> new resolve_first.JsonHandler init - Name
-  @54-77 -> resolve_first.Box.replace#94d734a76c39ecc6 Path
+  @54-77 -> resolve_first.Box.replace#90f65fd67514fa61 Path
   @64-76 -> new resolve_first.CsvHandler init - Name
-  @82-95 -> ? unknown_callee
-  @128-141 -> ? unknown_callee
+  @82-95 -> resolve_first.JsonHandler.process#78d8030f4d400860 Path
+  @128-141 -> resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Path
 
 == swapping
 entries: resolve_first.swapping#123dc7b57049e0da
-stats: walks 3, contexts 3, reuse_hits 0, unresolved 2, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 2}
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 4, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def resolve_first.CsvHandler = CsvHandler#0 Class resolve_first.py
+def resolve_first.CsvHandler.process = CsvHandler.process#0 Method resolve_first.py
 def resolve_first.JsonHandler = JsonHandler#0 Class resolve_first.py
+def resolve_first.JsonHandler.process = JsonHandler.process#0 Method resolve_first.py
 def resolve_first.Pair = Pair#0 Class resolve_first.py
 def resolve_first.Pair.__init__ = Pair.__init__#0 Method resolve_first.py
 def resolve_first.Pair.swap = Pair.swap#0 Method resolve_first.py
 def resolve_first.swapping = swapping#0 Function resolve_first.py
+resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Finished
+resolve_first.JsonHandler.process#78d8030f4d400860 Finished
 resolve_first.Pair.__init__#10319641e370980c Finished
-resolve_first.Pair.swap#bc28162c22a5fadb Finished
+resolve_first.Pair.swap#4ddb05546ef2de63 Finished
 resolve_first.swapping#123dc7b57049e0da Finished
   @24-57 -> new resolve_first.Pair init resolve_first.Pair.__init__#10319641e370980c Name
   @29-42 -> new resolve_first.JsonHandler init - Name
   @44-56 -> new resolve_first.CsvHandler init - Name
-  @62-70 -> resolve_first.Pair.swap#bc28162c22a5fadb Path
-  @75-88 -> ? unknown_callee
-  @120-133 -> ? unknown_callee
+  @62-70 -> resolve_first.Pair.swap#4ddb05546ef2de63 Path
+  @75-88 -> resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Path
+  @120-133 -> resolve_first.JsonHandler.process#78d8030f4d400860 Path
 

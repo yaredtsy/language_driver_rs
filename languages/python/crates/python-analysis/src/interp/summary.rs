@@ -4,7 +4,7 @@ use ruff_text_size::{TextRange, TextSize};
 use smallvec::{SmallVec, smallvec};
 
 use crate::interp::bind::Bound;
-use crate::interp::env::Env;
+use crate::interp::env::{Env, Write};
 use crate::interp::key::ClosureStack;
 use crate::interp::key::ContextId;
 use crate::interp::solver::Solver;
@@ -22,10 +22,9 @@ pub(crate) struct FunctionResult<'db> {
     pub returns: SVals<'db>,       // the union of every return
     /// The objects this call built that `returns` can reach, numbered in the order `finish` reaches them: `Obj(j)` is `objects[j]`.
     pub objects: Vec<NewObject<'db>>,
-    /// What an `__init__` wrote onto `self`, relative to its inputs. Empty unless `Options::constructor_effects` is on.
+    /// What the call wrote onto the objects its caller can see, relative to its inputs, sorted by (target, attr). Empty unless
+    /// `Options::effects` is on.
     pub effects: Vec<Effect<'db>>,
-    /// Attribute values of `self` an `__init__` wrote that no `EffectValue` can say (an object it built, a closure, a derived value).
-    pub effects_dropped: u32,
     pub status: Status,
 }
 
@@ -39,19 +38,16 @@ pub(crate) struct NewObject<'db> {
     pub attrs: Vec<(Name, SVals<'db>)>,
 }
 
-/// `self.<attr> = <value>` in an `__init__`, written so that a caller with other arguments can replay it.
+/// A write onto an object the caller can see: `<target>.<attr> = <value>`, written so that a caller with other arguments can apply it.
+/// A write onto an object the call built is not one: the object is described whole in `objects`.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct Effect<'db> {
+    /// The input object written to, as it was when the call started.
+    pub target: Path,
     pub attr: Name,
-    pub value: EffectValue<'db>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) enum EffectValue<'db> {
-    /// Whatever the caller passed for parameter slot `k` (the slot order of `Bound`: `self` is 0), defaults filled.
-    Param(usize),
-    /// A value with no identity: a class, a function, a module, a type, or nothing known.
-    Plain(PlainVal<'db>),
+    pub value: SVals<'db>,
+    /// Written on every path that exits normally.
+    pub strong: bool,
 }
 
 /// What a caller must know about how far to trust a summary .
@@ -80,7 +76,6 @@ impl<'db> FunctionResult<'db> {
             returns: smallvec![SVal::Plain(PlainVal::Unknown)],
             objects: Vec::new(),
             effects: Vec::new(),
-            effects_dropped: 0,
             status: Status {
                 gaps: Gaps::default(),
                 cut: Some(cut),
@@ -239,18 +234,18 @@ impl<'db> Walk<'db> {
                 &mut numbering,
             )
         };
-        let objects = self.describe_objects(s, resolved, &mut numbering);
-        let (effects, effects_dropped) = if s.opts.constructor_effects {
-            self.init_effects(s, resolved)
+        // after the returns, before the objects are described: an object only an effect reaches is numbered after the returns' objects
+        let effects = if s.opts.effects {
+            self.effects(s, resolved, &mut numbering)
         } else {
-            (Vec::new(), 0)
+            Vec::new()
         };
+        let objects = self.describe_objects(s, resolved, &mut numbering);
         FunctionResult {
             calls: self.frame.calls.clone(),
             returns,
             objects,
             effects,
-            effects_dropped,
             status: Status::default(),
         }
     }
@@ -289,87 +284,50 @@ impl<'db> Walk<'db> {
         objects
     }
 
-    /// What this walk wrote onto `self`, if it is an `__init__` run on an object that holds state: one `Effect` per attribute and
-    /// value, sorted by attribute name, and how many values could not be said. A value is `Param(k)` when it is exactly what slot `k`
-    /// held at the start (the first such `k`: callers that share this context have equal fingerprints there, so any of them says the same),
-    /// else a plain value, else dropped. Nothing the walk did not change is an effect.
-    fn init_effects(
+    /// What this walk wrote onto its input objects, from the end env's `written`: one effect per (object, attribute), `strong` when the
+    /// walk wrote it on every path that reaches the end. An attribute that is written and absent was forgotten (`Env::forget_attr`): its
+    /// effect is `[Unknown]`, strong, so the next caller up forgets it too and none keeps a stale value. An empty value is not an effect.
+    fn effects(
         &self,
         s: &Solver<'db>,
         resolved: &IndexVec<DeferId, Values<'db>>,
-    ) -> (Vec<Effect<'db>>, u32) {
-        let none = (Vec::new(), 0);
-        if s.sem.function_name(self.frame.func) != "__init__" {
-            return none;
-        }
-        let Some([AbstractValue::Instance { origin, .. }]) =
-            self.inputs.first().map(|v| v.as_slice())
-        else {
-            return none;
-        };
-        let origin = *origin;
-        if !origin.holds_state() {
-            return none;
-        }
+        numbering: &mut ObjectNumbering<'db>,
+    ) -> Vec<Effect<'db>> {
         let end = &self.activations[self.frame.act];
-        let (mut effects, mut dropped) = (Vec::new(), 0);
-        for (attr, vals) in end.attrs_of(origin) {
-            if self.start_attrs.get(&(origin, attr.clone())) == Some(&vals) {
-                continue; // it came in this way
+        // Sorted before the values are converted: converting numbers the objects it reaches, and a hash map's order is no order (rule 9).
+        let mut written: Vec<(&Path, &Name, OriginId, Write)> = end
+            .written
+            .iter()
+            .filter_map(|((origin, attr), how)| match &self.origins[*origin] {
+                OriginKey::Entry { path, .. } => Some((path, attr, *origin, *how)),
+                _ => None,
+            })
+            .collect();
+        written.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+        let mut out = Vec::new();
+        for (path, attr, origin, how) in written {
+            let value = match end.attrs.get(&(origin, attr.clone())) {
+                Some(vals) => self.to_svals(
+                    s,
+                    vals,
+                    resolved,
+                    0,
+                    &mut ClosureStack::default(),
+                    numbering,
+                ),
+                None => smallvec![SVal::Plain(PlainVal::Unknown)],
+            };
+            if value.is_empty() {
+                continue;
             }
-            let mut settled = Values::new();
-            self.settle(&vals, resolved, &mut settled);
-            for v in settled {
-                let value = match v {
-                    AbstractValue::Unknown => EffectValue::Plain(PlainVal::Unknown),
-                    AbstractValue::Instance { origin: o, .. } if o == origin => {
-                        dropped += 1; // `self.me = self`
-                        continue;
-                    }
-                    _ => match self
-                        .inputs
-                        .iter()
-                        .skip(1)
-                        .position(|slot| slot.contains(&v))
-                    {
-                        Some(k) => EffectValue::Param(k + 1),
-                        None => match v {
-                            AbstractValue::Function(_)
-                            | AbstractValue::Class(_)
-                            | AbstractValue::Module(_)
-                            | AbstractValue::Ty(_) => EffectValue::Plain(plain(v)),
-                            _ => {
-                                dropped += 1; // an object built here, a closure, a bound method, a derived value
-                                continue;
-                            }
-                        },
-                    },
-                };
-                let effect = Effect {
-                    attr: attr.clone(),
-                    value,
-                };
-                if !effects.contains(&effect) {
-                    effects.push(effect);
-                }
-            }
+            out.push(Effect {
+                target: path.clone(),
+                attr: attr.clone(),
+                value,
+                strong: how == Write::Must,
+            });
         }
-        (effects, dropped)
-    }
-
-    /// `vals` with every pending value replaced by what it resolved to.
-    fn settle(
-        &self,
-        vals: &Values<'db>,
-        resolved: &IndexVec<DeferId, Values<'db>>,
-        out: &mut Values<'db>,
-    ) {
-        for &v in vals {
-            match v {
-                AbstractValue::Pending(id) => self.settle(&resolved[id], resolved, out),
-                other => out.push(other),
-            }
-        }
+        out
     }
 
     /// Walk-local values as summary data. `depth` counts the closures these
@@ -498,8 +456,9 @@ impl<'db> Walk<'db> {
         )
     }
 
-    /// Phase 1 of applying a summary: the caller's own values for what a callee returns, and for the new objects it built. Reads
-    /// `before`, the env as it was when the call began, and writes nothing in it (it is a shared borrow); `apply` writes.
+    /// Phase 1 of applying a summary: the caller's own values for what a callee returns, for the new objects it built, and for the
+    /// writes it made onto objects the caller holds. Reads `before`, the env as it was when the call began, and writes nothing in it (it
+    /// is a shared borrow); `apply` writes.
     pub(crate) fn resolve(
         &mut self,
         sol: &mut Solver<'db>,
@@ -546,15 +505,50 @@ impl<'db> Walk<'db> {
                 (origin, attrs)
             })
             .collect();
+        let effects = res
+            .effects
+            .iter()
+            .map(|e| {
+                // The objects the target path leads to, as `before` held them: state only, so nothing runs.
+                let found = self.follow(sol, &e.target, &cx);
+                if found.is_empty() {
+                    sol.stats.ref_unresolved += 1; // the effect has nowhere to go: counted, like a `Ref` nothing resolved
+                }
+                let mut targets: SmallVec<[OriginId; 2]> = SmallVec::new();
+                for v in found {
+                    if let AbstractValue::Instance { origin, .. } = v
+                        && origin.holds_state()
+                        && !targets.contains(&origin)
+                    {
+                        targets.push(origin);
+                    }
+                }
+                let value = self.resolve_in(sol, &e.value, &mut Vec::new(), &cx);
+                (targets, e.attr.clone(), value, e.strong)
+            })
+            .collect();
         Plan {
             returns,
             objects: attrs,
+            effects,
+            site: (call.site, call.t),
+            strong_ok: call.strong_ok,
         }
     }
 
     /// Phase 2: write what `resolve` found into the caller's env, and give the call's value. A new object has nothing to keep, so its
-    /// attributes are written strong. In a replay the env is dropped after the operation: the writes are also kept in `replay_attrs`.
-    pub(crate) fn apply(&mut self, plan: Plan<'db>, env: &mut Env<'db>) -> Values<'db> {
+    /// attributes are written strong. An effect replaces the old value only when the callee wrote it on every path, the target is exactly
+    /// one object, and the site has one callee (`strong_ok`); otherwise it is joined. A strong effect of nothing but `Unknown` removes the
+    /// attribute: a read of it asks the engine's declared type, where keeping the old value would be a stale one.
+    ///
+    /// In a replay the env is dropped after the operation: the new objects' writes are also kept in `replay_attrs`, and no effect is
+    /// applied. Until CS8 carries them, each site that dropped one is counted, once.
+    pub(crate) fn apply(
+        &mut self,
+        sol: &mut Solver<'db>,
+        plan: Plan<'db>,
+        env: &mut Env<'db>,
+    ) -> Values<'db> {
         for (origin, attrs) in plan.objects {
             for (name, vals) in attrs {
                 if self.replaying {
@@ -564,7 +558,32 @@ impl<'db> Walk<'db> {
                 env.bind_attr(origin, &name, vals, true);
             }
         }
+        if self.replaying {
+            if !plan.effects.is_empty() {
+                self.note_effects_in_cycle(sol, plan.site);
+            }
+            return plan.returns;
+        }
+        for (targets, attr, vals, strong) in plan.effects {
+            let strong = strong && targets.len() == 1 && plan.strong_ok;
+            let forgets = vals.iter().all(|v| matches!(v, AbstractValue::Unknown));
+            for target in targets {
+                if strong && forgets {
+                    env.forget_attr(target, &attr);
+                } else {
+                    env.bind_attr(target, &attr, vals.clone(), strong);
+                }
+                sol.stats.effects_applied += 1;
+            }
+        }
         plan.returns
+    }
+
+    /// A call whose effects are not carried (a callee still running, or a replay): counted once per site, however many rounds ask.
+    pub(crate) fn note_effects_in_cycle(&mut self, sol: &mut Solver<'db>, site: (TextRange, u8)) {
+        if self.effects_in_cycle.insert(site) {
+            sol.stats.effects_in_cycle += 1;
+        }
     }
 
     /// `before` as an operation of a replay sees it: the env at that point of the walk, and the new objects earlier operations applied.
@@ -729,12 +748,21 @@ pub(crate) struct CallSite<'a, 'db> {
     pub bound: &'a Bound<'db>,
     /// The closure's own run, for `Free(i)` and `Default(i)`.
     pub enclosing: Option<ActivationId>,
+    /// The site has one project callee and nothing else it could be (no engine callee, no unknown one): a write the callee made on every
+    /// path is a write Python made.
+    pub strong_ok: bool,
 }
 
-/// What `resolve` found: the call's value, and the state of each new object, to be written by `apply`.
+/// What `resolve` found: the call's value, the state of each new object, and each effect, to be written by `apply`.
 pub(crate) struct Plan<'db> {
     pub returns: Values<'db>,
     pub objects: Vec<(OriginId, Vec<(Name, Values<'db>)>)>,
+    /// Per effect: the objects it targets (state-holding ones, as many as the path leads to), the attribute, the value, and whether the
+    /// callee wrote it on every path.
+    pub effects: Vec<(SmallVec<[OriginId; 2]>, Name, Values<'db>, bool)>,
+    /// The call site and the callee's index at it.
+    pub site: (TextRange, u8),
+    pub strong_ok: bool,
 }
 
 struct Resolving<'a, 'db> {
@@ -805,6 +833,9 @@ mod tests {
     const COMING_BACK: &str = "04-class-summaries/python/coming_back.py";
     const CLOSURE: &str = "04-class-summaries/python/closure_holds_object.py";
     const TWO_EXITS: &str = "04-class-summaries/python/two_exits.py";
+    const EFFECTS: &str = "04-class-summaries/python/effects.py";
+    const FORGET: &str = "04-class-summaries/python/forget.py";
+    const CLOSURE_EFFECT: &str = "04-class-summaries/python/closure_effect.py";
 
     /// The one context of `func` (`module.name`) the solve made, and its summary.
     fn summary_of<'db>(s: &Solver<'db>, func: &str) -> FunctionResult<'db> {
@@ -931,5 +962,117 @@ mod tests {
             classes.sort();
             assert_eq!(classes, ["two_exits.CsvHandler", "two_exits.JsonHandler"]);
         });
+    }
+
+    #[test]
+    fn a_write_onto_an_argument_is_a_strong_effect_that_refers_to_another_argument() {
+        with_solved(EFFECTS, "installed", |s| {
+            let res = summary_of(s, "effects.install");
+            let [e] = res.effects.as_slice() else {
+                panic!("expected one effect, got {:?}", res.effects);
+            };
+            assert_eq!(e.target, Path::root(Root::Param(0)));
+            assert_eq!(e.attr, name("handler"));
+            assert_eq!(e.value.as_slice(), &[SVal::Ref(Path::root(Root::Param(1)))]);
+            assert!(e.strong);
+        });
+    }
+
+    #[test]
+    fn a_write_on_one_path_is_a_weak_effect_that_also_holds_what_was_there() {
+        with_solved(EFFECTS, "maybe_installed", |s| {
+            let res = summary_of(s, "effects.maybe");
+            let [e] = res.effects.as_slice() else {
+                panic!("expected one effect, got {:?}", res.effects);
+            };
+            assert_eq!(e.target, Path::root(Root::Param(0)));
+            assert!(!e.strong);
+            let before = Path::root(Root::Param(0)).attr(&name("handler"));
+            assert!(
+                e.value.contains(&SVal::Ref(before)),
+                "the old value is one of the alternatives: {:?}",
+                e.value
+            );
+            assert!(e.value.contains(&SVal::Ref(Path::root(Root::Param(1)))));
+        });
+    }
+
+    #[test]
+    fn a_constructor_s_write_onto_self_is_an_effect_like_any_other() {
+        with_solved(EFFECTS, "ctor", |s| {
+            let res = summary_of(s, "effects.Pipeline.__init__");
+            let [e] = res.effects.as_slice() else {
+                panic!("expected one effect, got {:?}", res.effects);
+            };
+            assert_eq!(e.target, Path::root(Root::Param(0)));
+            assert_eq!(e.attr, name("handler"));
+            assert_eq!(e.value.as_slice(), &[SVal::Ref(Path::root(Root::Param(1)))]);
+            assert!(e.strong);
+        });
+    }
+
+    #[test]
+    fn an_object_a_callee_builds_and_stores_is_an_effect_value_and_is_described() {
+        with_solved(EFFECTS, "fresh_installed", |s| {
+            let res = summary_of(s, "effects.fresh");
+            let [e] = res.effects.as_slice() else {
+                panic!("expected one effect, got {:?}", res.effects);
+            };
+            assert_eq!(e.value.as_slice(), &[SVal::Obj(0)]);
+            assert_eq!(s.sem.qname(res.objects[0].class), "effects.JsonHandler");
+        });
+    }
+
+    #[test]
+    fn a_write_a_callee_makes_is_the_callers_own_effect() {
+        with_solved(EFFECTS, "through_two", |s| {
+            let res = summary_of(s, "effects.outer_install");
+            let [e] = res.effects.as_slice() else {
+                panic!("expected one effect, got {:?}", res.effects);
+            };
+            assert_eq!(e.target, Path::root(Root::Param(0)));
+            assert_eq!(e.value.as_slice(), &[SVal::Ref(Path::root(Root::Param(1)))]);
+            assert!(e.strong);
+        });
+    }
+
+    #[test]
+    fn a_value_the_engine_cannot_resolve_is_unknown_and_a_strong_write_of_it_travels_up() {
+        with_solved(FORGET, "main2", |s| {
+            let forgotten = [SVal::Plain(PlainVal::Unknown)];
+            for func in ["forget.wipe", "forget.wipe_twice"] {
+                let res = summary_of(s, func);
+                let [e] = res.effects.as_slice() else {
+                    panic!("{func}: expected one effect, got {:?}", res.effects);
+                };
+                assert_eq!(e.target, Path::root(Root::Param(0)), "{func}");
+                assert_eq!(e.attr, name("h"), "{func}");
+                assert_eq!(e.value.as_slice(), &forgotten, "{func}");
+                assert!(e.strong, "{func}");
+            }
+        });
+    }
+
+    #[test]
+    fn a_write_onto_a_closure_s_free_object_is_reported_on_its_free_root() {
+        with_solved(CLOSURE_EFFECT, "main", |s| {
+            let res = summary_of(s, "closure_effect.main.swap");
+            let [e] = res.effects.as_slice() else {
+                panic!("expected one effect, got {:?}", res.effects);
+            };
+            assert_eq!(e.target, Path::root(Root::Free(0)));
+            assert_eq!(e.attr, name("h"));
+            assert_eq!(e.value.as_slice(), &[SVal::Obj(0)]);
+            assert!(e.strong);
+        });
+    }
+
+    #[test]
+    fn effects_sort_by_target_then_attribute() {
+        let (a, b) = (Path::root(Root::Param(0)), Path::root(Root::Param(1)));
+        assert!(a < b);
+        assert!(a < a.attr(&name("x")));
+        assert!(a.attr(&name("x")) < a.attr(&name("y")));
+        assert!(Path::root(Root::Param(9)) < Path::root(Root::Free(0)));
     }
 }

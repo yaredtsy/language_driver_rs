@@ -245,9 +245,11 @@ pub(super) fn inline() -> Options {
         ..Options::default()
     }
 }
+/// Summary mode as the harness runs it: with effects on. The request path (`lib.rs`) has them off until the owner's yes.
 pub(super) fn summary() -> Options {
     Options {
         mode: Mode::Summary,
+        effects: true,
         ..Options::default()
     }
 }
@@ -845,10 +847,56 @@ fn p04_02_two_callees_each_run_sees_only_its_own_handler() {
     assert_eq!(g.stats.language.get("ref_unresolved"), None);
 }
 
-/// Inline mode only until CS3 (effects).
+/// A callee's writes onto the objects its caller can see reach the caller (CS3b).
 #[test]
 fn p04_03_effects() {
-    check("04-class-summaries/python/effects.py");
+    check_both("04-class-summaries/python/effects.py");
+}
+
+/// The edges out of `entry`'s contexts that go to a `process`, as `graph_text` writes them: the callee's name and its basis.
+fn process_edges(fixture: &str, entry: &str) -> Vec<String> {
+    let text = graph_text(&graph_for(fixture, entry));
+    text.lines()
+        .filter_map(|l| l.split(" -> ").nth(1))
+        .filter(|to| to.contains(".process#"))
+        .map(|to| {
+            let (name, rest) = to.split_once('#').unwrap();
+            let basis = rest.split_whitespace().nth(1).unwrap_or("");
+            format!("{name} {basis}")
+        })
+        .collect()
+}
+
+/// A strong write of a value the walk cannot say removes what the attribute held, so the read asks the engine's declared type: a `Type`
+/// edge to `Handler.process`. A caller that kept `Json` would draw `Json.process`, a call Python makes no more, with nothing to mark it.
+#[test]
+fn p04_03_forget() {
+    let f = "04-class-summaries/python/forget.py";
+    check_both(f);
+    for entry in ["main", "main2"] {
+        assert_eq!(
+            process_edges(f, entry),
+            ["forget.Handler.process Type"],
+            "{entry}"
+        );
+    }
+}
+
+/// A write onto a closure's free object is applied by the run the closure was defined in.
+#[test]
+fn p04_03_closure_effect() {
+    check_both("04-class-summaries/python/closure_effect.py");
+}
+
+/// A recursive call's effects are not carried until CS8: counted once for the one site, nothing wrong drawn.
+#[test]
+fn p04_03_cycle_effect() {
+    let f = "04-class-summaries/python/cycle_effect.py";
+    check_both(f);
+    let st = stats_for(f, "main", &summary());
+    assert_eq!(st.effects_in_cycle, 1);
+    let graph = graph_for(f, "main");
+    assert_eq!(graph.stats.language.get("effects_in_cycle"), Some(&1));
 }
 
 /// Inline mode only until CS4 (resolve, then write).
@@ -1172,19 +1220,26 @@ fn edges_say_what_they_rest_on() {
 /// A weak write marks what it may have dropped, and only that. `outside` writes one object (a strong write) and its answer is complete:
 /// no `Unresolved` edge anywhere, in `Pipeline.run` either, where the object's attributes come back from its fingerprint (that is not a
 /// write, and adds no `Unknown`). `two_candidates` writes one of two objects onto an attribute this path holds nothing for: its read is
-/// an `Unresolved` site next to the written handler.
+/// an `Unresolved` site next to the written handler. That is with effects off; with them on (CS3b), the constructors have written
+/// `Csv` onto both objects, so the weak write joins onto what is there and the read has no `Unknown` to mark.
 #[test]
 fn a_weak_write_marks_what_it_may_have_dropped_and_a_strong_one_marks_nothing() {
-    let unresolved = |entry: &str| {
+    let unresolved = |entry: &str, opts: &Options| {
         let (db, file) = open_fixture("03-classes/python/writes.py");
-        let g = call_graph(&db, file, entry, &summary()).unwrap();
+        let g = call_graph(&db, file, entry, opts).unwrap();
         g.edges
             .iter()
             .filter(|e| matches!(e.to, analyzer_core::graph::EdgeTo::Unresolved(_)))
             .count()
     };
-    assert_eq!(unresolved("outside"), 0);
-    assert!(unresolved("two_candidates") > 0);
+    let off = Options {
+        effects: false,
+        ..summary()
+    };
+    assert_eq!(unresolved("outside", &off), 0);
+    assert!(unresolved("two_candidates", &off) > 0);
+    assert_eq!(unresolved("outside", &summary()), 0);
+    assert_eq!(unresolved("two_candidates", &summary()), 0);
 }
 
 /// The golden wire of a real project. Not run by default: it needs a project that is not in the repo and the files in `out/golden/`, and the
@@ -1412,13 +1467,13 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
             _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 31 programs are verified in both modes and 12 only inline (six of `03-classes/`, six of `04-class-summaries/`); 43 are run at
-    // all; 44 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
+    // 35 programs are verified in both modes and 11 only inline (six of `03-classes/`, five of `04-class-summaries/`); 46 are run at
+    // all; 47 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
     // `every_entry` skips it)
     let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
     assert_eq!(
         (verified, by_fixture.len() - verified),
-        (31, 12),
+        (35, 11),
         "a program was added or lost"
     );
     for (fixture, verified, text) in by_fixture {
@@ -1529,9 +1584,9 @@ fn dump_graph_of_a_real_project() {
     );
     let db = open_project(SystemPath::new(&project)).unwrap();
     let (file, _) = open(&db, &SystemPath::new(&project).join(file)).unwrap();
-    // `PYTHON_DUMP_EFFECTS=1`: with the constructor effects of part 04, step 3 (the spike)
+    // `PYTHON_DUMP_EFFECTS=1`: with the effects of part 04, step 3 (off without it, as the request path is)
     let opts = Options {
-        constructor_effects: std::env::var("PYTHON_DUMP_EFFECTS").is_ok(),
+        effects: std::env::var("PYTHON_DUMP_EFFECTS").is_ok(),
         ..summary()
     };
     let graph = call_graph(&db, file, &entry, &opts).unwrap();
@@ -1834,7 +1889,7 @@ fn the_graph_of_every_fixture_equals_its_snapshot() {
     }
     assert_eq!(
         (by_fixture.len(), entries),
-        (43, 150),
+        (46, 154),
         "an entry was added or lost"
     );
     for (fixture, text) in by_fixture {
@@ -1947,14 +2002,18 @@ fn compare_with_inline(
     }
 }
 
-/// The spike of part 04, step 3 (`Options::constructor_effects`, off by default). With it on: (1) every program verified in both modes still
-/// gives its tree (the safety net), (2) the class programs' gaps against inline mode, entry by entry, with it off and on, and what moved.
+/// The sketch of the CS3e gate (replaced there). With `Options::effects` on: (1) every program verified in both modes still gives its
+/// tree (the safety net), (2) the class programs' gaps against inline mode, entry by entry, with it off and on, and what moved.
 #[test]
 fn constructor_effects_spike() {
     use analyzer_core::render::{RenderOptions, render};
     let this_file = include_str!("fixture.rs");
     let with_effects = |o: &Options| Options {
-        constructor_effects: true,
+        effects: true,
+        ..o.clone()
+    };
+    let without_effects = |o: &Options| Options {
+        effects: false,
         ..o.clone()
     };
 
@@ -1973,7 +2032,7 @@ fn constructor_effects_spike() {
 
     // 2. the class programs: what is missing against inline mode, per entry
     let gap_of = |effects: bool| {
-        let mut rows: Vec<(String, usize, usize, Gap)> = Vec::new();
+        let mut rows: Vec<(String, usize, Gap)> = Vec::new();
         for (fixture, entry, opts) in every_entry() {
             if !this_file.contains(&format!("check(\"{fixture}\")")) {
                 continue;
@@ -1987,7 +2046,11 @@ fn constructor_effects_spike() {
                 mode: Mode::Inline,
                 ..opts.clone()
             };
-            let opts = if effects { with_effects(&opts) } else { opts };
+            let opts = if effects {
+                with_effects(&opts)
+            } else {
+                without_effects(&opts)
+            };
             let inline = call_tree(&db, file, &entry, &inline_opts).unwrap().0;
             let graph = call_graph(&db, file, &entry, &opts).unwrap();
             let summary = render(&graph, &graph.entries[0], &RenderOptions::default());
@@ -1999,25 +2062,19 @@ fn constructor_effects_spike() {
                 .get("effects_applied")
                 .copied()
                 .unwrap_or(0) as usize;
-            let dropped = graph
-                .stats
-                .language
-                .get("effects_dropped")
-                .copied()
-                .unwrap_or(0) as usize;
-            rows.push((format!("{fixture} {entry}"), applied, dropped, gap));
+            rows.push((format!("{fixture} {entry}"), applied, gap));
         }
         rows
     };
     let (off, on) = (gap_of(false), gap_of(true));
-    let sum = |rows: &[(String, usize, usize, Gap)]| {
+    let sum = |rows: &[(String, usize, Gap)]| {
         (
             rows.iter()
-                .filter(|r| r.3.missing > 0 || r.3.extra > 0)
+                .filter(|r| r.2.missing > 0 || r.2.extra > 0)
                 .count(),
-            rows.iter().map(|r| r.3.missing).sum::<usize>(),
-            rows.iter().map(|r| r.3.highest_missing).sum::<usize>(),
-            rows.iter().map(|r| r.3.extra).sum::<usize>(),
+            rows.iter().map(|r| r.2.missing).sum::<usize>(),
+            rows.iter().map(|r| r.2.highest_missing).sum::<usize>(),
+            rows.iter().map(|r| r.2.extra).sum::<usize>(),
         )
     };
     println!(
@@ -2028,11 +2085,11 @@ fn constructor_effects_spike() {
         "EFFECTS on:  (failing entries, missing nodes, topmost, extra) = {:?}",
         sum(&on)
     );
-    for ((name, _, _, before), (_, applied, dropped, after)) in off.iter().zip(&on) {
+    for ((name, _, before), (_, applied, after)) in off.iter().zip(&on) {
         let (b, a) = (before.missing + before.extra, after.missing + after.extra);
         if (before.missing, before.extra) != (after.missing, after.extra) {
             println!(
-                "EFFECTS moved {name}: missing {} -> {}, extra {} -> {} ({applied} effects applied, {dropped} dropped){}",
+                "EFFECTS moved {name}: missing {} -> {}, extra {} -> {} ({applied} effects applied){}",
                 before.missing,
                 after.missing,
                 before.extra,
@@ -2046,7 +2103,7 @@ fn constructor_effects_spike() {
         .find(|r| r.0 == "03-classes/python/isolation.py two_alive")
         .expect("isolation.two_alive is run");
     assert_eq!(
-        (two_alive.3.missing, two_alive.3.extra),
+        (two_alive.2.missing, two_alive.2.extra),
         (0, 0),
         "isolation.two_alive is green with effects on"
     );
@@ -2081,6 +2138,12 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
         let mut gap = Gap::default();
         compare_with_inline(&entry, &inline, &summary, &graph, &mut gap);
         failing += usize::from(gap.missing > 0 || gap.extra > 0);
+        if gap.missing > 0 || gap.extra > 0 {
+            println!(
+                "fails: {fixture} {entry} (missing {}, extra {})",
+                gap.missing, gap.extra
+            ); // --show-output
+        }
         total.missing += gap.missing;
         total.highest_missing += gap.highest_missing;
         total.at_unresolved += gap.at_unresolved;
@@ -2103,19 +2166,22 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
         total.at_unresolved,
         total.extra
     );
-    assert_eq!((entries, failing), (48, 21));
-    assert_eq!(total.missing, 35, "nodes inline finds and summary does not");
-    assert_eq!(total.highest_missing, 33, "the topmost of them");
+    // With effects on (CS3b) 15 of the 21 entries that failed before are right; the six left are `chains.py` `inherited` and `via_super`
+    // (a `super()` and an inherited method: not effects), and `entries.py` `Child.go`, `outer.inner`, `Svc.build.step` (the entry prologue:
+    // CS3c), and `state.py` `either` (rule 7, below).
+    assert_eq!((entries, failing), (48, 6));
+    assert_eq!(total.missing, 6, "nodes inline finds and summary does not");
+    assert_eq!(total.highest_missing, 5, "the topmost of them");
     assert_eq!(
-        total.at_unresolved, 32,
+        total.at_unresolved, 4,
         "topmost missing nodes at a call site the graph marks Unresolved"
     );
     assert_eq!(
         (total.nodes_at_unresolved, total.nodes_elsewhere),
-        (33, 2),
+        (4, 2),
         "of the missing nodes: under an Unresolved call site, and elsewhere"
     );
-    assert_eq!(total.missing, 33 + 2);
+    assert_eq!(total.missing, 4 + 2);
 
     // The claim "every missing node is under an Unresolved call site" is false, and this is why. `either`: inline lists one Pipeline.run
     // per object, summary joins them (rule 7), so it is not lost information. (Two property getters of `special.py` `main` were on this
@@ -2124,8 +2190,8 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
     //
     // Weak writes used to be on it (`maybe_opaque`, `two_candidates`): a write that may be on one of several objects, onto an attribute
     // this path holds nothing for, kept only the written handler and dropped the other with no mark. `bind_attr` now joins `Unknown`, so
-    // the read is an Unresolved site next to the written handler. That marks the alternative, it does not find it: both programs still
-    // miss a node, and constructor effects (part 04, step 3) are what find it.
+    // the read is an Unresolved site next to the written handler. That marks the alternative, it does not find it: both programs missed a
+    // node, and the constructor effects of CS3b are what find it.
     //
     // KNOWN LIMIT, unmarked: `Env::join` (`union_into`) treats a name one arm never assigned as nothing, not as `Unknown`. A write on one
     // branch of an `if` onto an object whose attribute the other branch's path holds nothing for is joined without a mark. Marking it
@@ -2135,24 +2201,26 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
         total.not_at_unresolved,
         ["03-classes/python/state.py either -> state.Pipeline.run"]
     );
-    // Edges summary mode has and inline mode does not. All come from ty's static type, the union of every assignment in the class (`Job.h`
-    // is A in __init__ and B in configure) or in the function (`outer`'s h is A, then B), used where the receiver was not tracked along
-    // the path, and all are ordinary unmarked edges.
+    // Edges summary mode has and inline mode does not.
+    //
+    // `entries.py` `outer.inner -> A.go`, an error from ty's static type, the union of every assignment in the function (`outer`'s h is A,
+    // then B), used where the receiver was not tracked along the path: `h` is B whenever `inner` runs, because it can only run after `outer`
+    // has finished, so A.go is unreachable. An ordinary unmarked edge, and CS3c (one prologue, which runs `outer` first) is expected to remove it.
+    //
+    // `state.py` `either -> Pipeline.run -> CsvHandler.process` is rule 7's join, not a wrong call: Python makes both calls (one per branch),
+    // inline draws a `Pipeline.run` for each object and summary draws the one node, with both handlers under it. Before effects that node
+    // had no child, and the same join showed as the missing nodes above.
+    //
+    // `entries.py` `Job.run -> B.go` is gone: the edge was ty's union (`Job.h` is A in __init__ and B in configure) used because the walk held
+    // no `h`; now the entry starts on a `Job` its `__init__` ran on, so `h` is A. The entry rule stays as it is ("only __init__ is part of
+    // the start"), and B.go, reachable if `configure` ran first, stays out of the tree.
     assert_eq!(total.extra, 2);
-    let (excluded, errors): (Vec<&String>, Vec<&String>) = total
-        .extras
-        .iter()
-        .partition(|e| e.ends_with("Job.run -> entries.B.go"));
-    // Reachable, and excluded only by the entry rule: at a method entry "only __init__ is part of the start", but `configure` may have run
-    // before `run`. The rule stays as it is, and this edge is not an error.
     assert_eq!(
-        excluded,
-        ["03-classes/python/entries.py Job.run -> entries.B.go"]
-    );
-    // An error: `h` is B whenever `inner` runs, because it can only run after `outer` has finished. A.go is unreachable.
-    assert_eq!(
-        errors,
-        ["03-classes/python/entries.py outer.inner -> entries.A.go"]
+        total.extras,
+        [
+            "03-classes/python/entries.py outer.inner -> entries.A.go",
+            "03-classes/python/state.py either/state.Pipeline.run -> state.CsvHandler.process"
+        ]
     );
 }
 
@@ -2196,26 +2264,27 @@ fn what_summary_mode_gives_on_the_part_04_programs_against_their_blocks() {
     }
     assert_eq!(
         (fixtures.len(), blocks),
-        (6, 16),
+        (5, 11),
         "the part 04 programs checked inline only, and their summary-mode blocks"
     );
-    // 16 blocks are summary mode's; these 12 fail. (`coming_back.py` is verified in both modes since CS2b.) The four that pass: `aliases.py nested` (its summary block is the known limit),
-    // `recursion_objects.py` identity_limit and tree_fill (their blocks pin known limits), and `recursion_objects.py` visitor, whose
-    // `Report.emit` comes from ty's type of `v.found` (a `Type` edge), not from the walk.
+    // 11 blocks are summary mode's; these 6 fail. `effects.py` is verified in both modes since CS3b (its five blocks left this list), and
+    // `aliases.py different`, `resolve_first.py replacing` and `swapping` left it too: they now pass. The five that pass: those three,
+    // `aliases.py nested` (its summary block is the known limit) and `recursion_objects.py visitor`, whose `Report.emit` comes from ty's
+    // type of `v.found` (a `Type` edge), not from the walk.
+    //
+    // `recursion_objects.py` `identity_limit` and `tree_fill` joined the list at CS3b. Their blocks pin a known limit (both modes drew
+    // nothing for `h.process()`: "Python: JsonHandler.process"), and with effects summary mode draws it: `Tree.fill`'s first context calls
+    // a second one that finished (its `self.h = h` is carried), and `build`'s `Leaf` keeps the handler `identity_limit` reads. Run under
+    // Python, both programs call `JsonHandler.process`. The blocks are not changed: they are what inline mode draws, and summary mode is
+    // now more right than they are. Each site that rests on a cycle is marked (`unknown_callee`, `effects_in_cycle`).
     assert_eq!(
         failing,
         [
             "04-class-summaries/python/aliases.py same",
-            "04-class-summaries/python/aliases.py different",
             "04-class-summaries/python/deep_write.py main",
-            "04-class-summaries/python/effects.py ctor",
-            "04-class-summaries/python/effects.py installed",
-            "04-class-summaries/python/effects.py maybe_installed",
-            "04-class-summaries/python/effects.py fresh_installed",
-            "04-class-summaries/python/effects.py through_two",
             "04-class-summaries/python/recursion_objects.py use_walk",
-            "04-class-summaries/python/resolve_first.py replacing",
-            "04-class-summaries/python/resolve_first.py swapping",
+            "04-class-summaries/python/recursion_objects.py identity_limit",
+            "04-class-summaries/python/recursion_objects.py tree_fill",
             "04-class-summaries/python/split.py main",
         ]
     );
