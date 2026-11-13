@@ -103,35 +103,56 @@ fn target<'p>(lang: &TypeScript<'p>, resolved: Resolved<'p>, jsx: bool) -> Targe
         // the constructor that runs, its own or the one it inherits. A function reached by `new` is a function: its body is the constructor, so it is a
         // call.
         Resolved::Def(def) if lang.sem.def(def, lang.style).kind == DefKind::Class => {
-            let (init, chain) = lang.sem.init_chain(def, lang.style);
-            // what the construction runs and does not draw: the instance field initializers of each class it goes through, and a class component's `render`
-            let undrawn: usize = chain
-                .iter()
-                .map(|class| lang.sem.initializer_sites(*class, lang.style))
-                .sum();
-            lang.note_uncovered(&vec![Uncovered::ConstructInitializerSite; undrawn]);
-            if jsx && lang.sem.has_render(def, lang.style) {
-                lang.note_uncovered(&[Uncovered::ClassComponentRender]);
-            }
-            let init = match init {
-                Init::Enter(init) => Some((init, ())),
-                Init::Nothing => None,
-                // no constructor to enter, and it is a limit rather than an answer: say so on the graph (rule 8)
-                Init::External => {
-                    lang.note(INHERITED_EXTERNAL);
-                    None
-                }
-                Init::Unknown => {
-                    lang.note(INHERITED_UNKNOWN);
-                    None
-                }
-            };
-            Target::Construct { class: def, init }
+            let (class, init) = construction(lang, def, jsx);
+            Target::Construct { class, init }
         }
         Resolved::Def(def) => Target::Call(def, ()),
         Resolved::External { package, name } => Target::External(External { package, name }),
         Resolved::Unknown(why) => Target::Unresolved(Reason::new(why.counter())),
     }
+}
+
+/// What constructing `class` is: the class, and the constructor that runs, its own or the one it inherits (`None` when there is none to enter). Counts what
+/// the construction runs and does not draw, and the limits that left `init` empty. A `new C()` site and a class taken as an entry are the same construction,
+/// so both come here and have the same tree and the same counters.
+pub(crate) fn construction<'p>(
+    lang: &TypeScript<'p>,
+    class: Func<'p>,
+    jsx: bool,
+) -> (Func<'p>, Option<(Func<'p>, ())>) {
+    let (init, chain) = lang.sem.init_chain(class, lang.style);
+    // what the construction runs and does not draw: the instance field initializers of each class it goes through, and a class component's `render`
+    let undrawn: usize = chain
+        .iter()
+        .map(|class| lang.sem.initializer_sites(*class, lang.style))
+        .sum();
+    lang.note_uncovered(&vec![Uncovered::ConstructInitializerSite; undrawn]);
+    // what runs when the class is defined, not when it is constructed: the constructed class only, and no tree draws it (the class def is not walked)
+    lang.note_uncovered(&vec![
+        Uncovered::ClassDefinitionSite;
+        lang.sem.definition_sites(class, lang.style)
+    ]);
+    lang.note_uncovered(&vec![
+        Uncovered::ComputedMemberNameSite;
+        lang.sem.computed_name_sites(class, lang.style)
+    ]);
+    if jsx && lang.sem.has_render(class, lang.style) {
+        lang.note_uncovered(&[Uncovered::ClassComponentRender]);
+    }
+    let init = match init {
+        Init::Enter(init) => Some((init, ())),
+        Init::Nothing => None,
+        // no constructor to enter, and it is a limit rather than an answer: say so on the graph (rule 8)
+        Init::External => {
+            lang.note(INHERITED_EXTERNAL);
+            None
+        }
+        Init::Unknown => {
+            lang.note(INHERITED_UNKNOWN);
+            None
+        }
+    };
+    (class, init)
 }
 
 /// The sites of `func`'s body in source order, each a byte range **relative to the start of the def** (`Def::range.start`), so an edit above the

@@ -62,3 +62,4 @@ build | pick | call pick
 build | (class {}) | unresolved no_declaration
 build | (Legacy as any) | unresolved any_or_untyped
 build | Legacy | call Legacy
+uncovered: class_definition_sites=1

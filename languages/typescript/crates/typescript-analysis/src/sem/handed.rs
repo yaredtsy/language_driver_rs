@@ -184,10 +184,6 @@ impl Sem {
                 }
             }
         }
-        uncovered.extend(std::iter::repeat_n(
-            Uncovered::ComputedMemberNameSite,
-            self.computed_name_sites(func, style),
-        ));
         let _scope = self._region.enter();
         let mut checker = self.program.get_type_checker(&Context::default());
         // the variables an object pattern on the left of `=` assigns a def, or a rest object that holds one, to (`({ load, ...others } = api)`)

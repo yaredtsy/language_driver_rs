@@ -1,29 +1,4 @@
 == Decorated
 Decorated
-  plain
-  declared
-  inlineFactory
-    helper
-  onMethod
-  namedFactory
-    applyNamed [Passed]
-  applyNamed
-  parameterFactory
-    onParameter [Passed]
-  onParameter
-  onParameter
-edges:
-Decorated | plain | call plain
-Decorated | declared | call declared
-Decorated | declared() | unresolved decorator_result
-Decorated | inlineFactory | call inlineFactory
-Decorated | inlineFactory(1) | unresolved decorator_result
-Decorated | onMethod | call onMethod
-Decorated | namedFactory | call namedFactory
-Decorated | namedFactory(2) | call applyNamed
-Decorated | parameterFactory | call parameterFactory
-Decorated | parameterFactory("x") | call onParameter
-Decorated | onParameter | call onParameter
-inlineFactory | helper | call helper
-namedFactory | applyNamed | pass applyNamed
-parameterFactory | onParameter | pass onParameter
+edges: none
+uncovered: class_definition_sites=11

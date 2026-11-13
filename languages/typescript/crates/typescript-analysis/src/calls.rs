@@ -9,7 +9,8 @@ use std::fmt;
 
 use analyzer_core::edit::MarkerStyle;
 use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Entry, Graph, StableDef};
-use analyzer_core::solve::{Cancel, Lang, Limits, Solver, Summary};
+use analyzer_core::outline::DefKind;
+use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary};
 
 use crate::Project;
 use crate::env::Env;
@@ -113,10 +114,22 @@ pub fn call_graph(
     let sem = &project.sem;
     let func = sem.entry(file, entry.qualname, entry.occurrence, opts.marker)?;
     let lang = TypeScript::new(sem, opts.marker);
+    let start = start_of(&lang, func);
     let mut solver = Solver::new(lang, opts.limits.clone());
-    let mut graph = solver.graph(&[(func, ())], cancel);
+    let mut graph = solver.graph_within(&[start], &Budget::default(), cancel);
     finish(&mut graph, solver.lang());
     Some(graph)
+}
+
+/// Where a request for `func` starts. A class is a construction, as at a `new C()` site (D25): its tree is its constructor's calls, not the class def's body,
+/// and what the construction counts is counted here, so the entry and the site agree.
+fn start_of<'p>(lang: &TypeScript<'p>, func: Func<'p>) -> Start<TypeScript<'p>> {
+    if lang.sem.def(func, lang.style).kind == DefKind::Class {
+        let (class, init) = walk::construction(lang, func, false);
+        Start::Construct { class, init }
+    } else {
+        Start::Call(func, ())
+    }
 }
 
 /// What a graph has beyond its edges: each unresolved edge's reason in `Stats.language` (a count is what the edges say), the notes the walk kept, and the
@@ -302,6 +315,7 @@ impl fmt::Display for Breakdown {
                 ("getter_result_calls", "getter result calls"),
                 ("for_of_destructuring", "for-of destructuring"),
                 ("computed_member_name_sites", "computed member name sites"),
+                ("class_definition_sites", "class definition sites"),
             ];
             let parts: Vec<String> = labels
                 .iter()
@@ -478,6 +492,59 @@ mod tests {
         assert_eq!(graph.contexts[0].status, Status::Finished);
     }
 
+    /// How each decorator site of a class resolves. No request draws a class body any more (a class is a construction: the sites are counted), so this walks
+    /// it as a call, the way `Start::Call` of a class would, to keep what the resolver says about a decorator tested.
+    #[test]
+    fn the_sites_of_a_decorated_class_body_resolve_as_calls_with_a_second_call_for_a_factorys_result()
+     {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/site-kinds");
+        let project = Project::open(&root, Path::new("src/decorators.ts")).unwrap();
+        let sem = &project.sem;
+        let class = sem
+            .entry("src/decorators.ts", "Decorated", 0, STYLE)
+            .unwrap();
+        let mut solver = Solver::new(TypeScript::new(sem, STYLE), Limits::default());
+        let graph = solver.graph(&[(class, ())], &Cancel::new());
+        let text = std::fs::read_to_string(root.join("src/decorators.ts")).unwrap();
+        let name = |id: &StableDef| graph.def(id).unwrap().qname.clone();
+        let from_the_class: Vec<String> = graph
+            .edges
+            .iter()
+            .filter(|edge| name(&edge.from.func) == "Decorated")
+            .map(|edge| {
+                let def = graph.def(&edge.from.func).unwrap();
+                let at = def.range.start;
+                let callee = &text[(at + edge.site.start) as usize..(at + edge.site.end) as usize];
+                let to = match &edge.to {
+                    EdgeTo::Context(id, _) => format!("call {}", name(&id.func)),
+                    EdgeTo::Unresolved(reason) => format!("unresolved {}", reason.as_str()),
+                    other => panic!("{other:?}"),
+                };
+                format!("{callee} | {to}")
+            })
+            .collect();
+        assert_eq!(
+            from_the_class,
+            [
+                "plain | call plain",
+                "declared | call declared",
+                // `@declared()`: a function type, nothing to enter
+                "declared() | unresolved decorator_result",
+                "inlineFactory | call inlineFactory",
+                // the arrow it returns is part of its body and no def
+                "inlineFactory(1) | unresolved decorator_result",
+                "onMethod | call onMethod",
+                "namedFactory | call namedFactory",
+                // it returns a function with a name, which the checker's signature finds
+                "namedFactory(2) | call applyNamed",
+                "parameterFactory | call parameterFactory",
+                "parameterFactory(\"x\") | call onParameter",
+                "onParameter | call onParameter",
+            ]
+        );
+        assert_eq!(sem.definition_sites(class, STYLE), from_the_class.len());
+    }
+
     /// A measurement on a real project, not a check. `TS_MEASURE_ROOT=<dir> TS_MEASURE_FILE=<a file of it> [TS_MEASURE_ENTRY=<qualname in that file>]
     /// [TS_MEASURE_LIST=<n>] cargo test -p typescript-analysis --lib measure_handed_over -- --ignored --nocapture`. With an entry it is that def's graph; without,
     /// every function, method and class of the project is an entry, so "not called" means "called by nothing in the project".
@@ -493,17 +560,16 @@ mod tests {
         };
         let project = Project::open(Path::new(&root), Path::new(&file)).unwrap();
         let sem = &project.sem;
-        let entries: Vec<_> = match std::env::var("TS_MEASURE_ENTRY") {
-            Ok(qualname) => vec![(sem.entry(&file, &qualname, 0, STYLE).unwrap(), ())],
-            Err(_) => sem
-                .project_defs(STYLE)
-                .into_iter()
-                .map(|f| (f, ()))
-                .collect(),
+        let lang = TypeScript::new(sem, STYLE);
+        let funcs: Vec<_> = match std::env::var("TS_MEASURE_ENTRY") {
+            Ok(qualname) => vec![sem.entry(&file, &qualname, 0, STYLE).unwrap()],
+            Err(_) => sem.project_defs(STYLE),
         };
-        let mut solver = Solver::new(TypeScript::new(sem, STYLE), Limits::new(u32::MAX, None));
+        // the starts a request makes: a class is a construction
+        let entries: Vec<_> = funcs.into_iter().map(|f| start_of(&lang, f)).collect();
+        let mut solver = Solver::new(lang, Limits::new(u32::MAX, None));
         let started = std::time::Instant::now();
-        let mut graph = solver.graph(&entries, &Cancel::new());
+        let mut graph = solver.graph_within(&entries, &Budget::default(), &Cancel::new());
         finish(&mut graph, solver.lang());
         eprintln!("entries {}, graph {:?}", entries.len(), started.elapsed());
         eprint!("{}", breakdown(&graph));

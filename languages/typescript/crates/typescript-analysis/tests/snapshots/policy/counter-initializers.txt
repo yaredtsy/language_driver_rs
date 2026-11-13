@@ -9,6 +9,7 @@ constructsStaticOnly
   StaticOnly
 edges:
 constructsStaticOnly | StaticOnly | construct StaticOnly no init
+uncovered: class_definition_sites=2
 == constructsDerivedNoConstructor
 constructsDerivedNoConstructor
   DerivedNoConstructor

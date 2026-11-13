@@ -29,9 +29,12 @@ pub(crate) enum Uncovered {
     GetterResultCall,
     /// `for (const { load } of xs) use(load)`: the name stands for a member of the element, handed over by name, and a `for … of` pattern has no initializer to read.
     ForOfDestructuring,
-    /// One site in a computed member name (`[key()] = …`) of a class at the top of a file, counted where the class def is walked: the class def's body never reads
-    /// the names, and no enclosing def is there to read them.
+    /// One site in a computed member name (`[key()] = …`) of a class at the top of a file, counted where the class is constructed (as a `new C()` site or as the
+    /// entry): the class def's body is not walked and never reads the names, and no enclosing def is there to read them.
     ComputedMemberNameSite,
+    /// One site that runs when a class at the top of a file is **defined**: in a decorator (the class's, a member's, a parameter's), the `extends` expression, a static
+    /// field initializer or a static block. Counted once per construction drawn, for the constructed class only (its base chain's definition ran at its own definition).
+    ClassDefinitionSite,
 }
 
 impl Uncovered {
@@ -51,6 +54,7 @@ impl Uncovered {
             Uncovered::GetterResultCall => "uncovered_getter_result_calls",
             Uncovered::ForOfDestructuring => "uncovered_for_of_destructuring",
             Uncovered::ComputedMemberNameSite => "uncovered_computed_member_name_sites",
+            Uncovered::ClassDefinitionSite => "uncovered_class_definition_sites",
         }
     }
 }
@@ -60,7 +64,7 @@ impl Sem {
     /// body never reads its member names, and a class nested in a body has them read by the def around it (`Collector::collect`, which draws them there); a
     /// class at the top has no def around it, so the sites are in no tree. Calls, constructions, tags and JSX elements: an accessor in a name is not asked of the
     /// checker here.
-    pub(super) fn computed_name_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> usize {
+    pub(crate) fn computed_name_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> usize {
         let Some(defs) = self.file_defs(class.file, style) else {
             return 0;
         };
@@ -82,6 +86,22 @@ impl Sem {
             }
         }
         collector.sites.len()
+    }
+
+    /// How many sites run when `class` is defined, when `class` is a class at the top of a file: the sites of its own body that are not in an instance field
+    /// initializer (`initializer_sites`, which a construction runs). What is left is the decorators of the class, of its members and of the parameters of its
+    /// constructor and methods, the `extends` expression, the static field initializers and the static blocks (`Collector::body_of`). A class nested in a body or
+    /// a namespace is 0 here: the def around it reads its computed names and nothing else of it, and its decorators have `decorator_sites`.
+    pub(crate) fn definition_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> usize {
+        let (Some(body), Some(defs)) = (self.body(class, style), self.file_defs(class.file, style))
+        else {
+            return 0;
+        };
+        let def = &defs.outline.defs[class.def];
+        if def.kind != DefKind::Class || def.parent.is_some() {
+            return 0;
+        }
+        body.sites.len() - self.initializer_sites(class, style)
     }
 
     /// How many sites of `class`'s own body are in decorators: the decorators of the class, of its members and of the parameters of its constructor and

@@ -72,6 +72,7 @@ fn opening_a_project_building_graphs_and_dropping_it_does_not_grow_the_process()
     for round in 1..=ROUNDS {
         let edges = build_graphs(&resolve, "src/main.ts", &["callers", "optional_callbacks"])
             + build_graphs(&kinds, "src/decorators.ts", &["Decorated"])
+            + build_graphs(&kinds, "src/tagged.ts", &["tagged"])
             + build_graphs(&kinds, "src/jsx.tsx", &["components"])
             + build_graphs(&kinds, "src/accessors.ts", &["compound", "reads"]);
         // the same work every round, and some of it: a loop that built nothing would pass
