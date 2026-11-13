@@ -1,0 +1,20 @@
+== main
+mixed_callee.main <mixed_callee.py:main#0 Function>
+  mixed_callee.Pipeline <mixed_callee.py:Pipeline#0 Class> @29:9 in mixed_callee.py
+  mixed_callee.Csv <mixed_callee.py:Csv#0 Class> @29:18 in mixed_callee.py
+  mixed_callee.install <mixed_callee.py:install#0 Function> @31:5 in mixed_callee.py
+  mixed_callee.Json <mixed_callee.py:Json#0 Class> @31:10 in mixed_callee.py
+  mixed_callee.Pipeline.run <mixed_callee.py:Pipeline.run#0 Method> @32:5 in mixed_callee.py
+    mixed_callee.Json.process <mixed_callee.py:Json.process#0 Method> @21:9 in mixed_callee.py
+    mixed_callee.Csv.process <mixed_callee.py:Csv.process#0 Method> @21:9 in mixed_callee.py
+
+== main (merged)
+mixed_callee.main <mixed_callee.py:main#0 Function>
+  mixed_callee.Pipeline <mixed_callee.py:Pipeline#0 Class> @29:9 in mixed_callee.py
+  mixed_callee.Csv <mixed_callee.py:Csv#0 Class> @29:18 in mixed_callee.py
+  mixed_callee.install <mixed_callee.py:install#0 Function> @31:5 in mixed_callee.py
+  mixed_callee.Json <mixed_callee.py:Json#0 Class> @31:10 in mixed_callee.py
+  mixed_callee.Pipeline.run <mixed_callee.py:Pipeline.run#0 Method> @32:5 in mixed_callee.py
+    mixed_callee.Json.process <mixed_callee.py:Json.process#0 Method> @21:9 in mixed_callee.py
+    mixed_callee.Csv.process <mixed_callee.py:Csv.process#0 Method> @21:9 in mixed_callee.py
+

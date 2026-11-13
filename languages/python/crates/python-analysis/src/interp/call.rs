@@ -453,6 +453,11 @@ impl<'db> Walk<'db> {
             None => {}
         }
         if ask_ty {
+            if sol.opts.mode == Mode::Summary {
+                // Summary mode applied the project callees' writes into `env` as it went (inline mode kept each callee's env in `after`):
+                // they are one alternative, ty's callee the other.
+                after.push(Some(env.clone()));
+            }
             after.push(Some(before.clone())); // ty's callee: no state change you can see
             match call {
                 Some(call) => {

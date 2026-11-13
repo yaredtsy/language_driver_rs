@@ -882,6 +882,13 @@ fn p04_03_forget() {
     }
 }
 
+/// A site with a project callee and an engine callee keeps what the project callee wrote (CS3b.1): the write is weak there, and `p.run()`
+/// may call either handler.
+#[test]
+fn p04_03_mixed_callee() {
+    check_both("04-class-summaries/python/mixed_callee.py");
+}
+
 /// A write onto a closure's free object is applied by the run the closure was defined in.
 #[test]
 fn p04_03_closure_effect() {
@@ -1467,13 +1474,13 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
             _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 35 programs are verified in both modes and 11 only inline (six of `03-classes/`, five of `04-class-summaries/`); 46 are run at
-    // all; 47 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
+    // 36 programs are verified in both modes and 11 only inline (six of `03-classes/`, five of `04-class-summaries/`); 47 are run at
+    // all; 48 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
     // `every_entry` skips it)
     let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
     assert_eq!(
         (verified, by_fixture.len() - verified),
-        (35, 11),
+        (36, 11),
         "a program was added or lost"
     );
     for (fixture, verified, text) in by_fixture {
@@ -1889,7 +1896,7 @@ fn the_graph_of_every_fixture_equals_its_snapshot() {
     }
     assert_eq!(
         (by_fixture.len(), entries),
-        (46, 154),
+        (47, 155),
         "an entry was added or lost"
     );
     for (fixture, text) in by_fixture {

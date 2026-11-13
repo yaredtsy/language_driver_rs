@@ -1,0 +1,27 @@
+== main
+entries: mixed_callee.main#2d4820fe92a58fc0
+stats: walks 6, contexts 6, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def mixed_callee.Csv = Csv#0 Class mixed_callee.py
+def mixed_callee.Csv.process = Csv.process#0 Method mixed_callee.py
+def mixed_callee.Json = Json#0 Class mixed_callee.py
+def mixed_callee.Json.process = Json.process#0 Method mixed_callee.py
+def mixed_callee.Pipeline = Pipeline#0 Class mixed_callee.py
+def mixed_callee.Pipeline.__init__ = Pipeline.__init__#0 Method mixed_callee.py
+def mixed_callee.Pipeline.run = Pipeline.run#0 Method mixed_callee.py
+def mixed_callee.install = install#0 Function mixed_callee.py
+def mixed_callee.main = main#0 Function mixed_callee.py
+mixed_callee.Csv.process#ebd562212fc1a244 Finished
+mixed_callee.Json.process#4dde2f00b4a7edfb Finished
+mixed_callee.Pipeline.__init__#609846308827fa88 Finished
+mixed_callee.Pipeline.run#9b4a99fffdc123e1 Finished
+  @23-45 -> mixed_callee.Csv.process#ebd562212fc1a244 Type
+  @23-45 -> mixed_callee.Json.process#4dde2f00b4a7edfb Type
+mixed_callee.install#eeb444642a7c7124 Finished
+mixed_callee.main#2d4820fe92a58fc0 Finished
+  @21-36 -> new mixed_callee.Pipeline init mixed_callee.Pipeline.__init__#609846308827fa88 Name
+  @30-35 -> new mixed_callee.Csv init - Name
+  @73-85 -> mixed_callee.install#eeb444642a7c7124 Name
+  @73-85 -> external builtins.print Name
+  @78-84 -> new mixed_callee.Json init - Name
+  @138-145 -> mixed_callee.Pipeline.run#9b4a99fffdc123e1 Path
+
