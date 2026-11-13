@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
 use crate::graph::{
@@ -106,12 +106,34 @@ pub trait Lang {
 pub struct Cancel {
     flag: Arc<AtomicBool>,
     deadline: Option<Instant>,
+    /// Checks left before the flag is set, shared by the clones: `None` for a cancel that does not count (see [`after_checks`](Self::after_checks)).
+    checks_left: Option<Arc<AtomicU64>>,
 }
 
 impl Cancel {
     /// Never fires on its own; [`cancel`](Self::cancel) can still fire it.
     pub fn new() -> Self {
         Cancel::default()
+    }
+
+    /// A cancel that fires **on its `n`-th check**, and not before: the first `n - 1` calls of [`reason`](Self::reason) (or of
+    /// [`is_cancelled`](Self::is_cancelled), which calls it) give `None`, the `n`-th and every later one `Some(Cut::Cancelled)`, in every
+    /// clone.
+    ///
+    /// It is for tests, in any language: a cancel fired from another thread after a delay lands at a point nobody chose, so no number of runs
+    /// shows that *every* point where a request looks at its cancel leaves a sound result. Count the checks of a request (try `n = 1, 2, …`
+    /// until the request is no longer cut), then cancel at each one, on any machine, with no timing.
+    ///
+    /// `n == 0` is a cancel that has already fired, as if [`cancel`](Self::cancel) had been called.
+    pub fn after_checks(n: u64) -> Self {
+        let cancel = Cancel {
+            checks_left: Some(Arc::new(AtomicU64::new(n))),
+            ..Cancel::default()
+        };
+        if n == 0 {
+            cancel.cancel();
+        }
+        cancel
     }
 
     pub fn with_deadline(mut self, at: Instant) -> Self {
@@ -123,11 +145,23 @@ impl Cancel {
         self.flag.store(true, Ordering::Relaxed);
     }
 
-    /// Why to stop now, if to stop. A cancel request wins over the deadline.
+    /// Why to stop now, if to stop. A cancel request wins over the deadline. A call counts as one check for [`after_checks`](Self::after_checks)
+    /// unless the flag is already set.
     pub fn reason(&self) -> Option<Cut> {
         if self.flag.load(Ordering::Relaxed) {
-            Some(Cut::Cancelled)
-        } else if self.deadline.is_some_and(|d| Instant::now() >= d) {
+            return Some(Cut::Cancelled);
+        }
+        if let Some(left) = &self.checks_left {
+            // `Relaxed` is enough: the count is read and written by the one thread that runs a request. Clones on other threads would
+            // only see the flag a little late, as with `cancel`.
+            let before = left.load(Ordering::Relaxed);
+            left.store(before.saturating_sub(1), Ordering::Relaxed);
+            if before <= 1 {
+                self.cancel();
+                return Some(Cut::Cancelled);
+            }
+        }
+        if self.deadline.is_some_and(|d| Instant::now() >= d) {
             Some(Cut::Deadline)
         } else {
             None
@@ -681,6 +715,130 @@ pub(crate) mod tests {
         assert_eq!(names(&g), ["a"]);
         assert_eq!(g.contexts[0].status, Status::Incomplete(Cut::Cancelled));
         assert!(solver.lang().walks.is_empty());
+    }
+
+    // `Cancel::after_checks`: a cancel that fires on its n-th check.
+
+    #[test]
+    fn after_checks_one_fires_on_the_first_check() {
+        let cancel = Cancel::after_checks(1);
+        assert_eq!(cancel.reason(), Some(Cut::Cancelled));
+        assert_eq!(cancel.reason(), Some(Cut::Cancelled));
+    }
+
+    #[test]
+    fn after_checks_three_fires_on_the_third_and_stays_fired() {
+        let cancel = Cancel::after_checks(3);
+        assert_eq!(cancel.reason(), None);
+        assert_eq!(cancel.reason(), None);
+        assert_eq!(cancel.reason(), Some(Cut::Cancelled));
+        assert_eq!(cancel.reason(), Some(Cut::Cancelled));
+        assert!(cancel.is_cancelled());
+    }
+
+    #[test]
+    fn after_checks_zero_has_already_fired() {
+        assert_eq!(Cancel::after_checks(0).reason(), Some(Cut::Cancelled));
+    }
+
+    #[test]
+    fn is_cancelled_is_one_check() {
+        let cancel = Cancel::after_checks(2);
+        assert!(!cancel.is_cancelled());
+        assert!(cancel.is_cancelled());
+    }
+
+    #[test]
+    fn a_clone_shares_the_countdown_and_sees_the_cancel() {
+        let cancel = Cancel::after_checks(3);
+        let clone = cancel.clone();
+        assert_eq!(cancel.reason(), None);
+        assert_eq!(clone.reason(), None, "the clone's check is the second");
+        assert_eq!(cancel.reason(), Some(Cut::Cancelled));
+        assert_eq!(clone.reason(), Some(Cut::Cancelled));
+    }
+
+    #[test]
+    fn a_clone_made_before_the_countdown_runs_out_sees_the_cancel() {
+        let cancel = Cancel::after_checks(2);
+        let clone = cancel.clone();
+        assert_eq!(cancel.reason(), None);
+        assert_eq!(cancel.reason(), Some(Cut::Cancelled));
+        assert_eq!(clone.reason(), Some(Cut::Cancelled));
+    }
+
+    #[test]
+    fn a_cancel_that_does_not_count_never_fires_alone() {
+        let cancel = Cancel::new();
+        for _ in 0..1000 {
+            assert_eq!(cancel.reason(), None);
+        }
+    }
+
+    #[test]
+    fn a_deadline_still_speaks_before_the_countdown_ends() {
+        let cancel = Cancel::after_checks(5).with_deadline(Instant::now());
+        assert_eq!(cancel.reason(), Some(Cut::Deadline));
+    }
+
+    #[test]
+    fn after_checks_one_walks_nothing_and_cuts_the_root() {
+        let mut solver = Solver::new(Toy::new(&[("a", &["b"]), ("b", &[])]), Limits::default());
+        let g = solver.graph(&[("a", ())], &Cancel::after_checks(1));
+        assert_eq!(names(&g), ["a"]);
+        assert_eq!(g.contexts[0].status, Status::Incomplete(Cut::Cancelled));
+        assert_eq!(g.stats.cuts.get(&Cut::Cancelled), Some(&1));
+        assert!(solver.lang().walks.is_empty());
+    }
+
+    #[test]
+    fn after_checks_n_walks_exactly_the_contexts_before_the_nth_check() {
+        // the solver checks once per context it would walk, and `Toy` never cuts: the n-th check is the n-th context
+        let program: &[(&str, &[&str])] =
+            &[("a", &["b"]), ("b", &["c"]), ("c", &["d"]), ("d", &[])];
+        let all = ["a", "b", "c", "d"];
+        for n in 1..=4u64 {
+            let mut solver = Solver::new(Toy::new(program), Limits::default());
+            let g = solver.graph(&[("a", ())], &Cancel::after_checks(n));
+            let before = n as usize - 1;
+            assert_eq!(solver.lang().walks, all[..before], "n = {n}");
+            let cut: Vec<_> = statuses(&g)
+                .into_iter()
+                .filter(|(_, s)| *s == Status::Incomplete(Cut::Cancelled))
+                .map(|(name, _)| name)
+                .collect();
+            assert_eq!(cut, [all[before]], "n = {n}: the context at the n-th check");
+            assert_eq!(g.stats.cuts.get(&Cut::Cancelled), Some(&1));
+        }
+        let mut solver = Solver::new(Toy::new(program), Limits::default());
+        let g = solver.graph(&[("a", ())], &Cancel::after_checks(5));
+        assert_eq!(
+            solver.lang().walks,
+            all,
+            "a countdown longer than the request"
+        );
+        assert!(g.stats.cuts.is_empty());
+    }
+
+    #[test]
+    fn a_budgeted_context_is_not_a_check() {
+        // `c` is on the frontier: the budget is looked at first, so it never reaches the cancel
+        let program: &[(&str, &[&str])] = &[("a", &["b"]), ("b", &["c"]), ("c", &[])];
+        let mut solver = Solver::new(Toy::new(program), Limits::default());
+        let cancel = Cancel::after_checks(3);
+        let g = solver.graph_within(
+            &[Start::Call("a", ())],
+            &Budget::new(Some(2), None),
+            &cancel,
+        );
+        assert_eq!(solver.lang().walks, ["a", "b"]);
+        assert_eq!(g.stats.frontier, 1);
+        assert!(g.stats.cuts.is_empty());
+        assert_eq!(
+            cancel.reason(),
+            Some(Cut::Cancelled),
+            "two checks were used, the third is ours"
+        );
     }
 
     #[test]
