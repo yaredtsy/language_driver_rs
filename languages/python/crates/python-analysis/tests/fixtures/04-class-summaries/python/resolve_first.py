@@ -78,16 +78,41 @@ def argument_effects():
     show(box, box.replace(CsvHandler()))  # b.h is CsvHandler, old is JsonHandler
 
 
-# Both modes: `old.process()` is the old handler only (each callee resolves against the one before). `box.h` after the call: inline mode joins
-# the two callees' states, so it holds the two new handlers. Summary mode applies each callee's write weakly (two callees at the site: the
-# write is not known to have happened), so `box.h` keeps the old handler too, and `box.h.process()` draws a second `XmlHandler.process`:
-# a wrong edge, not a missing one.
+# Both modes: `old.process()` is the old handler only (each callee resolves against the one before). `box.h` after the call holds the two
+# new handlers and not the old one: each callee is an arm that starts from the state before the call, and the arms are joined, so the
+# write is on every path (CS4.1; before it, summary mode joined each write into the one state and kept `XmlHandler` too).
 def two_callees_write(c):
     box = Box(XmlHandler())
     h = A() if c else B()
     old = h.reset(box)
     old.process()  # XmlHandler.process only: both callees resolve against the one before
     box.h.process()  # JsonHandler.process and CsvHandler.process: one callee ran, which one is not known
+
+
+class Quiet:
+    def reset(self, box):
+        return box.h  # writes nothing
+
+
+# The caller's own effect on `box`, from a site with two callees: strong when both callees write it (it is on every path), weak when one
+# does not (the old handler is one of the alternatives). Read by the unit tests in `summary.rs`.
+def both_write(c, box):
+    h = A() if c else B()
+    h.reset(box)
+
+
+def one_writes(c, box):
+    h = A() if c else Quiet()
+    h.reset(box)
+
+
+def arm_effects(c):
+    box = Box(XmlHandler())
+    both_write(c, box)
+    box.h.process()  # JsonHandler.process and CsvHandler.process
+    other = Box(XmlHandler())
+    one_writes(c, other)
+    other.h.process()  # JsonHandler.process and XmlHandler.process
 
 
 # expect:
@@ -115,7 +140,7 @@ def two_callees_write(c):
 #   show
 #     CsvHandler.process
 #     JsonHandler.process
-# expect inline:
+# expect:
 # two_callees_write
 #   XmlHandler
 #   Box
@@ -128,17 +153,26 @@ def two_callees_write(c):
 #   XmlHandler.process
 #   JsonHandler.process
 #   CsvHandler.process
-# expect summary:
-# two_callees_write
+# expect:
+# arm_effects
 #   XmlHandler
 #   Box
-#   A
-#   B
-#   A.reset
-#     JsonHandler
-#   B.reset
-#     CsvHandler
-#   XmlHandler.process
+#   both_write
+#     A
+#     B
+#     A.reset
+#       JsonHandler
+#     B.reset
+#       CsvHandler
 #   JsonHandler.process
 #   CsvHandler.process
+#   XmlHandler
+#   Box
+#   one_writes
+#     A
+#     Quiet
+#     A.reset
+#       JsonHandler
+#     Quiet.reset
+#   JsonHandler.process
 #   XmlHandler.process

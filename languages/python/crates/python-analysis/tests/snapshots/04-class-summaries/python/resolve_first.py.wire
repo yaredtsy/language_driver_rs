@@ -56,30 +56,74 @@ resolve_first.argument_effects <resolve_first.py:argument_effects#0 Function>
 
 == two_callees_write
 resolve_first.two_callees_write <resolve_first.py:two_callees_write#0 Function>
-  resolve_first.Box <resolve_first.py:Box#0 Class> @86:11 in resolve_first.py
-  resolve_first.XmlHandler <resolve_first.py:XmlHandler#0 Class> @86:15 in resolve_first.py
-  resolve_first.A <resolve_first.py:A#0 Class> @87:9 in resolve_first.py
-  resolve_first.B <resolve_first.py:B#0 Class> @87:23 in resolve_first.py
-  resolve_first.A.reset <resolve_first.py:A.reset#0 Method> @88:11 in resolve_first.py
+  resolve_first.Box <resolve_first.py:Box#0 Class> @85:11 in resolve_first.py
+  resolve_first.XmlHandler <resolve_first.py:XmlHandler#0 Class> @85:15 in resolve_first.py
+  resolve_first.A <resolve_first.py:A#0 Class> @86:9 in resolve_first.py
+  resolve_first.B <resolve_first.py:B#0 Class> @86:23 in resolve_first.py
+  resolve_first.A.reset <resolve_first.py:A.reset#0 Method> @87:11 in resolve_first.py
     resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @45:17 in resolve_first.py
-  resolve_first.B.reset <resolve_first.py:B.reset#0 Method> @88:11 in resolve_first.py
+  resolve_first.B.reset <resolve_first.py:B.reset#0 Method> @87:11 in resolve_first.py
     resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @52:17 in resolve_first.py
-  resolve_first.XmlHandler.process <resolve_first.py:XmlHandler.process#0 Method> @89:5 in resolve_first.py
-  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @90:5 in resolve_first.py
-  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @90:5 in resolve_first.py
-  resolve_first.XmlHandler.process <resolve_first.py:XmlHandler.process#0 Method> @90:5 in resolve_first.py
+  resolve_first.XmlHandler.process <resolve_first.py:XmlHandler.process#0 Method> @88:5 in resolve_first.py
+  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @89:5 in resolve_first.py
+  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @89:5 in resolve_first.py
 
 == two_callees_write (merged)
 resolve_first.two_callees_write <resolve_first.py:two_callees_write#0 Function>
-  resolve_first.Box <resolve_first.py:Box#0 Class> @86:11 in resolve_first.py
-  resolve_first.XmlHandler <resolve_first.py:XmlHandler#0 Class> @86:15 in resolve_first.py
-  resolve_first.A <resolve_first.py:A#0 Class> @87:9 in resolve_first.py
-  resolve_first.B <resolve_first.py:B#0 Class> @87:23 in resolve_first.py
-  resolve_first.A.reset <resolve_first.py:A.reset#0 Method> @88:11 in resolve_first.py
+  resolve_first.Box <resolve_first.py:Box#0 Class> @85:11 in resolve_first.py
+  resolve_first.XmlHandler <resolve_first.py:XmlHandler#0 Class> @85:15 in resolve_first.py
+  resolve_first.A <resolve_first.py:A#0 Class> @86:9 in resolve_first.py
+  resolve_first.B <resolve_first.py:B#0 Class> @86:23 in resolve_first.py
+  resolve_first.A.reset <resolve_first.py:A.reset#0 Method> @87:11 in resolve_first.py
     resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @45:17 in resolve_first.py
-  resolve_first.B.reset <resolve_first.py:B.reset#0 Method> @88:11 in resolve_first.py
+  resolve_first.B.reset <resolve_first.py:B.reset#0 Method> @87:11 in resolve_first.py
     resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @52:17 in resolve_first.py
-  resolve_first.XmlHandler.process <resolve_first.py:XmlHandler.process#0 Method> x2 @89:5 in resolve_first.py
-  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @90:5 in resolve_first.py
-  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @90:5 in resolve_first.py
+  resolve_first.XmlHandler.process <resolve_first.py:XmlHandler.process#0 Method> @88:5 in resolve_first.py
+  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @89:5 in resolve_first.py
+  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @89:5 in resolve_first.py
+
+== arm_effects
+resolve_first.arm_effects <resolve_first.py:arm_effects#0 Function>
+  resolve_first.Box <resolve_first.py:Box#0 Class> @110:11 in resolve_first.py
+  resolve_first.XmlHandler <resolve_first.py:XmlHandler#0 Class> @110:15 in resolve_first.py
+  resolve_first.both_write <resolve_first.py:both_write#0 Function> @111:5 in resolve_first.py
+    resolve_first.A <resolve_first.py:A#0 Class> @100:9 in resolve_first.py
+    resolve_first.B <resolve_first.py:B#0 Class> @100:23 in resolve_first.py
+    resolve_first.A.reset <resolve_first.py:A.reset#0 Method> @101:5 in resolve_first.py
+      resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @45:17 in resolve_first.py
+    resolve_first.B.reset <resolve_first.py:B.reset#0 Method> @101:5 in resolve_first.py
+      resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @52:17 in resolve_first.py
+  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @112:5 in resolve_first.py
+  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @112:5 in resolve_first.py
+  resolve_first.Box <resolve_first.py:Box#0 Class> @113:13 in resolve_first.py
+  resolve_first.XmlHandler <resolve_first.py:XmlHandler#0 Class> @113:17 in resolve_first.py
+  resolve_first.one_writes <resolve_first.py:one_writes#0 Function> @114:5 in resolve_first.py
+    resolve_first.A <resolve_first.py:A#0 Class> @105:9 in resolve_first.py
+    resolve_first.Quiet <resolve_first.py:Quiet#0 Class> @105:23 in resolve_first.py
+    resolve_first.A.reset <resolve_first.py:A.reset#0 Method> @106:5 in resolve_first.py
+      resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @45:17 in resolve_first.py
+    resolve_first.Quiet.reset <resolve_first.py:Quiet.reset#0 Method> @106:5 in resolve_first.py
+  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @115:5 in resolve_first.py
+  resolve_first.XmlHandler.process <resolve_first.py:XmlHandler.process#0 Method> @115:5 in resolve_first.py
+
+== arm_effects (merged)
+resolve_first.arm_effects <resolve_first.py:arm_effects#0 Function>
+  resolve_first.Box <resolve_first.py:Box#0 Class> x2 @110:11 in resolve_first.py
+  resolve_first.XmlHandler <resolve_first.py:XmlHandler#0 Class> x2 @110:15 in resolve_first.py
+  resolve_first.both_write <resolve_first.py:both_write#0 Function> @111:5 in resolve_first.py
+    resolve_first.A <resolve_first.py:A#0 Class> @100:9 in resolve_first.py
+    resolve_first.B <resolve_first.py:B#0 Class> @100:23 in resolve_first.py
+    resolve_first.A.reset <resolve_first.py:A.reset#0 Method> @101:5 in resolve_first.py
+      resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @45:17 in resolve_first.py
+    resolve_first.B.reset <resolve_first.py:B.reset#0 Method> @101:5 in resolve_first.py
+      resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @52:17 in resolve_first.py
+  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> x2 @112:5 in resolve_first.py
+  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @112:5 in resolve_first.py
+  resolve_first.one_writes <resolve_first.py:one_writes#0 Function> @114:5 in resolve_first.py
+    resolve_first.A <resolve_first.py:A#0 Class> @105:9 in resolve_first.py
+    resolve_first.Quiet <resolve_first.py:Quiet#0 Class> @105:23 in resolve_first.py
+    resolve_first.A.reset <resolve_first.py:A.reset#0 Method> @106:5 in resolve_first.py
+      resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @45:17 in resolve_first.py
+    resolve_first.Quiet.reset <resolve_first.py:Quiet.reset#0 Method> @106:5 in resolve_first.py
+  resolve_first.XmlHandler.process <resolve_first.py:XmlHandler.process#0 Method> @115:5 in resolve_first.py
 

@@ -342,12 +342,9 @@ impl<'db> Walk<'db> {
         classes.sort_by_key(|&c| sol.sem.def_position(c));
         externals.sort_by_key(|&d| sol.sem.def_position(d));
         externals.dedup();
-        // The callee is one def and nothing else: a write it made on every path is a write Python made. Known here, before the first
-        // callee's effects are applied: the callees are all collected (and sorted) above.
-        let strong_ok = targets.len() + methods.len() + classes.len() == 1 && !ask_ty;
         let mut edge_targets: SmallVec<[Target<'db>; 2]> = SmallVec::new();
         let mut out = Values::new();
-        // Callees at one site are alternatives: each starts from the state before the call.
+        // Callees at one site are alternatives: each is an arm that starts from the state before the call, and the arms are joined below.
         let before = env.clone();
         let mut after: Vec<Option<Env<'db>>> = Vec::new();
         // The project callees at this site, numbered as they are walked: one origin per callee for the objects its summary builds.
@@ -366,20 +363,24 @@ impl<'db> Walk<'db> {
                     after.push(Some(e));
                     v
                 }
-                Mode::Summary => self.call_project(
-                    sol,
-                    def,
-                    enclosing,
-                    None,
-                    args,
-                    how,
-                    self.site_range(site),
-                    next_t(),
-                    &mut edge_targets,
-                    env,
-                    &before,
-                    strong_ok,
-                ),
+                Mode::Summary => {
+                    let mut e = before.clone();
+                    let v = self.call_project(
+                        sol,
+                        def,
+                        enclosing,
+                        None,
+                        args,
+                        how,
+                        self.site_range(site),
+                        next_t(),
+                        &mut edge_targets,
+                        &mut e,
+                        &before,
+                    );
+                    after.push(Some(e));
+                    v
+                }
             };
             out.extend(v);
         }
@@ -399,25 +400,28 @@ impl<'db> Walk<'db> {
                     ));
                     after.push(Some(e));
                 }
-                Mode::Summary => out.extend(self.call_project(
-                    sol,
-                    func,
-                    None,
-                    Some(recv),
-                    args,
-                    // a method is reached through a receiver: never named
-                    if how == How::Likely {
-                        How::Likely
-                    } else {
-                        How::Typed
-                    },
-                    self.site_range(site),
-                    next_t(),
-                    &mut edge_targets,
-                    env,
-                    &before,
-                    strong_ok,
-                )),
+                Mode::Summary => {
+                    let mut e = before.clone();
+                    out.extend(self.call_project(
+                        sol,
+                        func,
+                        None,
+                        Some(recv),
+                        args,
+                        // a method is reached through a receiver: never named
+                        if how == How::Likely {
+                            How::Likely
+                        } else {
+                            How::Typed
+                        },
+                        self.site_range(site),
+                        next_t(),
+                        &mut edge_targets,
+                        &mut e,
+                        &before,
+                    ));
+                    after.push(Some(e));
+                }
             }
         }
         for class in classes {
@@ -428,20 +432,23 @@ impl<'db> Walk<'db> {
                     out.extend(self.construct(sol, class, range, args, &mut e));
                     after.push(Some(e));
                 }
-                Mode::Summary => out.extend(self.construct_summary(
-                    sol,
-                    class,
-                    range,
-                    args,
-                    match how {
-                        How::Named => Basis::Name,
-                        How::Typed => Basis::Type,
-                        How::Likely => Basis::Likely,
-                    },
-                    &mut edge_targets,
-                    env,
-                    strong_ok,
-                )),
+                Mode::Summary => {
+                    let mut e = before.clone();
+                    out.extend(self.construct_summary(
+                        sol,
+                        class,
+                        range,
+                        args,
+                        match how {
+                            How::Named => Basis::Name,
+                            How::Typed => Basis::Type,
+                            How::Likely => Basis::Likely,
+                        },
+                        &mut edge_targets,
+                        &mut e,
+                    ));
+                    after.push(Some(e));
+                }
             }
         }
         if sol.opts.mode == Mode::Summary {
@@ -469,11 +476,6 @@ impl<'db> Walk<'db> {
             None => {}
         }
         if ask_ty {
-            if sol.opts.mode == Mode::Summary {
-                // Summary mode applied the project callees' writes into `env` as it went (inline mode kept each callee's env in `after`):
-                // they are one alternative, ty's callee the other.
-                after.push(Some(env.clone()));
-            }
             after.push(Some(before.clone())); // ty's callee: no state change you can see
             match call {
                 Some(call) => {
@@ -673,7 +675,6 @@ impl<'db> Walk<'db> {
         targets: &mut SmallVec<[Target<'db>; 2]>,
         env: &mut Env<'db>,
         before: &Env<'db>, // the env when the call began: what a `Ref` reads
-        strong_ok: bool,   // the site has one callee, so a write it made on every path replaces
     ) -> Values<'db> {
         let parsed = sol.sem.parsed(def);
         let Some(node) = sol.sem.function_node(def, &parsed) else {
@@ -708,7 +709,6 @@ impl<'db> Walk<'db> {
                     t,
                     bound: &bound,
                     enclosing,
-                    strong_ok,
                 };
                 let plan = self.resolve(sol, &res, &call, before);
                 self.apply(sol, plan, env)
@@ -791,7 +791,6 @@ impl<'db> Walk<'db> {
         basis: Basis, // `Name` when the class expression names the class
         targets: &mut SmallVec<[Target<'db>; 2]>,
         env: &mut Env<'db>,
-        strong_ok: bool, // the site has one callee
     ) -> Values<'db> {
         let origin = self.origins.intern(OriginKey::New {
             site,
@@ -815,7 +814,6 @@ impl<'db> Walk<'db> {
                             t: 0,
                             bound: &bound,
                             enclosing: None,
-                            strong_ok,
                         };
                         let before = env.clone();
                         let plan = self.resolve(sol, &res, &call, &before);

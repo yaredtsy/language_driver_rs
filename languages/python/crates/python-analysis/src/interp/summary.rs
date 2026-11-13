@@ -532,13 +532,13 @@ impl<'db> Walk<'db> {
             objects: attrs,
             effects,
             site: (call.site, call.t),
-            strong_ok: call.strong_ok,
         }
     }
 
     /// Phase 2: write what `resolve` found into the caller's env, and give the call's value. A new object has nothing to keep, so its
-    /// attributes are written strong. An effect replaces the old value only when the callee wrote it on every path, the target is exactly
-    /// one object, and the site has one callee (`strong_ok`); otherwise it is joined. A strong effect of nothing but `Unknown` removes the
+    /// attributes are written strong. An effect replaces the old value only when the callee wrote it on every path and the target is
+    /// exactly one object; otherwise it is joined. The env is the callee's own arm of its site: `call_values` joins the arms. A strong
+    /// effect of nothing but `Unknown` removes the
     /// attribute: a read of it asks the engine's declared type, where keeping the old value would be a stale one.
     ///
     /// In a replay the env is dropped after the operation: the new objects' writes are also kept in `replay_attrs`, and no effect is
@@ -565,7 +565,7 @@ impl<'db> Walk<'db> {
             return plan.returns;
         }
         for (targets, attr, vals, strong) in plan.effects {
-            let strong = strong && targets.len() == 1 && plan.strong_ok;
+            let strong = strong && targets.len() == 1;
             let forgets = vals.iter().all(|v| matches!(v, AbstractValue::Unknown));
             for target in targets {
                 if strong && forgets {
@@ -748,9 +748,6 @@ pub(crate) struct CallSite<'a, 'db> {
     pub bound: &'a Bound<'db>,
     /// The closure's own run, for `Free(i)` and `Default(i)`.
     pub enclosing: Option<ActivationId>,
-    /// The site has one project callee and nothing else it could be (no engine callee, no unknown one): a write the callee made on every
-    /// path is a write Python made.
-    pub strong_ok: bool,
 }
 
 /// What `resolve` found: the call's value, the state of each new object, and each effect, to be written by `apply`.
@@ -762,7 +759,6 @@ pub(crate) struct Plan<'db> {
     pub effects: Vec<(SmallVec<[OriginId; 2]>, Name, Values<'db>, bool)>,
     /// The call site and the callee's index at it.
     pub site: (TextRange, u8),
-    pub strong_ok: bool,
 }
 
 struct Resolving<'a, 'db> {
@@ -847,6 +843,7 @@ mod tests {
     const EFFECTS: &str = "04-class-summaries/python/effects.py";
     const FORGET: &str = "04-class-summaries/python/forget.py";
     const CLOSURE_EFFECT: &str = "04-class-summaries/python/closure_effect.py";
+    const RESOLVE_FIRST: &str = "04-class-summaries/python/resolve_first.py";
 
     /// The one context of `func` (`module.name`) the solve made, and its summary.
     fn summary_of<'db>(s: &Solver<'db>, func: &str) -> FunctionResult<'db> {
@@ -1075,6 +1072,28 @@ mod tests {
             assert_eq!(e.attr, name("h"));
             assert_eq!(e.value.as_slice(), &[SVal::Obj(0)]);
             assert!(e.strong);
+        });
+    }
+
+    /// Each callee of a site is an arm that starts from the state before the call, and the arms are joined (CS4.1): a write both callees
+    /// made is on every path, so the caller's own effect is strong; when one callee does not write, it is weak.
+    #[test]
+    fn a_write_every_callee_of_a_site_makes_is_strong_and_one_a_callee_skips_is_weak() {
+        with_solved(RESOLVE_FIRST, "arm_effects", |s| {
+            let both = summary_of(s, "resolve_first.both_write");
+            let [e] = both.effects.as_slice() else {
+                panic!("expected one effect, got {:?}", both.effects);
+            };
+            assert_eq!(e.target, Path::root(Root::Param(1)));
+            assert_eq!(e.attr, name("h"));
+            assert!(e.strong, "both callees write box.h: {:?}", e.value);
+
+            let one = summary_of(s, "resolve_first.one_writes");
+            let [e] = one.effects.as_slice() else {
+                panic!("expected one effect, got {:?}", one.effects);
+            };
+            assert_eq!(e.target, Path::root(Root::Param(1)));
+            assert!(!e.strong, "Quiet.reset does not write box.h");
         });
     }
 

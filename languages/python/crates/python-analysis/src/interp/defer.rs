@@ -98,7 +98,6 @@ impl<'db> Walk<'db> {
                             t,
                             bound: &bound,
                             enclosing,
-                            strong_ok: false, // a replay applies no effect
                         };
                         let plan = self.resolve(sol, &res, &call, &env);
                         self.apply(sol, plan, &mut env)

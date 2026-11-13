@@ -321,6 +321,26 @@ are equal, and that is all this run says. More contexts, the cost to watch, is 0
 request path with effects off). In the fixtures, three context digests move (`Svc.build.step`, `Host.meth.Local.m`, `closure_effect.py main.swap`: closures
 that capture an object) and one edge appears, `Svc.build.step` -> `JsonHandler.process`, the row's own proof.
 
+## CS4.1: each callee of a site is an arm
+
+Measured 2026-11-13, the same entries and the same method as row 11 (`dump_graph`, `PYTHON_DUMP_GAP=1`, debug test binary), before = `8b91ba5`, after = the
+CS4.1 change. A site with two or more callees applies each project callee's effects to its own copy of the state before the call and joins the arms, as
+inline mode does (`03-effects.md` §3 row 8); `strong_ok` is gone.
+
+| Project | effects | nodes | contexts | walks | unresolved | `extra` | `effects_applied` |
+|---|---|---|---|---|---|---|---|
+| Jarvis | off | 207 → 207 | 55 → 55 | 55 → 55 | 30 → 30 | 0 → 0 | - |
+| Jarvis | on | 207 → 207 | 71 → 71 | 71 → 71 | 32 → 32 | 0 → 0 | 43 → 43 |
+| Flask service | off | 266 → 266 | 70 → 70 | 70 → 70 | 81 → 81 | 0 → 0 | - |
+| Flask service | on | 266 → 266 | 70 → 70 | 70 → 70 | 81 → 81 | 0 → 0 | 87 → 87 |
+| FastAPI | off | 458 → 458 | 70 → 70 | 70 → 70 | 29 → 29 | 0 → 0 | - |
+| FastAPI | on | 1019 → 1019 | 104 → **103** | 104 → **103** | 52 → 52 | 0 → 0 | 180 → 180 |
+
+Only FastAPI with effects on moves, by one context (and so one walk): two callees of one site used to be keyed one after the other, the second against the
+state the first had left; now both are keyed against the state before the call, so two that agree share a context. `missing` is unchanged (Flask 41,
+FastAPI off 561, the rest 0) and `create_cloned_field` is still the one `Incomplete(MaxRounds)` cut. The golden of Jarvis is `equal` (wire and merged
+wire, the request path with effects off, compared as JSON against `out/golden/wire*.json`: the files differ only in layout).
+
 ## Toolchain
 
 `vendor/ruff/rust-toolchain.toml` says 1.98.0 and ruff's `rust-version` is 1.96. It is ignored here (the repo root's `rust-toolchain.toml` decides,

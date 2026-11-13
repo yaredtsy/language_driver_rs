@@ -327,7 +327,6 @@ fn solve_class<'db>(
         analyzer_core::graph::Basis::Type,
         &mut targets,
         &mut env,
-        true,
     );
     let init = targets.iter().find_map(|t| match t {
         summary::Target::Construct { init, .. } => *init,

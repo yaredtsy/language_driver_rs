@@ -1984,7 +1984,7 @@ fn the_graph_of_every_fixture_equals_its_snapshot() {
     }
     assert_eq!(
         (by_fixture.len(), entries),
-        (48, 160),
+        (48, 161),
         "an entry was added or lost"
     );
     for (fixture, text) in by_fixture {

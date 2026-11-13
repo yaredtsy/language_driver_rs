@@ -72,7 +72,7 @@ resolve_first.show#ce33702f6f36e8b7 Finished
 
 == two_callees_write
 entries: resolve_first.two_callees_write#872a0fd4b0827ce6
-stats: walks 7, contexts 7, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 3, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 3, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def resolve_first.A = A#0 Class resolve_first.py
 def resolve_first.A.reset = A.reset#0 Method resolve_first.py
 def resolve_first.B = B#0 Class resolve_first.py
@@ -88,7 +88,7 @@ def resolve_first.XmlHandler.process = XmlHandler.process#0 Method resolve_first
 def resolve_first.two_callees_write = two_callees_write#0 Function resolve_first.py
 resolve_first.A.reset#c2c38ff155427f51 Finished
   @58-71 -> new resolve_first.JsonHandler init - Name
-resolve_first.B.reset#60fa2c868eb1e95b Finished
+resolve_first.B.reset#be03455eca50f66c Finished
   @58-70 -> new resolve_first.CsvHandler init - Name
 resolve_first.Box.__init__#8108be6f46a01795 Finished
 resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Finished
@@ -100,9 +100,59 @@ resolve_first.two_callees_write#872a0fd4b0827ce6 Finished
   @62-65 -> new resolve_first.A init - Name
   @76-79 -> new resolve_first.B init - Name
   @90-102 -> resolve_first.A.reset#c2c38ff155427f51 Path
-  @90-102 -> resolve_first.B.reset#60fa2c868eb1e95b Path
+  @90-102 -> resolve_first.B.reset#be03455eca50f66c Path
   @107-120 -> resolve_first.XmlHandler.process#0f8d5c3969856d30 Path
   @197-212 -> resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Path
   @197-212 -> resolve_first.JsonHandler.process#78d8030f4d400860 Path
-  @197-212 -> resolve_first.XmlHandler.process#0f8d5c3969856d30 Path
+
+== arm_effects
+entries: resolve_first.arm_effects#a7e39e38e6a1c5d1
+stats: walks 10, contexts 10, reuse_hits 3, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 7, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def resolve_first.A = A#0 Class resolve_first.py
+def resolve_first.A.reset = A.reset#0 Method resolve_first.py
+def resolve_first.B = B#0 Class resolve_first.py
+def resolve_first.B.reset = B.reset#0 Method resolve_first.py
+def resolve_first.Box = Box#0 Class resolve_first.py
+def resolve_first.Box.__init__ = Box.__init__#0 Method resolve_first.py
+def resolve_first.CsvHandler = CsvHandler#0 Class resolve_first.py
+def resolve_first.CsvHandler.process = CsvHandler.process#0 Method resolve_first.py
+def resolve_first.JsonHandler = JsonHandler#0 Class resolve_first.py
+def resolve_first.JsonHandler.process = JsonHandler.process#0 Method resolve_first.py
+def resolve_first.Quiet = Quiet#0 Class resolve_first.py
+def resolve_first.Quiet.reset = Quiet.reset#0 Method resolve_first.py
+def resolve_first.XmlHandler = XmlHandler#0 Class resolve_first.py
+def resolve_first.XmlHandler.process = XmlHandler.process#0 Method resolve_first.py
+def resolve_first.arm_effects = arm_effects#0 Function resolve_first.py
+def resolve_first.both_write = both_write#0 Function resolve_first.py
+def resolve_first.one_writes = one_writes#0 Function resolve_first.py
+resolve_first.A.reset#c2c38ff155427f51 Finished
+  @58-71 -> new resolve_first.JsonHandler init - Name
+resolve_first.B.reset#be03455eca50f66c Finished
+  @58-70 -> new resolve_first.CsvHandler init - Name
+resolve_first.Box.__init__#8108be6f46a01795 Finished
+resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Finished
+resolve_first.JsonHandler.process#78d8030f4d400860 Finished
+resolve_first.Quiet.reset#3d7214f557022e83 Finished
+resolve_first.XmlHandler.process#0f8d5c3969856d30 Finished
+resolve_first.arm_effects#a7e39e38e6a1c5d1 Finished
+  @30-47 -> new resolve_first.Box init resolve_first.Box.__init__#8108be6f46a01795 Name
+  @34-46 -> new resolve_first.XmlHandler init - Name
+  @52-70 -> resolve_first.both_write#ce666e97fe829ad4 Name
+  @75-90 -> resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Path
+  @75-90 -> resolve_first.JsonHandler.process#78d8030f4d400860 Path
+  @149-166 -> new resolve_first.Box init resolve_first.Box.__init__#8108be6f46a01795 Name
+  @153-165 -> new resolve_first.XmlHandler init - Name
+  @171-191 -> resolve_first.one_writes#32cec8d100f0beb7 Name
+  @196-213 -> resolve_first.JsonHandler.process#78d8030f4d400860 Path
+  @196-213 -> resolve_first.XmlHandler.process#0f8d5c3969856d30 Path
+resolve_first.both_write#ce666e97fe829ad4 Finished
+  @32-35 -> new resolve_first.A init - Name
+  @46-49 -> new resolve_first.B init - Name
+  @54-66 -> resolve_first.A.reset#c2c38ff155427f51 Path
+  @54-66 -> resolve_first.B.reset#be03455eca50f66c Path
+resolve_first.one_writes#32cec8d100f0beb7 Finished
+  @32-35 -> new resolve_first.A init - Name
+  @46-53 -> new resolve_first.Quiet init - Name
+  @58-70 -> resolve_first.A.reset#c2c38ff155427f51 Path
+  @58-70 -> resolve_first.Quiet.reset#3d7214f557022e83 Path
 
