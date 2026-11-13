@@ -6,6 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use ty_python_semantic::Db;
 
 use crate::interp::bind::param_names;
+use crate::interp::member::is_zero_arg_super;
 use crate::sem::{Definition, DefinitionKind, Name};
 
 /// Which parameters of `func` can affect its walk. One flag per parameter,
@@ -17,7 +18,7 @@ use crate::sem::{Definition, DefinitionKind, Name};
 /// Conservative: a parameter is relevant if it, or a local that may hold its
 /// value, reaches a call, an attribute receiver, a return/yield/await, a
 /// store through an attribute or subscript, a `with`, or a nested scope.
-/// A parameter used only in a condition is not relevant.
+/// A parameter used only in a condition is not relevant. A zero-argument `super()` uses the first parameter.
 #[salsa::tracked(returns(ref))]
 pub fn relevant_params<'db>(db: &'db dyn Db, func: Definition<'db>) -> Vec<bool> {
     let parsed = parsed_module(db, func.python_file(db)).load(db);
@@ -175,6 +176,8 @@ impl<'a> Visitor<'a> for Taint<'_> {
 
     fn visit_expr(&mut self, e: &'a Expr) {
         match e {
+            // `super()` with no arguments binds the walk's own first parameter (`self`, or `cls`): a use no name in the body shows
+            Expr::Call(_) if is_zero_arg_super(e) => self.mark(FxHashSet::from_iter([0])),
             Expr::Call(c) => {
                 self.sink(&c.func);
                 for arg in c.arguments.iter_source_order() {

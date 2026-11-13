@@ -42,6 +42,7 @@ chains.inherited <chains.py:inherited#0 Function>
   chains.Child <chains.py:Child#0 Class> @58:5 in chains.py
     chains.Base.__init__ <chains.py:Base.__init__#0 Method> @36:9 in chains.py
   chains.Child.go <chains.py:Child.go#0 Method> @58:5 in chains.py
+    chains.LoudHandler.handle <chains.py:LoudHandler.handle#0 Method> @39:9 in chains.py
   chains.LoudHandler <chains.py:LoudHandler#0 Class> @58:11 in chains.py
 
 == inherited (merged)
@@ -49,6 +50,7 @@ chains.inherited <chains.py:inherited#0 Function>
   chains.Child <chains.py:Child#0 Class> @58:5 in chains.py
     chains.Base.__init__ <chains.py:Base.__init__#0 Method> @36:9 in chains.py
   chains.Child.go <chains.py:Child.go#0 Method> @58:5 in chains.py
+    chains.LoudHandler.handle <chains.py:LoudHandler.handle#0 Method> @39:9 in chains.py
   chains.LoudHandler <chains.py:LoudHandler#0 Class> @58:11 in chains.py
 
 == annotated
@@ -84,12 +86,14 @@ chains.via_super <chains.py:via_super#0 Function>
   chains.Special <chains.py:Special#0 Class> @95:5 in chains.py
   chains.Special.make <chains.py:Special.make#0 Method> @95:5 in chains.py
     chains.Maker.build <chains.py:Maker.build#0 Method> @91:9 in chains.py
+      chains.Special <chains.py:Special#0 Class> @86:9 in chains.py
 
 == via_super (merged)
 chains.via_super <chains.py:via_super#0 Function>
   chains.Special <chains.py:Special#0 Class> @95:5 in chains.py
   chains.Special.make <chains.py:Special.make#0 Method> @95:5 in chains.py
     chains.Maker.build <chains.py:Maker.build#0 Method> @91:9 in chains.py
+      chains.Special <chains.py:Special#0 Class> @86:9 in chains.py
 
 == fanout
 chains.fanout <chains.py:fanout#0 Function>

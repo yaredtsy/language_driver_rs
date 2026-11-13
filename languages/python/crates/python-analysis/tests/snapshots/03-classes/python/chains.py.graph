@@ -47,21 +47,23 @@ chains.unknown_mid_chain#d4009b55d4f1ebfc Finished
 
 == inherited
 entries: chains.inherited#5d28ab87cc0d0897
-stats: walks 4, contexts 4, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def chains.Base.__init__ = Base.__init__#0 Method chains.py
 def chains.Child = Child#0 Class chains.py
 def chains.Child.__init__ = Child.__init__#0 Method chains.py
 def chains.Child.go = Child.go#0 Method chains.py
 def chains.LoudHandler = LoudHandler#0 Class chains.py
+def chains.LoudHandler.handle = LoudHandler.handle#0 Method chains.py
 def chains.inherited = inherited#0 Function chains.py
-chains.Base.__init__#d21a485e3bd9b84a Finished
-chains.Child.__init__#564b4a0a28b7c03d Finished
-  @31-50 -> chains.Base.__init__#d21a485e3bd9b84a Type
-chains.Child.go#d455774e94ba4b1b Finished
-  @22-37 -> ? unknown_callee
+chains.Base.__init__#7af6615e7351cdd1 Finished
+chains.Child.__init__#e4d6a4e109c5001f Finished
+  @31-50 -> chains.Base.__init__#7af6615e7351cdd1 Type
+chains.Child.go#530fc4740bb37064 Finished
+  @22-37 -> chains.LoudHandler.handle#c8f27fe890b2ee3d Type
+chains.LoudHandler.handle#c8f27fe890b2ee3d Finished
 chains.inherited#5d28ab87cc0d0897 Finished
-  @21-41 -> new chains.Child init chains.Child.__init__#564b4a0a28b7c03d Name
-  @21-46 -> chains.Child.go#d455774e94ba4b1b Path
+  @21-41 -> new chains.Child init chains.Child.__init__#e4d6a4e109c5001f Name
+  @21-46 -> chains.Child.go#530fc4740bb37064 Path
   @27-40 -> new chains.LoudHandler init - Name
 
 == annotated
@@ -99,18 +101,18 @@ chains.separate#0fac4e732fd8597c Finished
 
 == via_super
 entries: chains.via_super#f0ce04bfb0446a48
-stats: walks 3, contexts 3, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def chains.Maker.build = Maker.build#0 Method chains.py
 def chains.Special = Special#0 Class chains.py
 def chains.Special.make = Special.make#0 Method chains.py
 def chains.via_super = via_super#0 Function chains.py
-chains.Maker.build#596e3d7a52ad8189 Finished
-  @41-46 -> ? unknown_callee
-chains.Special.make#bd84ca23efb83a21 Finished
-  @24-39 -> chains.Maker.build#596e3d7a52ad8189 Type
+chains.Maker.build#11a5848a7c463913 Finished
+  @41-46 -> new chains.Special init - Type
+chains.Special.make#edef8f51739f9587 Finished
+  @24-39 -> chains.Maker.build#11a5848a7c463913 Type
 chains.via_super#f0ce04bfb0446a48 Finished
   @21-30 -> new chains.Special init - Name
-  @21-37 -> chains.Special.make#bd84ca23efb83a21 Path
+  @21-37 -> chains.Special.make#edef8f51739f9587 Path
 
 == fanout
 entries: chains.fanout#836731de03e86d02

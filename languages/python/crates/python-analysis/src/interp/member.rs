@@ -222,7 +222,7 @@ impl<'db> Walk<'db> {
 }
 
 /// `super()` with no arguments: its meaning is lexical, so it is read from syntax.
-fn is_zero_arg_super(e: &Expr) -> bool {
+pub(crate) fn is_zero_arg_super(e: &Expr) -> bool {
     matches!(e, Expr::Call(c)
         if c.arguments.is_empty()
         && matches!(&*c.func, Expr::Name(n) if n.id.as_str() == "super"))

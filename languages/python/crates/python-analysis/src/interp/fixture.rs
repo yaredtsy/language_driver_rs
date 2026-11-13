@@ -565,6 +565,8 @@ fn p02_04_relevance_cases() {
         ("nested_class", &["cb"]),
         ("global_write", &["cb"]),
         ("splats", &["args"]),
+        ("zero_arg_super", &["self"]),
+        ("named_super", &["self"]),
     ];
     let mut wrong = String::new();
     for (func, want) in cases {
@@ -2181,21 +2183,22 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
         total.extra
     );
     // With effects on (CS3b) 15 of the 21 entries that failed were right; with the one prologue (CS3c) `entries.py` is checked in both modes
-    // (`check_both`) and leaves this test, with its 20 entries, so 28 entries are left. The three that fail are `chains.py` `inherited` and
-    // `via_super` (a `super()` and an inherited method: not effects) and `state.py` `either` (rule 7, below).
-    assert_eq!((entries, failing), (28, 3));
-    assert_eq!(total.missing, 4, "nodes inline finds and summary does not");
-    assert_eq!(total.highest_missing, 3, "the topmost of them");
+    // (`check_both`) and leaves this test, with its 20 entries, so 28 entries are left. `chains.py` `inherited` and `via_super` were right
+    // once a zero-argument `super()` counted as a use of the first parameter (`relevant_params`): `self` was keyed `Unknown`, so nothing was
+    // written onto it and `super().build()` had no `cls`. One entry fails: `state.py` `either` (rule 7, below).
+    assert_eq!((entries, failing), (28, 1));
+    assert_eq!(total.missing, 2, "nodes inline finds and summary does not");
+    assert_eq!(total.highest_missing, 1, "the topmost of them");
     assert_eq!(
-        total.at_unresolved, 2,
+        total.at_unresolved, 0,
         "topmost missing nodes at a call site the graph marks Unresolved"
     );
     assert_eq!(
         (total.nodes_at_unresolved, total.nodes_elsewhere),
-        (2, 2),
+        (0, 2),
         "of the missing nodes: under an Unresolved call site, and elsewhere"
     );
-    assert_eq!(total.missing, 2 + 2);
+    assert_eq!(total.missing, 0 + 2);
 
     // The claim "every missing node is under an Unresolved call site" is false, and this is why. `either`: inline lists one Pipeline.run
     // per object, summary joins them (rule 7), so it is not lost information. (Two property getters of `special.py` `main` were on this

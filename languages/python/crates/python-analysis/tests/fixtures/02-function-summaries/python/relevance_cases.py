@@ -56,3 +56,11 @@ def global_write(cb):  # cb
 
 def splats(a, *args, k, **kw):  # args
     g(*args)  # noqa: F821
+
+
+def zero_arg_super(self, other):  # self: `super()` with no arguments reads the first parameter, and says so nowhere
+    super().__init__()
+
+
+def named_super(self, other):  # self: the explicit form names it
+    super(C, self).__init__()  # noqa: F821
