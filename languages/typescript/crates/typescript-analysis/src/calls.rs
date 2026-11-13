@@ -111,12 +111,25 @@ pub fn call_graph(
     opts: &Options,
     cancel: &Cancel,
 ) -> Option<Graph> {
+    graph_within(project, file, entry, opts, &Budget::default(), cancel)
+}
+
+/// `call_graph` and `Session::graph` in one place, so they cannot drift: the graph under `entry`, walked no further than `budget`. With
+/// `Budget::default()` it is `call_graph`'s.
+pub(crate) fn graph_within(
+    project: &Project,
+    file: &str,
+    entry: &Entry<'_>,
+    opts: &Options,
+    budget: &Budget,
+    cancel: &Cancel,
+) -> Option<Graph> {
     let sem = &project.sem;
     let func = sem.entry(file, entry.qualname, entry.occurrence, opts.marker)?;
     let lang = TypeScript::new(sem, opts.marker);
     let start = start_of(&lang, func);
     let mut solver = Solver::new(lang, opts.limits.clone());
-    let mut graph = solver.graph_within(&[start], &Budget::default(), cancel);
+    let mut graph = solver.graph_within(&[start], budget, cancel);
     finish(&mut graph, solver.lang());
     Some(graph)
 }

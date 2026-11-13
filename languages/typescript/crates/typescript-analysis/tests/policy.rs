@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use analyzer_testkit::expect_file;
 use analyzer_testkit::graph::check_invariants;
-use common::edges_as_text;
+use common::{Row, edges_as_text, rows};
 use typescript_analysis::{
     Cancel, Entry, MarkerStyle, Options, Placement, Project, RenderOptions, breakdown, call_graph,
     render, to_text,
@@ -22,42 +22,6 @@ const TABLE: &str = include_str!("../../../docs/policy.md");
 
 fn tests_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests")
-}
-
-/// One row of the table: its id, and the backticked words of its last cell. A row with one word names a folder that must exist (the outline's fixtures, a
-/// rule of the outline and not of the calls). A row with more names the project's folder, a file of it, and the entries (qualnames) built from that file.
-struct Row {
-    id: String,
-    words: Vec<String>,
-}
-
-/// The text between pairs of backticks, in order.
-fn backticked(text: &str) -> Vec<String> {
-    text.split('`')
-        .enumerate()
-        .filter(|(n, _)| n % 2 == 1)
-        .map(|(_, word)| word.to_owned())
-        .collect()
-}
-
-/// The rows of a table: the lines that begin with `` | `id` | ``. The fixture is the last cell.
-fn rows(table: &str) -> Vec<Row> {
-    table
-        .lines()
-        .filter(|line| line.starts_with("| `"))
-        .map(|line| {
-            let id = backticked(line).into_iter().next().unwrap_or_default();
-            let last = line
-                .trim_end()
-                .trim_end_matches('|')
-                .rsplit_once(" | ")
-                .map_or("", |(_, cell)| cell);
-            Row {
-                id,
-                words: backticked(last),
-            }
-        })
-        .collect()
 }
 
 fn snapshot_path(id: &str) -> PathBuf {
