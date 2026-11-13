@@ -2274,24 +2274,25 @@ fn what_summary_mode_gives_on_the_part_04_programs_against_their_blocks() {
         (5, 11),
         "the part 04 programs checked inline only, and their summary-mode blocks"
     );
-    // 11 blocks are summary mode's; these 6 fail. `effects.py` is verified in both modes since CS3b (its five blocks left this list), and
-    // `aliases.py different`, `resolve_first.py replacing` and `swapping` left it too: they now pass. The five that pass: those three,
-    // `aliases.py nested` (its summary block is the known limit) and `recursion_objects.py visitor`, whose `Report.emit` comes from ty's
-    // type of `v.found` (a `Type` edge), not from the walk.
+    // 11 blocks are summary mode's; these 4 fail. `effects.py` is verified in both modes since CS3b (its five blocks left this list), and
+    // `aliases.py different`, `resolve_first.py replacing` and `swapping` left it too: they now pass. The seven that pass: those three,
+    // `aliases.py nested` (its summary block is the known limit), `recursion_objects.py visitor` (whose `Report.emit` comes from ty's type
+    // of `v.found`, a `Type` edge, not from the walk), and `identity_limit` and `tree_fill` (below).
     //
-    // `recursion_objects.py` `identity_limit` and `tree_fill` joined the list at CS3b. Their blocks pin a known limit (both modes drew
-    // nothing for `h.process()`: "Python: JsonHandler.process"), and with effects summary mode draws it: `Tree.fill`'s first context calls
-    // a second one that finished (its `self.h = h` is carried), and `build`'s `Leaf` keeps the handler `identity_limit` reads. Run under
-    // Python, both programs call `JsonHandler.process`. The blocks are not changed: they are what inline mode draws, and summary mode is
-    // now more right than they are. Each site that rests on a cycle is marked (`unknown_callee`, `effects_in_cycle`).
+    // `recursion_objects.py` `identity_limit` and `tree_fill` joined the list at CS3b and left it at CS3b.2: their blocks pinned a known
+    // limit that both modes had ("Python: JsonHandler.process"), and with effects summary mode draws the call (run under Python, both
+    // programs call `JsonHandler.process`). Each is now an `# expect inline:` block (the limit, as it was) and an `# expect summary:` block
+    // (with the call). Each site that rests on a cycle is marked (`unknown_callee`, `effects_in_cycle`).
+    //
+    // The three wrong edges effects add stay here, each with its reason (README §7 question 2): `aliases.py same` draws `CsvHandler.process`
+    // (the key does not say the two arguments are one object: CS7); `deep_write.py main` draws `CsvHandler.process` (the write is past the
+    // key's depth: CS5); `split.py main` pairs each handler with both keys (inline mode draws the same mix: CS6). `use_walk` waits for CS8.
     assert_eq!(
         failing,
         [
             "04-class-summaries/python/aliases.py same",
             "04-class-summaries/python/deep_write.py main",
             "04-class-summaries/python/recursion_objects.py use_walk",
-            "04-class-summaries/python/recursion_objects.py identity_limit",
-            "04-class-summaries/python/recursion_objects.py tree_fill",
             "04-class-summaries/python/split.py main",
         ]
     );

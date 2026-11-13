@@ -196,10 +196,10 @@ lists its commits, failing tests and proof in the form of [`../09-a-def-past-an-
 | # | Question | Recommendation |
 |---|---|---|
 | 1 | Q-PY1: tag `python-v0.2.0` before this work, saying the limit in the README, or after | **before**: nothing gets worse, the work is several steps |
-| 2 | When effects go on by default. It changes the wire: the snapshots, the FastAPI tree (436 → 970), maybe the golden (Jarvis did not move in the spike) | at the end of CS4, if `extra` is 0 on the fixtures and the three projects |
+| 2 | When effects go on by default. It changes the wire: the snapshots, the FastAPI tree (436 → 970), maybe the golden (Jarvis did not move in the spike) | ~~at the end of CS4, if `extra` is 0 on the fixtures and the three projects~~ **Changed at CS3b (2026-11-13): not before CS5 §2 row 1 and CS7.** With effects on, two summary-only wrong edges appear, unmarked, where before there was a marked gap: `deep_write.py main` (a write past the key's depth lands on an `OPAQUE` object and is dropped, so the caller keeps the old `CsvHandler`) and `aliases.py same` (the key does not say the two arguments are one object, so the callee reads the old handler). Both are the stated targets of CS5 (`track_entry_attr`, which needs no core decision; only the mark past `max_path` does) and CS7. `split.py main`'s mix is drawn by inline mode too (CS6; a known kind, like §8's narrowing) |
 | 3 | A deep write past `max_path` (CS5): its mark. Core's `Cut` has no variant for it; `MaxRounds` would be a lie | a new `Cut` variant in core, as R2a added `Basis::Likely` (coordinate with the TypeScript session); or only a counter, unmarked, if core must not move |
 | 4 | Above the split cap (CS6) the combinations collapse into a union, which is today's behaviour and can pair values that never met | count it (`cpa_collapses`), no mark: it is what every call does today |
-| 5 | Steps 5 to 8: build them, or stop after CS4 | decide on CS4's numbers |
+| 5 | Steps 5 to 8: build them, or stop after CS4 | decide on CS4's numbers. **After CS3b:** CS5 §2 row 1 and CS7 are needed for question 2 either way; CS6 and CS8 stay this question |
 | 6 | After the gate: keep inline mode as the test oracle, or delete it | keep (step 9) |
 
 ## 8. What is not in this folder

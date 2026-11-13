@@ -106,16 +106,31 @@ def tree_fill():
 #           Node.accept [recursive]
 #           Report
 #   Report.emit
-# expect:
+# expect inline:
 # identity_limit
 #   JsonHandler
 #   build
 #     build [recursive]
 #     Branch
 #     Leaf
-# expect:
+# expect summary:
+# identity_limit
+#   JsonHandler
+#   build
+#     build [recursive]
+#     Branch
+#     Leaf
+#   JsonHandler.process
+# expect inline:
 # tree_fill
 #   Tree
 #   JsonHandler
 #   Tree.fill
 #     Tree.fill [recursive]
+# expect summary:
+# tree_fill
+#   Tree
+#   JsonHandler
+#   Tree.fill
+#     Tree.fill [recursive]
+#     JsonHandler.process
