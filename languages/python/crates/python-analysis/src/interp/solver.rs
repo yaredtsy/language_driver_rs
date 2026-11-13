@@ -8,7 +8,9 @@ use ruff_index::{Idx, IndexVec};
 
 use crate::interp::defer::{DeferredOp, no_values};
 use crate::interp::key::{Context, ContextId, Fp, FpId, Interner};
-use crate::interp::summary::{Cut, FunctionResult, Gaps, Status, same_objects, same_svals};
+use crate::interp::summary::{
+    Cut, FunctionResult, Gaps, Status, same_effects, same_objects, same_svals,
+};
 use crate::interp::walk::{Walk, contains_yield};
 use crate::interp::{Options, Stats};
 use crate::sem::{Definition, Sem};
@@ -67,7 +69,9 @@ impl<'db> Slot<'db> {
     /// Store the round's summary. True when what a caller reads changed.
     fn set_current(&mut self, next: FunctionResult<'db>) -> bool {
         let changed = self.current.as_ref().is_none_or(|c| {
-            !same_svals(&c.returns, &next.returns) || !same_objects(&c.objects, &next.objects)
+            !same_svals(&c.returns, &next.returns)
+                || !same_objects(&c.objects, &next.objects)
+                || !same_effects(&c.effects, &next.effects)
         });
         self.current = Some(Arc::new(next));
         changed
@@ -546,4 +550,61 @@ pub(crate) fn walk_context<'db>(s: &mut Solver<'db>, ctx: ContextId) -> Walk<'db
         w.activations[w.frame.act] = end;
     }
     w
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interp::summary::{Effect, PlainVal, SVal};
+    use crate::interp::value::{Path, Root};
+    use crate::sem::Name;
+    use smallvec::smallvec;
+
+    /// A summary whose `returns` and `objects` are the same in every round, with `effects` as given.
+    fn round<'db>(effects: Vec<Effect<'db>>) -> FunctionResult<'db> {
+        FunctionResult {
+            calls: Vec::new(),
+            returns: smallvec![SVal::Plain(PlainVal::Unknown)],
+            objects: Vec::new(),
+            effects,
+            status: Status::default(),
+        }
+    }
+
+    fn write<'db>(strong: bool, value: SVal<'db>) -> Effect<'db> {
+        Effect {
+            target: Path::root(Root::Param(0)),
+            attr: Name::new("h"),
+            value: smallvec![value],
+            strong,
+        }
+    }
+
+    /// A caller reads a callee's effects as it reads its returns, so a round that changes only them is a change: stopping there would
+    /// leave the group with the effects of the round before.
+    #[test]
+    fn a_round_that_changes_only_the_effects_is_a_change() {
+        let mut slot = Slot::default();
+        let unknown = SVal::Plain(PlainVal::Unknown);
+        assert!(
+            slot.set_current(round(Vec::new())),
+            "the first round is one"
+        );
+        assert!(slot.set_current(round(vec![write(true, unknown.clone())])));
+        // the same effect again: no change
+        assert!(!slot.set_current(round(vec![write(true, unknown.clone())])));
+        // the same value, written on some paths only
+        assert!(slot.set_current(round(vec![write(false, unknown.clone())])));
+        // another value
+        let other = SVal::Ref(Path::root(Root::Param(1)));
+        assert!(slot.set_current(round(vec![write(false, other)])));
+        // the same alternatives in another order are the same effect
+        let alternatives = |a: SVal<'static>, b: SVal<'static>| Effect {
+            value: smallvec![a, b],
+            ..write(true, SVal::Plain(PlainVal::Unknown))
+        };
+        let r = SVal::Ref(Path::root(Root::Param(1)));
+        slot.set_current(round(vec![alternatives(unknown.clone(), r.clone())]));
+        assert!(!slot.set_current(round(vec![alternatives(r, unknown)])));
+    }
 }

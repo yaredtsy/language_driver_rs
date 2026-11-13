@@ -808,6 +808,17 @@ pub(crate) fn same_objects<'db>(a: &[NewObject<'db>], b: &[NewObject<'db>]) -> b
             .all(|(x, y)| x.class == y.class && x.site == y.site && same_named(&x.attrs, &y.attrs))
 }
 
+/// The effects of two rounds of one walk: sorted by (target, attr), so compared in step; their objects are numbered by `finish_round`.
+pub(crate) fn same_effects<'db>(a: &[Effect<'db>], b: &[Effect<'db>]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(x, y)| {
+            x.target == y.target
+                && x.attr == y.attr
+                && x.strong == y.strong
+                && same_svals(&x.value, &y.value)
+        })
+}
+
 /// Both lists come in a fixed order: free variables sorted, defaults in parameter order.
 fn same_named<'db>(a: &[(Name, SVals<'db>)], b: &[(Name, SVals<'db>)]) -> bool {
     a.len() == b.len()

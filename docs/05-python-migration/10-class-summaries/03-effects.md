@@ -171,7 +171,7 @@ for (targets, attr, vals, strong) in plan.effects {
 | | |
 |---|---|
 | Change | §3 row 4: `effects` joins the comparison (`returns` and `objects` are compared since CS2b) |
-| Failing tests | a recursive group whose returns and objects are equal in rounds 0 and 1 and whose effects differ: today it stops after round 1 with the round-0 effects. pylspt's `recursion_objects.py` `visitor` is the larger case (step 8) |
+| Failing tests | a recursive group whose returns and objects are equal in rounds 0 and 1 and whose effects differ: today it stops after round 1 with the round-0 effects. pylspt's `recursion_objects.py` `visitor` is the larger case (step 8). **Built as** a unit test of `Slot::set_current` (`solver.rs`, `a_round_that_changes_only_the_effects_is_a_change`): two summaries with equal `returns` and `objects` and other effects. No program was found where only the effects move between rounds and the end differs, because an effect's value comes from the same pending returns, and a recursive call's own effects are not carried until CS8; the fixpoint test is the guard for that step |
 | Proof | as CS3b; `02-function-summaries` snapshots unchanged |
 
 ### CS3e. The gate
