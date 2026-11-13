@@ -1,0 +1,51 @@
+== direct
+closure_keys.direct <closure_keys.py:direct#0 Function>
+  closure_keys.Svc <closure_keys.py:Svc#0 Class> @32:11 in closure_keys.py
+    closure_keys.Pipeline <closure_keys.py:Pipeline#0 Class> @20:18 in closure_keys.py
+    closure_keys.JsonHandler <closure_keys.py:JsonHandler#0 Class> @20:27 in closure_keys.py
+  closure_keys.direct.step <closure_keys.py:direct.<locals>.step#0 Function> @37:5 in closure_keys.py
+    closure_keys.JsonHandler.process <closure_keys.py:JsonHandler.process#0 Method> @35:9 in closure_keys.py
+
+== direct (merged)
+closure_keys.direct <closure_keys.py:direct#0 Function>
+  closure_keys.Svc <closure_keys.py:Svc#0 Class> @32:11 in closure_keys.py
+    closure_keys.Pipeline <closure_keys.py:Pipeline#0 Class> @20:18 in closure_keys.py
+    closure_keys.JsonHandler <closure_keys.py:JsonHandler#0 Class> @20:27 in closure_keys.py
+  closure_keys.direct.step <closure_keys.py:direct.<locals>.step#0 Function> @37:5 in closure_keys.py
+    closure_keys.JsonHandler.process <closure_keys.py:JsonHandler.process#0 Method> @35:9 in closure_keys.py
+
+== passed
+closure_keys.passed <closure_keys.py:passed#0 Function>
+  closure_keys.Svc <closure_keys.py:Svc#0 Class> @41:11 in closure_keys.py
+    closure_keys.Pipeline <closure_keys.py:Pipeline#0 Class> @20:18 in closure_keys.py
+    closure_keys.JsonHandler <closure_keys.py:JsonHandler#0 Class> @20:27 in closure_keys.py
+  closure_keys.run_it <closure_keys.py:run_it#0 Function> @46:5 in closure_keys.py
+    closure_keys.passed.step <closure_keys.py:passed.<locals>.step#0 Function> @28:5 in closure_keys.py
+
+== passed (merged)
+closure_keys.passed <closure_keys.py:passed#0 Function>
+  closure_keys.Svc <closure_keys.py:Svc#0 Class> @41:11 in closure_keys.py
+    closure_keys.Pipeline <closure_keys.py:Pipeline#0 Class> @20:18 in closure_keys.py
+    closure_keys.JsonHandler <closure_keys.py:JsonHandler#0 Class> @20:27 in closure_keys.py
+  closure_keys.run_it <closure_keys.py:run_it#0 Function> @46:5 in closure_keys.py
+    closure_keys.passed.step <closure_keys.py:passed.<locals>.step#0 Function> @28:5 in closure_keys.py
+
+== pending_input
+closure_keys.pending_input <closure_keys.py:pending_input#0 Function>
+  closure_keys.Slot <closure_keys.py:Slot#0 Class> @64:14 in closure_keys.py
+  closure_keys.Slot <closure_keys.py:Slot#0 Class> @65:16 in closure_keys.py
+  closure_keys.JsonHandler <closure_keys.py:JsonHandler#0 Class> @66:24 in closure_keys.py
+  closure_keys.pending <closure_keys.py:pending#0 Function> @67:5 in closure_keys.py
+    closure_keys.pending <closure_keys.py:pending#0 Function> [recursive] @54:28 in closure_keys.py
+    closure_keys.pending.step <closure_keys.py:pending.<locals>.step#0 Function> @59:5 in closure_keys.py
+      closure_keys.JsonHandler.process <closure_keys.py:JsonHandler.process#0 Method> @57:9 in closure_keys.py
+
+== pending_input (merged)
+closure_keys.pending_input <closure_keys.py:pending_input#0 Function>
+  closure_keys.Slot <closure_keys.py:Slot#0 Class> x2 @64:14 in closure_keys.py
+  closure_keys.JsonHandler <closure_keys.py:JsonHandler#0 Class> @66:24 in closure_keys.py
+  closure_keys.pending <closure_keys.py:pending#0 Function> @67:5 in closure_keys.py
+    closure_keys.pending <closure_keys.py:pending#0 Function> [recursive] @54:28 in closure_keys.py
+    closure_keys.pending.step <closure_keys.py:pending.<locals>.step#0 Function> @59:5 in closure_keys.py
+      closure_keys.JsonHandler.process <closure_keys.py:JsonHandler.process#0 Method> @57:9 in closure_keys.py
+

@@ -308,11 +308,12 @@ impl<'db> Solver<'db> {
                 }
             })
             .collect();
-        // The called closure counts as a closure: its free values sit at depth 1.
+        // The called closure counts as a closure on the stack (a `Back(0)` inside reaches it). Its free values are its inputs, as its
+        // parameters are: depth 0. Its defaults stay at depth 1. (A closure passed as a value is `fp_one`'s: free values one below.)
         let (free, defaults) = match closure {
             Some(act) => ClosureStack::default().with(func, act, |cl| {
                 (
-                    self.fp_free(w, env, func, act, cl, 1),
+                    self.fp_free(w, env, func, act, cl, 0),
                     self.fp_defaults(w, env, func, act, cl, 1),
                 )
             }),

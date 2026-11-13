@@ -254,11 +254,9 @@ class Tree:
 # expect:
 # outer.inner
 #   B.go
-# expect inline:
+# expect:
 # Svc.build.step
 #   JsonHandler.process
-# expect summary:
-# Svc.build.step
 # expect:
 # with_param.inner
 #   Handler.handle

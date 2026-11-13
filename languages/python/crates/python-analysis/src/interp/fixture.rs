@@ -782,6 +782,83 @@ fn p03_08_entries() {
     check_both("03-classes/python/entries.py");
 }
 
+/// The key of a closure's own run counts its free values from depth 0, as its parameters; a closure passed as a value keeps them one step
+/// below its parameter (effects plan, row 11). `fp_text` writes a fingerprint as `Class{attr: …}`.
+#[test]
+fn p03_08_a_closures_own_run_keys_its_free_values_from_depth_0() {
+    let f = "03-classes/python/closure_keys.py";
+    check_both(f);
+    // the contexts of `func` in the solver, each as `args [..] free [..]`
+    fn keys(s: &crate::interp::solver::Solver<'_>, func: &str) -> Vec<String> {
+        let want = format!("closure_keys.{func}");
+        s.contexts
+            .iter()
+            .filter(|(_, c)| s.sem.qname(c.func) == want)
+            .map(|(_, c)| {
+                let args: Vec<String> = c.args.iter().map(|&a| fp_text(s, a)).collect();
+                let free: Vec<String> = c
+                    .free
+                    .iter()
+                    .map(|(n, fp)| format!("{}={}", n.as_str(), fp_text(s, *fp)))
+                    .collect();
+                format!("args [{}] free [{}]", args.join(", "), free.join(", "))
+            })
+            .collect()
+    }
+    // the closure's own run: `svc` is an input, so the handler is in the key
+    with_solved(f, "direct", |s| {
+        assert_eq!(
+            keys(s, "direct.step"),
+            ["args [] free [svc=Svc{p: Pipeline{handler: JsonHandler}}]"]
+        );
+    });
+    // the closure as a value: `svc` is one step below `cb`, so `p` is cut at the depth limit (unchanged by row 11), and so is the run of
+    // `step` that `run_it` makes
+    with_solved(f, "passed", |s| {
+        assert_eq!(
+            keys(s, "run_it"),
+            ["args [Closure(passed.step; svc=Svc{p: Pipeline})] free []"]
+        );
+        assert_eq!(
+            keys(s, "passed.step"),
+            ["args [] free [svc=Svc{p: Pipeline{}}]"] // the object holds state, and what it holds is not known
+        );
+    });
+}
+
+/// A fingerprint as `Class{attr: …}` (a test's reading of a key).
+fn fp_text(s: &crate::interp::solver::Solver<'_>, id: crate::interp::key::FpId) -> String {
+    use crate::interp::key::Fp;
+    let attrs = |attrs: &[(crate::sem::Name, crate::interp::key::FpId)]| {
+        attrs
+            .iter()
+            .map(|(n, a)| format!("{}: {}", n.as_str(), fp_text(s, *a)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match &s.fps[id] {
+        Fp::Instance { class, attrs: a } => {
+            let name = s.sem.qname(*class);
+            format!("{}{{{}}}", name.rsplit('.').next().unwrap(), attrs(a))
+        }
+        Fp::Opaque(class) => s.sem.qname(*class).rsplit('.').next().unwrap().to_owned(),
+        Fp::Closure { func, free, .. } => {
+            let free: Vec<String> = free
+                .iter()
+                .map(|(n, a)| format!("{}={}", n.as_str(), fp_text(s, *a)))
+                .collect();
+            let name = s.sem.qname(*func);
+            format!(
+                "Closure({}; {})",
+                name.trim_start_matches("closure_keys."),
+                free.join(", ")
+            )
+        }
+        Fp::Unknown => "Unknown".to_owned(),
+        other => format!("{other:?}"),
+    }
+}
+
 #[test]
 fn p03_08_prologue_runs_the_parents() {
     let f = "03-classes/python/entries.py";
@@ -1483,13 +1560,13 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
             _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 43 programs are verified in both modes and 4 only inline (all in `04-class-summaries/`); 47 are run at
-    // all; 48 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
+    // 44 programs are verified in both modes and 4 only inline (all in `04-class-summaries/`); 48 are run at
+    // all; 49 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
     // `every_entry` skips it)
     let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
     assert_eq!(
         (verified, by_fixture.len() - verified),
-        (43, 4),
+        (44, 4),
         "a program was added or lost"
     );
     for (fixture, verified, text) in by_fixture {
@@ -1907,7 +1984,7 @@ fn the_graph_of_every_fixture_equals_its_snapshot() {
     }
     assert_eq!(
         (by_fixture.len(), entries),
-        (47, 157),
+        (48, 160),
         "an entry was added or lost"
     );
     for (fixture, text) in by_fixture {
@@ -2023,9 +2100,9 @@ fn compare_with_inline(
 /// The gap test, at its end (CS3e). It pinned, entry by entry, what summary mode missed against inline mode on the six class programs of
 /// `03-classes/` that were checked in inline mode only: 48 entries, 21 failing at CS3a (35 nodes missing, 2 extra). Effects (CS3b), the
 /// mixed-callee fix, the one prologue (CS3c) and a `super()` that counts as a use of `self` took it to 0, and the six are `check_both`.
-/// What is left of the gap is said in their blocks and nowhere else: `state.py` `either` has an `# expect inline:` block (a
+/// What is left of the gap is said in its block and nowhere else: `state.py` `either` has an `# expect inline:` block (a
 /// `Pipeline.run` for each object) and an `# expect summary:` block (one, with both handlers: rule 7, README §5, no information lost; CS6
-/// may split it), and `entries.py` `Svc.build.step` has the same split for the key's depth (`fp_depth`, row 11 of 03 §7). So this test
+/// may split it). (`entries.py` `Svc.build.step` had the same split for the key's depth; row 11 of 03 §7 closed it.) So this test
 /// only has to hold that no `03-classes/` program goes back to inline-only: that would be a gap nobody measures.
 #[test]
 fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there() {

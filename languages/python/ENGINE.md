@@ -300,6 +300,27 @@ about effects makes a solve slower that these runs can see.
   recursively, so every round builds objects the round before did not name (README §8 "an object does not keep its identity around a cycle": CS8). It is
   marked and counted; effects off had no such cut. Not caused by CS3d (the same cut with the effects comparison left out).
 
+## Row 11: a closure's own run keys its free values from depth 0
+
+Measured 2026-11-13, the same entries and the same method as CS3e (`dump_graph`, `PYTHON_DUMP_GAP=1`, debug test binary), before = `a28baf1`, after =
+the row 11 change. The key of the walked closure reads its free values at depth 0, as its parameters (`key.rs`, `key`); a closure passed as a value is
+unchanged (free values one below its parameter), and so are a closure's defaults (depth 1). `needs_defer` reads the same depths (`call.rs`,
+`closure_reaches_pending`).
+
+| Project | effects | nodes | contexts | walks | unresolved | `extra` | `effects_applied` |
+|---|---|---|---|---|---|---|---|
+| Jarvis | off | 207 → 207 | 55 → 55 | 55 → 55 | 30 → 30 | 0 → 0 | - |
+| Jarvis | on | 207 → 207 | 71 → 71 | 71 → 71 | 32 → 32 | 0 → 0 | 43 → 43 |
+| Flask service | off | 266 → 266 | 70 → 70 | 70 → 70 | 81 → 81 | 0 → 0 | - |
+| Flask service | on | 266 → 266 | 70 → 70 | 70 → 70 | 81 → 81 | 0 → 0 | 87 → 87 |
+| FastAPI | off | 458 → 458 | 70 → 70 | 70 → 70 | 29 → 29 | 0 → 0 | - |
+| FastAPI | on | 1019 → 1019 | 104 → 104 | 104 → 104 | 52 → 52 | 0 → 0 | 180 → 180 |
+
+**Nothing moves on the three projects** (`missing` is also unchanged: Flask 41, FastAPI off 561, the rest 0). Why was not looked into: the numbers
+are equal, and that is all this run says. More contexts, the cost to watch, is 0. The golden of Jarvis is `equal` (wire and merged wire, the
+request path with effects off). In the fixtures, three context digests move (`Svc.build.step`, `Host.meth.Local.m`, `closure_effect.py main.swap`: closures
+that capture an object) and one edge appears, `Svc.build.step` -> `JsonHandler.process`, the row's own proof.
+
 ## Toolchain
 
 `vendor/ruff/rust-toolchain.toml` says 1.98.0 and ruff's `rust-version` is 1.96. It is ignored here (the repo root's `rust-toolchain.toml` decides,

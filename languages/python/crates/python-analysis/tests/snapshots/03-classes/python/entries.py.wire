@@ -64,9 +64,11 @@ entries.outer.inner <entries.py:outer.<locals>.inner#0 Function>
 
 == Svc.build.step
 entries.Svc.build.step <entries.py:Svc.build.<locals>.step#0 Function>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @51:13 in entries.py
 
 == Svc.build.step (merged)
 entries.Svc.build.step <entries.py:Svc.build.<locals>.step#0 Function>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @51:13 in entries.py
 
 == with_param.inner
 entries.with_param.inner <entries.py:with_param.<locals>.inner#0 Function>

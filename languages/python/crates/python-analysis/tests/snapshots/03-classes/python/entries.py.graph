@@ -73,11 +73,13 @@ entries.outer.inner#74597980fd289941 Finished
   @21-27 -> entries.B.go#c3145d37cdd5d9fc Type
 
 == Svc.build.step
-entries: entries.Svc.build.step#054547a62e19f370
-stats: walks 5, contexts 5, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 2, "types_dropped": 0, "unknown_callee": 1}
+entries: entries.Svc.build.step#cbdeb201f0652a19
+stats: walks 6, contexts 6, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 2, "types_dropped": 0, "unknown_callee": 0}
+def entries.JsonHandler.process = JsonHandler.process#0 Method entries.py
 def entries.Svc.build.step = Svc.build.<locals>.step#0 Function entries.py
-entries.Svc.build.step#054547a62e19f370 Finished
-  @24-48 -> ? unknown_callee
+entries.JsonHandler.process#c99109ae577d308d Finished
+entries.Svc.build.step#cbdeb201f0652a19 Finished
+  @24-48 -> entries.JsonHandler.process#c99109ae577d308d Type
 
 == with_param.inner
 entries: entries.with_param.inner#bc52be7a9623b0c4
@@ -163,11 +165,11 @@ entries.Outer.Inner.m#5d2e633cb0c3b9d8 Finished
   @25-41 -> entries.JsonHandler.process#c99109ae577d308d Type
 
 == Host.meth.Local.m
-entries: entries.Host.meth.Local.m#8796dc0b7eb6d111
+entries: entries.Host.meth.Local.m#6d3db6922f5d8467
 stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 2, "types_dropped": 0, "unknown_callee": 0}
 def entries.Host.meth.Local.m = Host.meth.<locals>.Local.m#0 Method entries.py
 def entries.JsonHandler.process = JsonHandler.process#0 Method entries.py
-entries.Host.meth.Local.m#8796dc0b7eb6d111 Finished
+entries.Host.meth.Local.m#6d3db6922f5d8467 Finished
   @29-45 -> entries.JsonHandler.process#c99109ae577d308d Type
 entries.JsonHandler.process#c99109ae577d308d Finished
 

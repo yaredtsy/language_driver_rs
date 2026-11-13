@@ -193,22 +193,36 @@ impl<'db> Walk<'db> {
                 self.reaches_pending(sol, &smallvec![self.values[receiver]], env, depth + 1)
             }
             AbstractValue::Closure { func, activation } if depth < limit => {
-                sol.sem.free_variables(func).iter().any(|n| {
-                    self.reaches_pending(
-                        sol,
-                        &self.lookup_in(sol, func, activation, n),
-                        env,
-                        depth + 1,
-                    )
-                }) || self
-                    .defaults
-                    .get(&(func, activation))
-                    .into_iter()
-                    .flatten()
-                    .any(|(_, d)| self.reaches_pending(sol, d, env, depth + 1))
+                self.closure_reaches_pending(sol, func, activation, env, depth + 1, depth + 1)
             }
             _ => false,
         })
+    }
+
+    /// The free values of a closure, read at `free_depth`, and its defaults, at `default_depth`: as `key` reads them. A closure that is a
+    /// value reads both one below it; a closure that is being called reads its own free values at 0, as its parameters (`key`).
+    fn closure_reaches_pending(
+        &self,
+        sol: &Solver<'db>,
+        func: Definition<'db>,
+        activation: ActivationId,
+        env: &Env<'db>,
+        free_depth: u8,
+        default_depth: u8,
+    ) -> bool {
+        sol.sem.free_variables(func).iter().any(|n| {
+            self.reaches_pending(
+                sol,
+                &self.lookup_in(sol, func, activation, n),
+                env,
+                free_depth,
+            )
+        }) || self
+            .defaults
+            .get(&(func, activation))
+            .into_iter()
+            .flatten()
+            .any(|(_, d)| self.reaches_pending(sol, d, env, default_depth))
     }
 
     /// A callee that is pending, or a project callee whose key would read a
@@ -249,8 +263,10 @@ impl<'db> Walk<'db> {
             .chain(args.keywords.iter().map(|(_, v)| v))
             .any(|v| self.reaches_pending(sol, v, env, 0));
         arg || project.iter().any(|c| match *c {
-            // its own free values and defaults sit at depth 1, as `key` reads them
-            AbstractValue::Closure { .. } => self.reaches_pending(sol, &smallvec![*c], env, 0),
+            // its own free values sit at depth 0 and its defaults at depth 1, as `key` reads them
+            AbstractValue::Closure { func, activation } => {
+                self.closure_reaches_pending(sol, func, activation, env, 0, 1)
+            }
             // the receiver is slot 0
             AbstractValue::BoundMethod { receiver, .. } => {
                 self.reaches_pending(sol, &smallvec![self.values[receiver]], env, 0)

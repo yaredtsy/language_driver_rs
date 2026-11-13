@@ -1,0 +1,69 @@
+== direct
+entries: closure_keys.direct#3b58817a3504c45a
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closure_keys.JsonHandler = JsonHandler#0 Class closure_keys.py
+def closure_keys.JsonHandler.process = JsonHandler.process#0 Method closure_keys.py
+def closure_keys.Pipeline = Pipeline#0 Class closure_keys.py
+def closure_keys.Pipeline.__init__ = Pipeline.__init__#0 Method closure_keys.py
+def closure_keys.Svc = Svc#0 Class closure_keys.py
+def closure_keys.Svc.__init__ = Svc.__init__#0 Method closure_keys.py
+def closure_keys.direct = direct#0 Function closure_keys.py
+def closure_keys.direct.step = direct.<locals>.step#0 Function closure_keys.py
+closure_keys.JsonHandler.process#77f5e4bbcd4a0d0c Finished
+closure_keys.Pipeline.__init__#8b0f7ca1e704e93e Finished
+closure_keys.Svc.__init__#6ef3cb71b834b59b Finished
+  @37-60 -> new closure_keys.Pipeline init closure_keys.Pipeline.__init__#8b0f7ca1e704e93e Name
+  @46-59 -> new closure_keys.JsonHandler init - Name
+closure_keys.direct#3b58817a3504c45a Finished
+  @24-29 -> new closure_keys.Svc init closure_keys.Svc.__init__#6ef3cb71b834b59b Name
+  @84-90 -> closure_keys.direct.step#fb55fc271e1ade4c Name
+closure_keys.direct.step#fb55fc271e1ade4c Finished
+  @20-43 -> closure_keys.JsonHandler.process#77f5e4bbcd4a0d0c Type
+
+== passed
+entries: closure_keys.passed#3e2fb53d2eff122b
+stats: walks 5, contexts 5, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def closure_keys.JsonHandler = JsonHandler#0 Class closure_keys.py
+def closure_keys.Pipeline = Pipeline#0 Class closure_keys.py
+def closure_keys.Pipeline.__init__ = Pipeline.__init__#0 Method closure_keys.py
+def closure_keys.Svc = Svc#0 Class closure_keys.py
+def closure_keys.Svc.__init__ = Svc.__init__#0 Method closure_keys.py
+def closure_keys.passed = passed#0 Function closure_keys.py
+def closure_keys.passed.step = passed.<locals>.step#0 Function closure_keys.py
+def closure_keys.run_it = run_it#0 Function closure_keys.py
+closure_keys.Pipeline.__init__#8b0f7ca1e704e93e Finished
+closure_keys.Svc.__init__#6ef3cb71b834b59b Finished
+  @37-60 -> new closure_keys.Pipeline init closure_keys.Pipeline.__init__#8b0f7ca1e704e93e Name
+  @46-59 -> new closure_keys.JsonHandler init - Name
+closure_keys.passed#3e2fb53d2eff122b Finished
+  @24-29 -> new closure_keys.Svc init closure_keys.Svc.__init__#6ef3cb71b834b59b Name
+  @84-96 -> closure_keys.run_it#d42bf4190ac5cb46 Name
+closure_keys.passed.step#5e078fe285235683 Finished
+  @20-43 -> ? unknown_callee
+closure_keys.run_it#d42bf4190ac5cb46 Finished
+  @20-24 -> closure_keys.passed.step#5e078fe285235683 Path
+
+== pending_input
+entries: closure_keys.pending_input#c330483853b2bb60
+stats: walks 5, contexts 5, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "effects_in_cycle": 1, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def closure_keys.JsonHandler = JsonHandler#0 Class closure_keys.py
+def closure_keys.JsonHandler.process = JsonHandler.process#0 Method closure_keys.py
+def closure_keys.Slot = Slot#0 Class closure_keys.py
+def closure_keys.pending = pending#0 Function closure_keys.py
+def closure_keys.pending.step = pending.<locals>.step#0 Function closure_keys.py
+def closure_keys.pending_input = pending_input#0 Function closure_keys.py
+closure_keys.JsonHandler.process#77f5e4bbcd4a0d0c Finished
+closure_keys.pending#c082b5b96878c397 Finished
+  @337-359 -> closure_keys.pending#c082b5b96878c397 Name
+  @417-423 -> closure_keys.pending.step#ba5d06834eb74343 Name
+closure_keys.pending#d78825ae653dd856 Finished
+  @337-359 -> closure_keys.pending#c082b5b96878c397 Name
+  @417-423 -> closure_keys.pending.step#ba5d06834eb74343 Name
+closure_keys.pending.step#ba5d06834eb74343 Finished
+  @20-46 -> closure_keys.JsonHandler.process#77f5e4bbcd4a0d0c Type
+closure_keys.pending_input#c330483853b2bb60 Finished
+  @34-40 -> new closure_keys.Slot init - Name
+  @56-62 -> new closure_keys.Slot init - Name
+  @86-99 -> new closure_keys.JsonHandler init - Name
+  @104-122 -> closure_keys.pending#d78825ae653dd856 Name
+
