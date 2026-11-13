@@ -8,80 +8,14 @@
 
 mod common;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use analyzer_testkit::graph::check_invariants;
-use common::rows;
+use common::{Case, STYLE, cases, open, tests_dir};
 use typescript_analysis::{
-    Budget, Cancel, Entry, Graph, Mark, MarkerStyle, Node, Options, Placement, RenderOptions,
-    Session, StableDef, Status, call_graph, render, to_text,
+    Budget, Cancel, Entry, Graph, Mark, Node, Options, RenderOptions, Session, StableDef, Status,
+    call_graph, render, to_text,
 };
-
-const STYLE: MarkerStyle<'static> = MarkerStyle {
-    label: "ID",
-    placement: Placement::Docstring,
-};
-
-const TABLE: &str = include_str!("../../../docs/policy.md");
-
-fn tests_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests")
-}
-
-/// A project and one entry of it.
-struct Case {
-    name: String,
-    root: PathBuf,
-    file: String,
-    entry: String,
-}
-
-/// The six shared scenarios, every entry of every row of the policy table, and the `recursion` fixture with each of its defs as an entry.
-fn cases() -> Vec<Case> {
-    let mut cases = Vec::new();
-    let scenarios = tests_dir().join("../../../../../scenarios");
-    let mut dirs: Vec<PathBuf> = std::fs::read_dir(&scenarios)
-        .unwrap()
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|dir| dir.join("typescript").is_dir())
-        .collect();
-    dirs.sort();
-    for dir in dirs {
-        cases.push(Case {
-            name: format!("scenario {}", dir.file_name().unwrap().to_string_lossy()),
-            root: dir.join("typescript"),
-            file: "main.ts".into(),
-            entry: "main".into(),
-        });
-    }
-    for row in rows(TABLE).iter().filter(|row| row.words.len() > 2) {
-        for entry in &row.words[2..] {
-            cases.push(Case {
-                name: format!("row {} {entry}", row.id),
-                root: tests_dir().join(&row.words[0]),
-                file: row.words[1].clone(),
-                entry: entry.clone(),
-            });
-        }
-    }
-    for entry in [
-        "main", "ping", "pong", "ring1", "ring2", "ring3", "Tree", "makeTree", "grow", "visit",
-        "schedule",
-    ] {
-        cases.push(Case {
-            name: format!("recursion {entry}"),
-            root: tests_dir().join("fixtures/recursion"),
-            file: "src/main.ts".into(),
-            entry: entry.into(),
-        });
-    }
-    cases
-}
-
-fn open(case: &Case) -> Session {
-    Session::open(&case.root, Path::new(&case.file), Options::new(STYLE))
-        .unwrap_or_else(|error| panic!("{}: {error:?}", case.name))
-}
 
 fn request(
     session: &Session,

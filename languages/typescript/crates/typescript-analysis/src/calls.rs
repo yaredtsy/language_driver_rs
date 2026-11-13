@@ -603,4 +603,124 @@ mod tests {
             }
         }
     }
+
+    /// A measurement on a real project, not a check: the two steps of a request that a cancel cannot stop (`docs/03-typescript/07-ts5-driver-needs.md` §4). Listing a
+    /// body's sites happens before the walk looks at the cancel for the first time, and one site's resolution happens between two looks. Same variables as
+    /// `measure_handed_over` (the entry is not used), `cargo test --release -p typescript-analysis --lib measure_uninterruptible_steps -- --ignored --nocapture`.
+    /// Cold: a project opened afresh, every def asked once, in the order of `project_defs`, so the first def of each file pays for that file's outline.
+    #[test]
+    #[ignore = "a measurement on a real project, driven by TS_MEASURE_ROOT and TS_MEASURE_FILE"]
+    fn measure_uninterruptible_steps() {
+        use std::time::{Duration, Instant};
+
+        let (Ok(root), Ok(file)) = (
+            std::env::var("TS_MEASURE_ROOT"),
+            std::env::var("TS_MEASURE_FILE"),
+        ) else {
+            eprintln!("set TS_MEASURE_ROOT and TS_MEASURE_FILE");
+            return;
+        };
+        fn median(times: &mut [Duration]) -> Duration {
+            times.sort();
+            times.get(times.len() / 2).copied().unwrap_or_default()
+        }
+        let project = Project::open(Path::new(&root), Path::new(&file)).unwrap();
+        let sem = &project.sem;
+        let defs = sem.project_defs(STYLE);
+
+        // listing the sites of each body
+        let mut listing: Vec<(Duration, usize, usize)> = Vec::new();
+        for (index, func) in defs.iter().enumerate() {
+            let started = Instant::now();
+            let sites = sem.call_sites(*func, STYLE).map_or(0, |sites| sites.len());
+            listing.push((started.elapsed(), sites, index));
+        }
+        let mut times: Vec<Duration> = listing.iter().map(|(time, ..)| *time).collect();
+        let (slowest, sites, slowest_at) = *listing.iter().max().unwrap();
+        let name = |index: usize| {
+            let info = sem.describe(defs[index], STYLE);
+            format!("{} `{}`", info.file, info.qualname)
+        };
+        eprintln!(
+            "listing sites, {} defs: max {slowest:?} ({sites} sites, {}), median {:?}",
+            defs.len(),
+            name(slowest_at),
+            median(&mut times)
+        );
+        // the first def asked of a file pays for the file's outline, which is not the listing
+        let mut seen_files = HashSet::new();
+        let first_of_file: Vec<bool> = defs
+            .iter()
+            .map(|func| seen_files.insert(sem.describe(*func, STYLE).file))
+            .collect();
+        let max_of = |first: bool| {
+            listing
+                .iter()
+                .filter(|(_, _, index)| first_of_file[*index] == first)
+                .max()
+                .copied()
+        };
+        for (first, label) in [
+            (true, "first def of its file"),
+            (false, "not the first of its file"),
+        ] {
+            if let Some((time, sites, index)) = max_of(first) {
+                eprintln!(
+                    "    max, {label}: {time:?} ({sites} sites, {})",
+                    name(index)
+                );
+            }
+        }
+        let mut by_time = listing.clone();
+        by_time.sort_by(|a, b| b.cmp(a));
+        for (time, sites, index) in by_time.iter().take(5) {
+            eprintln!("    {time:?}  {sites} sites  {}", name(*index));
+        }
+
+        // resolving each site of each body, after the listing, in the same process
+        let mut resolution: Vec<(Duration, usize, usize)> = Vec::new();
+        for (index, func) in defs.iter().enumerate() {
+            let count = sem.call_sites(*func, STYLE).map_or(0, |sites| sites.len());
+            for site in 0..count {
+                let started = Instant::now();
+                let _ = sem.callee_with_facts(*func, site, STYLE);
+                resolution.push((started.elapsed(), index, site));
+            }
+        }
+        let mut times: Vec<Duration> = resolution.iter().map(|(time, ..)| *time).collect();
+        let (time, index, site) = *resolution.iter().max().unwrap();
+        eprintln!(
+            "resolving one site, {} sites after the listing: max {time:?} (site {site} of {}), median {:?}",
+            resolution.len(),
+            name(index),
+            median(&mut times)
+        );
+        let mut the_def: Vec<Duration> = resolution
+            .iter()
+            .filter(|(_, at, _)| *at == slowest_at)
+            .map(|(time, ..)| *time)
+            .collect();
+        eprintln!(
+            "    the def with the slowest listing: its slowest site {:?}, median {:?}",
+            the_def.iter().max().copied().unwrap_or_default(),
+            median(&mut the_def)
+        );
+
+        // that def again on a project nothing has asked anything of: its sites listed, then each resolved once
+        let fresh = Project::open(Path::new(&root), Path::new(&file)).unwrap();
+        let func = fresh.sem.project_defs(STYLE)[slowest_at];
+        let count = fresh.sem.call_sites(func, STYLE).map_or(0, |s| s.len());
+        let mut cold: Vec<Duration> = (0..count)
+            .map(|site| {
+                let started = Instant::now();
+                let _ = fresh.sem.callee_with_facts(func, site, STYLE);
+                started.elapsed()
+            })
+            .collect();
+        eprintln!(
+            "    and on a fresh project, only that def asked: its slowest site {:?}, median {:?}, {count} sites",
+            cold.iter().max().copied().unwrap_or_default(),
+            median(&mut cold)
+        );
+    }
 }
