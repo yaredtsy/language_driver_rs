@@ -185,10 +185,11 @@ impl<'db> Walk<'db> {
         let limit = sol.opts.limits.fp_depth;
         vals.iter().any(|v| match *v {
             AbstractValue::Pending(_) => true,
-            AbstractValue::Instance { origin, .. } if origin.holds_state() && depth < limit => env
-                .attrs_of(origin)
-                .iter()
-                .any(|(_, a)| self.reaches_pending(sol, a, env, depth + 1)),
+            AbstractValue::Instance { origin, .. } if self.holds_state(origin) && depth < limit => {
+                env.attrs_of(origin)
+                    .iter()
+                    .any(|(_, a)| self.reaches_pending(sol, a, env, depth + 1))
+            }
             AbstractValue::BoundMethod { receiver, .. } => {
                 self.reaches_pending(sol, &smallvec![self.values[receiver]], env, depth + 1)
             }

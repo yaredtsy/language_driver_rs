@@ -1,13 +1,13 @@
 == main
 entries: deep_write.main#42551f369d787e4d
-stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 4, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+stats: walks 7, contexts 7, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 5, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
 def deep_write.App = App#0 Class deep_write.py
 def deep_write.App.__init__ = App.__init__#0 Method deep_write.py
 def deep_write.Config = Config#0 Class deep_write.py
 def deep_write.Config.__init__ = Config.__init__#0 Method deep_write.py
 def deep_write.CsvHandler = CsvHandler#0 Class deep_write.py
-def deep_write.CsvHandler.process = CsvHandler.process#0 Method deep_write.py
 def deep_write.JsonHandler = JsonHandler#0 Class deep_write.py
+def deep_write.JsonHandler.process = JsonHandler.process#0 Method deep_write.py
 def deep_write.Service = Service#0 Class deep_write.py
 def deep_write.Service.__init__ = Service.__init__#0 Method deep_write.py
 def deep_write.Sink = Sink#0 Class deep_write.py
@@ -16,7 +16,7 @@ def deep_write.main = main#0 Function deep_write.py
 def deep_write.rewire = rewire#0 Function deep_write.py
 deep_write.App.__init__#860365a49ea68b3c Finished
 deep_write.Config.__init__#c29c4d89b376e383 Finished
-deep_write.CsvHandler.process#b67f8dcfda9a6397 Finished
+deep_write.JsonHandler.process#38aa0f080f3f787d Finished
 deep_write.Service.__init__#d0489c469524493c Finished
 deep_write.Sink.__init__#0468635e51582d78 Finished
 deep_write.main#42551f369d787e4d Finished
@@ -26,7 +26,7 @@ deep_write.main#42551f369d787e4d Finished
   @41-59 -> new deep_write.Sink init deep_write.Sink.__init__#0468635e51582d78 Name
   @46-58 -> new deep_write.CsvHandler init - Name
   @67-78 -> deep_write.rewire#e78b731d8a038bc9 Name
-  @83-114 -> deep_write.CsvHandler.process#b67f8dcfda9a6397 Path
+  @83-114 -> deep_write.JsonHandler.process#38aa0f080f3f787d Path
 deep_write.rewire#e78b731d8a038bc9 Finished
   @54-67 -> new deep_write.JsonHandler init - Name
 

@@ -1,7 +1,9 @@
 """Step 04.05: a write past max_path. With max_path = 2, the object rewire
-writes is past the deepest path a summary may name. The write becomes a weak
-Unknown at Param(0).app.config.sink, rewire gets the DEEP_WRITE gap, and its
-node is marked. main keeps CsvHandler.process: incomplete, but marked."""
+writes (svc.app.config.sink) is past the deepest path a summary may name. The
+write becomes a weak Unknown at Param(0).app.config.sink and rewire's summary
+carries the DEEP_WRITE gap: counted (deep_write is 1), not marked (option B: the
+tree below has no [incomplete]). main keeps CsvHandler.process, and the Unknown
+the write left on sink is an unresolved alternative at the call to process."""
 
 # limits: max_path=2
 
@@ -63,6 +65,6 @@ def main():
 #   Config
 #   App
 #   Service
-#   rewire [incomplete]
+#   rewire
 #     JsonHandler
 #   CsvHandler.process

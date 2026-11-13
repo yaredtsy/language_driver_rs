@@ -1,0 +1,14 @@
+== main
+deep_recursion.main <deep_recursion.py:main#0 Function>
+  deep_recursion.Node <deep_recursion.py:Node#0 Class> @18:12 in deep_recursion.py
+  deep_recursion.Node <deep_recursion.py:Node#0 Class> @18:17 in deep_recursion.py
+  deep_recursion.Node <deep_recursion.py:Node#0 Class> @18:22 in deep_recursion.py
+  deep_recursion.last <deep_recursion.py:last#0 Function> @19:5 in deep_recursion.py
+    deep_recursion.last <deep_recursion.py:last#0 Function> [recursive] @14:12 in deep_recursion.py
+
+== main (merged)
+deep_recursion.main <deep_recursion.py:main#0 Function>
+  deep_recursion.Node <deep_recursion.py:Node#0 Class> x3 @18:12 in deep_recursion.py
+  deep_recursion.last <deep_recursion.py:last#0 Function> @19:5 in deep_recursion.py
+    deep_recursion.last <deep_recursion.py:last#0 Function> [recursive] @14:12 in deep_recursion.py
+

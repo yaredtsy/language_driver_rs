@@ -1,0 +1,26 @@
+== main
+entries: deep_recursion.main#806b60d2059b99df
+stats: walks 9, contexts 9, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "deep_return": 5, "effects_applied": 3, "lifted_subclass_of": 0, "prologue_walks": 0, "ref_unresolved": 3, "types_dropped": 0, "unknown_callee": 0}
+def deep_recursion.Node = Node#0 Class deep_recursion.py
+def deep_recursion.Node.__init__ = Node.__init__#0 Method deep_recursion.py
+def deep_recursion.last = last#0 Function deep_recursion.py
+def deep_recursion.main = main#0 Function deep_recursion.py
+deep_recursion.Node.__init__#6898208577965ebb Finished
+deep_recursion.Node.__init__#c3a613358f31e082 Finished
+deep_recursion.Node.__init__#c8b2c690b69af15e Finished
+deep_recursion.last#0c5a5e7ba9b0a2d8 Finished
+  @30-42 -> deep_recursion.last#70639cb3eb1ca095 Name
+deep_recursion.last#1dcc18697122cf7a Finished
+  @30-42 -> deep_recursion.last#8c782863a3af3aa2 Name
+deep_recursion.last#4facd0369ab43de5 Finished
+  @30-42 -> deep_recursion.last#0c5a5e7ba9b0a2d8 Name
+deep_recursion.last#70639cb3eb1ca095 Finished
+  @30-42 -> deep_recursion.last#1dcc18697122cf7a Name
+deep_recursion.last#8c782863a3af3aa2 Finished
+  @30-42 -> deep_recursion.last#8c782863a3af3aa2 Name
+deep_recursion.main#806b60d2059b99df Finished
+  @23-41 -> new deep_recursion.Node init deep_recursion.Node.__init__#6898208577965ebb Name
+  @28-40 -> new deep_recursion.Node init deep_recursion.Node.__init__#c8b2c690b69af15e Name
+  @33-39 -> new deep_recursion.Node init deep_recursion.Node.__init__#c3a613358f31e082 Name
+  @46-56 -> deep_recursion.last#4facd0369ab43de5 Name
+

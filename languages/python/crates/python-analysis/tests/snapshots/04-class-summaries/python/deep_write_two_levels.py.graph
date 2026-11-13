@@ -1,0 +1,74 @@
+== main
+entries: deep_write_two_levels.main#09476765dbcf085d
+stats: walks 8, contexts 8, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 6, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def deep_write_two_levels.App = App#0 Class deep_write_two_levels.py
+def deep_write_two_levels.App.__init__ = App.__init__#0 Method deep_write_two_levels.py
+def deep_write_two_levels.Config = Config#0 Class deep_write_two_levels.py
+def deep_write_two_levels.Config.__init__ = Config.__init__#0 Method deep_write_two_levels.py
+def deep_write_two_levels.CsvHandler = CsvHandler#0 Class deep_write_two_levels.py
+def deep_write_two_levels.JsonHandler = JsonHandler#0 Class deep_write_two_levels.py
+def deep_write_two_levels.JsonHandler.process = JsonHandler.process#0 Method deep_write_two_levels.py
+def deep_write_two_levels.Service = Service#0 Class deep_write_two_levels.py
+def deep_write_two_levels.Service.__init__ = Service.__init__#0 Method deep_write_two_levels.py
+def deep_write_two_levels.Sink = Sink#0 Class deep_write_two_levels.py
+def deep_write_two_levels.Sink.__init__ = Sink.__init__#0 Method deep_write_two_levels.py
+def deep_write_two_levels.main = main#0 Function deep_write_two_levels.py
+def deep_write_two_levels.outer = outer#0 Function deep_write_two_levels.py
+def deep_write_two_levels.rewire = rewire#0 Function deep_write_two_levels.py
+deep_write_two_levels.App.__init__#e15e4f0a11c6c0e0 Finished
+deep_write_two_levels.Config.__init__#949520a1e80ad140 Finished
+deep_write_two_levels.JsonHandler.process#61a346cfccc9e137 Finished
+deep_write_two_levels.Service.__init__#4d3cffa7cea12913 Finished
+deep_write_two_levels.Sink.__init__#6beaeec6003416ad Finished
+deep_write_two_levels.main#09476765dbcf085d Finished
+  @22-62 -> new deep_write_two_levels.Service init deep_write_two_levels.Service.__init__#4d3cffa7cea12913 Name
+  @30-61 -> new deep_write_two_levels.App init deep_write_two_levels.App.__init__#e15e4f0a11c6c0e0 Name
+  @34-60 -> new deep_write_two_levels.Config init deep_write_two_levels.Config.__init__#949520a1e80ad140 Name
+  @41-59 -> new deep_write_two_levels.Sink init deep_write_two_levels.Sink.__init__#6beaeec6003416ad Name
+  @46-58 -> new deep_write_two_levels.CsvHandler init - Name
+  @67-77 -> deep_write_two_levels.outer#8fb6e7e162119015 Name
+  @82-113 -> deep_write_two_levels.JsonHandler.process#61a346cfccc9e137 Path
+deep_write_two_levels.outer#8fb6e7e162119015 Finished
+  @29-40 -> deep_write_two_levels.rewire#da842594fb3d1429 Name
+deep_write_two_levels.rewire#da842594fb3d1429 Finished
+  @54-67 -> new deep_write_two_levels.JsonHandler init - Name
+
+== main_held
+entries: deep_write_two_levels.main_held#7075b78d7c62aeba
+stats: walks 9, contexts 9, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 7, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def deep_write_two_levels.App = App#0 Class deep_write_two_levels.py
+def deep_write_two_levels.App.__init__ = App.__init__#0 Method deep_write_two_levels.py
+def deep_write_two_levels.Config = Config#0 Class deep_write_two_levels.py
+def deep_write_two_levels.Config.__init__ = Config.__init__#0 Method deep_write_two_levels.py
+def deep_write_two_levels.CsvHandler = CsvHandler#0 Class deep_write_two_levels.py
+def deep_write_two_levels.Holder = Holder#0 Class deep_write_two_levels.py
+def deep_write_two_levels.Holder.__init__ = Holder.__init__#0 Method deep_write_two_levels.py
+def deep_write_two_levels.JsonHandler = JsonHandler#0 Class deep_write_two_levels.py
+def deep_write_two_levels.JsonHandler.process = JsonHandler.process#0 Method deep_write_two_levels.py
+def deep_write_two_levels.Service = Service#0 Class deep_write_two_levels.py
+def deep_write_two_levels.Service.__init__ = Service.__init__#0 Method deep_write_two_levels.py
+def deep_write_two_levels.Sink = Sink#0 Class deep_write_two_levels.py
+def deep_write_two_levels.Sink.__init__ = Sink.__init__#0 Method deep_write_two_levels.py
+def deep_write_two_levels.main_held = main_held#0 Function deep_write_two_levels.py
+def deep_write_two_levels.outer_held = outer_held#0 Function deep_write_two_levels.py
+def deep_write_two_levels.rewire = rewire#0 Function deep_write_two_levels.py
+deep_write_two_levels.App.__init__#e15e4f0a11c6c0e0 Finished
+deep_write_two_levels.Config.__init__#949520a1e80ad140 Finished
+deep_write_two_levels.Holder.__init__#8b38069bf7466d2d Finished
+deep_write_two_levels.JsonHandler.process#61a346cfccc9e137 Finished
+deep_write_two_levels.Service.__init__#4d3cffa7cea12913 Finished
+deep_write_two_levels.Sink.__init__#6beaeec6003416ad Finished
+deep_write_two_levels.main_held#7075b78d7c62aeba Finished
+  @30-78 -> new deep_write_two_levels.Holder init deep_write_two_levels.Holder.__init__#8b38069bf7466d2d Name
+  @37-77 -> new deep_write_two_levels.Service init deep_write_two_levels.Service.__init__#4d3cffa7cea12913 Name
+  @45-76 -> new deep_write_two_levels.App init deep_write_two_levels.App.__init__#e15e4f0a11c6c0e0 Name
+  @49-75 -> new deep_write_two_levels.Config init deep_write_two_levels.Config.__init__#949520a1e80ad140 Name
+  @56-74 -> new deep_write_two_levels.Sink init deep_write_two_levels.Sink.__init__#6beaeec6003416ad Name
+  @61-73 -> new deep_write_two_levels.CsvHandler init - Name
+  @83-101 -> deep_write_two_levels.outer_held#eef433052b480769 Name
+  @106-144 -> deep_write_two_levels.JsonHandler.process#61a346cfccc9e137 Path
+deep_write_two_levels.outer_held#eef433052b480769 Finished
+  @36-54 -> deep_write_two_levels.rewire#0da1571f9abe5c07 Name
+deep_write_two_levels.rewire#0da1571f9abe5c07 Finished
+  @54-67 -> new deep_write_two_levels.JsonHandler init - Name
+

@@ -119,6 +119,9 @@ pub struct Limits {
     // precision (rule 3: decided by the key and the code)
     pub max_rounds: u32, // a group's fixpoint stops here, marked incomplete
     pub fp_depth: u8, // steps from a parameter (attribute, receiver, free value, default), in keys and in summaries
+    /// Attribute steps from a parameter that a summary may name (6; at least `fp_depth`, a smaller value is raised to it). Past it an
+    /// object has no name of its own and a write onto it is a counted fallback (`Stats::language["deep_write"]`).
+    pub max_path: usize,
     // cost (each one cuts, is marked, and is never reused)
     pub max_chain_fanout: usize, // 8: values carried per attribute hop
     pub max_stack: usize,        // 256
@@ -137,6 +140,7 @@ impl Default for Limits {
         Limits {
             max_rounds: 32,
             fp_depth: 2,
+            max_path: 6,
             max_chain_fanout: 8,
             max_stack: 256,
             max_contexts: 50_000,
@@ -146,6 +150,13 @@ impl Default for Limits {
             render_depth: None,
             reuse: true,
         }
+    }
+}
+
+impl Limits {
+    /// The longest path an input object is named by: `max_path`, and never less than the key's own depth.
+    pub(crate) fn path_cap(&self) -> usize {
+        self.max_path.max(usize::from(self.fp_depth))
     }
 }
 

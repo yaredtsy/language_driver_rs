@@ -1,0 +1,33 @@
+== main
+entries: deep_write_capped.main#1c49a93f8c6f0dac
+stats: walks 7, contexts 7, reuse_hits 0, unresolved 1, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "deep_write": 1, "effects_applied": 5, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 1}
+def deep_write_capped.App = App#0 Class deep_write_capped.py
+def deep_write_capped.App.__init__ = App.__init__#0 Method deep_write_capped.py
+def deep_write_capped.Config = Config#0 Class deep_write_capped.py
+def deep_write_capped.Config.__init__ = Config.__init__#0 Method deep_write_capped.py
+def deep_write_capped.CsvHandler = CsvHandler#0 Class deep_write_capped.py
+def deep_write_capped.CsvHandler.process = CsvHandler.process#0 Method deep_write_capped.py
+def deep_write_capped.JsonHandler = JsonHandler#0 Class deep_write_capped.py
+def deep_write_capped.Service = Service#0 Class deep_write_capped.py
+def deep_write_capped.Service.__init__ = Service.__init__#0 Method deep_write_capped.py
+def deep_write_capped.Sink = Sink#0 Class deep_write_capped.py
+def deep_write_capped.Sink.__init__ = Sink.__init__#0 Method deep_write_capped.py
+def deep_write_capped.main = main#0 Function deep_write_capped.py
+def deep_write_capped.rewire = rewire#0 Function deep_write_capped.py
+deep_write_capped.App.__init__#bc7cc85a8429ad4e Finished
+deep_write_capped.Config.__init__#1c61ecfbbfb05f26 Finished
+deep_write_capped.CsvHandler.process#b8300d79dcb6b7b8 Finished
+deep_write_capped.Service.__init__#3015a3e50832f551 Finished
+deep_write_capped.Sink.__init__#c3bedf9755426c70 Finished
+deep_write_capped.main#1c49a93f8c6f0dac Finished
+  @22-62 -> new deep_write_capped.Service init deep_write_capped.Service.__init__#3015a3e50832f551 Name
+  @30-61 -> new deep_write_capped.App init deep_write_capped.App.__init__#bc7cc85a8429ad4e Name
+  @34-60 -> new deep_write_capped.Config init deep_write_capped.Config.__init__#1c61ecfbbfb05f26 Name
+  @41-59 -> new deep_write_capped.Sink init deep_write_capped.Sink.__init__#c3bedf9755426c70 Name
+  @46-58 -> new deep_write_capped.CsvHandler init - Name
+  @67-78 -> deep_write_capped.rewire#3f96bb2867e806e7 Name
+  @83-114 -> deep_write_capped.CsvHandler.process#b8300d79dcb6b7b8 Path
+  @83-114 -> ? unknown_callee
+deep_write_capped.rewire#3f96bb2867e806e7 Finished
+  @54-67 -> new deep_write_capped.JsonHandler init - Name
+

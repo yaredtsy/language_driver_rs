@@ -13,7 +13,7 @@ use crate::interp::value::{
     AbstractValue, DeferId, Made, OriginId, OriginKey, Path, Root, Step, Values, dedup,
 };
 use crate::interp::walk::Walk;
-use crate::sem::{Definition, Name, Type};
+use crate::sem::{Definition, Name, Shape, Type};
 use ruff_index::IndexVec;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -90,8 +90,17 @@ pub(crate) struct Gaps(u8);
 impl Gaps {
     /// The group's fixpoint hit `max_rounds`: later rounds might have added more.
     pub(crate) const CYCLE: Gaps = Gaps(1);
-    pub(crate) fn is_empty(self) -> bool {
-        self.0 == 0
+    /// A write fell back to a weak `Unknown` because the object it wrote to is past `Limits::max_path`. It depends only on the code, so
+    /// the summary is still reusable; `core_graph` counts it and does not mark the context (05 §3, option B).
+    pub(crate) const DEEP_WRITE: Gaps = Gaps(2);
+    /// An object past `Limits::max_path` left the summary (a return, an effect value or an object's attribute) with no identity, as ty's
+    /// has none. Counted like `DEEP_WRITE`, and not marked.
+    pub(crate) const DEEP_RETURN: Gaps = Gaps(4);
+    pub(crate) fn contains(self, other: Gaps) -> bool {
+        self.0 & other.0 == other.0
+    }
+    pub(crate) fn with(self, other: Gaps) -> Gaps {
+        Gaps(self.0 | other.0)
     }
 }
 
@@ -188,6 +197,8 @@ pub(crate) enum PlainVal<'db> {
 #[derive(Default)]
 struct ObjectNumbering<'db> {
     reached: Vec<(OriginId, Definition<'db>, SiteId)>,
+    /// A `Beyond` object was written into the summary as `Opaque` (`Gaps::DEEP_RETURN`).
+    deep_return: bool,
 }
 
 impl<'db> ObjectNumbering<'db> {
@@ -246,7 +257,16 @@ impl<'db> Walk<'db> {
             returns,
             objects,
             effects,
-            status: Status::default(),
+            status: Status {
+                gaps: [
+                    (self.deep_write, Gaps::DEEP_WRITE),
+                    (numbering.deep_return, Gaps::DEEP_RETURN),
+                ]
+                .into_iter()
+                .filter(|(on, _)| *on)
+                .fold(Gaps::default(), |g, (_, bit)| g.with(bit)),
+                cut: None,
+            },
         }
     }
 
@@ -352,6 +372,11 @@ impl<'db> Walk<'db> {
                 AbstractValue::Instance { class, origin } => {
                     out.push(match &self.origins[origin] {
                         OriginKey::Opaque => SVal::Plain(PlainVal::Opaque(class)),
+                        // past `max_path` there is no name to refer to: the object has no identity here, as ty's has none. Counted.
+                        OriginKey::Beyond { .. } => {
+                            numbering.deep_return = true;
+                            SVal::Plain(PlainVal::Opaque(class))
+                        }
                         OriginKey::Entry { path, .. } => SVal::Ref(path.clone()),
                         OriginKey::New { site, .. } => numbering.number(
                             origin,
@@ -505,28 +530,41 @@ impl<'db> Walk<'db> {
                 (origin, attrs)
             })
             .collect();
-        let effects = res
-            .effects
-            .iter()
-            .map(|e| {
-                // The objects the target path leads to, as `before` held them: state only, so nothing runs.
-                let found = self.follow(sol, &e.target, &cx);
-                if found.is_empty() {
-                    sol.stats.ref_unresolved += 1; // the effect has nowhere to go: counted, like a `Ref` nothing resolved
-                }
-                let mut targets: SmallVec<[OriginId; 2]> = SmallVec::new();
-                for v in found {
-                    if let AbstractValue::Instance { origin, .. } = v
-                        && origin.holds_state()
-                        && !targets.contains(&origin)
-                    {
+        let mut effects = Vec::new();
+        for e in &res.effects {
+            // The objects the target path leads to, as `before` held them: state only, so nothing runs.
+            let found = self.follow(sol, &e.target, &cx);
+            if found.is_empty() {
+                sol.stats.ref_unresolved += 1; // the effect has nowhere to go: counted, like a `Ref` nothing resolved
+            }
+            let mut targets: SmallVec<[OriginId; 2]> = SmallVec::new();
+            let mut fallbacks: Vec<(OriginId, Name)> = Vec::new();
+            for v in found {
+                let AbstractValue::Instance { origin, .. } = v else {
+                    continue;
+                };
+                if self.holds_state(origin) {
+                    if !targets.contains(&origin) {
                         targets.push(origin);
                     }
+                } else if let OriginKey::Beyond { act, at, attr } = self.origins[origin].clone() {
+                    // this caller's path to the object is past `max_path`: the callee's write is the fallback here too
+                    let parent = self.origins.intern(OriginKey::Entry { act, path: at });
+                    if !fallbacks.contains(&(parent, attr.clone())) {
+                        fallbacks.push((parent, attr.clone()));
+                        effects.push((
+                            smallvec![parent],
+                            attr,
+                            smallvec![AbstractValue::Unknown],
+                            false,
+                        ));
+                    }
+                    self.deep_write = true;
                 }
-                let value = self.resolve_in(sol, &e.value, &mut Vec::new(), &cx);
-                (targets, e.attr.clone(), value, e.strong)
-            })
-            .collect();
+            }
+            let value = self.resolve_in(sol, &e.value, &mut Vec::new(), &cx);
+            effects.push((targets, e.attr.clone(), value, e.strong));
+        }
         Plan {
             returns,
             objects: attrs,
@@ -597,38 +635,51 @@ impl<'db> Walk<'db> {
 
     /// The caller's objects at the end of `path`, as `before` held them: from the call's own arguments (or the closure being called),
     /// then step by step. State only: an attribute is what `before.attrs` holds, never a property or the class side, so nothing runs.
-    fn follow(&self, sol: &Solver<'db>, path: &Path, cx: &Resolving<'_, 'db>) -> Values<'db> {
-        let key = &sol.contexts[cx.call.ctx];
-        let mut cur: Values<'db> = match (path.root, cx.call.enclosing) {
-            (Root::Param(i), _) => cx
-                .call
-                .bound
-                .slots
-                .get(i as usize)
-                .cloned()
-                .unwrap_or_default(),
-            (Root::Free(i), Some(act)) => key
-                .free
-                .get(i as usize)
-                .map(|(name, _)| self.lookup_in(sol, key.func, act, name))
-                .unwrap_or_default(),
-            (Root::Default(i), Some(act)) => self
-                .defaults
-                .get(&(key.func, act))
-                .and_then(|d| d.get(i as usize))
-                .map(|(_, v)| v.clone())
-                .unwrap_or_default(),
-            (Root::Free(_) | Root::Default(_), None) => Values::new(),
+    /// One exception, for a path past what the caller has written (05 §3 row 4): an attribute the caller holds nothing for, on an object
+    /// that is its own input, is that input's own path extended (`attr_origin`), so a write a callee made deep inside an input reaches the
+    /// object the caller's caller sees. It interns an origin and writes nothing in the env, so `resolve` stays a read.
+    fn follow(
+        &mut self,
+        sol: &mut Solver<'db>,
+        path: &Path,
+        cx: &Resolving<'_, 'db>,
+    ) -> Values<'db> {
+        let mut cur: Values<'db> = {
+            let key = &sol.contexts[cx.call.ctx];
+            match (path.root, cx.call.enclosing) {
+                (Root::Param(i), _) => cx
+                    .call
+                    .bound
+                    .slots
+                    .get(i as usize)
+                    .cloned()
+                    .unwrap_or_default(),
+                (Root::Free(i), Some(act)) => key
+                    .free
+                    .get(i as usize)
+                    .map(|(name, _)| self.lookup_in(sol, key.func, act, name))
+                    .unwrap_or_default(),
+                (Root::Default(i), Some(act)) => self
+                    .defaults
+                    .get(&(key.func, act))
+                    .and_then(|d| d.get(i as usize))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default(),
+                (Root::Free(_) | Root::Default(_), None) => Values::new(),
+            }
         };
         for step in &path.steps {
             let mut next = Values::new();
             for v in cur {
                 match (step, v) {
-                    (Step::Attr(name), AbstractValue::Instance { origin, .. })
-                        if origin.holds_state() =>
-                    {
-                        if let Some(vals) = cx.before.attrs.get(&(origin, name.clone())) {
-                            next.extend(vals.iter().copied());
+                    (Step::Attr(name), AbstractValue::Instance { class, origin }) => {
+                        let held = self
+                            .holds_state(origin)
+                            .then(|| cx.before.attrs.get(&(origin, name.clone())))
+                            .flatten();
+                        match held {
+                            Some(vals) => next.extend(vals.iter().copied()),
+                            None => next.extend(self.unwritten_attr(sol, class, origin, name)),
                         }
                     }
                     (Step::Free(n), AbstractValue::Closure { func, activation }) => {
@@ -655,6 +706,39 @@ impl<'db> Walk<'db> {
             cur = next;
         }
         cur
+    }
+
+    /// What `.name` is, for `follow`, on an object of `class` that holds nothing for it: the objects the engine's declared type gives,
+    /// each named by `attr_origin`. Nothing for an object that is not an input of this walk, and for a method.
+    fn unwritten_attr(
+        &mut self,
+        sol: &mut Solver<'db>,
+        class: Definition<'db>,
+        origin: OriginId,
+        name: &Name,
+    ) -> Values<'db> {
+        let Some(named) = self.attr_origin(sol, origin, name) else {
+            return Values::new();
+        };
+        let file = self.frame.file;
+        let Some(t) = sol.sem.member(sol.sem.instance_type(class), name, file) else {
+            return Values::new();
+        };
+        if matches!(sol.sem.shape(t, file), Shape::BoundMethod { .. }) {
+            return Values::new();
+        }
+        self.lift(sol, t)
+            .into_iter()
+            .filter_map(|v| match v {
+                AbstractValue::Instance { class, origin } if origin == OriginId::OPAQUE => {
+                    Some(AbstractValue::Instance {
+                        class,
+                        origin: named,
+                    })
+                }
+                _ => None,
+            })
+            .collect()
     }
 
     /// `cl`: the closures being rebuilt, innermost last. `Back(k)` is the k-th from the top.

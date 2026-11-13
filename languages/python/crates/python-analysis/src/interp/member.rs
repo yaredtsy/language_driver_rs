@@ -104,6 +104,10 @@ impl<'db> Walk<'db> {
     /// Give every `OPAQUE` instance in `vals` the origin named by `key`.
     pub(crate) fn reorigin(&mut self, vals: Values<'db>, key: OriginKey) -> Values<'db> {
         let origin = self.origins.intern(key);
+        Self::reorigin_to(vals, origin)
+    }
+
+    fn reorigin_to(vals: Values<'db>, origin: OriginId) -> Values<'db> {
         vals.into_iter()
             .map(|v| match v {
                 AbstractValue::Instance { class, origin: o } if o == OriginId::OPAQUE => {
@@ -127,7 +131,7 @@ impl<'db> Walk<'db> {
         let file = self.frame.file;
         match recv {
             AbstractValue::Instance { class, origin } => {
-                if origin.holds_state()
+                if self.holds_state(origin)
                     && let Some(v) = env.attrs.get(&(origin, Name::from(name)))
                 {
                     return v.clone(); // 1. this object, on this path
@@ -154,7 +158,11 @@ impl<'db> Walk<'db> {
                         let receiver = self.values.intern(receiver);
                         smallvec![AbstractValue::BoundMethod { func, receiver }]
                     }
-                    Some((t, _)) => self.lift(sol, t), // a class variable, a declared attribute
+                    Some((t, _)) => {
+                        // a class variable, a declared attribute
+                        let vals = self.lift(sol, t);
+                        self.track_entry_attr(sol, origin, &Name::from(name), vals)
+                    }
                     None => smallvec![AbstractValue::Unknown],
                 }
             }
@@ -212,11 +220,74 @@ impl<'db> Walk<'db> {
                         }
                     }
                 }
-                None if origin.holds_state() => {
+                None if self.holds_state(origin) => {
                     env.bind_attr(origin, &attr.attr.id, v.clone(), strong)
                 }
-                None => {}
+                None => self.write_beyond(origin, env),
             }
+        }
+    }
+
+    /// A write onto an object that holds no state. ty's own (`OPAQUE`) has no identity and the write is dropped, as it always was. One
+    /// past `max_path` (`Beyond`) is the fallback (05 decision 3): the walk does not know which object under `at.attr` changed, so it
+    /// writes a weak `Unknown` onto `at.attr`, and the summary says so (`Gaps::DEEP_WRITE`).
+    fn write_beyond(&mut self, origin: OriginId, env: &mut Env<'db>) {
+        let OriginKey::Beyond { act, at, attr } = self.origins[origin].clone() else {
+            return;
+        };
+        let parent = self.origins.intern(OriginKey::Entry { act, path: at });
+        env.bind_attr(parent, &attr, smallvec![AbstractValue::Unknown], false);
+        self.deep_write = true;
+    }
+
+    /// The origin of an object that `.name` reads from an input object nobody wrote it on: the object's own path extended by the name
+    /// (decision 1), or, when that path would pass `max_path`, the `Beyond` origin (decision 2). A path is a location, not a value, and
+    /// the class comes from the engine, the same for every caller. `None` for an object that is not an input: one built in this walk
+    /// has the state it was given, and ty's holds none.
+    pub(crate) fn attr_origin(
+        &mut self,
+        sol: &Solver<'db>,
+        recv: OriginId,
+        name: &Name,
+    ) -> Option<OriginId> {
+        let key = match &self.origins[recv] {
+            OriginKey::Entry { act, path } if path.steps.len() < sol.opts.limits.path_cap() => {
+                OriginKey::Entry {
+                    act: *act,
+                    path: path.attr(name),
+                }
+            }
+            OriginKey::Entry { act, path } => OriginKey::Beyond {
+                act: *act,
+                at: path.clone(),
+                attr: name.clone(),
+            },
+            OriginKey::Beyond { .. } => return Some(recv), // everything under it shares its origin
+            OriginKey::Opaque | OriginKey::New { .. } => return None,
+        };
+        let before = self.origins.len();
+        let origin = self.origins.intern(key);
+        if self.origins.len() > before {
+            self.named.insert(origin);
+        }
+        Some(origin)
+    }
+
+    /// `track_entry_attr` (decision 1): the `OPAQUE` instances that the class side gave for `recv.name` are the object at `attr_origin`.
+    fn track_entry_attr(
+        &mut self,
+        sol: &Solver<'db>,
+        recv: OriginId,
+        name: &Name,
+        vals: Values<'db>,
+    ) -> Values<'db> {
+        let opaque = |v: &AbstractValue<'db>| matches!(v, AbstractValue::Instance { origin, .. } if *origin == OriginId::OPAQUE);
+        if !vals.iter().any(opaque) {
+            return vals;
+        }
+        match self.attr_origin(sol, recv, name) {
+            Some(origin) => Self::reorigin_to(vals, origin),
+            None => vals,
         }
     }
 }

@@ -164,8 +164,12 @@ impl<'db> Solver<'db> {
                 recv: self.fp_one(w, env, file, w.values[receiver], depth + 1, cl),
             },
             AbstractValue::Class(d) => Fp::Class(d), // a class is a constant, like a function
+            // An input object this walk only named (`attr_origin`) and nobody wrote onto keys as `Opaque`, as ty's object did before it had
+            // a name: `from_fp` gives the callee the same starting env for `Opaque(C)` and `Inst(C, [])`, so the digest would only differ.
             AbstractValue::Instance { class, origin }
-                if !origin.holds_state() || depth == self.opts.limits.fp_depth =>
+                if !w.holds_state(origin)
+                    || depth == self.opts.limits.fp_depth
+                    || (w.named.contains(&origin) && env.attrs_of(origin).is_empty()) =>
             {
                 Fp::Opaque(class)
             }
@@ -348,6 +352,8 @@ impl<'db> Walk<'db> {
             Fp::Data(t) => smallvec![AbstractValue::Ty(*t)],
             Fp::Unknown => smallvec![AbstractValue::Unknown],
             Fp::Instance { class, attrs } => {
+                // 05 §6 claim 1: a key names objects at most `fp_depth` steps from a root, so `max_path` (never less) always fits them
+                debug_assert!(at.steps.len() <= usize::from(sol.opts.limits.fp_depth));
                 let origin = self.origins.intern(OriginKey::Entry {
                     act: self.frame.act,
                     path: at.clone(),
@@ -362,6 +368,7 @@ impl<'db> Walk<'db> {
                 }]
             }
             Fp::Opaque(class) => {
+                debug_assert!(at.steps.len() <= usize::from(sol.opts.limits.fp_depth));
                 let origin = self.origins.intern(OriginKey::Entry {
                     act: self.frame.act,
                     path: at,

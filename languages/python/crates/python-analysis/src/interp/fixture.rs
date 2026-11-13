@@ -276,6 +276,7 @@ pub(super) fn fixture_limits(source: &str) -> Option<(Limits, bool)> {
         match k {
             "max_rounds" => limits.max_rounds = n as u32,
             "fp_depth" => limits.fp_depth = n as u8,
+            "max_path" => limits.max_path = n as usize,
             "max_stack" => limits.max_stack = n as usize,
             "max_contexts" => limits.max_contexts = n as u32,
             "contexts_per_func" => limits.contexts_per_func = n as u32,
@@ -998,10 +999,261 @@ fn p04_04_resolve_first() {
     check_both("04-class-summaries/python/resolve_first.py");
 }
 
-/// Inline mode only until CS5 (deep writes).
+const DEEP_WRITE_CAPPED: &str = "04-class-summaries/python/deep_write_capped.py";
+const TWO_LEVELS: &str = "04-class-summaries/python/deep_write_two_levels.py";
+const DEEP_READ: &str = "04-class-summaries/python/deep_read.py";
+const DEEP_RECURSION: &str = "04-class-summaries/python/deep_recursion.py";
+
+/// The options a fixture's `# limits:` line asks for, summary mode with effects.
+fn fixture_options(fixture: &str) -> Options {
+    let source = std::fs::read_to_string(format!("tests/fixtures/{fixture}")).unwrap();
+    let (limits, _) = fixture_limits(&source).expect("the fixture has a `# limits:` line");
+    Options {
+        limits,
+        ..summary()
+    }
+}
+
+/// `entry`'s graph under `opts`: the counters and each context's status.
+fn graph_under(fixture: &str, entry: &str, opts: &Options) -> analyzer_core::graph::Graph {
+    let (db, file) = open_fixture(fixture);
+    call_graph(&db, file, entry, opts).unwrap()
+}
+
+fn deep_write_count(g: &analyzer_core::graph::Graph) -> Option<u64> {
+    g.stats.language.get("deep_write").copied()
+}
+
+fn deep_return_count(g: &analyzer_core::graph::Graph) -> Option<u64> {
+    g.stats.language.get("deep_return").copied()
+}
+
+/// CS5b: a write onto an object past the key reaches the caller by its path (decisions 1, 2 and §3 of `05-deep-writes.md`); past
+/// `max_path` it is the counted fallback.
 #[test]
-fn p04_05_deep_write() {
-    check("04-class-summaries/python/deep_write.py");
+fn p04_05_deep_writes() {
+    check_both("04-class-summaries/python/deep_write.py");
+    check_both(DEEP_WRITE_CAPPED);
+}
+
+/// Option B: past `max_path` the write is counted, and not marked: every context is `Finished`, and the count says one summary fell back.
+#[test]
+fn p04_05_a_write_past_max_path_is_counted_and_marks_nothing() {
+    use analyzer_core::graph::Status;
+    let g = graph_under(
+        DEEP_WRITE_CAPPED,
+        "main",
+        &fixture_options(DEEP_WRITE_CAPPED),
+    );
+    println!("{}", graph_text(&g)); // --show-output
+    assert_eq!(deep_write_count(&g), Some(1));
+    assert_eq!(deep_return_count(&g), None); // the write is the loss here, no object leaves with its identity gone
+    assert!(g.contexts.iter().all(|c| c.status == Status::Finished));
+    // a path that fits names the object: no fallback, and no counter at all
+    let g = graph_under(DEEP_WRITE_CAPPED, "main", &summary());
+    assert_eq!(deep_write_count(&g), None);
+}
+
+/// §4 `deep_write_two_levels.py`: the effect reaches `main` through two summaries.
+#[test]
+fn p04_05_a_deep_write_travels_up_through_two_summaries() {
+    check_both(TWO_LEVELS);
+}
+
+/// §3 row 4 with the cap: `outer_held` names the written object by a path one step longer than `rewire` does, and with `max_path` 3 that
+/// path is past the cap. The effect it carries up is `rewire`'s own fallback: weak `Unknown` at `holder.svc.app.config.sink`.
+#[test]
+fn p04_05_a_callers_path_past_max_path_falls_back_in_the_caller() {
+    use analyzer_core::graph::Status;
+    let opts = Options {
+        limits: Limits {
+            max_path: 3,
+            ..Limits::default()
+        },
+        ..summary()
+    };
+    let g = graph_under(TWO_LEVELS, "main_held", &opts);
+    println!("{}", graph_text(&g)); // --show-output
+    assert_eq!(deep_write_count(&g), Some(1)); // `outer_held` only: `rewire`'s own path fits
+    assert!(g.contexts.iter().all(|c| c.status == Status::Finished));
+    let (db, file) = open_fixture(TWO_LEVELS);
+    let (s, _) = solve(&db, file, "main_held", &opts).unwrap();
+    let held = s
+        .contexts
+        .iter()
+        .find(|(_, c)| s.sem.qname(c.func) == "deep_write_two_levels.outer_held")
+        .map(|(ctx, _)| ctx)
+        .unwrap();
+    let res = s.slots[held].result.as_ref().unwrap();
+    let [e] = res.effects.as_slice() else {
+        panic!("expected one effect, got {:?}", res.effects);
+    };
+    assert_eq!(path_text(&e.target), "arg0.svc.app.config");
+    assert_eq!(e.attr.as_str(), "sink");
+    assert!(!e.strong);
+    assert_eq!(
+        e.value.as_slice(),
+        &[crate::interp::summary::SVal::Plain(
+            crate::interp::summary::PlainVal::Unknown
+        )]
+    );
+}
+
+/// `max_path` is never less than the key's own depth: a smaller value is raised to it, so every object a key names has a path that fits.
+#[test]
+fn p04_05_max_path_is_at_least_fp_depth() {
+    let limits = |max_path, fp_depth| Limits {
+        max_path,
+        fp_depth,
+        ..Limits::default()
+    };
+    assert_eq!(limits(0, 2).path_cap(), 2);
+    assert_eq!(limits(1, 3).path_cap(), 3);
+    assert_eq!(limits(2, 2).path_cap(), 2);
+    assert_eq!(limits(6, 2).path_cap(), 6);
+    assert_eq!(Limits::default().path_cap(), 6);
+}
+
+/// Claim 3 (05 §6): an object past the cap holds no state, and a read of it goes to the engine's declared type, as the read of an object
+/// that has a name does. Nothing is written in `peek`, so its edges are the same under `max_path` 2 and 6.
+#[test]
+fn p04_05_a_read_below_the_cap_goes_to_the_engine() {
+    check_both(DEEP_READ);
+    let capped = graph_under(DEEP_READ, "main", &fixture_options(DEEP_READ));
+    let named = graph_under(DEEP_READ, "main", &summary());
+    assert_eq!(graph_text(&capped), graph_text(&named));
+    assert_eq!(deep_write_count(&capped), None);
+}
+
+/// A path as a test reads it: `arg0.next.next`.
+fn path_text(p: &crate::interp::value::Path) -> String {
+    use crate::interp::value::{Root, Step};
+    let mut out = match p.root {
+        Root::Param(i) => format!("arg{i}"),
+        Root::Free(i) => format!("free{i}"),
+        Root::Default(i) => format!("default{i}"),
+    };
+    for step in &p.steps {
+        match step {
+            Step::Attr(name) => out.push_str(&format!(".{name}")),
+            other => out.push_str(&format!(".{other:?}")),
+        }
+    }
+    out
+}
+
+/// What `last`'s returns held after one round of its group's fixpoint: how many paths into the argument (`Ref`s), the number of steps
+/// of the longest, and the other values.
+struct Round {
+    refs: usize,
+    longest: usize,
+    others: Vec<String>,
+}
+
+/// `last`'s returns after each round of its fixpoint, printed one line a round; and the request's counters.
+fn rounds_of_last(fixture: &str, opts: &Options) -> (Vec<Round>, Stats) {
+    use crate::interp::summary::{PlainVal, SVal};
+    let (db, file) = open_fixture(fixture);
+    let (s, _) = solve(&db, file, "main", opts).unwrap();
+    let mut rounds = Vec::new();
+    for (round, ctx, returns) in &s.round_returns {
+        if s.sem.qname(s.contexts[*ctx].func) != "deep_recursion.last" {
+            continue;
+        }
+        let mut r = Round {
+            refs: 0,
+            longest: 0,
+            others: Vec::new(),
+        };
+        for v in returns {
+            match v {
+                SVal::Ref(p) => {
+                    r.refs += 1;
+                    r.longest = r.longest.max(p.steps.len());
+                }
+                SVal::Plain(PlainVal::Opaque(c)) => {
+                    r.others.push(format!("opaque {}", s.sem.qname(*c)))
+                }
+                SVal::Plain(PlainVal::Ty(_)) => r.others.push("ty".to_owned()), // the engine's own type: `None`, an intersection
+                other => r.others.push(format!("{other:?}")),
+            }
+        }
+        r.others.sort();
+        println!(
+            "round {round}: {} paths, the longest arg0{}; {}",
+            r.refs,
+            ".next".repeat(r.longest),
+            r.others.join(", ")
+        ); // --show-output
+        rounds.push(r);
+    }
+    (rounds, s.stats.clone())
+}
+
+/// Both modes draw the same tree for the list `main` builds and walks.
+#[test]
+fn p04_05_deep_recursion_tree() {
+    check_both(DEEP_RECURSION);
+}
+
+/// Claim 4 (05 §6), the default `max_path`: a path that would grow with every round stops at the cap, the summaries become equal, and the
+/// group settles.
+#[test]
+fn p04_05_a_recursion_that_grows_a_path_settles_at_max_path() {
+    use analyzer_core::graph::Status;
+    let (rounds, stats) = rounds_of_last(DEEP_RECURSION, &summary());
+    assert_eq!(stats.rounds_capped, 0);
+    assert!(rounds.len() < Limits::default().max_rounds as usize);
+    // the paths grow one step a round and stop at the cap: the cap is `Limits::default().max_path`, and the one past it is `Opaque`
+    let cap = Limits::default().max_path;
+    assert!(rounds.iter().all(|r| r.longest <= cap));
+    let last = rounds.last().unwrap();
+    assert_eq!(last.longest, cap);
+    assert!(
+        last.others
+            .contains(&"opaque deep_recursion.Node".to_owned())
+    );
+    let g = graph_under(DEEP_RECURSION, "main", &summary());
+    assert!(g.contexts.iter().all(|c| c.status == Status::Finished));
+    // the object past the cap leaves five summaries as `Opaque`: counted under its own name, and no write fell back
+    assert_eq!(deep_return_count(&g), Some(5));
+    assert_eq!(deep_write_count(&g), None);
+}
+
+/// Claim 4, scratch run: with `max_path` far above `max_rounds`, each round names one `.next` more, no two rounds are equal, and the
+/// fixpoint is cut by `max_rounds`.
+#[test]
+fn p04_05_the_same_recursion_without_a_cap_is_cut_by_max_rounds() {
+    use analyzer_core::graph::{Cut, Status};
+    let opts = Options {
+        limits: Limits {
+            max_path: 1000,
+            ..Limits::default()
+        },
+        ..summary()
+    };
+    let (rounds, stats) = rounds_of_last(DEEP_RECURSION, &opts);
+    assert!(stats.rounds_capped >= 1, "the group settled");
+    // one `.next` longer every round, until `max_rounds` cuts it
+    for (i, r) in rounds
+        .iter()
+        .take(opts.limits.max_rounds as usize)
+        .enumerate()
+    {
+        assert_eq!(
+            (i + 1, r.refs),
+            (r.longest, r.longest + 1),
+            "round {}",
+            i + 1
+        );
+    }
+    let g = graph_under(DEEP_RECURSION, "main", &opts);
+    assert_eq!(deep_return_count(&g), None); // nothing is past a cap of 1000
+    assert!(
+        g.contexts
+            .iter()
+            .any(|c| c.status == Status::Incomplete(Cut::MaxRounds))
+    );
 }
 
 /// Inline mode only until CS6 (split by type).
@@ -1208,7 +1460,7 @@ fn every_entry() -> Vec<(String, String, Options)> {
                 group.file_name().unwrap().to_str().unwrap(),
                 path.file_name().unwrap().to_str().unwrap()
             );
-            // a program no test names was never run (`deep_write_capped.py` asks for a limit that does not exist)
+            // a program no test names was never run
             if !include_str!("fixture.rs").contains(&format!("\"{name}\"")) {
                 continue;
             }
@@ -1560,13 +1812,13 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
             _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 44 programs are verified in both modes and 4 only inline (all in `04-class-summaries/`); 48 are run at
-    // all; 49 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
-    // `every_entry` skips it)
+    // 49 programs are verified in both modes and 3 only inline (all in `04-class-summaries/`); 52 are run at all, and all have
+    // `# expect:` blocks (`deep_write.py` moved to both modes at CS5b, and `deep_write_capped.py`, `deep_write_two_levels.py`,
+    // `deep_read.py` and `deep_recursion.py` joined, all verified)
     let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
     assert_eq!(
         (verified, by_fixture.len() - verified),
-        (44, 4),
+        (49, 3),
         "a program was added or lost"
     );
     for (fixture, verified, text) in by_fixture {
@@ -1984,7 +2236,7 @@ fn the_graph_of_every_fixture_equals_its_snapshot() {
     }
     assert_eq!(
         (by_fixture.len(), entries),
-        (48, 161),
+        (52, 166),
         "an entry was added or lost"
     );
     for (fixture, text) in by_fixture {
@@ -2158,12 +2410,13 @@ fn what_summary_mode_gives_on_the_part_04_programs_against_their_blocks() {
     }
     assert_eq!(
         (fixtures.len(), blocks),
-        (4, 9),
+        (3, 8),
         "the part 04 programs checked inline only, and their summary-mode blocks"
     );
-    // 9 blocks are summary mode's; these 4 fail. `effects.py` is verified in both modes since CS3b (its five blocks left this list), and
+    // 8 blocks are summary mode's; these 3 fail. `effects.py` is verified in both modes since CS3b (its five blocks left this list), and
     // `aliases.py different` left it too, and `resolve_first.py` (its `replacing` and `swapping` passed since CS3b; CS4 moved the
-    // program to `check_both`): they now pass. The five that pass: `aliases.py different`, `aliases.py nested` (its summary block is the
+    // program to `check_both`), and `deep_write.py` (CS5b: the write past the key reaches `main` by its path): they now pass. The five that
+    // pass: `aliases.py different`, `aliases.py nested` (its summary block is the
     // known limit), `recursion_objects.py visitor` (whose `Report.emit` comes from ty's type of `v.found`, a `Type` edge, not from the
     // walk), and `identity_limit` and `tree_fill` (below).
     //
@@ -2172,14 +2425,13 @@ fn what_summary_mode_gives_on_the_part_04_programs_against_their_blocks() {
     // programs call `JsonHandler.process`). Each is now an `# expect inline:` block (the limit, as it was) and an `# expect summary:` block
     // (with the call). Each site that rests on a cycle is marked (`unknown_callee`, `effects_in_cycle`).
     //
-    // The three wrong edges effects add stay here, each with its reason (README §7 question 2): `aliases.py same` draws `CsvHandler.process`
-    // (the key does not say the two arguments are one object: CS7); `deep_write.py main` draws `CsvHandler.process` (the write is past the
-    // key's depth: CS5); `split.py main` pairs each handler with both keys (inline mode draws the same mix: CS6). `use_walk` waits for CS8.
+    // The two wrong edges effects add stay here, each with its reason (README §7 question 2): `aliases.py same` draws `CsvHandler.process`
+    // (the key does not say the two arguments are one object: CS7); `split.py main` pairs each handler with both keys (inline mode draws
+    // the same mix: CS6). `use_walk` waits for CS8.
     assert_eq!(
         failing,
         [
             "04-class-summaries/python/aliases.py same",
-            "04-class-summaries/python/deep_write.py main",
             "04-class-summaries/python/recursion_objects.py use_walk",
             "04-class-summaries/python/split.py main",
         ]

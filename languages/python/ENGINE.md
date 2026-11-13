@@ -341,6 +341,45 @@ state the first had left; now both are keyed against the state before the call, 
 FastAPI off 561, the rest 0) and `create_cloned_field` is still the one `Incomplete(MaxRounds)` cut. The golden of Jarvis is `equal` (wire and merged
 wire, the request path with effects off, compared as JSON against `out/golden/wire*.json`: the files differ only in layout).
 
+## CS5b: a write past the key reaches the caller by its path
+
+Measured 2026-11-13, the same entries and method as CS4.1 (`dump_graph`, `PYTHON_DUMP_GAP=1`, the debug test binary), before = `0eb5fa6` (the CS4.1 table
+above), after = the CS5b commit. An object an input holds that the key did not name is named by its path (`Entry(path.attr)`, up to `Limits::max_path`,
+6, never less than `fp_depth`); past it, by `Beyond { at, attr }`, which holds no state. A write onto a `Beyond` object is a weak `Unknown` at `at.attr`,
+the summary gets `Gaps::DEEP_WRITE`, and `core_graph` counts it (`Stats.language["deep_write"]`) and does not mark the context (option B: `status` maps
+only `Gaps::CYCLE` to `Incomplete`). A `Beyond` object that leaves a summary as a return, an effect value or an object's attribute has no identity there
+(`Opaque`): that is `Gaps::DEEP_RETURN`, counted under `Stats.language["deep_return"]`, also not marked. Both counters are written only above 0.
+
+**How a named object keys.** An input object that only `attr_origin` named (`Walk.named`: the origin did not exist before) and that nothing wrote an
+attribute onto keys as `Opaque(C)`, as ty's object did before it had a name. A write onto it makes it `Inst(C, attrs)`; a child named by a later read does
+not count as state, because a read writes nothing. Other `Entry` objects (made from a key) key as before. The reason: `from_fp` gives the callee the same
+starting env for `Opaque(C)` and for `Inst(C, [])` (an `Entry` origin, no attributes), so keying the second differently only splits equal contexts and
+changes every digest. The first version of CS5b keyed them as `Inst(C, [])`: the golden of Jarvis was `differs` (49 of 207 frames, `contexts[].digest`
+only) and `recursion_objects.py visitor` had a seventh `Node.accept` context.
+
+| Project | effects | nodes | contexts | walks | unresolved | `extra` | `rounds_capped` | `effects_applied` | `deep_write` | `deep_return` | contexts if every empty `Inst` keyed `Opaque` |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Jarvis | off | 207 → 207 | 55 → 55 | 55 → 55 | 30 → 30 | 0 → 0 | 0 → 0 | - | 0 | 0 | 53 |
+| Jarvis | on | 207 → 207 | 71 → 71 | 71 → 71 | 32 → 32 | 0 → 0 | 0 → 0 | 43 → **57** | 0 | 0 | 69 |
+| Flask service | off | 266 → 266 | 70 → 70 | 70 → 70 | 81 → 81 | 0 → 0 | 0 → 0 | - | 0 | 0 | 70 |
+| Flask service | on | 266 → 266 | 70 → 70 | 70 → 70 | 81 → 81 | 0 → 0 | 0 → 0 | 87 → 87 | 0 | 0 | 70 |
+| FastAPI | off | 458 → 458 | 70 → 70 | 70 → 70 | 29 → 29 | 0 → 0 | 0 → 0 | - | 0 | 0 | 70 |
+| FastAPI | on | 1019 → 1019 | 103 → 103 | 103 → 103 | 52 → 52 | 0 → 0 | 1 → 1 | 180 → 180 | 0 | 0 | 103 |
+
+**`deep_write` and `deep_return` are 0 on all three projects: the limit is theory on this code.** Only Jarvis with effects on moves: 14 more effects
+applied (decision 1 and `follow` carry writes to objects the key did not name), the same 207 nodes, `missing` 0, `extra` 0. Flask and FastAPI do not move,
+and `create_cloned_field` is still the one `Incomplete(MaxRounds)` cut. **The golden of Jarvis is `equal`** (`scripts/run-on-project.sh python <Jarvis>
+jarvis.py CallGraphGenerator.do_pass --function-prefix FunctionSchema/ --class-prefix ClassSchema/` with `GOLDEN=out/golden`: `wire.json: equal`,
+`wire-merged.json: equal`).
+
+**The last column is a measure, not a change** (a temporary env check in `fp_one`, removed): if every `Inst` with no attributes keyed as `Opaque`, Jarvis
+would have 2 contexts fewer (55 → 53 off, 71 → 69 on) and Flask and FastAPI none. Those two are objects a key holds with an empty state (`Config()` and the
+like), whose digest changes with the spelling.
+
+**Fixtures.** One graph snapshot moved: `deep_write.py` (the intended fix: `main` calls `JsonHandler.process`, not `CsvHandler.process`). Four programs
+joined (`deep_write_capped.py`, `deep_write_two_levels.py`, `deep_read.py`, `deep_recursion.py`), and `deep_write.py`'s wire moved from `unverified/` to
+the verified folder. `deep_recursion.py` under the default `max_path` shows `deep_return` 5: the object past the cap leaves five summaries as `Opaque`.
+
 ## Toolchain
 
 `vendor/ruff/rust-toolchain.toml` says 1.98.0 and ruff's `rust-version` is 1.96. It is ignored here (the repo root's `rust-toolchain.toml` decides,

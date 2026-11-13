@@ -13,7 +13,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::interp::key::ContextId;
 use crate::interp::solver::Solver;
-use crate::interp::summary::{Cut, Target};
+use crate::interp::summary::{Cut, Gaps, Target};
 use crate::interp::{EntryRoot, Stats};
 use crate::sem::Definition;
 use crate::stable::StableDef;
@@ -57,13 +57,15 @@ fn status(s: &Solver<'_>, c: ContextId) -> CStatus {
             CStatus::Incomplete(cut(k))
         });
     };
+    // Only a capped fixpoint is a cut. A deep write or return (`Gaps::DEEP_WRITE`, `Gaps::DEEP_RETURN`) leaves the edges complete and the
+    // context `Finished`: it is counted in `Stats::language["deep_write"]` or `["deep_return"]` and not marked (05 §3, option B).
     match (
         result.status.cut.or(slot.cut),
-        result.status.gaps.is_empty(),
+        result.status.gaps.contains(Gaps::CYCLE),
     ) {
         (Some(k), _) => CStatus::Incomplete(cut(k)),
-        (None, false) => CStatus::Incomplete(CCut::MaxRounds),
-        (None, true) => CStatus::Finished,
+        (None, true) => CStatus::Incomplete(CCut::MaxRounds),
+        (None, false) => CStatus::Finished,
     }
 }
 
@@ -73,7 +75,13 @@ const UNKNOWN_CALLEE: &str = "unknown_callee";
 /// The edges whose def the engine found past a base it could not see (D28, `Basis::Likely`). Absent when there are none.
 const LIKELY_CALLEE: &str = "likely_callee";
 
-fn stats(old: &Stats, unresolved: u64, likely: u64) -> CStats {
+/// The contexts whose summary fell back on a write past `Limits::max_path` (`Gaps::DEEP_WRITE`). Absent when there are none.
+const DEEP_WRITE: &str = "deep_write";
+
+/// The contexts whose summary let an object past `Limits::max_path` leave with no identity (`Gaps::DEEP_RETURN`). Absent when there are none.
+const DEEP_RETURN: &str = "deep_return";
+
+fn stats(old: &Stats, unresolved: u64, likely: u64, deep_write: u64, deep_return: u64) -> CStats {
     let mut cuts = BTreeMap::new();
     let mut add = |k: CCut, n: u32| {
         if n > 0 {
@@ -115,6 +123,11 @@ fn stats(old: &Stats, unresolved: u64, likely: u64) -> CStats {
     if likely > 0 {
         out.language.insert(LIKELY_CALLEE.to_owned(), likely);
     }
+    for (name, n) in [(DEEP_WRITE, deep_write), (DEEP_RETURN, deep_return)] {
+        if n > 0 {
+            out.language.insert(name.to_owned(), n);
+        }
+    }
     out
 }
 
@@ -149,7 +162,7 @@ pub(crate) fn core_graph<'db>(s: &Solver<'db>, entries: &[EntryRoot<'db>]) -> Gr
     let ids: FxHashMap<ContextId, Id> = reached.iter().map(|&c| (c, s.stable_id(c))).collect();
     // 3. the rows; `Graph::new` sorts them and keeps one per definition
     let (mut defs, mut contexts, mut edges) = (Vec::new(), Vec::new(), Vec::new());
-    let (mut unresolved, mut likely) = (0u64, 0u64);
+    let (mut unresolved, mut likely, mut deep_write, mut deep_return) = (0u64, 0u64, 0u64, 0u64);
     for entry in entries {
         if let EntryRoot::Construct { class, .. } = entry {
             defs.push(def_info(s, *class));
@@ -161,6 +174,10 @@ pub(crate) fn core_graph<'db>(s: &Solver<'db>, entries: &[EntryRoot<'db>]) -> Gr
         let mut context = Context::new(ids[&c].clone());
         context.status = status(s, c);
         contexts.push(context);
+        if let Some(result) = &s.slots[c].result {
+            deep_write += u64::from(result.status.gaps.contains(Gaps::DEEP_WRITE));
+            deep_return += u64::from(result.status.gaps.contains(Gaps::DEEP_RETURN));
+        }
         for e in s.slots[c].result.iter().flat_map(|r| &r.calls) {
             let site = Site::new(u32::from(e.site.start), u32::from(e.site.end));
             for t in &e.targets {
@@ -214,6 +231,6 @@ pub(crate) fn core_graph<'db>(s: &Solver<'db>, entries: &[EntryRoot<'db>]) -> Gr
         defs,
         contexts,
         edges,
-        stats(&s.stats, unresolved, likely),
+        stats(&s.stats, unresolved, likely, deep_write, deep_return),
     )
 }

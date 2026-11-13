@@ -154,6 +154,9 @@ pub(crate) struct Solver<'db> {
     pub parked: Vec<ContextId>, // parked contexts, in the order their walks ended
     pub path: Vec<String>, // inline mode only: qualified names being walked, its recursion guard
     pub stats: Stats,
+    /// Tests only: each group member's returns after each round of its fixpoint, as (round, member, returns).
+    #[cfg(test)]
+    pub round_returns: Vec<(u32, ContextId, crate::interp::summary::SVals<'db>)>,
 }
 
 impl<'db> Solver<'db> {
@@ -172,6 +175,8 @@ impl<'db> Solver<'db> {
             parked: Vec::new(),
             path: Vec::new(),
             stats: Stats::default(),
+            #[cfg(test)]
+            round_returns: Vec::new(),
         }
     }
 
@@ -403,6 +408,8 @@ impl<'db> Solver<'db> {
             let mut changed = false;
             for &m in &members {
                 let next = self.replay_member(m, capped);
+                #[cfg(test)]
+                self.round_returns.push((round, m, next.returns.clone()));
                 let f = self.fixpoint.unwrap();
                 if f.lowest != usize::MAX {
                     // reached a context running further down: part of a bigger cycle
@@ -479,7 +486,11 @@ impl<'db> Solver<'db> {
         for &m in members {
             let slot = &mut self.slots[m];
             let mut result = Arc::unwrap_or_clone(slot.current.take().unwrap());
-            result.status = Status { gaps, cut };
+            // the summary's own gaps (a deep write) stay; the group's (a capped fixpoint) are added
+            result.status = Status {
+                gaps: result.status.gaps.with(gaps),
+                cut,
+            };
             slot.result = Some(Arc::new(result));
             slot.walk = None;
             slot.cut = cut;

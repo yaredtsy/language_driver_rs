@@ -43,6 +43,11 @@ pub(crate) struct Walk<'db> {
     /// this is where the next operation, and `finish_round`, read them. A new object has one origin per call site and callee: each round
     /// writes the same keys again.
     pub replay_attrs: rpds::HashTrieMap<(OriginId, Name), Values<'db>>,
+    /// A write fell back (onto a `Beyond` object, or through a caller's path past `max_path`): the summary carries `Gaps::DEEP_WRITE`.
+    pub deep_write: bool,
+    /// The input objects this walk named by their path (`attr_origin` made the origin: nobody had it before). One of them that nothing
+    /// wrote onto keys as `Opaque`: `from_fp` gives the callee the same starting env for `Opaque(C)` and for `Inst(C, [])`.
+    pub named: FxHashSet<OriginId>,
 }
 
 /// The body being walked now.
@@ -94,7 +99,17 @@ impl<'db> Walk<'db> {
             generator: false,
             effects_in_cycle: FxHashSet::default(),
             replay_attrs: Default::default(),
+            deep_write: false,
+            named: FxHashSet::default(),
         }
+    }
+
+    /// Can this object keep attributes in an env? Not ty's (`OPAQUE`: no identity) and not one past `max_path` (`Beyond`: no name).
+    pub(crate) fn holds_state(&self, origin: OriginId) -> bool {
+        !matches!(
+            self.origins[origin],
+            OriginKey::Opaque | OriginKey::Beyond { .. }
+        )
     }
     pub(crate) fn new_frame(&mut self, sol: &Solver<'db>, func: Definition<'db>) -> Frame<'db> {
         let act = self.activations.push(Env::default());

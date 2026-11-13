@@ -1,0 +1,12 @@
+== main
+entries: deep_read.main#4f7dbb931bd0bc39
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def deep_read.JsonHandler.process = JsonHandler.process#0 Method deep_read.py
+def deep_read.main = main#0 Function deep_read.py
+def deep_read.peek = peek#0 Function deep_read.py
+deep_read.JsonHandler.process#9e43e13393044cb5 Finished
+deep_read.main#4f7dbb931bd0bc39 Finished
+  @28-37 -> deep_read.peek#047ec7098c5793df Name
+deep_read.peek#047ec7098c5793df Finished
+  @28-59 -> deep_read.JsonHandler.process#9e43e13393044cb5 Type
+

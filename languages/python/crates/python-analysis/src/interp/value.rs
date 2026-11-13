@@ -30,10 +30,6 @@ pub struct OriginId;
 impl OriginId {
     /// Every object ty hands you. Interned first in every walk; it holds no state.
     pub const OPAQUE: OriginId = OriginId::from_u32(0);
-
-    pub fn holds_state(self) -> bool {
-        self != OriginId::OPAQUE
-    }
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -42,6 +38,13 @@ pub(crate) enum OriginKey {
     Opaque,
     /// An input object, named by where it sits among the inputs. One per path per run.
     Entry { act: ActivationId, path: Path },
+    /// An input object whose path would pass `Limits::max_path`: the attribute `attr` of the object at `at` (the deepest path that fits).
+    /// Every object under it shares this origin, and it holds no state: a write onto it is the fallback (weak `Unknown` at `at.attr`).
+    Beyond {
+        act: ActivationId,
+        at: Path,
+        attr: Name,
+    },
     /// An object built in this walk, in this run of its body: by a construct expression at `site` (`Made::Here`), or the `j`-th new
     /// object a callee's summary describes (`Made::Obj(j)`), for the callee at index `t` of the call site `site`. Two callees of one site
     /// build their objects apart.
