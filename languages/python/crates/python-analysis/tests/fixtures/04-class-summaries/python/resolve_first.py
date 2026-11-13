@@ -13,6 +13,11 @@ class CsvHandler:
         pass
 
 
+class XmlHandler:
+    def process(self):
+        pass
+
+
 class Box:
     def __init__(self, h):
         self.h = h
@@ -34,6 +39,20 @@ class Pair:
         self.y = t  # effects: x = Ref(Param(0).y), y = Ref(Param(0).x)
 
 
+class A:
+    def reset(self, box):
+        old = box.h
+        box.h = JsonHandler()
+        return old  # returns Ref(Param(1).h), writes box.h = JsonHandler
+
+
+class B:
+    def reset(self, box):
+        old = box.h
+        box.h = CsvHandler()
+        return old  # returns Ref(Param(1).h), writes box.h = CsvHandler
+
+
 def replacing():
     b = Box(JsonHandler())
     old = b.replace(CsvHandler())
@@ -46,6 +65,29 @@ def swapping():
     p.swap()
     p.x.process()  # CsvHandler.process only
     p.y.process()  # JsonHandler.process only
+
+
+def show(b, old):
+    b.h.process()
+    old.process()
+
+
+def argument_effects():
+    box = Box(JsonHandler())
+    # the call in the argument runs first: its write is in the state `show`'s summary is read against
+    show(box, box.replace(CsvHandler()))  # b.h is CsvHandler, old is JsonHandler
+
+
+# Both modes: `old.process()` is the old handler only (each callee resolves against the one before). `box.h` after the call: inline mode joins
+# the two callees' states, so it holds the two new handlers. Summary mode applies each callee's write weakly (two callees at the site: the
+# write is not known to have happened), so `box.h` keeps the old handler too, and `box.h.process()` draws a second `XmlHandler.process`:
+# a wrong edge, not a missing one.
+def two_callees_write(c):
+    box = Box(XmlHandler())
+    h = A() if c else B()
+    old = h.reset(box)
+    old.process()  # XmlHandler.process only: both callees resolve against the one before
+    box.h.process()  # JsonHandler.process and CsvHandler.process: one callee ran, which one is not known
 
 
 # expect:
@@ -64,3 +106,39 @@ def swapping():
 #   Pair.swap
 #   CsvHandler.process
 #   JsonHandler.process
+# expect:
+# argument_effects
+#   JsonHandler
+#   Box
+#   CsvHandler
+#   Box.replace
+#   show
+#     CsvHandler.process
+#     JsonHandler.process
+# expect inline:
+# two_callees_write
+#   XmlHandler
+#   Box
+#   A
+#   B
+#   A.reset
+#     JsonHandler
+#   B.reset
+#     CsvHandler
+#   XmlHandler.process
+#   JsonHandler.process
+#   CsvHandler.process
+# expect summary:
+# two_callees_write
+#   XmlHandler
+#   Box
+#   A
+#   B
+#   A.reset
+#     JsonHandler
+#   B.reset
+#     CsvHandler
+#   XmlHandler.process
+#   JsonHandler.process
+#   CsvHandler.process
+#   XmlHandler.process

@@ -918,7 +918,7 @@ fn p04_03_cycle_effect() {
 /// Inline mode only until CS4 (resolve, then write).
 #[test]
 fn p04_04_resolve_first() {
-    check("04-class-summaries/python/resolve_first.py");
+    check_both("04-class-summaries/python/resolve_first.py");
 }
 
 /// Inline mode only until CS5 (deep writes).
@@ -1483,13 +1483,13 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
             _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 42 programs are verified in both modes and 5 only inline (all in `04-class-summaries/`); 47 are run at
+    // 43 programs are verified in both modes and 4 only inline (all in `04-class-summaries/`); 47 are run at
     // all; 48 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
     // `every_entry` skips it)
     let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
     assert_eq!(
         (verified, by_fixture.len() - verified),
-        (42, 5),
+        (43, 4),
         "a program was added or lost"
     );
     for (fixture, verified, text) in by_fixture {
@@ -1907,7 +1907,7 @@ fn the_graph_of_every_fixture_equals_its_snapshot() {
     }
     assert_eq!(
         (by_fixture.len(), entries),
-        (47, 155),
+        (47, 157),
         "an entry was added or lost"
     );
     for (fixture, text) in by_fixture {
@@ -2081,13 +2081,14 @@ fn what_summary_mode_gives_on_the_part_04_programs_against_their_blocks() {
     }
     assert_eq!(
         (fixtures.len(), blocks),
-        (5, 11),
+        (4, 9),
         "the part 04 programs checked inline only, and their summary-mode blocks"
     );
-    // 11 blocks are summary mode's; these 4 fail. `effects.py` is verified in both modes since CS3b (its five blocks left this list), and
-    // `aliases.py different`, `resolve_first.py replacing` and `swapping` left it too: they now pass. The seven that pass: those three,
-    // `aliases.py nested` (its summary block is the known limit), `recursion_objects.py visitor` (whose `Report.emit` comes from ty's type
-    // of `v.found`, a `Type` edge, not from the walk), and `identity_limit` and `tree_fill` (below).
+    // 9 blocks are summary mode's; these 4 fail. `effects.py` is verified in both modes since CS3b (its five blocks left this list), and
+    // `aliases.py different` left it too, and `resolve_first.py` (its `replacing` and `swapping` passed since CS3b; CS4 moved the
+    // program to `check_both`): they now pass. The five that pass: `aliases.py different`, `aliases.py nested` (its summary block is the
+    // known limit), `recursion_objects.py visitor` (whose `Report.emit` comes from ty's type of `v.found`, a `Type` edge, not from the
+    // walk), and `identity_limit` and `tree_fill` (below).
     //
     // `recursion_objects.py` `identity_limit` and `tree_fill` joined the list at CS3b and left it at CS3b.2: their blocks pinned a known
     // limit that both modes had ("Python: JsonHandler.process"), and with effects summary mode draws the call (run under Python, both

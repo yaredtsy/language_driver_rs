@@ -44,3 +44,65 @@ resolve_first.swapping#123dc7b57049e0da Finished
   @75-88 -> resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Path
   @120-133 -> resolve_first.JsonHandler.process#78d8030f4d400860 Path
 
+== argument_effects
+entries: resolve_first.argument_effects#1aa0b48bb44fe2c4
+stats: walks 6, contexts 6, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def resolve_first.Box = Box#0 Class resolve_first.py
+def resolve_first.Box.__init__ = Box.__init__#0 Method resolve_first.py
+def resolve_first.Box.replace = Box.replace#0 Method resolve_first.py
+def resolve_first.CsvHandler = CsvHandler#0 Class resolve_first.py
+def resolve_first.CsvHandler.process = CsvHandler.process#0 Method resolve_first.py
+def resolve_first.JsonHandler = JsonHandler#0 Class resolve_first.py
+def resolve_first.JsonHandler.process = JsonHandler.process#0 Method resolve_first.py
+def resolve_first.argument_effects = argument_effects#0 Function resolve_first.py
+def resolve_first.show = show#0 Function resolve_first.py
+resolve_first.Box.__init__#c16986b4e0c3e30b Finished
+resolve_first.Box.replace#90f65fd67514fa61 Finished
+resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Finished
+resolve_first.JsonHandler.process#78d8030f4d400860 Finished
+resolve_first.argument_effects#1aa0b48bb44fe2c4 Finished
+  @34-52 -> new resolve_first.Box init resolve_first.Box.__init__#c16986b4e0c3e30b Name
+  @38-51 -> new resolve_first.JsonHandler init - Name
+  @159-195 -> resolve_first.show#ce33702f6f36e8b7 Name
+  @169-194 -> resolve_first.Box.replace#90f65fd67514fa61 Path
+  @181-193 -> new resolve_first.CsvHandler init - Name
+resolve_first.show#ce33702f6f36e8b7 Finished
+  @22-35 -> resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Type
+  @40-53 -> resolve_first.JsonHandler.process#78d8030f4d400860 Type
+
+== two_callees_write
+entries: resolve_first.two_callees_write#872a0fd4b0827ce6
+stats: walks 7, contexts 7, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 3, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def resolve_first.A = A#0 Class resolve_first.py
+def resolve_first.A.reset = A.reset#0 Method resolve_first.py
+def resolve_first.B = B#0 Class resolve_first.py
+def resolve_first.B.reset = B.reset#0 Method resolve_first.py
+def resolve_first.Box = Box#0 Class resolve_first.py
+def resolve_first.Box.__init__ = Box.__init__#0 Method resolve_first.py
+def resolve_first.CsvHandler = CsvHandler#0 Class resolve_first.py
+def resolve_first.CsvHandler.process = CsvHandler.process#0 Method resolve_first.py
+def resolve_first.JsonHandler = JsonHandler#0 Class resolve_first.py
+def resolve_first.JsonHandler.process = JsonHandler.process#0 Method resolve_first.py
+def resolve_first.XmlHandler = XmlHandler#0 Class resolve_first.py
+def resolve_first.XmlHandler.process = XmlHandler.process#0 Method resolve_first.py
+def resolve_first.two_callees_write = two_callees_write#0 Function resolve_first.py
+resolve_first.A.reset#c2c38ff155427f51 Finished
+  @58-71 -> new resolve_first.JsonHandler init - Name
+resolve_first.B.reset#60fa2c868eb1e95b Finished
+  @58-70 -> new resolve_first.CsvHandler init - Name
+resolve_first.Box.__init__#8108be6f46a01795 Finished
+resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Finished
+resolve_first.JsonHandler.process#78d8030f4d400860 Finished
+resolve_first.XmlHandler.process#0f8d5c3969856d30 Finished
+resolve_first.two_callees_write#872a0fd4b0827ce6 Finished
+  @36-53 -> new resolve_first.Box init resolve_first.Box.__init__#8108be6f46a01795 Name
+  @40-52 -> new resolve_first.XmlHandler init - Name
+  @62-65 -> new resolve_first.A init - Name
+  @76-79 -> new resolve_first.B init - Name
+  @90-102 -> resolve_first.A.reset#c2c38ff155427f51 Path
+  @90-102 -> resolve_first.B.reset#60fa2c868eb1e95b Path
+  @107-120 -> resolve_first.XmlHandler.process#0f8d5c3969856d30 Path
+  @197-212 -> resolve_first.CsvHandler.process#ec5cd09ba8c7e9d7 Path
+  @197-212 -> resolve_first.JsonHandler.process#78d8030f4d400860 Path
+  @197-212 -> resolve_first.XmlHandler.process#0f8d5c3969856d30 Path
+

@@ -1,0 +1,85 @@
+== replacing
+resolve_first.replacing <resolve_first.py:replacing#0 Function>
+  resolve_first.Box <resolve_first.py:Box#0 Class> @57:9 in resolve_first.py
+  resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @57:13 in resolve_first.py
+  resolve_first.Box.replace <resolve_first.py:Box.replace#0 Method> @58:11 in resolve_first.py
+  resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @58:21 in resolve_first.py
+  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @59:5 in resolve_first.py
+  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @60:5 in resolve_first.py
+
+== replacing (merged)
+resolve_first.replacing <resolve_first.py:replacing#0 Function>
+  resolve_first.Box <resolve_first.py:Box#0 Class> @57:9 in resolve_first.py
+  resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @57:13 in resolve_first.py
+  resolve_first.Box.replace <resolve_first.py:Box.replace#0 Method> @58:11 in resolve_first.py
+  resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @58:21 in resolve_first.py
+  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @59:5 in resolve_first.py
+  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @60:5 in resolve_first.py
+
+== swapping
+resolve_first.swapping <resolve_first.py:swapping#0 Function>
+  resolve_first.Pair <resolve_first.py:Pair#0 Class> @64:9 in resolve_first.py
+  resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @64:14 in resolve_first.py
+  resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @64:29 in resolve_first.py
+  resolve_first.Pair.swap <resolve_first.py:Pair.swap#0 Method> @65:5 in resolve_first.py
+  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @66:5 in resolve_first.py
+  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @67:5 in resolve_first.py
+
+== swapping (merged)
+resolve_first.swapping <resolve_first.py:swapping#0 Function>
+  resolve_first.Pair <resolve_first.py:Pair#0 Class> @64:9 in resolve_first.py
+  resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @64:14 in resolve_first.py
+  resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @64:29 in resolve_first.py
+  resolve_first.Pair.swap <resolve_first.py:Pair.swap#0 Method> @65:5 in resolve_first.py
+  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @66:5 in resolve_first.py
+  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @67:5 in resolve_first.py
+
+== argument_effects
+resolve_first.argument_effects <resolve_first.py:argument_effects#0 Function>
+  resolve_first.Box <resolve_first.py:Box#0 Class> @76:11 in resolve_first.py
+  resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @76:15 in resolve_first.py
+  resolve_first.show <resolve_first.py:show#0 Function> @78:5 in resolve_first.py
+    resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @71:5 in resolve_first.py
+    resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @72:5 in resolve_first.py
+  resolve_first.Box.replace <resolve_first.py:Box.replace#0 Method> @78:15 in resolve_first.py
+  resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @78:27 in resolve_first.py
+
+== argument_effects (merged)
+resolve_first.argument_effects <resolve_first.py:argument_effects#0 Function>
+  resolve_first.Box <resolve_first.py:Box#0 Class> @76:11 in resolve_first.py
+  resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @76:15 in resolve_first.py
+  resolve_first.show <resolve_first.py:show#0 Function> @78:5 in resolve_first.py
+    resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @71:5 in resolve_first.py
+    resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @72:5 in resolve_first.py
+  resolve_first.Box.replace <resolve_first.py:Box.replace#0 Method> @78:15 in resolve_first.py
+  resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @78:27 in resolve_first.py
+
+== two_callees_write
+resolve_first.two_callees_write <resolve_first.py:two_callees_write#0 Function>
+  resolve_first.Box <resolve_first.py:Box#0 Class> @86:11 in resolve_first.py
+  resolve_first.XmlHandler <resolve_first.py:XmlHandler#0 Class> @86:15 in resolve_first.py
+  resolve_first.A <resolve_first.py:A#0 Class> @87:9 in resolve_first.py
+  resolve_first.B <resolve_first.py:B#0 Class> @87:23 in resolve_first.py
+  resolve_first.A.reset <resolve_first.py:A.reset#0 Method> @88:11 in resolve_first.py
+    resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @45:17 in resolve_first.py
+  resolve_first.B.reset <resolve_first.py:B.reset#0 Method> @88:11 in resolve_first.py
+    resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @52:17 in resolve_first.py
+  resolve_first.XmlHandler.process <resolve_first.py:XmlHandler.process#0 Method> @89:5 in resolve_first.py
+  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @90:5 in resolve_first.py
+  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @90:5 in resolve_first.py
+  resolve_first.XmlHandler.process <resolve_first.py:XmlHandler.process#0 Method> @90:5 in resolve_first.py
+
+== two_callees_write (merged)
+resolve_first.two_callees_write <resolve_first.py:two_callees_write#0 Function>
+  resolve_first.Box <resolve_first.py:Box#0 Class> @86:11 in resolve_first.py
+  resolve_first.XmlHandler <resolve_first.py:XmlHandler#0 Class> @86:15 in resolve_first.py
+  resolve_first.A <resolve_first.py:A#0 Class> @87:9 in resolve_first.py
+  resolve_first.B <resolve_first.py:B#0 Class> @87:23 in resolve_first.py
+  resolve_first.A.reset <resolve_first.py:A.reset#0 Method> @88:11 in resolve_first.py
+    resolve_first.JsonHandler <resolve_first.py:JsonHandler#0 Class> @45:17 in resolve_first.py
+  resolve_first.B.reset <resolve_first.py:B.reset#0 Method> @88:11 in resolve_first.py
+    resolve_first.CsvHandler <resolve_first.py:CsvHandler#0 Class> @52:17 in resolve_first.py
+  resolve_first.XmlHandler.process <resolve_first.py:XmlHandler.process#0 Method> x2 @89:5 in resolve_first.py
+  resolve_first.JsonHandler.process <resolve_first.py:JsonHandler.process#0 Method> @90:5 in resolve_first.py
+  resolve_first.CsvHandler.process <resolve_first.py:CsvHandler.process#0 Method> @90:5 in resolve_first.py
+

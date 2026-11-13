@@ -64,6 +64,18 @@ that read each other's attribute: applied one by one, both end up `CsvHandler`.
 | Tests | `p04_04_resolve_first`: `check` → `check_both("04-class-summaries/python/resolve_first.py")` (CS0: inline passes; summary fails `replacing` and `swapping`, both `.process` calls missing): `replacing` and `swapping` as in §1. A new entry in the same file, `two_callees_write` (`h = A() if c else B(); h.reset(box)` where `A.reset` and `B.reset` write `box.h` differently and each returns the old `box.h`): both returns are the old handler (decision 3) |
 | Proof | `cargo test` in `languages/python`. pylspt's demonstration, kept as a review step and not as code: swap the two phases in a scratch edit, see `replacing` fail with `CsvHandler.process` under `old`, swap back |
 
+**Result (CS4 built).** `replacing` and `swapping` already passed in summary mode since CS3b (no longer in the pinned list), so moving the
+test to `check_both` was not red; the seam is proved by the review step. In a scratch edit (`call.rs`, undone) the plan was applied and the
+returns resolved again against `env`: `replacing` gave `CsvHandler.process` twice and lost `JsonHandler.process`. With `resolve(…, env)`
+instead of `before`, `replacing` stays green (one callee) and `two_callees_write` leaks `JsonHandler.process` under `old`: so the two
+entries prove the two halves of the seam.
+
+`two_callees_write` was red on first run, but **not for the seam**: `old.process()` was right. `box.h.process()` drew an extra
+`XmlHandler.process`: a site with two callees applies each write weakly (`strong_ok` is false), so `box.h` keeps the old handler, where
+inline mode joins the two callees' states and holds only the two new ones. A wrong edge, unmarked. The fixture pins it as an
+`# expect summary:` block with the reason; whether summary mode should join the callees' own states as inline does is open (README §7).
+`argument_effects` was added for §6 claim 1.
+
 ## 5. After CS4: effects on by default (the owner's yes)
 
 README §7 question 2. When CS3e's gate holds (`extra` 0 on the fixtures and the three projects):
@@ -84,7 +96,7 @@ This is a natural point for a tag (`python-v0.3.0`), and for stopping to measure
 
 | # | Claim | Checked in |
 |---|---|---|
-| 1 | `call_values` evaluates every argument before it takes `before`, so a call inside an argument (`f(g(x))`) has its effects in `before` | CS4 |
-| 2 | The `Plan` of one callee is applied before the next callee's is resolved, and that is harmless because each resolves against the same `before` | CS4 |
+| 1 | `call_values` evaluates every argument before it takes `before`, so a call inside an argument (`f(g(x))`) has its effects in `before` | CS4. **Holds.** `eval_call` evaluates the callee and then `eval_arguments` into `env`; `call_values` clones `before` after that. `resolve_first.py argument_effects` (`show(box, box.replace(CsvHandler()))`: `b.h` is `CsvHandler`, `old` is `JsonHandler`) passes in both modes. It was green when written: it checks what the code does, it did not find a bug |
+| 2 | The `Plan` of one callee is applied before the next callee's is resolved, and that is harmless because each resolves against the same `before` | CS4. **Holds.** `resolve_first.py two_callees_write` draws one `XmlHandler.process` under `old`. Scratch edit (undone): resolving against `env` instead of `before` leaves `JsonHandler.process` under `old` as well, because callee B reads A's write. Not harmless in that edit, so `before` is what keeps it harmless |
 
 Next: [`05-deep-writes.md`](05-deep-writes.md)
