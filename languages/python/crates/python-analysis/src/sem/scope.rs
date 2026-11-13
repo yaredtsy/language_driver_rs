@@ -79,18 +79,6 @@ impl<'db> super::Sem<'db> {
         }
     }
 
-    /// The project class `def` is an instance method of (a property's getter too): what an entry on it is called on. `None` for a
-    /// classmethod, a static method, a function, a method of a class nested in a function, and a class that is not the project's.
-    pub(crate) fn method_class(&self, def: Definition<'db>) -> Option<Definition<'db>> {
-        let chain = self.scope_chain(def);
-        match chain.iter().rev().nth(1)? {
-            Scope::Class(c) if self.is_project(*c) => {
-                matches!(self.entry_kind(*c, def), EntryKind::Method).then_some(*c)
-            }
-            _ => None,
-        }
-    }
-
     /// `__init__` as found through the MRO, if it is a `def` somewhere.
     pub(crate) fn init_of(&self, class: Definition<'db>) -> Option<Definition<'db>> {
         let file = class.program_file(self.db);

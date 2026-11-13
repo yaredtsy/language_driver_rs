@@ -1,6 +1,3 @@
-# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
-# This pins what it says today so a change is noticed; it is not a right answer.
-
 == process
 entries.process <entries.py:process#0 Function>
   entries.Handler.handle <entries.py:Handler.handle#0 Method> @33:5 in entries.py
@@ -19,9 +16,11 @@ entries.Svc.run <entries.py:Svc.run#0 Method>
 
 == Child.go
 entries.Child.go <entries.py:Child.go#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @66:9 in entries.py
 
 == Child.go (merged)
 entries.Child.go <entries.py:Child.go#0 Method>
+  entries.JsonHandler.process <entries.py:JsonHandler.process#0 Method> @66:9 in entries.py
 
 == Job.run
 entries.Job.run <entries.py:Job.run#0 Method>
@@ -57,12 +56,10 @@ entries.Box.h <entries.py:Box.h#0 Method>
 
 == outer.inner
 entries.outer.inner <entries.py:outer.<locals>.inner#0 Function>
-  entries.A.go <entries.py:A.go#0 Method> @107:9 in entries.py
   entries.B.go <entries.py:B.go#0 Method> @107:9 in entries.py
 
 == outer.inner (merged)
 entries.outer.inner <entries.py:outer.<locals>.inner#0 Function>
-  entries.A.go <entries.py:A.go#0 Method> @107:9 in entries.py
   entries.B.go <entries.py:B.go#0 Method> @107:9 in entries.py
 
 == Svc.build.step

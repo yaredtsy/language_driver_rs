@@ -280,30 +280,18 @@ pub(crate) fn solve<'db>(
     // does the binding, exactly as step 02 did.
     let mut w = Walk::new(&s, def);
     let mut env = env::Env::default();
-    let receiver = match s.sem.classmethod_class(def) {
-        Some(class) => Some(value::AbstractValue::Class(class)),
-        // The entry prologue (spike): an instance method starts on an object its `__init__` has run on, hidden. Only `__init__` is part of
-        // the start (the entry rule), and with its defaults: the entry is called with no arguments.
-        None if opts.effects => match s.sem.method_class(def) {
-            Some(class) => {
-                let site = s.sem.def_range(class);
-                let mut hidden = smallvec::SmallVec::new();
-                let built = w.construct_summary(
-                    &mut s,
-                    class,
-                    site,
-                    &bind::EvaluatedArgs::default(),
-                    analyzer_core::graph::Basis::Type, // hidden: no edge is drawn
-                    &mut hidden,
-                    &mut env,
-                    true,
-                );
-                s.stats.prologue_walks += 1;
-                built.first().copied()
-            }
-            None => None,
-        },
-        None => None,
+    // With effects, the one prologue of inline mode starts the entry: the parents run (hidden), a method's object has its `__init__` run
+    // on it, and a closure's free values are read from the run it was defined in. Without them an entry starts as it always did: a
+    // classmethod's `cls`, nothing else.
+    let (receiver, enclosing) = if opts.effects {
+        let start = w.prologue(&mut s, def, &mut env);
+        (start.receiver, start.enclosing)
+    } else {
+        let receiver = s
+            .sem
+            .classmethod_class(def)
+            .map(value::AbstractValue::Class);
+        (receiver, None)
     };
     let bound = w.bind_parameters(
         &mut s,
@@ -311,9 +299,9 @@ pub(crate) fn solve<'db>(
         node,
         receiver,
         &bind::EvaluatedArgs::default(),
-        None,
+        enclosing,
     );
-    let root_ctx = s.key(&w, def, &bound, None, &env);
+    let root_ctx = s.key(&w, def, &bound, enclosing, &env);
     s.get(root_ctx);
     Some((s, EntryRoot::Context(root_ctx)))
 }

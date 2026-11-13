@@ -74,12 +74,12 @@ chains.annotated#61f40c5672d2ae8c Finished
   @31-41 -> chains.Handler.handle#1afb5238b96542fa Type
 
 == Service.call
-entries: chains.Service.call#b1e69ec6accdb03c
-stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 1, "lifted_subclass_of": 0, "prologue_walks": 1, "types_dropped": 0, "unknown_callee": 0}
+entries: chains.Service.call#0d80276de0856a33
+stats: walks 3, contexts 3, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "lifted_subclass_of": 0, "prologue_walks": 1, "types_dropped": 0, "unknown_callee": 0}
 def chains.Handler.handle = Handler.handle#0 Method chains.py
 def chains.Service.call = Service.call#0 Method chains.py
 chains.Handler.handle#1afb5238b96542fa Finished
-chains.Service.call#b1e69ec6accdb03c Finished
+chains.Service.call#0d80276de0856a33 Finished
   @24-45 -> chains.Handler.handle#1afb5238b96542fa Type
 
 == separate

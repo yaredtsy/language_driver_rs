@@ -777,13 +777,20 @@ fn p03_07_chains() {
 /// methods, and the end-of-run rule for an escaped closure (`fire`).
 #[test]
 fn p03_08_entries() {
-    check("03-classes/python/entries.py");
+    check_both("03-classes/python/entries.py");
 }
 
 #[test]
 fn p03_08_prologue_runs_the_parents() {
     let f = "03-classes/python/entries.py";
-    let walks = |entry| stats_for(f, entry, &inline()).prologue_walks;
+    // the same counts in both modes: one prologue (`Walk::prologue`) starts every entry
+    for opts in [inline(), summary()] {
+        prologue_counts(f, &opts);
+    }
+}
+
+fn prologue_counts(f: &str, opts: &Options) {
+    let walks = |entry| stats_for(f, entry, opts).prologue_walks;
     assert_eq!(walks("process"), 0); // a module function: nothing to set up
     assert_eq!(walks("Reg.create"), 0); // a classmethod: no object
     assert_eq!(walks("outer.inner"), 1); // outer ran
@@ -1474,13 +1481,13 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
             _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 36 programs are verified in both modes and 11 only inline (six of `03-classes/`, five of `04-class-summaries/`); 47 are run at
+    // 37 programs are verified in both modes and 10 only inline (five of `03-classes/`, five of `04-class-summaries/`); 47 are run at
     // all; 48 have `# expect:` blocks (one is never run: `deep_write_capped.py` asks for `max_path`, which does not exist yet, so
     // `every_entry` skips it)
     let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
     assert_eq!(
         (verified, by_fixture.len() - verified),
-        (36, 11),
+        (37, 10),
         "a program was added or lost"
     );
     for (fixture, verified, text) in by_fixture {
@@ -2173,22 +2180,22 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
         total.at_unresolved,
         total.extra
     );
-    // With effects on (CS3b) 15 of the 21 entries that failed before are right; the six left are `chains.py` `inherited` and `via_super`
-    // (a `super()` and an inherited method: not effects), and `entries.py` `Child.go`, `outer.inner`, `Svc.build.step` (the entry prologue:
-    // CS3c), and `state.py` `either` (rule 7, below).
-    assert_eq!((entries, failing), (48, 6));
-    assert_eq!(total.missing, 6, "nodes inline finds and summary does not");
-    assert_eq!(total.highest_missing, 5, "the topmost of them");
+    // With effects on (CS3b) 15 of the 21 entries that failed were right; with the one prologue (CS3c) `entries.py` is checked in both modes
+    // (`check_both`) and leaves this test, with its 20 entries, so 28 entries are left. The three that fail are `chains.py` `inherited` and
+    // `via_super` (a `super()` and an inherited method: not effects) and `state.py` `either` (rule 7, below).
+    assert_eq!((entries, failing), (28, 3));
+    assert_eq!(total.missing, 4, "nodes inline finds and summary does not");
+    assert_eq!(total.highest_missing, 3, "the topmost of them");
     assert_eq!(
-        total.at_unresolved, 4,
+        total.at_unresolved, 2,
         "topmost missing nodes at a call site the graph marks Unresolved"
     );
     assert_eq!(
         (total.nodes_at_unresolved, total.nodes_elsewhere),
-        (4, 2),
+        (2, 2),
         "of the missing nodes: under an Unresolved call site, and elsewhere"
     );
-    assert_eq!(total.missing, 4 + 2);
+    assert_eq!(total.missing, 2 + 2);
 
     // The claim "every missing node is under an Unresolved call site" is false, and this is why. `either`: inline lists one Pipeline.run
     // per object, summary joins them (rule 7), so it is not lost information. (Two property getters of `special.py` `main` were on this
@@ -2208,26 +2215,17 @@ fn what_summary_mode_misses_on_the_class_programs_and_what_the_graph_says_there(
         total.not_at_unresolved,
         ["03-classes/python/state.py either -> state.Pipeline.run"]
     );
-    // Edges summary mode has and inline mode does not.
+    // Edges summary mode has and inline mode does not: one. `state.py` `either -> Pipeline.run -> CsvHandler.process` is rule 7's join, not a
+    // wrong call: Python makes both calls (one per branch), inline draws a `Pipeline.run` for each object and summary draws the one node, with
+    // both handlers under it. Before effects that node had no child, and the same join showed as the missing nodes above.
     //
-    // `entries.py` `outer.inner -> A.go`, an error from ty's static type, the union of every assignment in the function (`outer`'s h is A,
-    // then B), used where the receiver was not tracked along the path: `h` is B whenever `inner` runs, because it can only run after `outer`
-    // has finished, so A.go is unreachable. An ordinary unmarked edge, and CS3c (one prologue, which runs `outer` first) is expected to remove it.
-    //
-    // `state.py` `either -> Pipeline.run -> CsvHandler.process` is rule 7's join, not a wrong call: Python makes both calls (one per branch),
-    // inline draws a `Pipeline.run` for each object and summary draws the one node, with both handlers under it. Before effects that node
-    // had no child, and the same join showed as the missing nodes above.
-    //
-    // `entries.py` `Job.run -> B.go` is gone: the edge was ty's union (`Job.h` is A in __init__ and B in configure) used because the walk held
-    // no `h`; now the entry starts on a `Job` its `__init__` ran on, so `h` is A. The entry rule stays as it is ("only __init__ is part of
-    // the start"), and B.go, reachable if `configure` ran first, stays out of the tree.
-    assert_eq!(total.extra, 2);
+    // `entries.py` is out of this test since CS3c, and so are its two lines: `outer.inner -> A.go` (an error from ty's static type, gone now
+    // that the prologue runs `outer` first) and `Job.run -> B.go` (gone at CS3b: the entry starts on a `Job` its `__init__` ran on, so `h` is
+    // A; B.go, reachable if `configure` ran first, stays out by the entry rule "only __init__ is part of the start").
+    assert_eq!(total.extra, 1);
     assert_eq!(
         total.extras,
-        [
-            "03-classes/python/entries.py outer.inner -> entries.A.go",
-            "03-classes/python/state.py either/state.Pipeline.run -> state.CsvHandler.process"
-        ]
+        ["03-classes/python/state.py either/state.Pipeline.run -> state.CsvHandler.process"]
     );
 }
 
