@@ -1016,11 +1016,15 @@ fn an_environment_outside_the_root_is_in_the_list_as_an_absolute_path() {
     let expected = expected.to_str().unwrap();
     // on Windows `canonicalize` returns the verbatim form (`\\?\C:\…`); the engine's `canonicalize_path` simplifies it, so the entry has no prefix
     let expected = expected.strip_prefix(r"\\?\").unwrap_or(expected);
-    assert!(
-        list.iter().any(|e| e == expected),
-        "{expected} not in {list:?}"
-    );
-    assert!(std::path::Path::new(expected).is_absolute());
+    // and every entry is spelled with `/`, the absolute one too; on Unix a `\` is part of a name, so nothing is replaced there
+    let expected = if cfg!(windows) {
+        expected.replace('\\', "/")
+    } else {
+        expected.to_owned()
+    };
+    assert!(list.contains(&expected), "{expected} not in {list:?}");
+    assert!(std::path::Path::new(&expected).is_absolute());
+    assert!(list.iter().all(|e| !e.contains('\\')), "{list:?}");
     assert_sorted(&list);
 
     // an absolute entry is stamped too

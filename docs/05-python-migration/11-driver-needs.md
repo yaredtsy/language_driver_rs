@@ -161,7 +161,7 @@ Rewritten 2026-11-13 after reading the vendored engine (`ty_project/src/metadata
 | Input | Why |
 |---|---|
 | `pyproject.toml`, `ty.toml` in the root only | the configuration; a parent's is never read (D26) |
-| `<sys.prefix>/pyvenv.cfg` of **the environment the engine uses** | its Python version and its `site-packages`. Found with the engine's own functions, in the engine's order: the config's `environment.python` (`PythonEnvironment::new` on it), else `PythonEnvironment::discover(root)`, which tries `VIRTUAL_ENV`, a child `CONDA_PREFIX`, `<root>/.venv`, a base conda, then `python3` / `python` on `PATH`. Listed when the config names it (even if it is broken: the user may fix it), or when the discovered environment has a `pyvenv.cfg`. Relative to the root when under it, **absolute** otherwise |
+| `<sys.prefix>/pyvenv.cfg` of **the environment the engine uses** | its Python version and its `site-packages`. Found with the engine's own functions, in the engine's order: the config's `environment.python` (`PythonEnvironment::new` on it), else `PythonEnvironment::discover(root)`, which tries `VIRTUAL_ENV`, a child `CONDA_PREFIX`, `<root>/.venv`, a base conda, then `python3` / `python` on `PATH`. Listed when the config names it (even if it is broken: the user may fix it), or when the discovered environment has a `pyvenv.cfg`. Relative to the root when under it, **absolute** otherwise; **written with `/` on every OS** (`C:/envs/x/pyvenv.cfg`, `//server/share/x/pyvenv.cfg`), like every entry |
 | `.venv/pyvenv.cfg`, always | creating a `.venv` later changes what `discover` picks when no config or `VIRTUAL_ENV` names one. Listed once if it is also the line above |
 | `uv.lock`, `poetry.lock`, `Pipfile.lock`, `requirements*.txt` | a stand-in for "the installed packages changed", as TypeScript lists lock files. A `pip install` without a lock change is **not** listed (the `site-packages` folder is thousands of files); a module the engine had looked up and not found is still seen by `refresh` (`sync_all`, claim 2) |
 
@@ -217,7 +217,7 @@ nothing in `core/` (rule 5 is still checked: core's tests run).
 | | |
 |---|---|
 | Change | §5: `Project::environment_inputs`, computed at open and reopen and kept; `refresh`'s stamps use it (PY9.2's private constant goes, `.python-version` leaves the list); §10 claim 6 |
-| Failing tests | **unit** (`sem/project.rs`): the list from a root and the environment's `sys.prefix`, a pure function: none; one under the root; `<root>/.venv` itself (listed once); one outside the root (absolute). **`tests/api.rs`**, on projects the test writes (as PY9.2): (a) no config: the list holds the fixed entries and `.venv/pyvenv.cfg`, and anything else in it is absolute (the test process may have `VIRTUAL_ENV` set, or a Python on `PATH`: the test must not depend on the machine). (b) a `ty.toml` with `[environment] python = "env"` and an `env/pyvenv.cfg`: `env/pyvenv.cfg` is in the list (the config wins over `VIRTUAL_ENV`, so this is the same on every machine). (c) the same, `env/pyvenv.cfg` rewritten: `refresh` reopens. (d) `python` naming a folder outside the root: its `pyvenv.cfg` is in the list as an absolute path. (e) sorted |
+| Failing tests | **unit** (`sem/project.rs`): the list from a root and the environment's `sys.prefix`, a pure function: none; one under the root; `<root>/.venv` itself (listed once); one outside the root (absolute). **`tests/api.rs`**, on projects the test writes (as PY9.2): (a) no config: the list holds the fixed entries and `.venv/pyvenv.cfg`, and anything else in it is absolute (the test process may have `VIRTUAL_ENV` set, or a Python on `PATH`: the test must not depend on the machine). (b) a `ty.toml` with `[environment] python = "env"` and an `env/pyvenv.cfg`: `env/pyvenv.cfg` is in the list (the config wins over `VIRTUAL_ENV`, so this is the same on every machine). (c) the same, `env/pyvenv.cfg` rewritten: `refresh` reopens. (d) `python` naming a folder outside the root: its `pyvenv.cfg` is in the list as an absolute path, spelled with `/` (unit tests of `C:\…` and `\\server\share\…` run on Windows CI only). (e) sorted |
 | Proof | as PY9.1 |
 
 ### PY9.4. The CLI shows it
@@ -242,8 +242,9 @@ Text for the vnoc agent, after PY9.4 is pushed and CI is green. Nothing here is 
    dropped (`-32800`). A request still queued when it is cancelled is answered `-32800` without being run. To count the time a request
    waits in the queue against its deadline, build the `Cancel` with `with_deadline(received + 20 s)` when the request arrives (§10 claim 4).
 3. **`vnoc/environmentInputs { root }`** answers `Project::environment_inputs()`; capability `environmentInputs: true`. An entry is a path
-   or a glob relative to the root, **or an absolute path** when the environment lives outside the root (§5): check that the core's hashing
-   accepts one.
+   or a glob relative to the root, **or an absolute path** when the environment lives outside the root (§5). **Every entry is written with
+   `/`, the absolute one too** (`C:/envs/x/pyvenv.cfg`); the core turns a watcher path (`C:\…`) into `/` once and compares strings, and
+   never rewrites an entry. Check that the core's hashing accepts an absolute one.
 4. **The mark `likely`** (D28, from the last `rev`): add `CallMark::Likely` to the protocol (additive) and map `"likely"` to it, instead of
    dropping it. Until then the UI shows a likely call as a certain one.
 5. **After TypeScript's TS5 step 2**, the wire version the driver reports is 3; Python's wire has no `more` field with default options.

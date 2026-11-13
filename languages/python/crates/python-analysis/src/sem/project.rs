@@ -53,8 +53,8 @@ const FIXED_INPUTS: [&str; 7] = [
 ];
 
 /// The inputs of a project rooted at `root` whose `sys.prefix` is `environment` (`None`: no environment with a `pyvenv.cfg`): the fixed
-/// entries and `<environment>/pyvenv.cfg`. An entry is relative to `root`, written with `/` on every OS, when it is under it, and absolute
-/// otherwise. Sorted and without duplicates (rule 9).
+/// entries and `<environment>/pyvenv.cfg`. An entry is relative to `root` when it is under it, and absolute otherwise; either way it is
+/// written with `/` on every OS (`C:/envs/x/pyvenv.cfg`, `//server/share/x/pyvenv.cfg`). Sorted and without duplicates (rule 9).
 ///
 /// It takes plain paths and asks the engine nothing, so it is tested with any made-up root and environment: the part that asks the
 /// engine is [`environment_prefix`].
@@ -68,12 +68,22 @@ fn input_list(root: &SystemPath, environment: Option<&SystemPath>) -> Vec<String
                 .map(|c| c.as_str())
                 .collect::<Vec<_>>()
                 .join("/"),
-            Err(_) => cfg.as_str().to_owned(),
+            Err(_) => with_slashes(cfg.as_str()),
         });
     }
     list.sort();
     list.dedup();
     list
+}
+
+/// `path` with `/` for every separator. Only on Windows: there `\` is a separator and `/` is one too, so nothing is lost. On Unix a `\`
+/// is a character of a file name, and the engine's canonical paths may hold one, so the path is kept as it is.
+fn with_slashes(path: &str) -> String {
+    if cfg!(windows) {
+        path.replace('\\', "/")
+    } else {
+        path.to_owned()
+    }
 }
 
 /// The `sys.prefix` of the environment the engine uses for `metadata`, found with the engine's own functions in its order
@@ -231,8 +241,8 @@ impl Project {
     }
 
     /// The files whose change means "answers may differ": the host hashes them and drops what it cached when the hash changes. An entry is a
-    /// path, or the glob `requirements*.txt`, relative to the root with `/`, or an absolute path when the environment the engine uses
-    /// lives outside the root. The list was computed when the project was opened or last reopened by [`Project::refresh`], not on each call:
+    /// path, or the glob `requirements*.txt`, relative to the root, or an absolute path when the environment the engine uses lives
+    /// outside the root. Always written with `/`, on every OS, the absolute one too (`C:/envs/x/pyvenv.cfg`). The list was computed when the project was opened or last reopened by [`Project::refresh`], not on each call:
     /// finding the environment looks at `PATH`. It is sorted.
     pub fn environment_inputs(&self) -> Vec<String> {
         self.inputs.clone()
@@ -398,10 +408,53 @@ mod input_lists {
     #[test]
     fn an_environment_outside_the_root_is_absolute() {
         let l = list(Some("/elsewhere/env"));
-        // `join` puts the OS's separator: `\pyvenv.cfg` on Windows, as the engine's own absolute paths have there.
-        let cfg = SystemPath::new("/elsewhere/env").join("pyvenv.cfg");
-        assert!(l.contains(&cfg.as_str().to_owned()), "{l:?}");
+        assert!(l.contains(&"/elsewhere/env/pyvenv.cfg".to_owned()), "{l:?}");
         assert_eq!(l.len(), FIXED.len() + 1);
         assert!(sorted(&l));
+    }
+
+    /// Windows CI only: the engine's own spelling there has `\`.
+    #[cfg(windows)]
+    #[test]
+    fn a_drive_path_outside_the_root_is_written_with_slashes() {
+        let l = input_list(
+            SystemPath::new(r"C:\proj"),
+            Some(SystemPath::new(r"C:\elsewhere\env")),
+        );
+        assert!(
+            l.contains(&"C:/elsewhere/env/pyvenv.cfg".to_owned()),
+            "{l:?}"
+        );
+        assert!(l.iter().all(|e| !e.contains('\\')), "{l:?}");
+        assert!(sorted(&l));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_unc_path_outside_the_root_is_written_with_slashes() {
+        let l = input_list(
+            SystemPath::new(r"C:\proj"),
+            Some(SystemPath::new(r"\\server\share\env")),
+        );
+        assert!(
+            l.contains(&"//server/share/env/pyvenv.cfg".to_owned()),
+            "{l:?}"
+        );
+        assert!(l.iter().all(|e| !e.contains('\\')), "{l:?}");
+        assert!(sorted(&l));
+    }
+
+    /// Windows CI only: `stamps` hands an entry to `Path::join`, which keeps the right side only if it is absolute. A `//server/share/x`
+    /// entry must be, or a change to a UNC environment is never seen.
+    #[cfg(windows)]
+    #[test]
+    fn an_entry_written_with_slashes_is_still_absolute() {
+        assert!(std::path::Path::new("C:/elsewhere/env/pyvenv.cfg").is_absolute());
+        assert!(std::path::Path::new("//server/share/env/pyvenv.cfg").is_absolute());
+        let root = std::path::Path::new(r"C:\proj");
+        assert_eq!(
+            root.join("//server/share/env/pyvenv.cfg"),
+            std::path::PathBuf::from("//server/share/env/pyvenv.cfg")
+        );
     }
 }
