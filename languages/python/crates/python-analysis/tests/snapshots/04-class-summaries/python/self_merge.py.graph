@@ -1,0 +1,42 @@
+== merged
+entries: self_merge.merged#f9e462564626bea3
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def self_merge.Holder = Holder#0 Class self_merge.py
+def self_merge.Holder.__init__ = Holder.__init__#0 Method self_merge.py
+def self_merge.Holder.merge = Holder.merge#0 Method self_merge.py
+def self_merge.J = J#0 Class self_merge.py
+def self_merge.J.run = J.run#0 Method self_merge.py
+def self_merge.K = K#0 Class self_merge.py
+def self_merge.merged = merged#0 Function self_merge.py
+self_merge.Holder.__init__#187c976d32d7d205 Finished
+self_merge.Holder.merge#aea774fb9160bc8e Finished
+  @42-45 -> new self_merge.J init - Name
+  @54-66 -> self_merge.J.run#906ba24f73ec429a Path
+self_merge.J.run#906ba24f73ec429a Finished
+self_merge.merged#f9e462564626bea3 Finished
+  @22-33 -> new self_merge.Holder init self_merge.Holder.__init__#187c976d32d7d205 Name
+  @29-32 -> new self_merge.K init - Name
+  @38-48 -> self_merge.Holder.merge#aea774fb9160bc8e Path
+
+== apart
+entries: self_merge.apart#6ac357d59e2a662e
+stats: walks 4, contexts 4, reuse_hits 1, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 3, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def self_merge.Holder = Holder#0 Class self_merge.py
+def self_merge.Holder.__init__ = Holder.__init__#0 Method self_merge.py
+def self_merge.Holder.merge = Holder.merge#0 Method self_merge.py
+def self_merge.J = J#0 Class self_merge.py
+def self_merge.K = K#0 Class self_merge.py
+def self_merge.K.run = K.run#0 Method self_merge.py
+def self_merge.apart = apart#0 Function self_merge.py
+self_merge.Holder.__init__#187c976d32d7d205 Finished
+self_merge.Holder.merge#fab2e74b7acab591 Finished
+  @42-45 -> new self_merge.J init - Name
+  @54-66 -> self_merge.K.run#50106058b1e0f0ec Type
+self_merge.K.run#50106058b1e0f0ec Finished
+self_merge.apart#6ac357d59e2a662e Finished
+  @21-32 -> new self_merge.Holder init self_merge.Holder.__init__#187c976d32d7d205 Name
+  @28-31 -> new self_merge.K init - Name
+  @41-52 -> new self_merge.Holder init self_merge.Holder.__init__#187c976d32d7d205 Name
+  @48-51 -> new self_merge.K init - Name
+  @57-67 -> self_merge.Holder.merge#fab2e74b7acab591 Path
+

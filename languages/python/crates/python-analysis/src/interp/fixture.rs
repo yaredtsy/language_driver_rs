@@ -1262,10 +1262,94 @@ fn p04_06_split() {
     check("04-class-summaries/python/split.py");
 }
 
-/// Inline mode only until CS7 (aliases).
+/// CS7: two parameters holding one object are one object in the callee (07 §2): `same` draws `JsonHandler.process`, `different` does not.
 #[test]
 fn p04_07_aliases() {
-    check("04-class-summaries/python/aliases.py");
+    check_both("04-class-summaries/python/aliases.py");
+    check_both("04-class-summaries/python/alias_pair.py");
+    check_both("04-class-summaries/python/alias_free.py"); // the known limit of decision 4, in both modes
+}
+
+/// 07 §5 claim 1: the receiver is slot 0, so `a.merge(a)` needs no special case.
+#[test]
+fn p04_07_a_receiver_that_is_also_an_argument_is_one_object() {
+    check_both("04-class-summaries/python/self_merge.py");
+}
+
+/// The digest of `set_and_read`'s one context under `different` (two `Box`es holding a `CsvHandler`, no aliasing), as a key without an
+/// alias vector gave it: pinned on 2026-11-13, before `Context.alias` existed (CS7).
+fn digest_of_set_and_read(entry: &str) -> Vec<String> {
+    let (db, file) = open_fixture("04-class-summaries/python/aliases.py");
+    let (s, _) = solve(&db, file, entry, &summary()).unwrap();
+    let mut out: Vec<String> = s
+        .contexts
+        .iter()
+        .filter(|(_, k)| s.sem.qname(k.func) == "aliases.set_and_read")
+        .map(|(c, _)| {
+            let d = s.stable_id(c).digest;
+            d.iter().map(|b| format!("{b:02x}")).collect()
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+const DIGEST_BEFORE_ALIAS: &str = "580af8cf013e505a6d505eeb31764101";
+
+/// 07 §3: a key whose alias vector is the identity has the digest it had before the field existed, and `different` is such a key.
+#[test]
+fn p04_07_a_key_with_no_aliasing_has_the_digest_it_had() {
+    assert_eq!(digest_of_set_and_read("different"), [DIGEST_BEFORE_ALIAS]);
+}
+
+/// `same` is the same key but for the alias vector `[0, 0]`: another digest. The identity written out is the digest of today; `[0, 0]` is not.
+#[test]
+fn p04_07_an_alias_vector_that_is_not_the_identity_changes_the_digest() {
+    let hex = |d: [u8; 16]| -> String { d.iter().map(|b| format!("{b:02x}")).collect() };
+    let (db, file) = open_fixture("04-class-summaries/python/aliases.py");
+    let (mut s, _) = solve(&db, file, "different", &summary()).unwrap();
+    let (_, base) = s
+        .contexts
+        .iter()
+        .find(|(_, k)| s.sem.qname(k.func) == "aliases.set_and_read")
+        .map(|(c, k)| (c, k.clone()))
+        .unwrap();
+    assert_eq!(base.alias.as_slice(), [0, 1]);
+    let mut with = |alias: &[u8]| {
+        let mut k = base.clone();
+        k.alias = alias.iter().copied().collect();
+        let id = s.contexts.intern(k);
+        hex(s.stable_id(id).digest)
+    };
+    let (identity, same) = (with(&[0, 1]), with(&[0, 0]));
+    assert_eq!(identity, DIGEST_BEFORE_ALIAS);
+    assert_ne!(same, DIGEST_BEFORE_ALIAS);
+    // and it is what the walk of `same` gives
+    assert_eq!(digest_of_set_and_read("same"), [same]);
+}
+
+/// `same` and `different` are two contexts of `set_and_read`; two calls of `different` share one.
+#[test]
+fn p04_07_same_and_different_are_two_contexts_and_two_calls_share_one() {
+    let count = |entry: &str| {
+        let (db, file) = open_fixture("04-class-summaries/python/aliases.py");
+        let (s, _) = solve(&db, file, entry, &summary()).unwrap();
+        s.contexts
+            .iter()
+            .filter(|(_, k)| s.sem.qname(k.func) == "aliases.set_and_read")
+            .count()
+    };
+    assert_eq!((count("same"), count("different")), (1, 1));
+    let (db, file) = open_fixture("04-class-summaries/python/alias_pair.py");
+    let (s, _) = solve(&db, file, "main", &summary()).unwrap();
+    let mut alias: Vec<Vec<u8>> = s
+        .contexts
+        .iter()
+        .filter(|(_, k)| s.sem.qname(k.func) == "alias_pair.set_and_read")
+        .map(|(_, k)| k.alias.to_vec())
+        .collect();
+    alias.sort();
+    assert_eq!(alias, [vec![0, 0], vec![0, 1]]); // `same` twice and `different` twice: two contexts
 }
 
 /// Inline mode only until CS8 (recursion with objects).
@@ -1812,13 +1896,13 @@ fn the_wire_of_every_fixture_equals_its_snapshot() {
             _ => by_fixture.push((fixture, verified, text)),
         }
     }
-    // 49 programs are verified in both modes and 3 only inline (all in `04-class-summaries/`); 52 are run at all, and all have
-    // `# expect:` blocks (`deep_write.py` moved to both modes at CS5b, and `deep_write_capped.py`, `deep_write_two_levels.py`,
-    // `deep_read.py` and `deep_recursion.py` joined, all verified)
+    // 53 programs are verified in both modes and 2 only inline (`recursion_objects.py`, `split.py`, in `04-class-summaries/`); 55 are run at
+    // all, and all have `# expect:` blocks (`deep_write.py` moved to both modes at CS5b, and `deep_write_capped.py`, `deep_write_two_levels.py`,
+    // `deep_read.py` and `deep_recursion.py` joined, all verified; `aliases.py` moved at CS7, and `alias_pair.py`, `alias_free.py` and `self_merge.py` joined)
     let verified = by_fixture.iter().filter(|(_, v, _)| *v).count();
     assert_eq!(
         (verified, by_fixture.len() - verified),
-        (49, 3),
+        (53, 2),
         "a program was added or lost"
     );
     for (fixture, verified, text) in by_fixture {
@@ -2236,7 +2320,7 @@ fn the_graph_of_every_fixture_equals_its_snapshot() {
     }
     assert_eq!(
         (by_fixture.len(), entries),
-        (52, 166),
+        (55, 170),
         "an entry was added or lost"
     );
     for (fixture, text) in by_fixture {
@@ -2410,28 +2494,25 @@ fn what_summary_mode_gives_on_the_part_04_programs_against_their_blocks() {
     }
     assert_eq!(
         (fixtures.len(), blocks),
-        (3, 8),
+        (2, 5),
         "the part 04 programs checked inline only, and their summary-mode blocks"
     );
-    // 8 blocks are summary mode's; these 3 fail. `effects.py` is verified in both modes since CS3b (its five blocks left this list), and
-    // `aliases.py different` left it too, and `resolve_first.py` (its `replacing` and `swapping` passed since CS3b; CS4 moved the
-    // program to `check_both`), and `deep_write.py` (CS5b: the write past the key reaches `main` by its path): they now pass. The five that
-    // pass: `aliases.py different`, `aliases.py nested` (its summary block is the
-    // known limit), `recursion_objects.py visitor` (whose `Report.emit` comes from ty's type of `v.found`, a `Type` edge, not from the
-    // walk), and `identity_limit` and `tree_fill` (below).
+    // 5 blocks are summary mode's; these 2 fail. `effects.py` is verified in both modes since CS3b (its five blocks left this list),
+    // `resolve_first.py` since CS4, `deep_write.py` since CS5b (the write past the key reaches `main` by its path), and `aliases.py` since
+    // CS7 (the key says which slots are one object: `same` draws `JsonHandler.process`; `nested`'s summary block is the known limit, now
+    // checked in both modes). The three that pass here: `recursion_objects.py visitor` (whose `Report.emit` comes from ty's type of
+    // `v.found`, a `Type` edge, not from the walk), and `identity_limit` and `tree_fill` (below).
     //
     // `recursion_objects.py` `identity_limit` and `tree_fill` joined the list at CS3b and left it at CS3b.2: their blocks pinned a known
     // limit that both modes had ("Python: JsonHandler.process"), and with effects summary mode draws the call (run under Python, both
     // programs call `JsonHandler.process`). Each is now an `# expect inline:` block (the limit, as it was) and an `# expect summary:` block
     // (with the call). Each site that rests on a cycle is marked (`unknown_callee`, `effects_in_cycle`).
     //
-    // The two wrong edges effects add stay here, each with its reason (README §7 question 2): `aliases.py same` draws `CsvHandler.process`
-    // (the key does not say the two arguments are one object: CS7); `split.py main` pairs each handler with both keys (inline mode draws
-    // the same mix: CS6). `use_walk` waits for CS8.
+    // The wrong edges that stay here, each with its reason (README §7 question 2): `split.py main` pairs each handler with both keys
+    // (inline mode draws the same mix: CS6). `use_walk` waits for CS8.
     assert_eq!(
         failing,
         [
-            "04-class-summaries/python/aliases.py same",
             "04-class-summaries/python/recursion_objects.py use_walk",
             "04-class-summaries/python/split.py main",
         ]

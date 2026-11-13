@@ -1,0 +1,36 @@
+== main
+alias_pair.main <alias_pair.py:main#0 Function>
+  alias_pair.Box <alias_pair.py:Box#0 Class> @27:9 in alias_pair.py
+  alias_pair.CsvHandler <alias_pair.py:CsvHandler#0 Class> @27:13 in alias_pair.py
+  alias_pair.set_and_read <alias_pair.py:set_and_read#0 Function> @28:5 in alias_pair.py
+    alias_pair.JsonHandler <alias_pair.py:JsonHandler#0 Class> @22:11 in alias_pair.py
+    alias_pair.JsonHandler.process <alias_pair.py:JsonHandler.process#0 Method> @23:5 in alias_pair.py
+  alias_pair.Box <alias_pair.py:Box#0 Class> @29:9 in alias_pair.py
+  alias_pair.CsvHandler <alias_pair.py:CsvHandler#0 Class> @29:13 in alias_pair.py
+  alias_pair.set_and_read <alias_pair.py:set_and_read#0 Function> @30:5 in alias_pair.py
+    alias_pair.JsonHandler <alias_pair.py:JsonHandler#0 Class> @22:11 in alias_pair.py
+    alias_pair.JsonHandler.process <alias_pair.py:JsonHandler.process#0 Method> @23:5 in alias_pair.py
+  alias_pair.Box <alias_pair.py:Box#0 Class> @31:9 in alias_pair.py
+  alias_pair.CsvHandler <alias_pair.py:CsvHandler#0 Class> @31:13 in alias_pair.py
+  alias_pair.Box <alias_pair.py:Box#0 Class> @32:9 in alias_pair.py
+  alias_pair.CsvHandler <alias_pair.py:CsvHandler#0 Class> @32:13 in alias_pair.py
+  alias_pair.set_and_read <alias_pair.py:set_and_read#0 Function> @33:5 in alias_pair.py
+    alias_pair.JsonHandler <alias_pair.py:JsonHandler#0 Class> @22:11 in alias_pair.py
+    alias_pair.CsvHandler.process <alias_pair.py:CsvHandler.process#0 Method> @23:5 in alias_pair.py
+  alias_pair.Box <alias_pair.py:Box#0 Class> @34:9 in alias_pair.py
+  alias_pair.CsvHandler <alias_pair.py:CsvHandler#0 Class> @34:13 in alias_pair.py
+  alias_pair.Box <alias_pair.py:Box#0 Class> @35:9 in alias_pair.py
+  alias_pair.CsvHandler <alias_pair.py:CsvHandler#0 Class> @35:13 in alias_pair.py
+  alias_pair.set_and_read <alias_pair.py:set_and_read#0 Function> @36:5 in alias_pair.py
+    alias_pair.JsonHandler <alias_pair.py:JsonHandler#0 Class> @22:11 in alias_pair.py
+    alias_pair.CsvHandler.process <alias_pair.py:CsvHandler.process#0 Method> @23:5 in alias_pair.py
+
+== main (merged)
+alias_pair.main <alias_pair.py:main#0 Function>
+  alias_pair.Box <alias_pair.py:Box#0 Class> x6 @27:9 in alias_pair.py
+  alias_pair.CsvHandler <alias_pair.py:CsvHandler#0 Class> x6 @27:13 in alias_pair.py
+  alias_pair.set_and_read <alias_pair.py:set_and_read#0 Function> x4 @28:5 in alias_pair.py
+    alias_pair.JsonHandler <alias_pair.py:JsonHandler#0 Class> x4 @22:11 in alias_pair.py
+    alias_pair.JsonHandler.process <alias_pair.py:JsonHandler.process#0 Method> x2 @23:5 in alias_pair.py
+    alias_pair.CsvHandler.process <alias_pair.py:CsvHandler.process#0 Method> x2 @23:5 in alias_pair.py
+

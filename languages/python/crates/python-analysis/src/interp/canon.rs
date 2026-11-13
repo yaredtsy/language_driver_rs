@@ -40,6 +40,14 @@ struct CanonKey {
     args: Vec<Canon>,
     free: Vec<(String, Canon)>,
     defaults: Vec<(String, Canon)>,
+    /// Which slots are one object (07 §3). Left out when it is the identity, so a key with no aliasing has the digest it had before this
+    /// field existed: every id in every wire, and the golden, stay as they were.
+    #[serde(skip_serializing_if = "is_identity")]
+    alias: Vec<u8>,
+}
+
+fn is_identity(alias: &[u8]) -> bool {
+    alias.iter().enumerate().all(|(i, &j)| i == usize::from(j))
 }
 
 impl<'db> Solver<'db> {
@@ -52,6 +60,7 @@ impl<'db> Solver<'db> {
             args: k.args.iter().map(|&f| self.canon(f, file)).collect(),
             free: self.canon_named(&k.free, file),
             defaults: self.canon_named(&k.defaults, file),
+            alias: k.alias.to_vec(),
         };
         // Bytes we wrote, never `#[derive(Hash)]`: std makes no promise to keep it stable.
         let bytes = serde_json::to_vec(&key).expect("a canonical key always serializes");

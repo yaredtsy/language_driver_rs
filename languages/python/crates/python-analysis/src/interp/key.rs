@@ -58,6 +58,9 @@ pub(crate) struct Context<'db> {
     pub free: SmallVec<[(Name, FpId); 2]>,
     /// ... and its own defaults.
     pub defaults: SmallVec<[(Name, FpId); 2]>,
+    /// `alias[i]`: the first slot holding the same object as slot `i`, or `i` (07 §2). A fingerprint says what an object holds, never which
+    /// object it is: `f(x, x)` and `f(x, y)` for two equal `x`, `y` have equal `args`, and differ here.
+    pub alias: SmallVec<[u8; 4]>,
 }
 
 /// The closures being fingerprinted, innermost last, compared by `(func, activation)`.
@@ -323,12 +326,34 @@ impl<'db> Solver<'db> {
             }),
             None => (SmallVec::new(), SmallVec::new()),
         };
+        let alias = Self::alias_vector(w, bound, relevant);
         self.contexts.intern(Context {
             func,
             args,
             free,
             defaults,
+            alias,
         })
+    }
+
+    /// Which slots are one object (07 §2). A slot can alias only if the walk can be affected by it, it holds exactly one value, and that
+    /// value is an object with an identity (`Walk::holds_state`: ty's `OPAQUE` object and one past `max_path` never alias; one that was only
+    /// named, with no state, is still one object). Only top-level slots: `a.peer is b` is not seen (07 §2 decision 4).
+    fn alias_vector(w: &Walk<'db>, bound: &Bound<'db>, relevant: &[bool]) -> SmallVec<[u8; 4]> {
+        let object_of = |i: usize| match bound.slots[i].as_slice() {
+            [AbstractValue::Instance { origin, .. }]
+                if relevant.get(i).copied().unwrap_or(true) && w.holds_state(*origin) =>
+            {
+                Some(*origin)
+            }
+            _ => None,
+        };
+        (0..bound.slots.len())
+            .map(|i| {
+                let first = object_of(i).and_then(|o| (0..i).find(|&j| object_of(j) == Some(o)));
+                first.unwrap_or(i) as u8
+            })
+            .collect()
     }
 }
 
@@ -469,14 +494,22 @@ impl<'db> Walk<'db> {
             self.defaults.insert((key.func, activation), d);
             env.enclosing = Some(activation);
         }
-        for (i, (param, &fp)) in param_names(node).zip(&key.args).enumerate() {
-            let v = self.from_fp(
-                sol,
-                fp,
-                Path::root(Root::Param(i as u8)),
-                &mut Vec::new(),
-                &mut env,
-            );
+        let names: Vec<&Name> = param_names(node).collect();
+        for (i, (&param, &fp)) in names.iter().zip(&key.args).enumerate() {
+            let first = key.alias.get(i).map_or(i, |&j| usize::from(j));
+            let v = if first < i {
+                // the same object as slot `first`: its value, so a write through one is a read through the other (07 §2 decision 3). The
+                // keys of the two slots are equal (one object, fingerprinted in one env), so this is what `from_fp` would give but for the origin
+                env.get(names[first]).cloned().unwrap_or_default()
+            } else {
+                self.from_fp(
+                    sol,
+                    fp,
+                    Path::root(Root::Param(i as u8)),
+                    &mut Vec::new(),
+                    &mut env,
+                )
+            };
             env.bind(param, v);
         }
         env

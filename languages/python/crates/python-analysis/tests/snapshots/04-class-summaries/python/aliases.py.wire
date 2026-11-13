@@ -1,13 +1,10 @@
-# UNVERIFIED: summary mode does not answer this program completely yet (class summaries, part 04).
-# This pins what it says today so a change is noticed; it is not a right answer.
-
 == same
 aliases.same <aliases.py:same#0 Function>
   aliases.Box <aliases.py:Box#0 Class> @27:9 in aliases.py
   aliases.CsvHandler <aliases.py:CsvHandler#0 Class> @27:13 in aliases.py
   aliases.set_and_read <aliases.py:set_and_read#0 Function> @28:5 in aliases.py
     aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @22:11 in aliases.py
-    aliases.CsvHandler.process <aliases.py:CsvHandler.process#0 Method> @23:5 in aliases.py
+    aliases.JsonHandler.process <aliases.py:JsonHandler.process#0 Method> @23:5 in aliases.py
 
 == same (merged)
 aliases.same <aliases.py:same#0 Function>
@@ -15,7 +12,7 @@ aliases.same <aliases.py:same#0 Function>
   aliases.CsvHandler <aliases.py:CsvHandler#0 Class> @27:13 in aliases.py
   aliases.set_and_read <aliases.py:set_and_read#0 Function> @28:5 in aliases.py
     aliases.JsonHandler <aliases.py:JsonHandler#0 Class> @22:11 in aliases.py
-    aliases.CsvHandler.process <aliases.py:CsvHandler.process#0 Method> @23:5 in aliases.py
+    aliases.JsonHandler.process <aliases.py:JsonHandler.process#0 Method> @23:5 in aliases.py
 
 == different
 aliases.different <aliases.py:different#0 Function>

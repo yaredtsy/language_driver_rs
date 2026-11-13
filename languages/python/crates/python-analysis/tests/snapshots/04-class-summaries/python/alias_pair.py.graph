@@ -1,0 +1,38 @@
+== main
+entries: alias_pair.main#4584ff1b7fd486e9
+stats: walks 6, contexts 6, reuse_hits 7, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 10, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def alias_pair.Box = Box#0 Class alias_pair.py
+def alias_pair.Box.__init__ = Box.__init__#0 Method alias_pair.py
+def alias_pair.CsvHandler = CsvHandler#0 Class alias_pair.py
+def alias_pair.CsvHandler.process = CsvHandler.process#0 Method alias_pair.py
+def alias_pair.JsonHandler = JsonHandler#0 Class alias_pair.py
+def alias_pair.JsonHandler.process = JsonHandler.process#0 Method alias_pair.py
+def alias_pair.main = main#0 Function alias_pair.py
+def alias_pair.set_and_read = set_and_read#0 Function alias_pair.py
+alias_pair.Box.__init__#859df1a115a9c87d Finished
+alias_pair.CsvHandler.process#6e396a6f5baa3cda Finished
+alias_pair.JsonHandler.process#db4d1252b0b43985 Finished
+alias_pair.main#4584ff1b7fd486e9 Finished
+  @20-37 -> new alias_pair.Box init alias_pair.Box.__init__#859df1a115a9c87d Name
+  @24-36 -> new alias_pair.CsvHandler init - Name
+  @42-60 -> alias_pair.set_and_read#c74957fbd673c510 Name
+  @69-86 -> new alias_pair.Box init alias_pair.Box.__init__#859df1a115a9c87d Name
+  @73-85 -> new alias_pair.CsvHandler init - Name
+  @91-109 -> alias_pair.set_and_read#c74957fbd673c510 Name
+  @118-135 -> new alias_pair.Box init alias_pair.Box.__init__#859df1a115a9c87d Name
+  @122-134 -> new alias_pair.CsvHandler init - Name
+  @144-161 -> new alias_pair.Box init alias_pair.Box.__init__#859df1a115a9c87d Name
+  @148-160 -> new alias_pair.CsvHandler init - Name
+  @166-184 -> alias_pair.set_and_read#abe5fbff25f7c6d6 Name
+  @193-210 -> new alias_pair.Box init alias_pair.Box.__init__#859df1a115a9c87d Name
+  @197-209 -> new alias_pair.CsvHandler init - Name
+  @219-236 -> new alias_pair.Box init alias_pair.Box.__init__#859df1a115a9c87d Name
+  @223-235 -> new alias_pair.CsvHandler init - Name
+  @241-259 -> alias_pair.set_and_read#abe5fbff25f7c6d6 Name
+alias_pair.set_and_read#abe5fbff25f7c6d6 Finished
+  @34-47 -> new alias_pair.JsonHandler init - Name
+  @52-65 -> alias_pair.CsvHandler.process#6e396a6f5baa3cda Type
+alias_pair.set_and_read#c74957fbd673c510 Finished
+  @34-47 -> new alias_pair.JsonHandler init - Name
+  @52-65 -> alias_pair.JsonHandler.process#db4d1252b0b43985 Path
+

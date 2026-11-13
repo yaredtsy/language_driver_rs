@@ -1,0 +1,16 @@
+== main
+alias_free.main <alias_free.py:main#0 Function>
+  alias_free.Box <alias_free.py:Box#0 Class> @22:9 in alias_free.py
+  alias_free.CsvHandler <alias_free.py:CsvHandler#0 Class> @22:13 in alias_free.py
+  alias_free.main.f <alias_free.py:main.<locals>.f#0 Function> @28:5 in alias_free.py
+    alias_free.JsonHandler <alias_free.py:JsonHandler#0 Class> @25:15 in alias_free.py
+    alias_free.CsvHandler.process <alias_free.py:CsvHandler.process#0 Method> @26:9 in alias_free.py
+
+== main (merged)
+alias_free.main <alias_free.py:main#0 Function>
+  alias_free.Box <alias_free.py:Box#0 Class> @22:9 in alias_free.py
+  alias_free.CsvHandler <alias_free.py:CsvHandler#0 Class> @22:13 in alias_free.py
+  alias_free.main.f <alias_free.py:main.<locals>.f#0 Function> @28:5 in alias_free.py
+    alias_free.JsonHandler <alias_free.py:JsonHandler#0 Class> @25:15 in alias_free.py
+    alias_free.CsvHandler.process <alias_free.py:CsvHandler.process#0 Method> @26:9 in alias_free.py
+

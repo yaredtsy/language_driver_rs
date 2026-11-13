@@ -380,6 +380,33 @@ like), whose digest changes with the spelling.
 joined (`deep_write_capped.py`, `deep_write_two_levels.py`, `deep_read.py`, `deep_recursion.py`), and `deep_write.py`'s wire moved from `unverified/` to
 the verified folder. `deep_recursion.py` under the default `max_path` shows `deep_return` 5: the object past the cap leaves five summaries as `Opaque`.
 
+## CS7: the key says which parameters are one object
+
+Measured 2026-11-13 on the three projects, effects off and on, the same entries and method as CS5b. `Context.alias[i]` is the first slot holding the same
+object as slot `i` (07 §2): a slot can alias only if the walk can be affected by it (`relevant_params`), it holds exactly one value, and that value is an
+object with an identity (`Walk::holds_state`: ty's `OPAQUE` object and one past `max_path` never alias; one that was only named, with no state, is still
+one object). `materialize` binds slot `i` to slot `alias[i]`'s value, so a write through one is a read through the other. Only top-level slots.
+`CanonKey` carries `alias` only when it is not the identity (`skip_serializing_if`), so a key with no aliasing has the digest it had: pinned in
+`p04_07_a_key_with_no_aliasing_has_the_digest_it_had` (`580af8cf013e505a6d505eeb31764101`, written down before `Context.alias` existed).
+
+| Project | effects | nodes | contexts | unresolved | `extra` | contexts with a non-identity alias |
+|---|---|---|---|---|---|---|
+| Jarvis | off | 207 | 55 | 30 | 0 | 0 |
+| Jarvis | on | 207 | 71 | 32 | 0 | 0 |
+| Flask service | off | 266 | 70 | 81 | 0 | 0 |
+| Flask service | on | 266 | 70 | 81 | 0 | 0 |
+| FastAPI | off | 458 | 70 | 29 | 0 | 0 |
+| FastAPI | on | 1019 | 103 | 52 | 0 | 0 |
+
+Nothing moved: the numbers are CS5b's, and no context on any project has an alias (counted with a temporary check in `key`, removed: the number is a
+measure, not a counter). **The golden of Jarvis is `equal`** (`wire.json: equal`, `wire-merged.json: equal`), which is the proof that `is_identity` leaves
+every digest alone. In the fixtures one digest moved on purpose: `set_and_read` under `aliases.py same` (`580af8cf…` to `c5621520…`, the vector `[0, 0]`);
+`different` keeps `580af8cf…`.
+
+**Known limits, pinned in both modes.** `aliases.py nested` (`a.peer is b`: pairs of paths are not in the key, 07 §2 decision 4) and `alias_free.py` (a
+parameter that is also a closure's free value: `f(x)` where `f` reads `x`; summary draws `CsvHandler.process`, inline `JsonHandler.process`). The second was
+found by a scratch program while answering 07 §5 claim 2, and is pinned so it stays said.
+
 ## Toolchain
 
 `vendor/ruff/rust-toolchain.toml` says 1.98.0 and ruff's `rust-version` is 1.96. It is ignored here (the repo root's `rust-toolchain.toml` decides,

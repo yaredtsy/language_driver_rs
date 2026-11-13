@@ -1,0 +1,34 @@
+== merged
+self_merge.merged <self_merge.py:merged#0 Function>
+  self_merge.Holder <self_merge.py:Holder#0 Class> @25:9 in self_merge.py
+  self_merge.K <self_merge.py:K#0 Class> @25:16 in self_merge.py
+  self_merge.Holder.merge <self_merge.py:Holder.merge#0 Method> @26:5 in self_merge.py
+    self_merge.J <self_merge.py:J#0 Class> @20:19 in self_merge.py
+    self_merge.J.run <self_merge.py:J.run#0 Method> @21:9 in self_merge.py
+
+== merged (merged)
+self_merge.merged <self_merge.py:merged#0 Function>
+  self_merge.Holder <self_merge.py:Holder#0 Class> @25:9 in self_merge.py
+  self_merge.K <self_merge.py:K#0 Class> @25:16 in self_merge.py
+  self_merge.Holder.merge <self_merge.py:Holder.merge#0 Method> @26:5 in self_merge.py
+    self_merge.J <self_merge.py:J#0 Class> @20:19 in self_merge.py
+    self_merge.J.run <self_merge.py:J.run#0 Method> @21:9 in self_merge.py
+
+== apart
+self_merge.apart <self_merge.py:apart#0 Function>
+  self_merge.Holder <self_merge.py:Holder#0 Class> @30:9 in self_merge.py
+  self_merge.K <self_merge.py:K#0 Class> @30:16 in self_merge.py
+  self_merge.Holder <self_merge.py:Holder#0 Class> @31:9 in self_merge.py
+  self_merge.K <self_merge.py:K#0 Class> @31:16 in self_merge.py
+  self_merge.Holder.merge <self_merge.py:Holder.merge#0 Method> @32:5 in self_merge.py
+    self_merge.J <self_merge.py:J#0 Class> @20:19 in self_merge.py
+    self_merge.K.run <self_merge.py:K.run#0 Method> @21:9 in self_merge.py
+
+== apart (merged)
+self_merge.apart <self_merge.py:apart#0 Function>
+  self_merge.Holder <self_merge.py:Holder#0 Class> x2 @30:9 in self_merge.py
+  self_merge.K <self_merge.py:K#0 Class> x2 @30:16 in self_merge.py
+  self_merge.Holder.merge <self_merge.py:Holder.merge#0 Method> @32:5 in self_merge.py
+    self_merge.J <self_merge.py:J#0 Class> @20:19 in self_merge.py
+    self_merge.K.run <self_merge.py:K.run#0 Method> @21:9 in self_merge.py
+

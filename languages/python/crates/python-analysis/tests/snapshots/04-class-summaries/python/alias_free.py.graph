@@ -1,0 +1,20 @@
+== main
+entries: alias_free.main#edaa9a698288e545
+stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"annotation_fallbacks": 0, "chain_fanout_hits": 0, "cut_contexts_per_func": 0, "effects_applied": 2, "lifted_subclass_of": 0, "prologue_walks": 0, "types_dropped": 0, "unknown_callee": 0}
+def alias_free.Box = Box#0 Class alias_free.py
+def alias_free.Box.__init__ = Box.__init__#0 Method alias_free.py
+def alias_free.CsvHandler = CsvHandler#0 Class alias_free.py
+def alias_free.CsvHandler.process = CsvHandler.process#0 Method alias_free.py
+def alias_free.JsonHandler = JsonHandler#0 Class alias_free.py
+def alias_free.main = main#0 Function alias_free.py
+def alias_free.main.f = main.<locals>.f#0 Function alias_free.py
+alias_free.Box.__init__#c244a195070f4adf Finished
+alias_free.CsvHandler.process#5b88651168d3f95c Finished
+alias_free.main#edaa9a698288e545 Finished
+  @20-37 -> new alias_free.Box init alias_free.Box.__init__#c244a195070f4adf Name
+  @24-36 -> new alias_free.CsvHandler init - Name
+  @148-152 -> alias_free.main.f#a6c7c3fc6535ef34 Name
+alias_free.main.f#a6c7c3fc6535ef34 Finished
+  @24-37 -> new alias_free.JsonHandler init - Name
+  @46-59 -> alias_free.CsvHandler.process#5b88651168d3f95c Type
+

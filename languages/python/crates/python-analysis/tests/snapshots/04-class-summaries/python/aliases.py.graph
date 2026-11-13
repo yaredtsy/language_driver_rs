@@ -4,19 +4,19 @@ stats: walks 4, contexts 4, reuse_hits 0, unresolved 0, cuts {}, language {"anno
 def aliases.Box = Box#0 Class aliases.py
 def aliases.Box.__init__ = Box.__init__#0 Method aliases.py
 def aliases.CsvHandler = CsvHandler#0 Class aliases.py
-def aliases.CsvHandler.process = CsvHandler.process#0 Method aliases.py
 def aliases.JsonHandler = JsonHandler#0 Class aliases.py
+def aliases.JsonHandler.process = JsonHandler.process#0 Method aliases.py
 def aliases.same = same#0 Function aliases.py
 def aliases.set_and_read = set_and_read#0 Function aliases.py
 aliases.Box.__init__#bb34cabed0f88b66 Finished
-aliases.CsvHandler.process#c1fd4ac597d9f02a Finished
+aliases.JsonHandler.process#b7b1dc836c30dd8b Finished
 aliases.same#6796727d326baa54 Finished
   @20-37 -> new aliases.Box init aliases.Box.__init__#bb34cabed0f88b66 Name
   @24-36 -> new aliases.CsvHandler init - Name
-  @42-60 -> aliases.set_and_read#580af8cf013e505a Name
-aliases.set_and_read#580af8cf013e505a Finished
+  @42-60 -> aliases.set_and_read#c5621520773c376e Name
+aliases.set_and_read#c5621520773c376e Finished
   @34-47 -> new aliases.JsonHandler init - Name
-  @52-65 -> aliases.CsvHandler.process#c1fd4ac597d9f02a Type
+  @52-65 -> aliases.JsonHandler.process#b7b1dc836c30dd8b Path
 
 == different
 entries: aliases.different#c091222949672601

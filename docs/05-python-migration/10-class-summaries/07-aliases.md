@@ -9,7 +9,7 @@ aliases
 └── 5. to check while building
 ```
 
-From pylspt's `04-class-summaries/07-aliases.md`. **Not built.** Needs CS3 (effects: an alias only matters when something is written).
+From pylspt's `04-class-summaries/07-aliases.md`. **Built (CS7, 2026-11-13).** Needs CS3 (effects: an alias only matters when something is written).
 
 ## 1. What is wrong
 
@@ -83,7 +83,7 @@ output when it returns `true`. The digest of a key without aliasing is then byte
 
 | # | Claim | Checked in |
 |---|---|---|
-| 1 | The receiver is slot 0, so `a.merge(a)` aliases slots 0 and 1 with no special case | CS7 |
-| 2 | An alias between a parameter and a closure's free value (`Root::Free`) is not covered; say whether any fixture needs it | CS7 |
+| 1 | The receiver is slot 0, so `a.merge(a)` aliases slots 0 and 1 with no special case | CS7: **true.** `self_merge.py merged` (`a.merge(a)`) draws `J.run` in both modes, and `apart` (`a.merge(b)`) `K.run`; `alias_vector` has no case for the receiver |
+| 2 | An alias between a parameter and a closure's free value (`Root::Free`) is not covered; say whether any fixture needs it | CS7: **no fixture of the suite needs it** (every block that passes in both modes passes with the vector; the two that fail wait for CS6 and CS8), **but a real case exists**: `alias_free.py` (`f(x)` where `f` reads the captured `x`): inline draws `JsonHandler.process`, summary `CsvHandler.process`, unmarked. It is pinned as the known limit of decision 4, with `nested`. Fix, if wanted: a pair (slot, free value) in the vector |
 
 Next: [`08-recursion-with-objects.md`](08-recursion-with-objects.md)
