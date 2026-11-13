@@ -857,3 +857,62 @@ A class taken as the entry of a request (`call_graph` on a def whose kind is `Cl
 The maximum listing is **not** the first def of its file (the first-of-file maximum is 3 ms, V-NOC), so the 12 ms is not the file's outline. It is most likely the checker's first questions for that body (the property-access query asks the checker for a symbol once per body with a candidate); not isolated. So the listing and the site resolution both hold the engine's lazy work, which lands on whichever def asks first: about **13 ms** for the largest project here, a thousand times the median. A cancel waits at most that long on V-NOC (about 1 ms on postcss) before the next check.
 
 **What §4 got wrong.** (1) "about one site's work": the largest uninterruptible step is the *listing* of a body, and it is not one site's work; on V-NOC it is 12–13 ms, with one site's resolution at most 9.6–9.8 ms. "Well under a millisecond on average cold" (S-TS3) is the average, not the bound; the bound is these two numbers. (2) The solver's check is after the budget (a context past the budget is `Frontier` even after a cancel), and again after a cut walk, to name the reason; neither shows in §4's table. (3) A body cut at a site keeps the sites before it and **not its hand-overs and counters**: they are noted after the loop. A cancelled request's `Stats.language` can therefore be below the uncancelled one's for a cut body (the next request is whole).
+
+## TS5 row 3c: a coverage test for rule 8
+
+`src/sem/coverage.rs` (`#[cfg(test)]`, inside `sem`: rule 4, no new public API; `calls::start_of` went from private to `pub(crate)`). **Every call-like node of a project's source is drawn in some tree, counted in some counter, left out by a stated policy, or a miss in a category on a list the owner decides.** Four tests: `each_coverage_fixture_has_its_nodes_accounted_for`, `every_miss_in_every_fixture_and_scenario_is_in_a_listed_category`, `the_list_has_no_stale_entry`, `the_counters_say_what_the_spans_say`; and the `#[ignore]` measure `measure_coverage`. The four count-only counters return their spans first (`0334771`, values unchanged, golden byte-identical).
+
+**The scan** walks every node of every project file (and every repo `.d.ts`, whole-file ambient) with `for_each_child`. It reads the grammar for what is call-like: `CallExpression` (`super(…)`, `a?.b()` and `import(…)` included) and `NewExpression` anchor on the callee/class expression, `TaggedTemplateExpression` on the tag, `JsxOpeningElement` / `JsxSelfClosingElement` on the tag name, `Decorator` on its expression. It calls nothing of the walker (`Collector`, `body_of`, `def_of`, `is_plain_call`, `is_callee_position`, `call_sites`); it shares the span measure (`own_span`), the engine's `NodeFlags::Ambient` and `is_string_literal_like`. Excluded by policy, three entries: `import(…)` / `require("literal")` (a module load), an intrinsic JSX tag (`<div>`, `<my-el>`, `<svg:rect>`), ambient code. A miss gets its category from the parents (`category_of`).
+
+**What is compared:** the graph of every def of the project as an entry (a class as its construction, `start_of`), one solver with `Limits::new(u32::MAX, None)` and the assertion that nothing was cut; an edge is at its context's def `range.start` + `site.start`. Counted: the four counters' spans for what the walker notes (`initializer_sites` over the `init_chain`, `definition_sites` and `computed_name_sites` of the class, `decorator_sites` of each class a non-class def's body declares), by file and span. One way: scanned ⊆ drawn ∪ counted. **The anchors line up exactly**, trivia included: on every fixture and every real project no miss has a drawn or counted span that starts where it does (`start_only` 0), and no two scanned nodes share an anchor (0). Every edge kind is relative to its def's start, passed edges too (`walk.rs`).
+
+**Cross-check of the whole**: on the three real projects the scan's drawn nodes plus the drawn spans it does not have (accessors) are exactly the **sites of the step 5 listing**: V-NOC 5728 + 37 = 5765, postcss (a) 832 + 36 = 868, (b) 277 + 16 = 293.
+
+**The fixtures** (`tests/fixtures/coverage/src`; numbers written in the test before the first run, and the first run read them all):
+
+| file | drawn | counted | excluded | missed |
+|---|---|---|---|---|
+| `top-level.ts` | 0 | 0 | 0 | top-level 5 |
+| `enum.ts` | 0 | 0 | 0 | enum-member 3 |
+| `nested-class.ts` | 5 | 4 | 0 | nested-class-definition 3 (`extends`, static field, static block) |
+| `namespace-class.ts` | 2 | 1 | 0 | nested-class-definition 2 (decorator, static field), namespace-class-computed-name 1, namespace-level 1 |
+| `top-class.ts` | 4 | 8 | 0 | none (the same members as `nested-class.ts`: 6 definition, 1 computed name, 1 initializer) |
+| `defaults.ts` | 5 | 0 | 0 | none |
+| `iife.ts` | 5 | 0 | 0 | top-level 2, top-level-anonymous 2 |
+| `jsx.tsx` | 2 | 0 | 3 | top-level 1 |
+| `tagged.ts` | 2 | 0 | 0 | top-level 2 |
+| `excluded.ts` | 1 | 0 | 3 | none (`import()`, `require("lit")`, an ambient `extends make()`; `require(name)` is drawn) |
+| `ambient.d.ts` | 0 | 0 | 1 | none |
+
+**The known-gap list** (a `const`, category, reason, owner): `top-level`, `top-level-anonymous` (a callback or IIFE at the top of a file: a call in an anonymous function belongs to the def around it, and there is none), `enum-member`, `namespace-level` (a call in a namespace body outside any function: found by the test, the handoff did not list it) are row 3c's; `nested-class-definition` and `namespace-class-computed-name` are **row 3b**'s. The test fails on a miss in an unlisted category and on a listed category no fixture hits; `top-class-definition`, `top-class-computed-name`, `nested-class-computed-name`, `instance-initializer`, `in-named-function` and `other` are categories of a **bug** and the test refuses them on the list. `in-named-function` is "a miss inside a function the grammar says is a def", and it found the first fault of the scan itself: it first took any arrow held by a property as a def, and V-NOC read 126 of them (`useVersioningStore.ts`: `create(devtools((set) => ({ setBranch: (b) => set(…) })))`). The walker was right, the oracle was wrong: a property arrow is a def only in a literal a `const` holds (D21), and the scan now reads that rule from the grammar. Those 126 are `top-level-anonymous`.
+
+**Swept**: every project under `tests/fixtures` and the shared scenarios in TypeScript (`scenarios/*/typescript`, six of them): 543 nodes in 37 programs (a file is scanned in the first program that holds it); 3 files no program holds are skipped (`broken-config/a.ts`, `broken-reference/elsewhere/x.ts`, `excluded-file/b.ts`). Misses: top-level 14, nested-class-definition 7, enum-member 3, namespace-level 2, top-level-anonymous 2, namespace-class-computed-name 1; the ones outside `coverage/` are `references/packages/app/src/main.ts:3`, `site-kinds/src/jsx.tsx:29`, `solution/src/main.ts:3`, `type-errors/a.ts:2` (top-level), `class-entry/src/main.ts:107` and `uncovered/src/classes.tsx:145` (nested-class-definition: the `newLocal` fixtures), `sites/src/sites.ts:109` (namespace-level). Every one is in a listed category.
+
+**[measure] real projects** (`measure_coverage`, release, scan and graph for every def as an entry; asserts nothing):
+
+| | V-NOC frontend | postcss (a) js only | postcss (b) with .d.ts |
+|---|---|---|---|
+| files / call-like nodes | 396 / 7657 | 28 / 968 | 29 / 312 |
+| excluded by policy | 1143 (intrinsic JSX tag 1122, module load 21) | 87 (module load) | 12 (module load) |
+| drawn | 5728 | 832 | 277 |
+| counted | **0** | **0** | **0** |
+| **missed** | **786** (10.3%) | **49** (5.1%) | **23** (7.4%) |
+| top-level | 325 (299 call, 17 new, 9 JSX) | 36 (call) | 23 (call) |
+| top-level-anonymous | 461 (429 call, 31 JSX, 1 new) | 13 (7 call, 6 new) | 0 |
+| enum-member, nested-class-definition, namespace-* | **0** | **0** | **0** |
+| drawn spans the scan does not have | accessor 37, passed 153 | accessor 36, passed 17 | accessor 16, passed 4 |
+| scan + graph | 285 ms | 16 ms | 8 ms |
+
+Examples: V-NOC `top-level` `button.tsx:7 cva(…)`, `useVersioningStore.ts:110 create<VersioningState>()(…)`, `parseVersioningDiff.ts:4 new Set`, `versioningDiffService.ts:22 new VersioningDiffService`; `top-level-anonymous` `useVersioningStore.ts:129 set(…)` (the store's property arrows), `CreateProjectDialog.tsx:50 data.remoteUrl.trim()` (a callback of `.superRefine`); postcss (a) `tokenize.js:3 "'".charCodeAt(0)`, `container.js:428 Object.setPrototypeOf(…)`; (b) `map-generator.js:9 Boolean(…)`. **So row 3b is 0 sites on all three real projects (and `counted` is 0 because no class there has a definition-time site, as step 3 measured); the whole real gap is the top of a file, 5–10% of the nodes, and the owner's decision is whether a module's own body is something a request can start from.**
+
+**No `Uncovered` kind is a vanished call node.** The four with spans are the call nodes of this test. `ElementAccess`, `Class`, `RestElement`, `AssignmentDestructuring`, `ForOfDestructuring` and `ClassComponentRender` count a name or a hand-over, not a call node; `Bind` and `CallApply` count a function behind a call that **is** drawn (`f.bind`, `f.call`, to `Function.*`); `GetterResultCall` counts the second call of a result, the node (`b.fn()`) is drawn; `DestructuredAccessor` is a getter run with no node at all (a binding element), which a node scan cannot see by design.
+
+**Mutants, all killed** (each run, then restored; the table check says which file):
+- `Collector` records no tagged template: `tagged.ts` reads drawn 1 and a miss in `in-named-function`; the sweep fails on the unlisted category too.
+- `resolve` gives a JSX site no target (no edge, not even `Unresolved`): `jsx.tsx` drawn 0 and two misses; the sweep fails on the unlisted category (the JSX of five fixtures).
+- `definition_sites` returns an empty list: `top-class.ts` counted 2 and 6 misses in `top-class-definition`; the sweep fails.
+- an unused category on the list: `the_list_has_no_stale_entry`. `enum.ts` out of reach: the table (`src/enum.ts` read none) and the stale test.
+- the **scan** skips `NewExpression`: `nested-class.ts` drawn 4 (not 5), `top-class.ts` 3 (not 4), `top-level.ts` 4 misses (not 5): the per-file numbers catch it.
+- `walk::construction` stops noting `definition_sites`: `the_counters_say_what_the_spans_say` (`uncovered_class_definition_sites` of `Top` 0, not 6), which is why that test exists: the spans are read from `Sem`, so without it the walker could stop counting what the spans say is counted.
+
+**Time:** the four tests together 1.4 s (dev profile, optimized), the sweep being almost all of it; `measure_coverage` on V-NOC 0.8 s in the test, 285 ms of it the scan and the graph.

@@ -33,6 +33,8 @@ use typescript_syntax::{Def, Dialect, MarkerStyle, Outline, Placement, Span};
 use crate::OpenError;
 
 mod collect;
+#[cfg(test)]
+mod coverage;
 mod handed;
 mod hierarchy;
 mod project;

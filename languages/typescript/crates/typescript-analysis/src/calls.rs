@@ -136,7 +136,7 @@ pub(crate) fn graph_within(
 
 /// Where a request for `func` starts. A class is a construction, as at a `new C()` site (D25): its tree is its constructor's calls, not the class def's body,
 /// and what the construction counts is counted here, so the entry and the site agree.
-fn start_of<'p>(lang: &TypeScript<'p>, func: Func<'p>) -> Start<TypeScript<'p>> {
+pub(crate) fn start_of<'p>(lang: &TypeScript<'p>, func: Func<'p>) -> Start<TypeScript<'p>> {
     if lang.sem.def(func, lang.style).kind == DefKind::Class {
         let (class, init) = walk::construction(lang, func, false);
         Start::Construct { class, init }
