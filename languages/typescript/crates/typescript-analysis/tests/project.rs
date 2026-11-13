@@ -156,11 +156,21 @@ const GLOBS: [&str; 9] = [
     "**/bun.lockb",
 ];
 
+/// `environment_inputs()`, after checking the contract every entry keeps (owner, 2026-11-13): `/` only, the absolute entries too.
+/// On Windows this is the check that no engine path leaks out with its native separator.
+fn inputs(project: &Project) -> Vec<String> {
+    let inputs = project.environment_inputs();
+    for entry in &inputs {
+        assert!(!entry.contains('\\'), "a `\\` in an entry: {entry:?}");
+    }
+    inputs
+}
+
 #[test]
 fn environment_inputs_are_the_config_and_package_files_and_the_lock_files() {
     let project = Project::open(&fixture("three-files"), Path::new("src/main.ts")).unwrap();
     // the config that was used (`tsconfig.json`) is already matched by a glob, so it is not listed twice
-    assert_eq!(project.environment_inputs(), GLOBS);
+    assert_eq!(inputs(&project), GLOBS);
 }
 
 #[test]
@@ -169,7 +179,7 @@ fn an_extended_config_with_any_name_is_an_input_too() {
     let mut expected: Vec<String> = GLOBS.iter().map(|glob| (*glob).to_owned()).collect();
     // `config/shared.json` is not named like a tsconfig, so no glob covers it: editing it changes the program
     expected.push("config/shared.json".into());
-    assert_eq!(project.environment_inputs(), expected);
+    assert_eq!(inputs(&project), expected);
 }
 
 /// The engine's spelling of a fixture file: absolute, with `/`, and without the `\\?\` prefix `canonicalize` adds on Windows.
@@ -193,7 +203,7 @@ fn an_extended_config_outside_the_root_is_an_absolute_input() {
     let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
     // `../base.json` is not under the root, so there is no relative name for it: the entry is the engine's own spelling
     assert_eq!(
-        project.environment_inputs(),
+        inputs(&project),
         globs_then(engine_path("extends-outside/base.json"))
     );
 }
@@ -205,7 +215,7 @@ fn a_glob_covers_only_what_is_under_the_root() {
     // `../tsconfig.base.json` is named like the first glob, but that glob is relative to the root and cannot reach it: it is listed.
     // `tsconfig.local.json` is under the root, where the glob does cover it: it is not listed a second time.
     assert_eq!(
-        project.environment_inputs(),
+        inputs(&project),
         globs_then(engine_path("extends-outside-named/tsconfig.base.json"))
     );
 }
@@ -213,11 +223,7 @@ fn a_glob_covers_only_what_is_under_the_root() {
 #[test]
 fn a_config_skipped_for_a_syntax_error_is_an_input_so_fixing_it_reloads() {
     let project = Project::open(&fixture("broken-reference"), Path::new("src/main.ts")).unwrap();
-    assert!(
-        project
-            .environment_inputs()
-            .contains(&"configs/broken.json".to_owned())
-    );
+    assert!(inputs(&project).contains(&"configs/broken.json".to_owned()));
 }
 
 #[test]
