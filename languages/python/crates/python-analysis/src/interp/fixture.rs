@@ -1784,11 +1784,24 @@ fn golden_wire_of_a_real_project() {
                 kids.iter_mut().for_each(without_target_names);
             }
         }
+        // pylspt keyed without effects, so its context digests are not this crate's since CS4b: the comparison with it leaves `contexts` out.
+        // The tree is what it protects; the digests are pinned by this crate's own golden.
+        fn without_contexts(v: &mut Value) {
+            if let Some(o) = v.as_object_mut() {
+                o.remove("contexts");
+            }
+            if let Some(kids) = v.get_mut("children").and_then(Value::as_array_mut) {
+                kids.iter_mut().for_each(without_contexts);
+            }
+        }
         let mut stripped = new.clone();
         without_target_names(&mut stripped);
+        without_contexts(&mut stripped);
         let mut removed = Vec::new();
         strip(&mut stripped, &accessors, &mut removed);
-        let (mut a, mut b) = (reference.clone(), stripped);
+        let mut reference_tree = reference.clone();
+        without_contexts(&mut reference_tree);
+        let (mut a, mut b) = (reference_tree, stripped);
         canon(&mut a);
         canon(&mut b);
         println!(
