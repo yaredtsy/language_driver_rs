@@ -429,6 +429,28 @@ No fixture snapshot and no `tests/api.rs` pin moved (the suite passes unchanged:
 since CS3b. `a_weak_write_marks_what_it_may_have_dropped_and_a_strong_one_marks_nothing` lost its effects-off half (`two_candidates` has an `Unresolved`
 site without effects); what it says with effects on is kept. `Sem::classmethod_class` was only the effects-off start of an entry and is deleted.
 
+## python-v0.3.0
+
+What the tag holds: class summaries CS2–CS7 with effects on for every request (CS4b: the flag is gone); the kept project, refresh, cancel and environment
+inputs written with `/` for the driver (PY9); `Limits::max_path`; and the Jarvis golden regenerated at CS4b (only `contexts` moved). `python-v0.2.0`
+(`baae723`, what the drivers pin) is not moved. **The tag goes on the docs commit that holds this section**, after it is pushed and CI is green on the
+three systems.
+
+Numbers (debug build, the "CS4b" table above): Jarvis 207 nodes, 71 contexts, 32 unresolved; Flask service 266 nodes, 70 contexts, 81 unresolved;
+FastAPI 1019 nodes, 103 contexts, 52 unresolved; `extra` 0 on all three; `deep_write`, `deep_return` and `effects_in_cycle` 0; FastAPI has the one
+`MaxRounds` cut.
+
+**Known limits** (each is drawn or counted, never silent, except where it says so):
+- No narrowing on a branch or on `isinstance`: both arms are walked. FastAPI's 20 extra-looking nodes are this (class summaries README §8; the CS2b section above).
+- A parameter that is also a closure's free value is not an alias: `f(x)` where `f` reads `x`. A summary-only wrong edge, pinned (`alias_free.py`, CS7 above).
+- A deep write past `max_path` is counted, not marked (`Stats.language["deep_write"]`; 0 on the three projects; CS5b above).
+- Recursion that builds objects can reach `max_rounds` and is marked `Incomplete(MaxRounds)` (`create_cloned_field`; class summaries CS8, not built).
+- Two classes at one call site mix their writes (`split.py`; class summaries CS6, not built). Inline mode draws the same.
+- A file's own top-level code is in no tree (`docs/05-python-migration/12-module-code.md`, planned, not built).
+- A call on an untyped value is `Unresolved` (`unknown_callee`; most of the Flask service's 81).
+
+**For a driver:** build `Options` and `Limits` with `..Default::default()` (`Limits` gained `max_path`); the wire is version 2 and did not change.
+
 ## Toolchain
 
 `vendor/ruff/rust-toolchain.toml` says 1.98.0 and ruff's `rust-version` is 1.96. It is ignored here (the repo root's `rust-toolchain.toml` decides,

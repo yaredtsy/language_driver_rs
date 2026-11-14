@@ -127,6 +127,7 @@ the new work was the fixtures and the rule, not the code, which is mostly pylspt
 | `python-v0.1.0` | drop its direct ruff dependencies; the Python driver is a thin adapter (V-NOC 0.1) |
 | `typescript-v0.1.0` | show `.ts` / `.js` files in the tree and canvas; attach docs; keep them across renames |
 | `python-v0.2.0` | Python call trees from the polished repo (V-NOC 0.2) |
+| `python-v0.3.0` | class summaries with effects; the kept project, cancel and environment inputs for the driver (PY9) |
 | `typescript-v0.2.0` | TypeScript call trees, whole |
 | `typescript-v0.3.0` | call trees that open level by level, cancel, and reuse work |
 | `rust-v0.1.0` … | the same three steps for Rust |
