@@ -448,6 +448,7 @@ mod input_lists {
     /// entry must be, or a change to a UNC environment is never seen.
     #[cfg(windows)]
     #[test]
+    #[allow(clippy::join_absolute_paths)] // the join replacing the root is what this test checks
     fn an_entry_written_with_slashes_is_still_absolute() {
         assert!(std::path::Path::new("C:/elsewhere/env/pyvenv.cfg").is_absolute());
         assert!(std::path::Path::new("//server/share/env/pyvenv.cfg").is_absolute());
