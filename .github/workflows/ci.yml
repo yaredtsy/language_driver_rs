@@ -50,6 +50,8 @@ jobs:
     defaults: { run: { working-directory: core } }
     steps:
       - uses: actions/checkout@v4
+      # rust-toolchain.toml names the toolchain; install it here, before rust-cache hashes `rustc`, not on the first cargo call
+      - run: rustup toolchain install
       # `key:` and `save-if:` reasons: docs/01-monorepo/05-ci.md §4
       - uses: Swatinem/rust-cache@v2
         with:
@@ -76,6 +78,8 @@ jobs:
     defaults: { run: { working-directory: "languages/${{ matrix.lang }}" } }
     steps:
       - uses: actions/checkout@v4
+      # rust-toolchain.toml names the toolchain; install it here, before rust-cache hashes `rustc`, not on the first cargo call
+      - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "languages/${{ matrix.lang }}"
@@ -99,6 +103,8 @@ jobs:
     defaults: { run: { working-directory: "languages/${{ matrix.lang }}" } }
     steps:
       - uses: actions/checkout@v4
+      # rust-toolchain.toml names the toolchain; install it here, before rust-cache hashes `rustc`, not on the first cargo call
+      - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "languages/${{ matrix.lang }}"
@@ -119,6 +125,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with: { sparse-checkout: scripts }
       - name: every needed job succeeded or was skipped
         env: { NEEDS: "${{ toJSON(needs) }}" }
         run: echo "$NEEDS" | python3 scripts/all-ok.py
