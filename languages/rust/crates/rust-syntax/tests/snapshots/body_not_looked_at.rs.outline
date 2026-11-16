@@ -1,0 +1,5 @@
+Function takes [143..191] name [146..151] (a)
+Struct F [192..236] name [199..200]
+Enum D [237..281] name [242..243]
+Type T [282..320] name [287..288]
+Other("const") U [321..370] name [327..328]

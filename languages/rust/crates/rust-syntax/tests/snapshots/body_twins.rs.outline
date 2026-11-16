@@ -1,0 +1,6 @@
+Function outer [130..225] name [133..138]
+  Function outer::{fn}::helper [149..163] name [152..158]
+  Function outer::{fn}::helper [172..186] name [175..181]
+  Function outer::{fn}::helper [206..220] name [209..215]
+Function other [226..255] name [229..234]
+  Function other::{fn}::helper [239..253] name [242..248]

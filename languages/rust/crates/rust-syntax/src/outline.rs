@@ -15,8 +15,11 @@ pub(crate) fn outline(text: &str, edition: Edition, _style: MarkerStyle<'_>) -> 
         // `sem` lists a parent before its children, so the parent's def is already there
         let parent = item.parent.map(|p| &outline.defs[p]);
         let name = defined_name(&item);
+        // what stands in a function's body is named after the function, then `{fn}` (B1); `{fn}` cannot be an identifier
+        let in_body = parent.is_some_and(|p| matches!(p.kind, DefKind::Function | DefKind::Method));
         let qualname = [
             parent.map(|p| p.qualname.clone()),
+            in_body.then(|| "{fn}".to_owned()),
             item.impl_head.as_ref().map(impl_prefix),
             Some(name.clone()),
         ]

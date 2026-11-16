@@ -1,0 +1,9 @@
+Function outer [94..198] name [97..102]
+  Other("macro") outer::{fn}::local! [111..143] name [124..129]
+  Function outer::{fn}::inner [148..196] name [151..156]
+    Other("macro") outer::{fn}::inner::{fn}::deeper! [161..194] name [174..180]
+Method S::method [212..280] name [215..221] (&self)
+  Other("macro") S::method::{fn}::in_block! [241..276] name [254..262]
+Module m [283..347] name [287..288]
+  Function m::f [295..345] name [298..299]
+    Other("macro") m::f::{fn}::in_module_fn! [304..343] name [317..329]

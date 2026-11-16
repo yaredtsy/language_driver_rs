@@ -6,7 +6,7 @@
 
 use analyzer_core::text::Span;
 use ra_ap_syntax::{
-    AstNode, NodeOrToken, SourceFile, SyntaxKind, SyntaxNode, SyntaxToken, TextRange,
+    AstNode, NodeOrToken, SourceFile, SyntaxKind, SyntaxNode, SyntaxToken, TextRange, WalkEvent,
     ast::{self, HasModuleItem, HasName},
 };
 
@@ -90,7 +90,7 @@ fn collect(
 ) {
     for item in items {
         match item {
-            ast::Item::Fn(f) => out.extend(function(&f, ItemKind::Function, parent)),
+            ast::Item::Fn(f) => push_function(&f, ItemKind::Function, parent, None, errors, out),
             ast::Item::Struct(s) => out.extend(named(&s, ItemKind::Struct, parent)),
             ast::Item::Union(u) => out.extend(named(&u, ItemKind::Struct, parent)),
             ast::Item::Enum(e) => out.extend(named(&e, ItemKind::Enum, parent)),
@@ -98,19 +98,24 @@ fn collect(
                 if let Some(def) = named(&t, ItemKind::Trait, parent) {
                     out.push(def);
                     let this = Some(out.len() - 1);
-                    collect_assoc(t.assoc_item_list(), this, None, out);
+                    collect_assoc(t.assoc_item_list(), this, None, errors, out);
                 }
             }
             // an impl is no def: it names its items, and an impl whose header cannot be read has nothing to name them from (I10)
             ast::Item::Impl(i) => {
                 if let Some(head) = impl_head(&i, errors) {
-                    collect_assoc(i.assoc_item_list(), parent, Some(head), out);
+                    collect_assoc(i.assoc_item_list(), parent, Some(head), errors, out);
                 }
             }
             ast::Item::TypeAlias(t) => out.extend(named(&t, ItemKind::Type, parent)),
-            // `const _: () = …` has no name (its `_` is a separate token), so it is no def (RS1 §2)
-            ast::Item::Const(c) => out.extend(named(&c, ItemKind::Const, parent)),
-            ast::Item::Static(s) => out.extend(named(&s, ItemKind::Static, parent)),
+            ast::Item::Const(c) => push_const(&c, parent, None, errors, out),
+            ast::Item::Static(s) => {
+                if let Some(def) = named(&s, ItemKind::Static, parent) {
+                    out.push(def);
+                    let this = Some(out.len() - 1);
+                    collect_body(s.body().map(|e| e.syntax().clone()), this, errors, out);
+                }
+            }
             ast::Item::MacroRules(m) => out.extend(named(&m, ItemKind::Macro, parent)),
             // `mod m;` has no item list: it names a file, and the file is the def's home (RS1 §2)
             ast::Item::Module(m) => {
@@ -130,7 +135,7 @@ fn collect(
                     .flat_map(|l| l.extern_items())
                 {
                     if let ast::ExternItem::Fn(f) = inner {
-                        out.extend(function(&f, ItemKind::Function, parent));
+                        push_function(&f, ItemKind::Function, parent, None, errors, out);
                     }
                 }
             }
@@ -144,18 +149,79 @@ fn collect_assoc(
     list: Option<ast::AssocItemList>,
     parent: Option<usize>,
     head: Option<ImplHead>,
+    errors: &[TextRange],
     out: &mut Vec<Item>,
 ) {
     for item in list.into_iter().flat_map(|l| l.assoc_items()) {
-        let found = match item {
-            ast::AssocItem::Fn(f) => function(&f, ItemKind::Method, parent),
-            ast::AssocItem::Const(c) => named(&c, ItemKind::Const, parent),
-            _ => None,
+        match item {
+            ast::AssocItem::Fn(f) => {
+                push_function(&f, ItemKind::Method, parent, head.as_ref(), errors, out);
+            }
+            ast::AssocItem::Const(c) => push_const(&c, parent, head.as_ref(), errors, out),
+            _ => {}
+        }
+    }
+}
+
+/// A function is a def, and the items of its body are named under it (B1, B4). A function the parser gave no name has nothing to name
+/// them under (B10).
+fn push_function(
+    f: &ast::Fn,
+    kind: ItemKind,
+    parent: Option<usize>,
+    head: Option<&ImplHead>,
+    errors: &[TextRange],
+    out: &mut Vec<Item>,
+) {
+    let Some(mut item) = function(f, kind, parent) else {
+        return;
+    };
+    item.impl_head = head.cloned();
+    out.push(item);
+    let this = Some(out.len() - 1);
+    collect_body(f.body().map(|b| b.syntax().clone()), this, errors, out);
+}
+
+/// A named const is a def and the nearest one to what its initializer holds (B6). `const _` is no def and adds nothing to the names
+/// inside it: its items belong to the enclosing def (B7). A const with no name and no `_` is a parse error, and its body is not read.
+fn push_const(
+    c: &ast::Const,
+    parent: Option<usize>,
+    head: Option<&ImplHead>,
+    errors: &[TextRange],
+    out: &mut Vec<Item>,
+) {
+    let owner = match named(c, ItemKind::Const, parent) {
+        Some(mut item) => {
+            item.impl_head = head.cloned();
+            out.push(item);
+            Some(out.len() - 1)
+        }
+        None if c.underscore_token().is_some() => parent,
+        None => return,
+    };
+    collect_body(c.body().map(|e| e.syntax().clone()), owner, errors, out);
+}
+
+/// The items written inside a body (a function's block, a const's initializer), through any closure, block or other expression: none
+/// of those is a naming frame (B5). An item is handed to `collect`, which reads its own body; the walk does not go into it. Iterative, so
+/// a deeply nested expression cannot overflow the stack.
+fn collect_body(
+    body: Option<SyntaxNode>,
+    parent: Option<usize>,
+    errors: &[TextRange],
+    out: &mut Vec<Item>,
+) {
+    let Some(body) = body else { return };
+    let mut walk = body.preorder();
+    while let Some(event) = walk.next() {
+        let WalkEvent::Enter(node) = event else {
+            continue;
         };
-        out.extend(found.map(|mut item| {
-            item.impl_head.clone_from(&head);
-            item
-        }));
+        if let Some(item) = ast::Item::cast(node) {
+            collect(std::iter::once(item), parent, errors, out);
+            walk.skip_subtree();
+        }
     }
 }
 
@@ -493,6 +559,22 @@ mod tests {
         for (written, printed) in rows {
             assert_eq!(text_of(written), printed, "written: {written}");
         }
+    }
+
+    /// The walk of a body is iterative: a body nested far deeper than any real one is read, and the item at the bottom is found.
+    #[test]
+    fn a_deeply_nested_body_is_read() {
+        let depth = 400;
+        let text = format!(
+            "fn outer() {{ {}fn bottom() {{}}{} }}",
+            "{ ".repeat(depth),
+            " }".repeat(depth)
+        );
+        let names: Vec<String> = items(&text, Edition::E2024)
+            .into_iter()
+            .map(|i| i.name)
+            .collect();
+        assert_eq!(names, ["outer", "bottom"]);
     }
 
     fn heads(text: &str) -> Vec<ImplHead> {

@@ -1,0 +1,33 @@
+Function outer [154..625] name [157..162]
+  Function outer::{fn}::inner [171..184] name [174..179]
+  Struct outer::{fn}::S [189..198] name [196..197]
+  Enum outer::{fn}::E [203..215] name [208..209]
+  Struct outer::{fn}::U [220..237] name [226..227]
+  Type outer::{fn}::Alias [242..258] name [247..252]
+  Other("const") outer::{fn}::C [263..279] name [269..270]
+  Other("static") outer::{fn}::X [284..301] name [291..292]
+  Function outer::{fn}::documented [306..405] name [390..400]
+  Trait outer::{fn}::T [410..449] name [416..417]
+    Method outer::{fn}::T::m [420..432] name [423..424] (&self)
+    Method outer::{fn}::T::d [433..447] name [436..437] (&self)
+  Method outer::{fn}::S::m [463..477] name [466..467] (&self)
+  Method outer::{fn}::<S as T>::m [499..513] name [502..503] (&self)
+  Module outer::{fn}::m [520..539] name [524..525]
+    Function outer::{fn}::m::f [528..537] name [531..532]
+  Function outer::{fn}::ext [557..566] name [560..563]
+  Function outer::{fn}::level_one [573..623] name [576..585]
+    Function outer::{fn}::level_one::{fn}::level_two [590..621] name [593..602]
+      Struct outer::{fn}::level_one::{fn}::level_two::{fn}::Deep [607..619] name [614..618]
+Struct Q [626..635] name [633..634]
+Method Q::method [649..687] name [652..658] (&self)
+  Function Q::method::{fn}::in_method [668..685] name [671..680]
+Trait Tr [690..754] name [696..698]
+  Method Tr::default_method [705..752] name [708..722] (&self)
+    Function Tr::default_method::{fn}::in_default [732..750] name [735..745]
+Method <Q as Tr>::default_method [775..892] name [778..792] (&self)
+  Function <Q as Tr>::default_method::{fn}::in_trait_impl [810..831] name [813..826]
+  Struct <Q as Tr>::default_method::{fn}::Local [840..853] name [847..852]
+  Method <Q as Tr>::default_method::{fn}::Local::m [875..884] name [878..879]
+Module outer_mod [895..937] name [899..908]
+  Function outer_mod::f [915..935] name [918..919]
+    Function outer_mod::f::{fn}::g [924..933] name [927..928]
