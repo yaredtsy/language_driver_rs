@@ -1,0 +1,141 @@
+# Rust qualnames
+
+This is the naming rule of `rust-syntax`. **It is frozen at the first tag (`rust-v0.1.0`).** A qualname is stored in users' files: adding a kind
+of def is safe, changing how an existing def is named is not (rule 10). Every row below is pinned by a snapshot in
+`crates/rust-syntax/tests/snapshots/`; when this file and a snapshot disagree, the snapshot is what the code does. The plan it was written from
+is `docs/04-rust/04-default-resolver/02-rs1-outline.md` §2, §3 and §3.1 (decisions D10, D15, D29).
+
+## What a qualname is
+
+```
+qualname  =  the enclosing defs' names, then the def's own name, joined by "::"
+
+            joiner    "::"       between a def and what is declared in it     outer::inner::f · T::m
+                      "::{fn}::" between a function and an item declared in    outer::{fn}::inner
+                                 its body (RS1 step 4, not built yet)
+```
+
+The qualname never contains the file path: a file module adds **nothing** (`src/a/b.rs` holding `fn f` gives `f`), because the file is already
+the `module` part of the stored def. Moving a file does not rename its defs. Only an **inline** `mod m { }` is a name.
+
+A name is the identifier as written, **without `r#`** (`r#type` is `type`: `r#` is spelling).
+
+**An `impl` block is not a def.** It has no name and no entry in the outline. It is a *naming context*: the items inside get the impl's
+header as a prefix (rows I1 to I9). The `parent` of an item in an impl is the def that encloses the impl (a module, or nothing at file level),
+never the type the impl is for, because that type may live in another file. The `parent` of an item in a trait is the trait's def.
+
+**A qualname is not unique in a file** (D15): two `impl S { fn m() }` blocks, `#[cfg]` twins, and `fn f` in two functions' `use` scopes all
+share one. `occurrence` (0-based, source order, RS1 step 5) separates them, and the marker is what tells them apart for good. A tool that
+takes a qualname from a person lists the matches and asks; it never picks the first.
+
+## What is a def
+
+| # | Syntax | Kind | Qualname | Fixture |
+|---|---|---|---|---|
+| D1 | `fn f()` at module level (also `async`, `const`, `unsafe`, `extern "C"`) | Function | `f` | `fn_names.rs`, `fn_forms.rs` |
+| D2 | `struct S`, `union U` | Struct | `S` | `item_kinds.rs` |
+| D3 | `enum E` | Enum | `E` | `item_kinds.rs` |
+| D4 | `trait T` | Trait | `T`. Its own generics are **not** in the name: `trait T<A>` is `T` | `item_kinds.rs`, `trait_items.rs` |
+| D5 | `type A = …` at module level | Type | `A` | `item_kinds.rs` |
+| D6 | `const C`, `static X` at module level | `Other("const")`, `Other("static")` | `C`, `X` | `item_kinds.rs` |
+| D7 | `mod m { }` (inline) | Module | `m`; its items are `m::f` | `item_modules.rs` |
+| D8 | `mod m;` | **not a def** | it names a file; the file is the def's home | `item_modules.rs` |
+| D9 | `macro_rules! m` | `Other("macro")` | `m!` at file level. In a module it is named **by its module path plus `m!`, like every other item**, not the way it is called: `outer::inner::m!`. `#[macro_export]` does not move it (the macro is callable at the crate root, but the name follows where it is written) | `item_kinds.rs`, `item_modules.rs`, `macro_in_module.rs` |
+| D10 | a function declared in an `extern "C" { }` block | Function | `f`. The block is not a def and adds nothing to the name. No body: a leaf | `item_extern_block.rs` |
+| D11 | a function, method or associated function of a trait, with or without a default body | Method | `T::m` | `trait_items.rs` |
+| D12 | a function in `impl S { }` or `impl T for S { }` | Method | rows I1 to I9 | `impl_*.rs` |
+| D13 | `const C` in a trait or an impl | `Other("const")` | `T::C`, `S::C`, `<S as T>::C` | `trait_items.rs`, `impl_inherent.rs`, `impl_trait.rs` |
+| D14 | an associated `type` in a trait or an impl | **not a def, for now** | nothing calls it, nothing is attached to it; adding it later is safe | `trait_items.rs`, `impl_trait.rs` |
+| D15 | a macro call in a trait or an impl, a derive, anything a macro produces | **not a def** | not in the text | |
+| D16 | an `impl` block itself | **not a def** | a naming context | `impl_inherent.rs` |
+| D17 | `const _: () = { … };` | **not a def**, and it adds nothing to the names inside | `_` is not a name | `item_kinds.rs` |
+| D18 | an enum variant, a struct field | **not a def, for now** | | |
+| D19 | a closure, an `async` block | **not a def** | its calls belong to the enclosing def | |
+| D20 | an item under `#[cfg(…)]` | a def, always | the outline lists what is in the text; whether it compiles is the engine's business | `item_modules.rs` |
+| D21 | an item that has no name the parser could read | **not a def** | `fn` with no name, `struct` with no name: nothing to name | `item_broken.rs` |
+
+Rows D1 to D10 and D16 to D21 are built (RS1 steps 1 and 2); D11 to D15 are step 3.
+
+## Naming an impl's items
+
+The prefix of an item in an impl is built from the impl header, which is read from **tokens only**: nothing is looked up, expanded or
+resolved, because the outline sees one file's text and nothing else (rule 2). Generics of the impl itself (`impl<T: Clone>`), `where` clauses,
+and the keywords `unsafe`, `default`, `const` and `!` of the header are **not** part of the name.
+
+| # | The impl | Prefix, then `::name` | Example | Why |
+|---|---|---|---|---|
+| I1 | inherent, the self type is a path | the path's **last segment** with its generic arguments, as type text (§ Type text) | `impl S` → `S::m` | how you call it |
+| I2 | inherent, the self type has generic arguments | the arguments are **kept** (D29) | `impl<T> S<T>` → `S<T>::m`; `impl S<u8>` → `S<u8>::m`; `impl S<u16>` → `S<u16>::m` | two impls of one type with one method name get two names, so reordering them cannot swap the docs attached to them. The cost, accepted: renaming `T` renames the def. It is also what `std::any::type_name` prints |
+| I3 | the self type has only lifetime arguments | lifetimes are not arguments here, they are **dropped** | `impl<'a> P<'a>` → `P::m`; `impl<'a, T> W<'a, T>` → `W<T>::m` | `impl Tr for S<'a>` and `impl Tr for S<'static>` overlap (E0119), so a lifetime never tells two impls apart; and clippy's `needless_lifetimes` rewrites them (`'a` to `'_`): a lint fix must not rename a def |
+| I4 | the self type is a path with a module prefix | only the head is shortened: the **last segment**, arguments whole | `impl a::b::S` → `S::m`; `impl a::S<b::T>` → `S<b::T>::m` | a `use` added or removed must not rename a def. Inside the arguments the prefix stays, because there it is what tells impls apart |
+| I5 | trait impl | `<self as Trait>` | `impl T for S` → `<S as T>::m` | Rust's own fully qualified syntax (D10) |
+| I6 | trait impl, the trait is a path with a module prefix | the trait's **last segment** | `impl fmt::Display for S` → `<S as Display>::fmt` | as I4 |
+| I7 | trait impl, the trait has generic arguments | **kept** (D29), as type text | `impl From<A> for S` → `<S as From<A>>::from`; `impl From<io::Error> for a::S<b::T>` → `<S<b::T> as From<io::Error>>::from` | the common way to have two same-named methods on one type: `From<A>` and `From<B>` must not both be `<S as From>::from` |
+| I8 | the self type is **not a path** (`&S`, `[T]`, `(A, B)`, `dyn Tr`, `fn()`, `*const T`, `!`, a macro in type position, a path with a `<A as B>::` qualifier) | the whole type as type text, in angle brackets when inherent | inherent `impl [T]` → `<[T]>::len`; `impl dyn Tr` → `<dyn Tr>::m`; trait impl `impl T for &S` → `<&S as T>::m` | no better name exists; the brackets keep `dyn Tr::m` from reading as a path. In a trait impl the angle brackets are the form's own |
+| I9 | a blanket impl | follows from I5 and I8: the self type is the parameter's name | `impl<T: Display> Tr for T` → `<T as Tr>::m` | |
+| I10 | the header cannot be read: no self type, or `for` with no type on one side (a file being typed) | the impl's items are **not defs** | `impl for S { fn m() {} }` lists nothing | as D21: nothing to name from. A guess would be stored in a file |
+| I11 | `impl` twins: two impls whose headers spell the same type (`impl S` twice, each with `fn m`) | the same qualname, told apart by `occurrence` | `S::m`, `S::m` | `impl S<u8>` and `impl S<u16>` are **not** twins: their names differ (I2) |
+| I12 | an impl in an inline module | the module path, then the prefix | `mod a { mod b { impl S {} } }` → `a::b::S::m`; the trait form: `a::b::<S as T>::m` | the module path is a def's name like any other |
+
+> **🦀 Rust note: why `<S as T>::m` and not `S::m` for both.** A type can implement many traits, and two traits can each have a method called
+> `fmt` (`Display` and `Debug` do). `S::fmt` would then name two functions. Rust's own answer, used in compiler errors and in code when a call
+> is ambiguous, is *fully qualified syntax*: `<S as Display>::fmt`. We borrow it because it is unique where Rust needs it to be.
+
+## Type text
+
+Every type that appears in a qualname is printed by **one rule**: the self type's arguments, the trait's arguments, and a whole self type
+that is not a path (I8).
+
+**A type is named the way it is written.** Nothing is looked up, expanded or shortened.
+
+| # | Written | In the name | Not | Why |
+|---|---|---|---|---|
+| T1 | `impl From<Bytes> for S`, with `type Bytes = Vec<u8>;` | `Bytes` | `Vec<u8>` | the outline cannot know what an alias means (it may be in another file), and editing one alias would rename defs in every file that uses it |
+| T2 | `impl From<io::Error> for S` | `io::Error` | `Error`, `std::io::Error` | a path inside the arguments is kept as written (I4) |
+| T3 | `impl Add<Self> for S` | `Self` | `S` | |
+| T4 | `impl<T> From<T> for S<T>` | `T` | | a type parameter keeps its name; renaming it renames the def (D29's accepted cost) |
+| T5 | `impl From<::std::io::Error> for S` | `::std::io::Error` | | the leading `::` is written, so it is kept |
+
+> **🦀 Rust note: why spelling is safe (coherence).** `Bytes` and `Vec<u8>` are one type under two names, but Rust forbids two impls of one
+> trait for one type (E0119), and two inherent methods of one name on one type (E0592), however the types are spelled. So in code that
+> compiles, one impl never needs two names. Two *different* types spelled the same (an `Error` imported from `io` in one module and from `fmt`
+> in another) land in two modules, so the module part of the name already differs. What is left needs local `use` items in two function bodies,
+> and `occurrence` separates it.
+
+**The printing rule.** The type's tokens are printed in order, and:
+
+| # | Rule | Written | Type text |
+|---|---|---|---|
+| P1 | **Comments and whitespace** are dropped | `S< u8 >`, `S</* why */ u8>` | `S<u8>` |
+| P2 | **Lifetimes** are dropped, from every list they stand in, and the list's `,` or `+` goes with them: a lifetime argument, the lifetime of a reference, a lifetime bound, a `for<'a>` binder. A list that is left empty loses its brackets | `Cow<'a, str>`; `S<T, 'a>`; `S<'a>`, `S<'_>`; `&'a mut T`; `dyn Tr + 'static`; `dyn 'a + Tr + Send`; `for<'a> fn(&'a str) -> &'a str` | `Cow<str>`; `S<T>`; `S`; `&mut T`; `dyn Tr`; `dyn Tr + Send`; `fn(&str) -> &str` |
+| P3 | **Empty brackets** go, written or left by P2 | `S<>` | `S` |
+| P4 | The **`::` before `<`** in a type path is dropped | `Vec::<u8>` | `Vec<u8>` |
+| P5 | A **trailing comma** in a list is dropped, **except** the comma of a one-element tuple, which makes it a tuple | `HashMap<K,V,>`; `(A, B,)`; `fn(A,)`; `(A,)` | `HashMap<K, V>`; `(A, B)`; `fn(A)`; `(A,)` |
+| P6 | **`r#`** is dropped from a raw identifier | `From<r#type>` | `From<type>` |
+| P7 | **One space** after `,` `;` and `:`; on both sides of `+`, `=`, `->` and `as`; after the keywords `dyn`, `impl`, `mut`, `const`, `unsafe`, `extern`, and after an ABI string (`"C"`). **Nowhere else** | `&'a mut [u8 ;4]`; `Box<dyn Fn(u8)->u8+Send+'static>`; `dyn Iterator<Item=u8>`; `<T as Tr>::Out`; `fn(a:u8)`; `*const T`; `unsafe extern "C" fn(i32)` | `&mut [u8; 4]`; `Box<dyn Fn(u8) -> u8 + Send>`; `dyn Iterator<Item = u8>`; `<T as Tr>::Out`; `fn(a: u8)`; `*const T`; `unsafe extern "C" fn(i32)` |
+| P8 | A **const argument in braces** and a **macro in a type position** are the exception to P1 and P7: their own text, with every run of whitespace and comments turned into one space, and none just inside the outer braces or delimiters | `S<{ N+1 }>`; `S<{ N + /* c */ 1 }>`; `m!( a  b )` | `S<{N+1}>`; `S<{N + 1}>`; `m!(a b)` |
+
+(P7 adds `:` and `as` to the plan's list: without them `fn(a: u8)` and `<T as Tr>::Out` would print as `fn(a:u8)` and `<TasTr>::Out`.)
+
+So `impl<'a, T: Clone> From<&'a [T]> for Wrapper<'a, T>` is named `<Wrapper<T> as From<&[T]>>::from`.
+
+**What still renames a def**, on purpose: changing a written type (renaming `T`, replacing `Bytes` with `Vec<u8>`, writing `std::io::Error` where
+`io::Error` was). Each is an edit of the impl header, as renaming the trait or the struct is. **What never does:** spacing, line breaks, comments,
+lifetimes, the impl's own generics and bounds, the `where` clause (except inside a braced const argument or a macro, P8).
+
+## Items in function bodies (RS1 step 4, not built yet)
+
+| # | Syntax | Qualname | Why |
+|---|---|---|---|
+| B1 | a fn, struct, impl, … inside a function body | `outer::{fn}::inner`; a method of a local impl: `outer::{fn}::S::m` | the function-body joiner (as `.<locals>.` in Python and TypeScript). `{fn}` cannot be an identifier, so it cannot collide with a real path |
+| B2 | an item inside a `const` or `static` initializer, a closure, a block | named under the **nearest enclosing def**, with `{fn}` if that def is a function | closures and blocks are not naming frames (D21, rule 4: a new kind of container must not move existing names) |
+| B3 | a `macro_rules!` in a function body | `outer::{fn}::m!` | D9 with B1 |
+
+## Fixtures
+
+One file per row group under `crates/rust-syntax/tests/fixtures/`, all parsed as edition 2024. **Step 3 adds** `impl_inherent.rs` (D12, D13,
+D16, I1 to I3), `impl_module_prefix.rs` (I4, I6, I12), `impl_trait.rs` (I5, D14), `impl_trait_args.rs` (I7), `impl_non_path.rs` (I8),
+`impl_blanket.rs` (I9), `impl_broken.rs` (I10), `impl_twins.rs` (I11), `trait_items.rs` (D4, D11, D13, D14), `macro_in_module.rs` (D9),
+`type_text_spelling.rs` (T1 to T5), `type_text_lifetimes.rs` (P2, P3), `type_text_punctuation.rs` (P4 to P6), `type_text_spacing.rs` (P7),
+`type_text_braces.rs` (P8) and `impl_header_noise.rs` (a header written with extra spaces, line breaks, comments, a `where` clause and
+changed lifetimes beside its clean twin: the two outlines must carry the same qualnames, checked by a unit test on the printer as well).
