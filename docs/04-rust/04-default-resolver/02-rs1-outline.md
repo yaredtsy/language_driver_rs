@@ -157,7 +157,7 @@ also keeps the most common lifetime-carrying impl, `impl<'a> Parser<'a>`, named 
 |---|---|
 | `range` | from the item's first **doc comment or attribute** to its last byte. Plain `//` comments directly above are in the engine's node (S-RS4) and are **not** in the range. Nor is a trailing `// c` from the previous item's line, which the engine also puts at the start of the next item's node: the start is the first `DOC_COMMENT` or `ATTR` child, else the first child that is not a `COMMENT` or `WHITESPACE`, never `text_range().start()` |
 | `name_range` | the name token; for a macro, the name without `!` |
-| `params` | parameter patterns as written, `self` included as `self` / `&self` / `&mut self` |
+| `params` | parameter patterns as written. The receiver comes first and is one of `self`, `mut self`, `&self`, `&mut self`: a lifetime is dropped (`&'a self` is `&self`), and a typed receiver (`self: Box<Self>`, `mut self: Rc<Self>`) is `self` |
 | `marker` | RS2 |
 | `syntax_error` | a parse error's range overlaps the def's node |
 
