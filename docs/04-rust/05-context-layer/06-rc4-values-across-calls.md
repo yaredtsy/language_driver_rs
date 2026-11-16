@@ -22,7 +22,8 @@ first phase that cannot run on core's flat solver as it is (§5).
 | `fn send(w: &dyn Writer) { w.write() }` · `send(&Json)` in one caller, `send(&Csv)` in another | `send` → `Writer::write`, the same under both | two contexts of `send`; each caller sees its own impl |
 | `fn run(job: fn()) { job() }` · `run(work)` | `run` with nothing under it | `run` → `work` |
 | `fn pick() -> Box<dyn Writer> { Box::new(Csv) }` · `pick().write()` | `Writer::write` | `<Csv as Writer>::write` |
-| `fn make() -> impl Writer { Json }` · `make().write()` | `Writer::write` | `<Json as Writer>::write` (§2) |
+| `fn make() -> impl Writer { Json }` · `make().write()` | `<Json as Writer>::write`: the engine resolves it (S-RS2) | the same |
+| `fn make<W: Writer + Default>() -> impl Writer { W::default() }` · `make::<Json>().write()` | `Writer::write` if the engine cannot name the hidden type (**[check]**, RS4 step 5) | `<Json as Writer>::write` (§2) |
 | `fn wrap(w: Box<dyn Writer>) -> Box<dyn Writer> { w }` · `wrap(Box::new(Json)).write()` | the declaration | `Json`'s: in, through, and out |
 | a chain: `a(&Json)` → `b(w)` → `c(w)` → `w.write()` | declarations | resolved at the end of the chain |
 | a recursive function's return value | the declaration | **the declaration** until RC6 |
@@ -33,6 +34,11 @@ first phase that cannot run on core's flat solver as it is (§5).
 > opposite. With `impl Writer` the function returns **one concrete type**, fixed at compile time, and merely refuses to say its name
 > to callers; the compiler still knows it and monomorphizes through it. The type the caller sees is called *opaque*: "the return type
 > of `make`". Nothing was forgotten at run time, so nothing has to be followed: the answer is in the callee's body, as a type.
+
+**Most of this is done by the engine (S-RS2, 2026-11-16):** for `make().write()` with a plain `fn make() -> impl Writer`,
+`resolve_method_call_fallback` already gives the impl's method, so layer 1 draws it (RS4 §4). What is left for this section is what RS4
+still counts as `open_opaque`, expected to be a hidden type that depends on the opaque function's own type parameters. If RS4 measures
+`open_opaque` at zero on real code, step 1 is not built.
 
 An `Open::Opaque` site has a receiver whose type is "the return type of `g`" (with `g`'s type arguments). That is true wherever the
 value travelled in the caller, because the type itself names `g`. So:
@@ -142,7 +148,7 @@ writers it is called with. Like RC1's, it comes after the phase works without it
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | `Open::Opaque`: `sem.opaque_origin`, `sem.hidden_type` | `opaque-return`, `opaque-closure`. No core change, releasable alone |
+| 1 | `Open::Opaque`: `sem.opaque_origin`, `sem.hidden_type`, **only if RS4's `open_opaque` is above zero** (the engine resolves the plain case, §2) | `opaque-return` (generic), `opaque-closure`. No core change, releasable alone |
 | 2 | the design note for §5; your decision | approved |
 | 3 | core: `Ret`, the handle, the toy tests | core green; flat languages byte-identical |
 | 4 | `Key.erased`; arguments into the key; parameters from the key | `dyn-param`, `dyn-param-two-callers`, `fnptr-param`, `dyn-chain` (no return values yet) |

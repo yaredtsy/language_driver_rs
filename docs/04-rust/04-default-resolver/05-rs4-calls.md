@@ -167,7 +167,7 @@ This becomes `languages/rust/docs/policy.md`, with the name of each row's fixtur
 | a method on a concrete type | the method in that type's `impl`, inherent or trait | |
 | a method through a type parameter, `impl Trait`, or `Self` in a default method | the **trait's** declaration. A leaf if it has no default body. Counted `open_type_param` / `open_impl_trait` / `open_self_in_trait` | RC1 |
 | a method through `dyn Trait` | the trait's declaration. Counted `open_dyn` | RC3–RC5 |
-| a method on the result of `-> impl Trait` | the trait's declaration. Counted `open_opaque` | RC4 |
+| a method on the result of `-> impl Trait` | **the engine's answer, the impl's method**: it sees through a return-position `impl Trait` to the hidden type (S-RS2, `ENGINE.md`), so `make().write()` is `<Json as Writer>::write` in layer 1 already (D7). Only where the engine still answers the trait's declaration (expected: a hidden type that depends on the function's own type parameters, `fn make<W: Writer + Default>() -> impl Writer`; **[check]** in step 5) is it the declaration, counted `open_opaque` | RC4 §2, only for what `open_opaque` still counts |
 | `Foo::new()` | a call to the function. Rust has no constructors |  |
 | `Foo { a, b }`, `Foo(a, b)`, `Enum::Variant(a)`, `Self { .. }` | `Construct { class, init: None }`; the class of a variant is its enum | |
 | `Some(x)`, `Ok(x)`, `String::from(..)` | `External` (`core`, `alloc`, `std`). D30: kept as edges; their share of all edges is **[measure]**d in step 9, and a large share reopens the question with the number | |
