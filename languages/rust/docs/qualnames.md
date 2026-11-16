@@ -65,7 +65,7 @@ and the keywords `unsafe`, `default`, `const` and `!` of the header are **not** 
 | # | The impl | Prefix, then `::name` | Example | Why |
 |---|---|---|---|---|
 | I1 | inherent, the self type is a path | the path's **last segment** with its generic arguments, as type text (§ Type text) | `impl S` → `S::m` | how you call it |
-| I2 | inherent, the self type has generic arguments | the arguments are **kept** (D29) | `impl<T> S<T>` → `S<T>::m`; `impl S<u8>` → `S<u8>::m`; `impl S<u16>` → `S<u16>::m` | two impls of one type with one method name get two names, so reordering them cannot swap the docs attached to them. The cost, accepted: renaming `T` renames the def. It is also what `std::any::type_name` prints |
+| I2 | inherent, the self type has generic arguments | the arguments are **kept** (D29) | `impl<T> S<T>` → `S<T>::m`; `impl S<u8>` → `S<u8>::m`; `impl S<u16>` → `S<u16>::m` | two impls of one type with one method name get two names, so reordering them cannot swap the docs attached to them. The cost, accepted: renaming `T` renames the def |
 | I3 | the self type has only lifetime arguments | lifetimes are not arguments here, they are **dropped** | `impl<'a> P<'a>` → `P::m`; `impl<'a, T> W<'a, T>` → `W<T>::m` | `impl Tr for S<'a>` and `impl Tr for S<'static>` overlap (E0119), so a lifetime never tells two impls apart; and clippy's `needless_lifetimes` rewrites them (`'a` to `'_`): a lint fix must not rename a def |
 | I4 | the self type is a path with a module prefix | only the head is shortened: the **last segment**, arguments whole | `impl a::b::S` → `S::m`; `impl a::S<b::T>` → `S<b::T>::m` | a `use` added or removed must not rename a def. Inside the arguments the prefix stays, because there it is what tells impls apart |
 | I5 | trait impl | `<self as Trait>` | `impl T for S` → `<S as T>::m` | Rust's own fully qualified syntax (D10) |
@@ -107,21 +107,21 @@ that is not a path (I8).
 | # | Rule | Written | Type text |
 |---|---|---|---|
 | P1 | **Comments and whitespace** are dropped | `S< u8 >`, `S</* why */ u8>` | `S<u8>` |
-| P2 | **Lifetimes** are dropped, from every list they stand in, and the list's `,` or `+` goes with them: a lifetime argument, the lifetime of a reference, a lifetime bound, a `for<'a>` binder. A list that is left empty loses its brackets | `Cow<'a, str>`; `S<T, 'a>`; `S<'a>`, `S<'_>`; `&'a mut T`; `dyn Tr + 'static`; `dyn 'a + Tr + Send`; `for<'a> fn(&'a str) -> &'a str` | `Cow<str>`; `S<T>`; `S`; `&mut T`; `dyn Tr`; `dyn Tr + Send`; `fn(&str) -> &str` |
-| P3 | **Empty brackets** go, written or left by P2 | `S<>` | `S` |
+| P2 | **Lifetimes** are dropped, from every list they stand in, and the list's `,` or `+` goes with them: a lifetime argument, the lifetime of a reference, a lifetime bound, a `for<'a>` binder. A list of **angle** brackets that is left empty loses its brackets (P3) | `Cow<'a, str>`; `S<T, 'a>`; `S<'a>`, `S<'_>`; `&'a mut T`; `dyn Tr + 'static`; `dyn 'a + Tr + Send`; `for<'a> fn(&'a str) -> &'a str` | `Cow<str>`; `S<T>`; `S`; `&mut T`; `dyn Tr`; `dyn Tr + Send`; `fn(&str) -> &str` |
+| P3 | **Empty angle brackets** go, written or left empty by P2. **Parentheses never go**: an empty `()`, `fn()` or `Fn()` is a unit type, a function pointer or a callable bound, and keeps them | `S<>`; `From<()>`; `From<fn()>`; `From<Box<dyn Fn()>>` | `S`; `From<()>`; `From<fn()>`; `From<Box<dyn Fn()>>` |
 | P4 | The **`::` before `<`** in a type path is dropped | `Vec::<u8>` | `Vec<u8>` |
 | P5 | A **trailing comma** in a list is dropped, **except** the comma of a one-element tuple, which makes it a tuple | `HashMap<K,V,>`; `(A, B,)`; `fn(A,)`; `(A,)` | `HashMap<K, V>`; `(A, B)`; `fn(A)`; `(A,)` |
 | P6 | **`r#`** is dropped from a raw identifier | `From<r#type>` | `From<type>` |
-| P7 | **One space** after `,` `;` and `:`; on both sides of `+`, `=`, `->` and `as`; after the keywords `dyn`, `impl`, `mut`, `const`, `unsafe`, `extern`, and after an ABI string (`"C"`). **Nowhere else** | `&'a mut [u8 ;4]`; `Box<dyn Fn(u8)->u8+Send+'static>`; `dyn Iterator<Item=u8>`; `<T as Tr>::Out`; `fn(a:u8)`; `*const T`; `unsafe extern "C" fn(i32)` | `&mut [u8; 4]`; `Box<dyn Fn(u8) -> u8 + Send>`; `dyn Iterator<Item = u8>`; `<T as Tr>::Out`; `fn(a: u8)`; `*const T`; `unsafe extern "C" fn(i32)` |
-| P8 | A **const argument in braces** and a **macro in a type position** are the exception to P1 and P7: their own text, with every run of whitespace and comments turned into one space, and none just inside the outer braces or delimiters | `S<{ N+1 }>`; `S<{ N + /* c */ 1 }>`; `m!( a  b )` | `S<{N+1}>`; `S<{N + 1}>`; `m!(a b)` |
+| P7 | **One space** after `,`, `;` and a single `:` (the token `:`, never inside `::`); on both sides of `+`, `=`, `->` and `as`; after the keywords `dyn`, `impl`, `mut`, `const`, `unsafe`, `extern`, and after an ABI string (`"C"`); and, as a **backstop**, one space between any two word tokens (identifiers, keywords, literals) that would otherwise touch. **Nowhere else** | `&'a mut [u8 ;4]`; `Box<dyn Fn(u8)->u8+Send+'static>`; `dyn Iterator<Item=u8>`; `<T as Tr>::Out`; `fn(a:u8)`; `*const T`; `unsafe extern "C" fn(i32)`; `a::B`, `a :: B` | `&mut [u8; 4]`; `Box<dyn Fn(u8) -> u8 + Send>`; `dyn Iterator<Item = u8>`; `<T as Tr>::Out`; `fn(a: u8)`; `*const T`; `unsafe extern "C" fn(i32)`; `a::B`, `a::B` |
+| P8 | A **const argument in braces** and a **macro in a type position** follow P1 to P7 like every other token. **No exception** | `S<{ N+1 }>`, `S<{N + 1}>`, `S<{ N + /* c */ 1 }>`; `m!( a  b )`, `m!(a\nb)` | `S<{N + 1}>`; `m!(a b)` |
 
-(P7 adds `:` and `as` to the plan's list: without them `fn(a: u8)` and `<T as Tr>::Out` would print as `fn(a:u8)` and `<TasTr>::Out`.)
+(P7 has `:` and `as` and the backstop because without them `fn(a: u8)` and `<T as Tr>::Out` would print as `fn(a:u8)` and `<TasTr>::Out`, and a keyword the list forgot would merge into the next word. The backstop is why `m!(a b)` keeps its space.)
 
 So `impl<'a, T: Clone> From<&'a [T]> for Wrapper<'a, T>` is named `<Wrapper<T> as From<&[T]>>::from`.
 
 **What still renames a def**, on purpose: changing a written type (renaming `T`, replacing `Bytes` with `Vec<u8>`, writing `std::io::Error` where
 `io::Error` was). Each is an edit of the impl header, as renaming the trait or the struct is. **What never does:** spacing, line breaks, comments,
-lifetimes, the impl's own generics and bounds, the `where` clause (except inside a braced const argument or a macro, P8).
+lifetimes, the impl's own generics and bounds, the `where` clause. This holds everywhere in the header, braced const arguments and macros in types included (P8).
 
 ## Items in function bodies (RS1 step 4, not built yet)
 
@@ -136,6 +136,6 @@ lifetimes, the impl's own generics and bounds, the `where` clause (except inside
 One file per row group under `crates/rust-syntax/tests/fixtures/`, all parsed as edition 2024. **Step 3 adds** `impl_inherent.rs` (D12, D13,
 D16, I1 to I3), `impl_module_prefix.rs` (I4, I6, I12), `impl_trait.rs` (I5, D14), `impl_trait_args.rs` (I7), `impl_non_path.rs` (I8),
 `impl_blanket.rs` (I9), `impl_broken.rs` (I10), `impl_twins.rs` (I11), `trait_items.rs` (D4, D11, D13, D14), `macro_in_module.rs` (D9),
-`type_text_spelling.rs` (T1 to T5), `type_text_lifetimes.rs` (P2, P3), `type_text_punctuation.rs` (P4 to P6), `type_text_spacing.rs` (P7),
-`type_text_braces.rs` (P8) and `impl_header_noise.rs` (a header written with extra spaces, line breaks, comments, a `where` clause and
-changed lifetimes beside its clean twin: the two outlines must carry the same qualnames, checked by a unit test on the printer as well).
+`type_text_spelling.rs` (T1 to T5), `type_text_lifetimes.rs` (P2, P3, with `S<>`, `()`, `fn()` and `Fn()`), `type_text_punctuation.rs` (P4 to P6), `type_text_spacing.rs` (P7),
+`type_text_braces.rs` (P8: `S<{ N+1 }>` and `S<{N + 1}>` side by side, a macro written two ways) and `impl_header_noise.rs` (a header written with extra spaces, line breaks, comments, a `where` clause and
+changed lifetimes beside its clean twin: the two outlines must carry the same qualnames, checked by a unit test on the printer as well, with no exclusion: not even for braces or macros).
