@@ -11,6 +11,7 @@
 //! assert_eq!(defs[0].params, ["raw"]);
 //! ```
 
+mod marker;
 mod outline;
 mod sem;
 
@@ -50,4 +51,15 @@ pub fn outline(text: &str, edition: Edition, style: MarkerStyle<'_>) -> Outline 
 /// ```
 pub fn occurrences(outline: &Outline) -> Vec<u16> {
     outline::occurrences(outline)
+}
+
+/// The marker written on this def, if any (RS2 §3): the first `<label>: <text>` line of its own `///` and `/** */` comments. `outline` already
+/// fills `Def::marker` with it. `None` too when `def` is not a def of this text, an outline of another text (the file changed since): its offsets
+/// point somewhere else now.
+pub fn marker(text: &str, edition: Edition, def: &Def, style: MarkerStyle<'_>) -> Option<String> {
+    outline(text, edition, style)
+        .defs
+        .into_iter()
+        .find(|d| d.qualname == def.qualname && d.range == def.range)?
+        .marker
 }

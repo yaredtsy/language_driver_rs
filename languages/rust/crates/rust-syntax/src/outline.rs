@@ -4,15 +4,15 @@
 
 use std::collections::HashMap;
 
-use analyzer_core::edit::MarkerStyle;
+use analyzer_core::edit::{MarkerStyle, Placement};
 use analyzer_core::outline::{Def, DefKind, Outline, SyntaxError};
 use analyzer_core::text::Span;
 
 use crate::Edition;
+use crate::marker;
 use crate::sem::{self, ImplHead, Item, ItemKind};
 
-/// `_style` is read from RS2 on (the marker of each def).
-pub(crate) fn outline(text: &str, edition: Edition, _style: MarkerStyle<'_>) -> Outline {
+pub(crate) fn outline(text: &str, edition: Edition, style: MarkerStyle<'_>) -> Outline {
     let mut outline = Outline::default();
     let parsed = sem::parse(text, edition);
     for item in parsed.items {
@@ -34,6 +34,11 @@ pub(crate) fn outline(text: &str, edition: Edition, _style: MarkerStyle<'_>) -> 
         let mut def = Def::new(qualname, name, kind(&item), item.range, item.name_range);
         def.parent = item.parent;
         def.params = item.params;
+        def.marker = match style.placement {
+            Placement::Docstring => marker::read(&item.docs, style.label),
+            // a placement this analyzer does not build reads nothing
+            _ => None,
+        };
         def.syntax_error = parsed
             .errors
             .iter()

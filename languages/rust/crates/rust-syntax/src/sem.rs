@@ -7,7 +7,7 @@
 use analyzer_core::text::Span;
 use ra_ap_syntax::{
     AstNode, NodeOrToken, SourceFile, SyntaxKind, SyntaxNode, SyntaxToken, TextRange, WalkEvent,
-    ast::{self, HasModuleItem, HasName},
+    ast::{self, AttrKind, HasAttrs, HasModuleItem, HasName},
 };
 
 use crate::Edition;
@@ -45,6 +45,9 @@ pub(crate) struct Item {
     /// For an item of an `impl`: the header that names it. An `impl` is not a def, so it is not in the list; its items are, and this
     /// is what their qualname is built from (`docs/qualnames.md`, I1 to I12).
     pub(crate) impl_head: Option<ImplHead>,
+    /// The item's own outer doc comments, as written (`/// a`, `/** b */`), in source order. An inner one (`//!`) belongs to the item
+    /// around it, and `#[doc = "…"]` is an attribute: neither is here (RS2 §3). A `\r` before a line break is still in the text.
+    pub(crate) docs: Vec<String>,
 }
 
 /// An impl header, read from its tokens only. `where` clauses, the impl's own generics and its keywords are not part of it.
@@ -298,7 +301,11 @@ fn head_type(ty: &ast::Type) -> HeadType {
 }
 
 /// An item that has a name and nothing else the outline reads. `None` when the parser could not find the name.
-fn named<N: AstNode + HasName>(node: &N, kind: ItemKind, parent: Option<usize>) -> Option<Item> {
+fn named<N: AstNode + HasName + HasAttrs>(
+    node: &N,
+    kind: ItemKind,
+    parent: Option<usize>,
+) -> Option<Item> {
     let name = node.name()?;
     Some(Item {
         kind,
@@ -308,6 +315,11 @@ fn named<N: AstNode + HasName>(node: &N, kind: ItemKind, parent: Option<usize>) 
         name_range: span(name.syntax().text_range()),
         params: Vec::new(),
         impl_head: None,
+        docs: node
+            .doc_comments()
+            .filter(|doc| doc.kind() == AttrKind::Outer)
+            .map(|doc| doc.text_with_markers().to_owned())
+            .collect(),
     })
 }
 

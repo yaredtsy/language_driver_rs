@@ -1,0 +1,9 @@
+Function one_line [125..161] name [148..156] marker="one_line"
+Function no_spaces [163..199] name [185..194] marker="no_spaces"
+Function starred [201..259] name [247..254] marker="starred"
+Function deeper_indent [261..317] name [299..312] marker="deeper_indent"
+Function no_star [319..355] name [343..350] marker="no_star"
+Function closed_on_the_marker_line [357..450] name [420..445] marker="after_text_on_the_first_line"
+Function two_spaces [452..509] name [494..504]
+Function empty_text [511..540] name [525..535]
+Function no_marker [542..577] name [563..572]

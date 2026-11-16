@@ -1,0 +1,11 @@
+Function plain [145..172] name [162..167] marker="plain"
+Function no_space [174..206] name [193..201] marker="no_space"
+Function no_space_after_colon [208..264] name [239..259] marker="no_space_after_colon"
+Function blank_before_colon [266..320] name [297..315] marker="blank_before_colon"
+Function trimmed [322..377] name [365..372] marker="trimmed text with spaces"
+Function two_spaces [379..429] name [414..424]
+Function empty_text [431..457] name [442..452]
+Function blank_text [459..489] name [474..484]
+Function other_case [491..528] name [513..523]
+Function other_label [530..570] name [554..565]
+Function not_at_the_start [572..625] name [604..620]

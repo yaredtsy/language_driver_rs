@@ -1,0 +1,5 @@
+Function only_line [115..146] name [132..141] marker="first"
+Function last_line [148..203] name [189..198] marker="last"
+Function middle_line [205..279] name [263..274] marker="middle"
+Function no_marker [281..319] name [305..314]
+Function no_docs [321..336] name [324..331]

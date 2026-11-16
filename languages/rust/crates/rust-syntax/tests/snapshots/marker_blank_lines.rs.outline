@@ -1,0 +1,7 @@
+Function after_blank [143..196] name [180..191] marker="after_a_blank_line"
+Function before_blank [198..247] name [230..242] marker="before_a_blank_line"
+Function past_plain [249..329] name [314..324] marker="past_a_plain_comment_and_a_blank_line"
+Function before_attribute [331..400] name [379..395] marker="before_the_attribute"
+Function after_attribute [402..469] name [449..464] marker="after_the_attribute"
+Function below_plain [494..543] name [527..538] marker="below_a_plain_comment"
+Function above_plain [545..603] name [587..598] marker="above_a_plain_comment"

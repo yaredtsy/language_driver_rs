@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 
 use analyzer_testkit::syntax::{Subject, cut_every_50_bytes, snapshot_every_fixture};
-use rust_syntax::{Def, Edition, MarkerStyle, Outline, Placement, occurrences, outline};
+use rust_syntax::{Def, Edition, MarkerStyle, Outline, Placement, marker, occurrences, outline};
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
@@ -179,4 +179,67 @@ fn every_def_of_the_cores_own_source_is_named() {
     }
     // a guard against a path that stopped pointing at the files: an empty loop proves nothing
     assert!(files >= 5 && defs >= 100, "{files} files, {defs} defs");
+}
+
+/// `marker` is what `outline` puts in `Def::marker`, for every def of every fixture; and some fixture defs do carry one, so the equality
+/// is not between two `None`s.
+#[test]
+fn marker_reads_what_the_outline_carries() {
+    let mut marked = 0;
+    for entry in fs::read_dir("tests/fixtures").unwrap() {
+        let path = entry.unwrap().path();
+        let text = fs::read_to_string(&path).unwrap();
+        for def in &outline_2024(&text).defs {
+            let read = marker(&text, Edition::E2024, def, STYLE);
+            assert_eq!(read, def.marker, "{}: {}", path.display(), def.qualname);
+            marked += usize::from(read.is_some());
+        }
+    }
+    assert!(
+        marked >= 40,
+        "{marked} marked defs: the fixtures lost their markers"
+    );
+}
+
+/// A def of another text (an outline made before the file changed) is not a def of this one: its offsets point somewhere else.
+#[test]
+fn marker_of_a_stale_def_is_none() {
+    let before = "/// ID: a1\nfn a() {}\n";
+    let after = "// a new first line\n/// ID: a1\nfn a() {}\n";
+    let stale = outline_2024(before).defs.remove(0);
+    assert_eq!(
+        marker(before, Edition::E2024, &stale, STYLE).as_deref(),
+        Some("a1")
+    );
+    assert_eq!(marker(after, Edition::E2024, &stale, STYLE), None);
+    let fresh = outline_2024(after).defs.remove(0);
+    assert_eq!(
+        marker(after, Edition::E2024, &fresh, STYLE).as_deref(),
+        Some("a1")
+    );
+}
+
+/// The label is the caller's: `NOTE` reads `/// NOTE:` lines and not `/// ID:` ones.
+#[test]
+fn the_label_is_a_parameter() {
+    let text = "/// NOTE: n1\n/// ID: i1\nfn a() {}\n";
+    let def = outline_2024(text).defs.remove(0);
+    let note = MarkerStyle {
+        label: "NOTE",
+        placement: Placement::Docstring,
+    };
+    assert_eq!(
+        marker(text, Edition::E2024, &def, note).as_deref(),
+        Some("n1")
+    );
+    assert_eq!(
+        marker(text, Edition::E2024, &def, STYLE).as_deref(),
+        Some("i1")
+    );
+    assert_eq!(
+        outline(text, Edition::E2024, note).defs[0]
+            .marker
+            .as_deref(),
+        Some("n1")
+    );
 }

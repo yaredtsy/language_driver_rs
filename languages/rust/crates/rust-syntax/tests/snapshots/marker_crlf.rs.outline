@@ -1,0 +1,3 @@
+Function line [50..99] name [90..94] marker="crlf_line"
+Function block [103..145] name [135..140] marker="crlf_block"
+Function past_plain [149..211] name [196..206] marker="crlf_past_plain"

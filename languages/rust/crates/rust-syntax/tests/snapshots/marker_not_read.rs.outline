@@ -1,0 +1,12 @@
+Function doc_attribute [73..119] name [101..114]
+Function four_slashes [143..163] name [146..158]
+Function plain_comment [186..207] name [189..202]
+Function plain_block [231..250] name [234..245]
+Function three_stars [278..297] name [281..292]
+Module outer [299..376] name [303..308]
+  Function outer::inside_has_none [351..374] name [354..369]
+Function body [378..453] name [381..385]
+  Function body::{fn}::nested_has_none [428..451] name [431..446]
+Method S::method_has_none [493..516] name [496..511]
+Function next_fn [520..558] name [546..553] marker="on_the_next_fn"
+Function following_has_none [559..585] name [562..580]
