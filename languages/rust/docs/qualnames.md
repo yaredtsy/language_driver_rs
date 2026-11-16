@@ -144,7 +144,7 @@ that is further out), and the joiner after a **function** is `{fn}`; after anyth
 | B7 | an item in the initializer of `const _: () = { … };` | **named as if the block were not there**: `f` at module level, `m::f` in a module, `outer::{fn}::f` in a function, `<S as T>::m` for an impl in it | `const _` is no def and adds nothing to the names inside (D17). It is the form derive macros and `static_assertions` write | `body_const.rs` |
 | B8 | the same name twice in one function (two blocks, two closures) | one qualname, told apart by `occurrence` | D15 | `body_twins.rs` |
 | B9 | an item in a place that is not a body: an array length or a const argument (`[u8; { fn f() {} 1 }]`), an enum discriminant, a field type, a default | **not looked at**, so not a def | nothing is attached to code that cannot be written there in practice; adding it later is safe | `body_not_looked_at.rs` |
-| B10 | a function with no name the parser could read, with items in its body | **not defs**, as D21 | nothing to name them under | `body_not_looked_at.rs` |
+| B10 | a function, or a const that is not `const _`, with no name the parser could read, with items in its body | **not defs**, as D21 | nothing to name them under | `body_not_looked_at.rs` |
 
 ## Fixtures
 
