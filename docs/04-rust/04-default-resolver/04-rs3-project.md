@@ -146,7 +146,7 @@ To check before step 1, with S-RS2's loader:
    ignores it** (the lock was written into the project, also when `rust-toolchain.toml` chose 1.94.1 under another loader toolchain); 1.74.1 (< 1.82) makes no copy and rewrote a
    stale lock. The boundary 1.97 itself was not tested (not installed); `sem::load` reads `cargo --version` itself and applies B from 1.97.
 
-#### Parked: measure a load without dependencies first (owner, 2026-11-16)
+#### Measured: a load without dependencies (owner, 2026-11-16; measured in step 1, D38)
 
 The owner's goal for the call tree is **calls inside the project**; calls into a dependency are not needed. That opens a fourth option:
 
@@ -168,6 +168,11 @@ target is project code**, the cross-crate ones of a workspace separately. Write 
 
 - D loses no in-project edge, or only ones a counter can name: **D is the default** (faster, offline, no lockfile), and A/B are not built;
 - D loses cross-crate or `std`-typed project edges: **B** as written above, and D stays what the engine already does offline (S-RS3, and a counter).
+
+**Result (RS3 step 1, 2026-11-16, `ENGINE.md` "In-project edges by load mode"): D loses every cross-package edge** (45 of 45 on `core/`,
+16 of 16 on `typescript/`, 7 of 7 on the outside project) and some `std`-typed same-crate ones (13, 57, 0). The [check] above is answered:
+a call from member A into member B is `Unresolved` under `no_deps`. Worse than the table above says, `CargoConfig::no_deps` also reaches
+the sysroot's own `cargo metadata`, so `std`'s crates lose their links too. **So B, with A as the fallback (D38)**; D is not built.
 
 ## 6. Errors and warnings (D37)
 
@@ -207,7 +212,7 @@ impl Warning {
 | a toolchain older than the minimum (§7's measurement), a newer one installed | loads with the **newer** toolchain's `cargo` and `std` (`RUSTUP_TOOLCHAIN` in `extra_env` and for `sem::load`'s own `rustc --print sysroot`) | `ToolchainSubstituted { why: TooOld }`: "your project uses Rust 1.74; calls were read with 1.99" | little for in-project calls: `std`'s types change slowly. **[check]** in the §7 measurement |
 | the same, nothing newer installed | loads with the old one | `OldToolchain`: "Rust 1.74 is older than 1.82: some calls may be missing" | whatever the measurement found for that version |
 | `rust-toolchain.toml` names a toolchain that is not installed | loads with an installed one (the default first) | `ToolchainSubstituted { why: NotInstalled }`: "Rust 1.50 is not installed; calls were read with 1.99" | as above. **Never installs anything** (the engine sets `RUSTUP_AUTO_INSTALL=0`; §5's rule against `Sysroot::discover` stays) |
-| offline, or a dependency that cannot be fetched | the engine's `--no-deps` retry | `DependenciesMissing`: cargo's message | project methods on values whose type comes from a dependency; possibly calls between the workspace's own crates (§5, option D's **[check]**) |
+| offline, or a dependency that cannot be fetched | the engine's `--no-deps` retry | `DependenciesMissing`: cargo's message | project methods on values whose type comes from a dependency, and **every call between the workspace's own crates** (measured under `no_deps` in step 1: all cross-package edges; the retry uses the same `--no-deps` metadata, `std` stays). A single-package project loses only the first |
 | no `Cargo.lock`, and the lock could not be redirected | loads | `LockfileWritten`: "a Cargo.lock was created in your project" | nothing |
 
 - Each warning is also copied into every graph's `Stats.language` as `warning_<code>: 1`, the way `skipped()` is (§3), so a tree with
@@ -236,9 +241,10 @@ so rule 4 does not apply).
 without `std`). **[measure]** in-project edges at rung 3 against rung 1 on the three projects: a fourth column of §5's table. S-RS3's only
 number so far (no `std`, on `core/`, all calls): 634 of 978 calls and 74 of 914 method calls resolved.
 
-**How each condition is found** (S-RS3, `ENGINE.md`): `sem::load` never calls `Sysroot::discover` (it runs `rustup component add
-rust-src` by itself). It reads the version with `cargo --version` in the manifest's folder, finds the sysroot with `rustc --print sysroot`,
-checks `lib/rustlib/src/rust/library` itself and passes it as `sysroot_src`; it loads through `ProjectWorkspace::load`, then reads
+**How each condition is found** (S-RS3, `ENGINE.md`): `sem::load` never uses `RustLibSource::Discover` (it runs `rustup component add
+rust-src` by itself). It reads the version with `cargo --version` in the manifest's folder, finds the sysroot with `rustc --print sysroot`
+and passes it as `RustLibSource::Path` (built in step 1: the engine then looks for `lib/rustlib/src/rust/library` itself, without
+`rustup`, and a missing one is `sysroot.error()`; `sysroot_src` stays `None`); it loads through `ProjectWorkspace::load`, then reads
 `sysroot.error()` and `ProjectWorkspaceKind::Cargo { error }` before `load_workspace`. The installed toolchains for a substitution come from
 `rustup toolchain list` (**[check]** the form without `rustup`: then no substitution, and `OldToolchain`, or rung 3 of the ladder when there is no `cargo`).
 
@@ -266,7 +272,8 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | the engine dependencies (again `cargo update -p unicode-properties --precise 0.1.4`, `ENGINE.md` S-RS1); `sem::load`; `Project::open` on a manifest path; the in-project measurement of §5 (B, D, no `std`), then the lockfile rule Q-RS6 picks | `core/` loads; the table in `ENGINE.md`; the lockfile test |
+| 1 | the engine dependencies (again `cargo update -p unicode-properties --precise 0.1.4`, `ENGINE.md` S-RS1); `sem::load`; `Project::open` on a manifest path; the in-project measurement of §5 (B, D, no `std`), then the lockfile rule Q-RS6 picks | `core/` loads; the table in `ENGINE.md`; the lockfile test. **Done but the lockfile rule** (f4064e4; table in `ENGINE.md`): the measurement picked B (D38) |
+| 1b | the lockfile rule (§5, D38): `cargo --version` in the manifest's folder (step 5 reuses it); from 1.97 and only when the project has no `Cargo.lock`, B (`CARGO_RESOLVER_LOCKFILE_PATH` in `extra_env` to a temporary folder, deleted before `open` returns); below 1.97, A. A's `LockfileWritten` warning comes with `Warning` in step 5; until then the load records that it wrote one | §7's lockfile test: a fixture with no lock and one with a stale lock are byte-identical after `open` (on the installed 1.99.1); a table test of the version rule (`1.96.x` → A, `1.97.0` → B, a suffixed version, an unreadable one → A) |
 | 2 | finding the manifest from a file; the root limit | the five-workspaces test |
 | 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI |
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures |
