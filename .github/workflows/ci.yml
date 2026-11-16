@@ -2,7 +2,17 @@
 name: ci
 # No workflow-level `paths:` filter: a workflow that does not start reports nothing, and a required check that
 # never reports blocks the pull request forever. Jobs are skipped with `if:` instead.
-on: { pull_request: {}, push: { branches: [main] } }
+# `push` is for main only: a branch is tested through its pull request, so a push to a PR branch starts one run, not two.
+# `workflow_dispatch` runs a branch without a PR (no base: everything runs).
+on: { pull_request: {}, push: { branches: [main] }, workflow_dispatch: {} }
+
+permissions: { contents: read }
+
+# A newer push to the same PR cancels the older run. main and runs by hand are never cancelled: each merge gets a complete run,
+# which is also the run that saves the caches.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
