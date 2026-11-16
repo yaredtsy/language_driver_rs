@@ -67,8 +67,8 @@ is the order the code runs in.
 | a unit struct or unit variant named as a value (`let u = Unit;`, `None`) | **no** | | there is no call in the text or in the compiler |
 | a path to a function in a **value** position (`map(parse)`, `spawn(worker)`, `let f = Self::helper;`) | yes | `Passed` | the path. D22: handed over, not called |
 | a call written in a macro's **arguments** (`println!("{}", f())`, `vec![g()]`, `assert!(check(x))`) | yes | as above | where it is written in the file |
-| a call that comes from the **body of a project macro** (`macro_rules! log { () => { crate::emit() } }`, used as `log!()`) | yes | `MacroBody` | the macro call's path (`log`). Several such calls of one macro call share the span: they are several targets at one site |
-| a call that comes from the body of an **external** macro (`println!` → `std::io::_print(…)`) | **no** | | the inside of external code is never entered (rule 5). The macro itself is not a node |
+| a call that comes from the **body of a project macro** (`macro_rules! log { () => { crate::emit() } }`, used as `log!()`) | yes (D30) | `MacroBody` | the macro call's path (`log`). Several such calls of one macro call share the span: they are several targets at one site |
+| a call that comes from the body of an **external** macro (`println!` → `std::io::_print(…)`) | **no** (D30) | | the inside of external code is never entered (rule 5). The macro itself is not a node |
 | a macro call the engine cannot expand | no site; counted `macro_not_expanded` | | what was in its arguments is lost, and the count says so (rule 8) |
 | operators (`a + b`, `-a`, `a[i]`, `*p`), `?`, `for` (`IntoIterator`), a value going out of scope (`Drop`), auto-deref | **no** | | they are calls to the compiler, but nobody reads `a + b` as one, and showing them would bury the tree. A later option, per kind |
 | `.await` | no; the awaited call is its own site | | transparent |
@@ -76,9 +76,11 @@ is the order the code runs in.
 | inside a nested item (a `fn`, `impl`, `const`, `static`, `mod` written in the body) | **no** | | they are defs of their own (RS1), walked when something calls them. (The engine's `outgoing_calls` takes every descendant and so counts them in the outer function; ours does not, and the oracle test of §8 allows exactly this difference) |
 | inside `#[cfg]`-disabled code | no | | the engine has no body for it |
 
-How "written in the arguments" and "from the macro's body" are told apart: the callee's name token is mapped up from the expansion; if it
-maps to a token of the file inside the macro call's argument list, the call was written there. S-RS2 measures what `original_range_opt`
-gives; the rule is fixed in `ENGINE.md` before this step is built.
+How "written in the arguments" and "from the macro's body" are told apart (**answered by S-RS2, 2026-11-16, `ENGINE.md`**): walk the macro call's expansion
+(`expand_macro_call`, recursively) and ask `original_range_opt` of the callee expression (a call) or of the name (a method call). **`Some(range)` is a call written in the
+file** (an argument of the macro; the range is exactly what was written). **`None` is a call from the macro's own body** (`println!`'s `_print`, `vec!`'s helpers, the
+`inner_call()` of a project `macro_rules!`): its site is the macro call's range, kind `MacroBody`. A call whose callee resolves through a function a `macro_rules!`
+generated has a callee `HasSource` in a macro file (External-like: no outline entry of ours).
 
 The span is relative to the def's `range.start`, as core's `Site` wants. Two sites never share (start, end) and kind except `MacroBody`.
 
@@ -168,7 +170,7 @@ This becomes `languages/rust/docs/policy.md`, with the name of each row's fixtur
 | a method on the result of `-> impl Trait` | the trait's declaration. Counted `open_opaque` | RC4 |
 | `Foo::new()` | a call to the function. Rust has no constructors |  |
 | `Foo { a, b }`, `Foo(a, b)`, `Enum::Variant(a)`, `Self { .. }` | `Construct { class, init: None }`; the class of a variant is its enum | |
-| `Some(x)`, `Ok(x)`, `String::from(..)` | `External` (`core`, `alloc`, `std`) | |
+| `Some(x)`, `Ok(x)`, `String::from(..)` | `External` (`core`, `alloc`, `std`). D30: kept as edges; their share of all edges is **[measure]**d in step 9, and a large share reopens the question with the number | |
 | a closure | not a def. Its calls are the enclosing def's, where they are written | RC2 (in part) |
 | calling a closure value, a `fn` pointer, a parameter bounded by `Fn*` | `Unresolved(function_typed_value)`; counted `open_closure` / `open_fn_pointer` / `open_fn_param` | RC2, RC3–RC5 |
 | a function named as a value | a **passed** edge to it, at the name (D22) | |
@@ -192,7 +194,7 @@ This becomes `languages/rust/docs/policy.md`, with the name of each row's fixtur
 ```
 rust-analysis/src/
 ├── lib.rs       Project, call_graph, Options, Breakdown, re-exports. Names only
-├── sem/         the engine (or sem.rs: Q-RS3)
+├── sem/         the engine, the only module that names it (D35)
 │   ├── mod.rs       Sem, Func, RawSite, SiteKind, Callee, Found, Open, Why: the whole surface the rest of the crate sees
 │   ├── load.rs      RS3
 │   ├── bridge.rs    §5: describe, entry, project code, the outline cache
@@ -212,7 +214,7 @@ rust-analysis/src/
 |---|---|
 | **the policy workspace** | `tests/fixtures/policy/`: one Cargo package, one module per row of §3, §4 and §6, loaded **once**. For each row: an entry, and its tree and `Breakdown` as a reviewed snapshot file |
 | **the context workspace** | `tests/fixtures/context/`: the programs layer 2 is about (a generic called from two callers, a callback, a `dyn` in a local, a `dyn` parameter, a factory, a struct holding a `Box<dyn …>`, a recursive generic), written **now**, with their layer-1 trees and their `open_*` counts as snapshots. Each RC phase changes some of these snapshots on purpose; none writes a new program under pressure |
-| **scenarios** | a `rust/` Cargo package in every folder of `scenarios/`; `analyzer_testkit::scenarios::run(&RUST, Level::Default)`. Rust's names differ from the shared trees (`Counter::bump`, not `Counter.bump`), so the testkit needs a per-language tree file where names differ (**Q-RS4**) |
+| **scenarios** | a `rust/` Cargo package in every folder of `scenarios/`; `analyzer_testkit::scenarios::run(&RUST, Level::Default)`. Rust's names differ from the shared trees (`Counter::bump`, not `Counter.bump`), so the testkit looks for a per-language tree file (`expected.default.rust.tree`) before the shared one, only where names differ (D30) |
 | **the oracle** | for every function of both workspaces: every range `ide::Analysis::outgoing_calls` reports is a site of ours with the same target, except ranges inside nested items (§3). The engine's call hierarchy is the definition of "follow the engine" (D7); this test is that sentence, executable |
 | invariants and determinism | `analyzer_testkit::graph::check_invariants` on every graph; `assert_deterministic` on three |
 | the join | every def the outline lists in both workspaces is found by `sem::entry`, and `describe` of it gives the same (file, qualname, occurrence) back. The TypeScript join test (48 files, 334 defs) is the model |
@@ -231,7 +233,7 @@ rust-analysis/src/
 | 6 | passed sites (D22) | fixtures: named, as a method path, a constructor (counted, no edge) |
 | 7 | macros: arguments, project macro bodies, external bodies, unexpanded, generated targets | fixtures; the counters |
 | 8 | the wire and `rust-cli calls --wire [--merged]` | the wire snapshot |
-| 9 | scenarios (after Q-RS4), the oracle, the real project | all of §8 |
+| 9 | scenarios (per-language trees, D30), the oracle, the real project | all of §8 |
 | 10 | `languages/rust/docs/policy.md`, one fixture named per row; `ENGINE.md` | reviewed |
 | | **tag `rust-v0.2.0`** | |
 

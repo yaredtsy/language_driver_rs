@@ -31,8 +31,8 @@ The decision this table makes:
 - If almost nothing is open, layer 2 is not built, and that is a good result (the "measure before deciding" of
   [`03-typescript/08`](../../03-typescript/08-later-context-sensitive.md) §5).
 - If the first row dominates (what I expect for idiomatic Rust), RC1 alone is most of the value and the rest waits for a reason.
-- If `open_dyn` dominates and RC3–RC5 look expensive for it, §9 of the design (possible implementations) is the cheaper answer; ask
-  Q-RC2 then.
+- If `open_dyn` dominates, RC3–RC5 are the answer, however they cost: listing the trait's impls as "possible" was decided against
+  (D36). The table then says which road the values are lost on (a local, a call, a field, a wrapper), and so which phase comes first.
 
 One more number, because it bounds the cost of RC1: for each generic function, **how many distinct type-argument lists** it is called
 with across the project (a histogram). Contexts in RC1 grow with this, not with the number of call sites.

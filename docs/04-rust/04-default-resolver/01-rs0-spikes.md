@@ -23,7 +23,7 @@ S-RS1 and S-RS4 are all `rust-syntax` needs, so RS1 can start after those two.
 
 | Question | Write down |
 |---|---|
-| Which `ra_ap_*` version on crates.io is the clone's commit `2a362a4`, or the nearest one after it? | the version, as `=` pins, and the commit it was published from |
+| Which `ra_ap_*` version on crates.io is the clone's commit `2a362a4`, or the nearest one after it? | the version, as `=` pins, and the commit it was published from. **Answered 2026-11-16: none.** The `hir` family stops at 0.0.358 (2026-10-12, published from `2ad81e72`), probably because the new `hir-ide` crate is not published; every `ra_ap_*` crate is pinned `=0.0.358`, and the engine source is read from the registry copy, not the clone (`ENGINE.md`, S-RS1) |
 | Does a crate with only `ra_ap_syntax` build on 1.99.1? Does `cargo tree` show `salsa`? | yes / no; cold build time; binary size **[measure]** |
 | Does a crate with `ra_ap_hir`, `ra_ap_ide_db`, `ra_ap_load-cargo`, `ra_ap_project_model`, `ra_ap_vfs` build? With `ra_ap_ide` added? | cold build time and binary size of each **[measure]**: this decides whether `ide` stays out of the release binary ([`../01-what-rust-analyzer-gives.md`](../01-what-rust-analyzer-gives.md) §2) |
 | Is `ra_ap_syntax`'s edition type usable from outside (`ra_ap_parser::Edition` or a re-export)? | the path |
@@ -32,6 +32,8 @@ S-RS1 and S-RS4 are all `rust-syntax` needs, so RS1 can start after those two.
 The engine's `rust-version` is 1.98 and its edition 2024; our toolchain is 1.99.1, so this should pass. **[check]**
 
 ## S-RS2: load a real workspace and resolve its calls
+
+**Run 2026-11-16: every row, `attach_db`, cancellation, the oracle, the timings and the scenario cost are answered in `languages/rust/ENGINE.md` (S-RS2). Rows where the plan was wrong: a return-position `impl Trait` is seen through; `Self(..)` / `Self { .. }` resolve to `SelfType` by path (use `as_callable` and `resolve_variant`); `<T as Trait>::f()` gives the impl's method by path and the trait's by `as_callable`; a derived impl method has no source of its own.**
 
 Load, with build scripts, the proc-macro server and cache prefill **off**:
 
@@ -52,11 +54,11 @@ as S-TS3 was:
 | `w.write()` with `w: impl Writer`; on the result of `fn make() -> impl Writer` | the same | the trait's declaration |
 | `self.step()` in a trait's default method | the same | the trait's declaration of `step` |
 | `Foo::new()`, `W::new()`, `<Foo as Default>::default()`, `Default::default()` with the type inferred | `type_of_expr(callee).as_callable()`; `resolve_path_with_subst` | the function; for `W::new()` the trait's; for the inferred one **unknown: write down what comes back** |
-| `Foo(a, b)`, `Enum::Variant(a)`, `Foo { a, b }`, `Self { .. }`, `Self(..)` | `as_callable().kind()`; `resolve_record_literal` or `resolve_path` on the record's path | `TupleStruct`, `TupleEnumVariant`, the struct |
+| `Foo(a, b)`, `Enum::Variant(a)`, `Foo { a, b }`, `Self { .. }`, `Self(..)` | `as_callable().kind()`; `resolve_path` on the record's path (**`resolve_record_literal` does not exist**; `Semantics::resolve_variant(RecordExpr) -> Option<Variant>` does: try both) | `TupleStruct`, `TupleEnumVariant`, the struct |
 | `f()` where `f` is a closure in a local; `(self.callback)(x)`; `f()` with `f: fn()`; `f()` with `f: F`, `F: Fn()` | `as_callable().kind()` | `Closure`, `FnPtr` (through a field), `FnPtr`, `FnImpl` |
 | a function named as a value: `xs.iter().map(parse)`, `spawn(worker)`, `.map(Self::helper)`, `.map(Foo::new)`, `.map(Wrapper)` | `resolve_path` on the path expression | `PathResolution::Def(Function)`; for `Wrapper` the struct |
 | `println!("{}", f())`, `vec![g()]` | walk the expansion; `original_range` / `original_range_opt` of the call | the call maps to the `f()` written in the file |
-| a call that is in the **body** of a project `macro_rules!` | the same | the call maps to nothing smaller than the macro call. What exactly `original_range_opt` returns decides RS4 §3's rule |
+| a call that is in the **body** of a project `macro_rules!` | the same | the call maps to nothing smaller than the macro call. **Answered 2026-11-16: `original_range_opt` is `None` for a call from a macro's body; `Some` (exact) for one written in the macro's arguments.** `ENGINE.md` |
 | a call to a function a `macro_rules!` generated | `HasSource::source(db)` of the target | `file_id` is a macro file |
 | a function under `#[tokio::main]`-style attribute, proc macros off | the calls of its body | found, from the original body |
 | `a + b`, `x?`, `*p`, `for x in it`, `.await` | (not asked in layer 1) | only confirm that none of them is an `ast::CallExpr` / `MethodCallExpr` |
@@ -93,10 +95,10 @@ function in an `extern` block):
 | Question | The plan assumes |
 |---|---|
 | are the `///` lines above the item children of the item's node? In which order with attributes? | yes; doc comments and attributes interleave in source order |
-| does a blank line between a `///` block and the item detach it? Between two `///` lines? | **unknown**. The first plan said "a blank line detaches a comment"; `n_attached_trivias` in `crates/parser/src/shortcuts.rs` is the rule to read and then to test, because for doc comments `rustc` itself does not care about blank lines |
-| a plain `//` comment directly above: in the node or not? | in the node (so `range` must skip it by hand) |
-| `/** … */`, `#[doc = "…"]`, `//!` inside a body, `////` | the first is a doc comment token; the second an attribute; the third an inner comment of the body; the fourth a plain comment |
-| does `rustfmt` change a `/// ID: …` line? With `wrap_comments = true` and `normalize_doc_attributes = true`? | no; no; the last one turns `#[doc]` attributes into `///` lines, which is harmless |
+| does a blank line between a `///` block and the item detach it? Between two `///` lines? | **answered 2026-11-16: no, neither** (`n_attached_trivias` keeps an outer doc comment across a blank line, as `rustc` does). It does detach a plain `//`, in an LF file only. `ENGINE.md`, S-RS4 |
+| a plain `//` comment directly above: in the node or not? | in the node (so `range` must skip it by hand). **Also in the node: a trailing `// c` on the previous item's line** |
+| `/** … */`, `#[doc = "…"]`, `//!` inside a body, `////` | **answered:** the first is a `DOC_COMMENT` *node* (not a token); the second an `ATTR`; the third a `DOC_COMMENT` child of the body's `STMT_LIST`, not of the `FN`; the fourth a plain `COMMENT` |
+| does `rustfmt` change a `/// ID: …` line? With `wrap_comments = true` and `normalize_doc_attributes = true`? | **answered: no; no**; the last one turns `#[doc]` attributes into `///` lines, which is harmless. `ID:` lines were byte-identical under all three configs |
 
 ## 2. What RS0 hands on
 

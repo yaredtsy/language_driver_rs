@@ -63,9 +63,9 @@ the seam: if an RC phase needs a new public function, the design is wrong and th
 `value.rs` and `ret.rs` are the only new files layer 2 creates. Every other change is inside a file that exists after RS4.
 
 `sem` is one module, but it does not have to be one file. TypeScript's `sem.rs` is 3,800 lines, and Rust's will hold more kinds of work
-(loading, the bridge, sites, resolution, later types). I suggest a folder, **`sem/`**, with `sem/mod.rs` exporting by name and private
+(loading, the bridge, sites, resolution, later types). So it is a folder, **`sem/`**, with `sem/mod.rs` exporting by name and private
 files under it (`load.rs`, `bridge.rs`, `sites.rs`, `resolve.rs`, later `ty.rs`). Rule 4 keeps its meaning: nothing outside `sem/` imports
-the engine. It needs your yes because the rule's text and `scripts/check-all.sh` say `sem.rs` (**Q-RS3**).
+the engine. Decided as **D35** (rule 4 and `scripts/check-all.sh` allow a folder since commit `1a2a39d`). `rust-syntax` keeps one `sem.rs`.
 
 ## 4. The handles
 
@@ -193,7 +193,7 @@ Each row is in a phase file; this is the list to check them against (the Rust co
 
 | Learned in | What | Rust takes it as |
 |---|---|---|
-| TS, D15 | a qualname is not unique in a file; a tool lists the matches and never picks the first | the same: `#[cfg]` twins, two `impl S<u8>` / `impl S<u16>` blocks. `Project::defs_named` exists from RS4 |
+| TS, D15 | a qualname is not unique in a file; a tool lists the matches and never picks the first | the same: `#[cfg]` twins, two `impl S` blocks with one method name (`impl S<u8>` / `impl S<u16>` differ since D29). `Project::defs_named` exists from RS4 |
 | TS/PY, D18, D20 | `occurrence` is 0-based; a def is named (file, qualname, occurrence) going in and coming out; `Entry` is core's | used as it is. `call_graph(project, file, &Entry, …)` |
 | TS, D16 | a call through a function-typed value is `Unresolved`, counted as `function_typed_value` | the same key for `FnPointer`, `FnParam` and `Closure`; the `open_*` counters split it |
 | PY, D17 | the wire is the output that is used; merged on request; prefixes are parameters | `rust-analysis` re-exports core's `wire`, `merge`, `WireStyle`; `rust-cli calls --wire [--merged]` in RS4, not later |

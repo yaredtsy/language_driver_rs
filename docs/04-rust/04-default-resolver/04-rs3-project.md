@@ -6,7 +6,7 @@ RS3
 ├── 2. which workspace owns a file
 ├── 3. the three switches, and saying what was skipped
 ├── 4. what is project code
-├── 5. inside: the database, a request, the handles
+├── 5. inside: the database, a request, the handles, the lockfile
 ├── 6. errors
 ├── 7. tests
 └── 8. steps
@@ -29,6 +29,8 @@ impl Project {
     pub fn environment_inputs(&self) -> Vec<String>;
     /// What this load did not do (§3). Copied into every graph's `Stats.language`.
     pub fn skipped(&self) -> &[(&'static str, u64)];
+    /// The load had to let cargo write a `Cargo.lock` into the project (§5, the lockfile; Q-RS6).
+    pub fn wrote_lockfile(&self) -> bool;
 }
 
 #[non_exhaustive]
@@ -107,6 +109,43 @@ Func<'p>, RawSite      Copy handles (../02-architecture.md §4)
   fix, commit `8fe3f66`, is the bug to not repeat: compare paths as the engine spells them).
 - Loading prints progress through a callback; `Project::open` takes none in layer 1 and passes a no-op. RS5 may add one.
 
+### The lockfile: a load must not write into the project (Q-RS6)
+
+S-RS2 saw a load write a `Cargo.lock` into a fixture folder. Read in `ra_ap_project_model-0.0.358` (`cargo_config_file.rs`,
+`make_lockfile_copy`; `cargo_workspace.rs`, `FetchMetadata`), that happens in one case only:
+
+| The project | What the engine's `cargo metadata` does |
+|---|---|
+| has a `Cargo.lock`, toolchain ≥ 1.82 | the engine copies the lock into a temporary folder and points cargo at the copy (`--lockfile-path` from 1.82, `CARGO_RESOLVER_LOCKFILE_PATH` with `-Zlockfile-path` from 1.95, the variable alone from 1.97). The project's lock is not touched, even when it is stale (checked 2026-11-16, 1.99.1 and 1.94.1) |
+| has a `Cargo.lock`, toolchain < 1.82 | no copy: cargo may rewrite a stale lock |
+| has **no** `Cargo.lock` | the copy fails (it copies a file that is not there), so there is no copy, and cargo resolves and **writes a new `Cargo.lock` into the project** |
+
+The sysroot is loaded apart, with `--locked` (the engine's comment: "Make sure we never attempt to write to the sysroot").
+
+Rule 2 says a library crate never writes a file. The third row is not rare: a library that does not commit its lock, freshly cloned, and
+every fixture of ours. The options:
+
+| | What | Cost |
+|---|---|---|
+| **A** | accept: cargo writes the file, as every `cargo` command and every editor running rust-analyzer would | a stated exception to rule 2; a new untracked file can appear in the user's project |
+| **B** | redirect: when the project has no `Cargo.lock` and its toolchain is ≥ 1.97, `sem::load` sets `CARGO_RESOLVER_LOCKFILE_PATH=<temporary folder>/Cargo.lock` in `CargoConfig::extra_env`. Cargo writes the new lock there, and the folder is deleted before `open` returns | a temporary file, of the same kind the engine's own copy already makes; three **[check]**s below |
+| **C** | refuse: pass `--locked`. With no lock, `cargo metadata` fails, the engine retries with `--no-deps`, and every call into a dependency is `Unresolved` | a quiet half answer (rule 8) for a reason the user cannot see |
+
+**Recommendation: B, with A as the fallback** for a toolchain older than 1.97, reported by `Project::wrote_lockfile() -> bool` so the
+driver can tell the user. Two things need your yes (Q-RS6): that a temporary file deleted before `open` returns is not a "write" in rule 2's
+sense (the rule is about the user's tree and the results), and the fallback.
+
+To check before step 1, with S-RS2's loader:
+
+**All three checked on 2026-11-16 (`ENGINE.md`, S-RS2, "Cargo.lock"):**
+
+1. **Yes.** With `CARGO_RESOLVER_LOCKFILE_PATH` in `extra_env` on 1.99.1 the sysroot still loads (no error, 26 packages), and a project *with* a lock still uses the
+   engine's copy: its lock stayed byte-identical (also when stale) and the redirect path stayed empty, so the engine's own value wins on that command.
+2. **Yes.** With no lock, cargo created `<temp>/Cargo.lock` (1.99.1 and 1.98.0) and the project had no `Cargo.lock` afterwards.
+3. **The project's toolchain**, from `cargo --version` run in the manifest's folder, so a `rust-toolchain.toml` there counts. 1.98.0 honours the variable, **1.94.1
+   ignores it** (the lock was written into the project, also when `rust-toolchain.toml` chose 1.94.1 under another loader toolchain); 1.74.1 (< 1.82) makes no copy and rewrote a
+   stale lock. The boundary 1.97 itself was not tested (not installed); `sem::load` reads `cargo --version` itself and applies B from 1.97.
+
 ## 6. Errors
 
 ```rust
@@ -124,6 +163,13 @@ Each has a `Display` a user can act on ("run `rustup component add rust-src`"). 
 sysroot does not fail the engine's load, `sem::load` checks for it itself and returns `NoSysroot`: a load without `std` is never returned
 as a success.
 
+**S-RS3 answered (2026-11-16, `ENGINE.md`): it does not fail**, and two more things follow. (1) `RustLibSource::Discover` without `sysroot_src` runs
+`rustup component add rust-src` on the user's machine; `sem::load` must not use it. It runs `rustc --print sysroot`, checks
+`lib/rustlib/src/rust/library` itself (`NoSysroot` if absent) and passes it as `sysroot_src`. (2) The load also succeeds when a dependency is not
+downloaded and `cargo metadata` fails (the engine retries with `--no-deps`); the message is only in `ProjectWorkspaceKind::Cargo { error }`. So
+`sem::load` goes through `ProjectWorkspace::load` and reads `sysroot.error()` and that `error` before `load_workspace`. What to do with the second
+(an error, or a counter in `Stats`) is a decision for RS3 step 1: the load did work, but every call into a dependency is `Unresolved`.
+
 These are the only errors `rust-analysis` has. Everything after `open` returns `Option` (rule 8).
 
 ## 7. Tests
@@ -135,7 +181,8 @@ These are the only errors `rust-analysis` has. Everything after `open` returns `
 | a fixture with a workspace, a member, a path dependency inside and one outside `root` | §4, row by row |
 | a fixture with `build.rs` and one with a derive | `skipped()` counts them |
 | `NoManifest` on a lone file | §2 |
-| `NoCargo`, `NoSysroot`: with `PATH` and `RUSTUP_TOOLCHAIN` set for the test's child process | the errors of §6. Marked `#[ignore]` if they cannot run on CI's images, and then run by hand and the result written in `ENGINE.md` |
+| `NoCargo`, `NoSysroot`: with `PATH` and `RUSTUP_TOOLCHAIN` set for the test's child process. **`NoCargo` needs an empty `HOME` as well**: the engine falls back to `~/.cargo/bin/cargo` (S-RS3) | the errors of §6. Marked `#[ignore]` if they cannot run on CI's images, and then run by hand and the result written in `ENGINE.md` |
+| a fixture with no `Cargo.lock`, and one with a stale lock: after `open`, the folder is byte-identical (under B; under A's fallback, `wrote_lockfile()` is `true`) | §5, the lockfile; rule 2 |
 | load twice, drop, in a loop of 20: memory is flat **[measure]** | ordinary ownership should make this trivially true; it is one cheap test that says so |
 
 Loading is slow (seconds). The tests of this crate share loads: one `#[test]` per fixture workspace, many checks inside it.
@@ -144,7 +191,7 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | the engine dependencies; `sem::load`; `Project::open` on a manifest path | `core/` loads |
+| 1 | the engine dependencies (again `cargo update -p unicode-properties --precise 0.1.4`, `ENGINE.md` S-RS1); `sem::load`; `Project::open` on a manifest path; the lockfile rule (§5, after Q-RS6) | `core/` loads; the lockfile test |
 | 2 | finding the manifest from a file; the root limit | the five-workspaces test |
 | 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI |
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures |

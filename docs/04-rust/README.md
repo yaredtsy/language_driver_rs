@@ -91,7 +91,7 @@ The TypeScript track's rule, unchanged ([`../03-typescript/README.md`](../03-typ
 
 1. the proof named in the phase's file runs, and the report says what actually passed;
 2. `lib.rs` is still a short list of names (rule 3);
-3. `languages/rust/ENGINE.md` lists every engine item `sem.rs` calls;
+3. `languages/rust/ENGINE.md` lists every engine item the `sem` modules call (`rust-syntax`'s `sem.rs`, `rust-analysis`'s `sem/`);
 4. the phase's contract is copied to `languages/rust/docs/`: `qualnames.md` after RS1, `markers.md` after RS2, `policy.md` after RS4, and
    `policy.md` again (its "precise" column) after each RC phase.
 

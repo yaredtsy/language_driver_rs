@@ -106,10 +106,9 @@ not in the table is `Unknown`.
 | D2 | `Option<T>`, `Result<T, E>` | enums, as RC5's: paths `Some.0`, `Ok.0`, `Err.0`. A short list of methods that keep the shape: `unwrap`, `expect`, `as_ref`, `as_mut`, `as_deref`, `unwrap_or` (a join), `?`, `clone` on the pointer kinds of D1 | their definitions are public and frozen; the listed methods are identity on the payload |
 | D3 | `Vec<T>`, `VecDeque<T>`, `HashMap<K, T>`, `BTreeMap<K, T>`, slices and arrays of carriers | **one abstract element** per collection value: everything ever put in is joined into it (`vec![…]`, array literals, `push`, `insert`, `extend` from another tracked collection); everything taken out is it (`[i]`, `get`, `first`, `pop`, `iter()` and a `for` over it) | may-contain is an over-approximation, like a branch join. It is complete only while every way in is in the table: any other `&mut` use of the collection triggers the RC3 rule, as it must |
 
-D3 is the expensive tier, and the honest advice is to compare it with the cheap alternative before building it. The typical
-`Vec<Box<dyn Plugin>>` is a registry that holds **every** implementation; for that shape, "possible implementations"
-([design §9](01-design.md), Q-RC2) gives nearly the same tree for a fraction of the work, and says "possible" where D3 would say
-"is" on the strength of a hand-written table.
+D3 is the expensive tier. The typical `Vec<Box<dyn Plugin>>` is a registry that holds **every** implementation, and "possible
+implementations" would draw nearly the same tree for less work; that was decided against (D36): D3 follows what was pushed, as Python
+follows an attribute, and is built when its counter (`open_dyn` lost in a collection) asks for it, like every part of RC6.
 
 ## 2. The known limits
 
@@ -150,7 +149,7 @@ Each part is its own small phase with its own commit series and its own go / no-
 | C1 | `Expr::Static`; immutable statics and consts | fixtures: a registry slice, a const writer; `static mut` stays |
 | D1 | pointer wrappers | fixtures; `std_model.rs` exists with its first rows |
 | D2 | `Option` / `Result` | a fixture per listed method, and one for a method **not** listed (stays `Unknown`) |
-| D3 | collections, only after comparing with Q-RC2 on real numbers | fixtures; the comparison in `ENGINE.md` |
+| D3 | collections, when the counter asks (D36: no comparison with listing impls) | fixtures; the counter before and after in `ENGINE.md` |
 | end | §2's fixtures; §3's checklist | reviewed |
 
 Back to: [`../README.md`](../README.md)

@@ -5,6 +5,7 @@ RS1
 ├── 1. the public function
 ├── 2. what is a def
 ├── 3. qualnames  (frozen at rust-v0.1.0)
+│   └── 3.1 type text: how a type is spelled in a name
 ├── 4. occurrence, and why a qualname is not unique
 ├── 5. ranges
 ├── 6. the crate, file by file
@@ -62,17 +63,17 @@ Adding a kind later is safe; removing one orphans docs. So the two "no for now" 
 |---|---|---|
 | inherent impl | `S::m` | how you call it |
 | trait impl | `<S as T>::m` | Rust's own fully qualified syntax (D10) |
-| the self type is a path with generic arguments | the arguments are **dropped**: `impl<T> S<T>` and `impl S<u8>` both give `S::m` | `impl<T> S<T>` is by far the common case, and `S<T>::m` would change when someone renames `T`. Two concrete impls with one method name are separated by `occurrence` |
-| the self type is a path with a module prefix (`impl fmt::Display for a::b::S`) | the **last segment** only: `<S as Display>::fmt` | a `use` added or removed must not rename a def |
-| the trait has generic arguments (`impl From<A> for S`, `impl From<B> for S`) | **kept**, as written, whitespace normalised: `<S as From<A>>::from` | this is the common way to have two same-named methods on one type. Dropping them would leave both as `<S as From>::from`, told apart only by their order in the file, so reordering two impls would swap the docs attached to them. **Q-RS1** |
-| the self type is not a path (`&S`, `[T]`, `(A, B)`, `dyn Tr`, `fn()`) | the type's source text, whitespace normalised, in angle brackets: `<&S as T>::m`, `<[T]>::len`, `<dyn Tr>::m` | no better name exists; the brackets keep `dyn Tr::m` from reading as a path |
+| the self type is a path with generic arguments | the arguments are **kept**, spelled as type text (§3.1): `impl<T> S<T>` gives `S<T>::m`, `impl S<u8>` gives `S<u8>::m`, `impl From<A> for S<u8>` gives `<S<u8> as From<A>>::from`. Lifetimes are not arguments here: `impl<'a> S<'a>` gives `S::m` | **D29.** Two impls of one type with one method name (`impl S<u8>`, `impl S<u16>`) get two names, so reordering them cannot swap the docs attached to them. The cost, accepted: renaming `T` renames the def. It is also the form `std::any::type_name` prints (`S<u8>::new`, `<S<u8> as From<A>>::from`) |
+| the self type or the trait is a path with a module prefix (`impl fmt::Display for a::b::S`) | the **last segment** only: `<S as Display>::fmt`. Only the head is shortened: the generic arguments are type text, whole (`impl From<io::Error> for a::S<b::T>` gives `<S<b::T> as From<io::Error>>::from`) | a `use` added or removed must not rename a def. Inside the brackets the prefix stays, because there it is what tells impls apart: `From<io::Error>` and `From<fmt::Error>` on one error type is a common pair, and both would be `From<Error>` |
+| the trait has generic arguments (`impl From<A> for S`, `impl From<B> for S`) | **kept**, spelled as type text (§3.1): `<S as From<A>>::from` | **D29.** This is the common way to have two same-named methods on one type. Dropping them would leave both as `<S as From>::from`, told apart only by their order in the file, so reordering two impls would swap the docs attached to them |
+| the self type is not a path (`&S`, `[T]`, `(A, B)`, `dyn Tr`, `fn()`) | the whole type as type text (§3.1), in angle brackets: `<&S as T>::m`, `<[T]>::len`, `<dyn Tr>::m` | no better name exists; the brackets keep `dyn Tr::m` from reading as a path |
 | a blanket impl (`impl<T: Display> Tr for T`) | `<T as Tr>::m` | it follows from the rows above |
 | inline modules | `a::b::f` | |
 | a file module | adds **nothing**: `src/a/b.rs` holding `fn f` gives `f` | the file is already the `module` part of `StableDef::Path`; a moved file keeps its qualnames |
 | an item inside a function | `outer::{fn}::inner`; a method of a local impl: `outer::{fn}::S::m` | the function-body joiner, as `.<locals>.` in Python and TypeScript. `{fn}` cannot be an identifier, so it cannot collide with a real path |
 | an item inside a `const` or `static` initializer, or a closure, or a block | named under the **nearest enclosing def**, with the `{fn}` joiner if that def is a function | closures and blocks are not naming frames (D21, rule 4: a new kind of container must not move existing names) |
 | a macro | `m!` | how you call it |
-| `#[cfg]` twins, two `impl S<u8>` / `impl S<u16>` with one method name | the same qualname; `occurrence` separates them (§4) | |
+| `#[cfg]` twins; two impls whose headers spell the same type (`impl S` twice, each with an `fn m`) | the same qualname; `occurrence` separates them (§4) | `impl S<u8>` and `impl S<u16>` are not twins: their names differ (D29) |
 | a raw identifier (`r#type`) | without `r#`: `type` | the name is `type`; `r#` is spelling |
 
 > **🦀 Rust note: why `<S as T>::m` and not `S::m` for both.** A type can implement many traits, and two traits can each have a method
@@ -81,6 +82,68 @@ Adding a kind later is safe; removing one orphans docs. So the two "no for now" 
 > be, and because a Rust reader already knows it.
 
 The rule, with one fixture per row, is `languages/rust/docs/qualnames.md`. The fixtures' snapshots are the frozen form.
+
+### 3.1 Type text
+
+Every type that appears in a qualname is printed by **one rule** (D29): the self type's generic arguments, the trait's generic arguments,
+and a whole self type that is not a path. The rule reads the impl header's tokens and nothing else, because `outline` sees one file's text
+and nothing else (rule 2).
+
+**Spelling, not meaning.** A type is named the way it is written. Nothing is looked up, expanded or shortened:
+
+| Written | In the name | Not | Why |
+|---|---|---|---|
+| `impl From<Bytes> for S`, with `type Bytes = Vec<u8>;` | `Bytes` | `Vec<u8>` | the outline cannot know what an alias means (it may be defined in another file), and if it could, editing one alias would rename defs in every file that uses it |
+| `impl From<io::Error> for S` | `io::Error` | `Error`, `std::io::Error` | a path in the brackets is kept as written (§3, the module-prefix row) |
+| `impl Add<Self> for S` | `Self` | `S` | |
+| `impl<T> From<T> for S<T>` | `T` | | a type parameter keeps its name; renaming it renames the def (D29's accepted cost) |
+| `impl From<::std::io::Error> for S` | `::std::io::Error` | | the leading `::` is written, so it is kept |
+
+> **🦀 Rust note: why spelling is safe here (coherence).** You might worry that `Bytes` and `Vec<u8>` are the same type under two names.
+> Rust's *coherence* rule forbids two impls of one trait for one type (error E0119), and two inherent methods with one name on one type
+> (E0592), however the types are spelled. So in code that compiles, one impl never needs two names. The opposite case, two different
+> types spelled the same (an `Error` imported from `io` in one module and from `fmt` in another), lands in two different modules, so the
+> module part of the name already differs. What is left (one spelling, one module, two meanings) needs local `use` items in two function
+> bodies, and `occurrence` separates it, as for any repeated qualname (D15).
+
+**The printing rule.** The type's tokens are printed in order, and:
+
+1. **Comments and whitespace** are dropped.
+2. **Lifetimes** are dropped, with the `,` or `+` that joined them: a lifetime argument (`S<'a, T>` is `S<T>`; `S<'a>` and `S<'_>`
+   are `S`, and empty brackets go), the lifetime of a reference (`&'a mut T` is `&mut T`), a lifetime bound (`dyn Tr + 'static` is
+   `dyn Tr`), and a `for<'a>` binder.
+3. **Optional punctuation** is dropped: the `::` before `<` in a type path (`Vec::<u8>` is `Vec<u8>`), and a trailing comma in a list
+   (`<A, B,>`, `(A, B,)`), **except** the comma of a one-element tuple, which makes it a tuple: `(A,)` stays `(A,)`.
+4. **`r#`** is dropped from a raw identifier, as in §3's last row.
+5. **One space** is put after `,` and `;`; on both sides of `+`, `=` and `->`; after the keywords `dyn`, `impl`, `mut`, `const`,
+   `unsafe`, `extern` and after an ABI string (`"C"`). Nowhere else.
+6. A **const argument in braces** (`S<{ N + 1 }>`) and a **macro in a type position** are the exception to rule 5: their own text, with
+   every run of whitespace and comments turned into one space and none just inside the braces (`S<{N + 1}>`). Both are rare, and their
+   inside is an expression, not a type.
+
+| Written | Type text |
+|---|---|
+| `S< u8 >`, `S</* why */ u8>` | `S<u8>` |
+| `HashMap<K,V,>` | `HashMap<K, V>` |
+| `Vec::<u8>` | `Vec<u8>` |
+| `Cow<'a, str>` | `Cow<str>` |
+| `&'a mut [u8 ; 4]` | `&mut [u8; 4]` |
+| `Box<dyn Fn(u8)->u8+Send+'static>` | `Box<dyn Fn(u8) -> u8 + Send>` |
+| `for<'a> fn(&'a str) -> &'a str` | `fn(&str) -> &str` |
+| `dyn Iterator<Item=u8>` | `dyn Iterator<Item = u8>` |
+| `( A , B , )`, `(A,)` | `(A, B)`, `(A,)` |
+| `*const T`, `unsafe extern "C" fn(i32)` | `*const T`, `unsafe extern "C" fn(i32)` |
+| `S<{ N+1 }>` | `S<{N+1}>` |
+
+So `impl<'a, T: Clone> From<&'a [T]> for Wrapper<'a, T>` is named `<Wrapper<T> as From<&[T]>>::from`.
+
+**Why lifetimes go** (proposed by the reviewer, accepted by the owner on 2026-11-16 as part of D29). They never tell two impls apart:
+`impl Tr for S<'a>` and `impl Tr for S<'static>` overlap, and Rust refuses that (E0119). And tools rewrite them: clippy's
+`needless_lifetimes` fix turns `impl<'a> Tr for S<'a>` into `impl Tr for S<'_>`. A lint fix must not rename a def. Dropping them
+also keeps the most common lifetime-carrying impl, `impl<'a> Parser<'a>`, named `Parser::m`.
+
+**What still renames a def**, on purpose: changing a written type (renaming `T`, replacing `Bytes` with `Vec<u8>`, writing
+`std::io::Error` where `io::Error` was). Each is an edit of the impl header, as renaming the trait or the struct is.
 
 ## 4. Occurrence
 
@@ -92,7 +155,7 @@ The rule, with one fixture per row, is `languages/rust/docs/qualnames.md`. The f
 
 | Field | Is |
 |---|---|
-| `range` | from the item's first **doc comment or attribute** to its last byte. Plain `//` comments directly above are in the engine's node (S-RS4) and are **not** in the range |
+| `range` | from the item's first **doc comment or attribute** to its last byte. Plain `//` comments directly above are in the engine's node (S-RS4) and are **not** in the range. Nor is a trailing `// c` from the previous item's line, which the engine also puts at the start of the next item's node: the start is the first `DOC_COMMENT` or `ATTR` child, else the first child that is not a `COMMENT` or `WHITESPACE`, never `text_range().start()` |
 | `name_range` | the name token; for a macro, the name without `!` |
 | `params` | parameter patterns as written, `self` included as `self` / `&self` / `&mut self` |
 | `marker` | RS2 |
@@ -119,8 +182,9 @@ reference-counted values), it is rule 4, and it keeps an engine bump inside one 
 
 | Test | From |
 |---|---|
-| a snapshot per fixture, one fixture per row of §2 and §3 | `analyzer_testkit::syntax::snapshot_every_fixture` |
+| a snapshot per fixture, one fixture per row of §2, §3 and §3.1's two tables | `analyzer_testkit::syntax::snapshot_every_fixture` |
 | the outline of a file cut every 50 bytes never panics | `cut_every_50_bytes` |
+| type text depends on tokens only: one header written with extra spaces, line breaks and comments gives the same qualname | a unit test on `outline.rs`'s type printer |
 | `cargo tree -p rust-syntax` has no `salsa`, no `ra_ap_hir`, no `ra_ap_ide` | a line in `scripts/check-all.sh`, as for the other languages |
 | existing names never move | from the first tag on: a test fails if a snapshot row changes, and passes if rows are added (D21's rule 4) |
 | a real file: every def of this repo's own `core/analyzer-core/src/*.rs` has a qualname, and (qualname, occurrence) is unique per file | a test over the repo's own source: free, large, and always present |
@@ -131,11 +195,11 @@ reference-counted values), it is rule 4, and it keeps an engine bump inside one 
 |---|---|---|
 | 1 | the engine pin in `languages/rust/Cargo.toml` and `ENGINE.md` (from S-RS1); `sem.rs` parses and lists top-level functions | `cargo test -p rust-syntax`; the `cargo tree` check |
 | 2 | every kind of §2 at module level, inline modules | snapshots |
-| 3 | impls and traits: the naming rows of §3 | snapshots; `languages/rust/docs/qualnames.md` written **before** the code, reviewed |
+| 3 | impls and traits: the naming rows of §3, the type text of §3.1 | snapshots; `languages/rust/docs/qualnames.md` written **before** the code, reviewed |
 | 4 | items in function bodies, in `const _`, in closures and blocks | snapshots |
 | 5 | occurrence; `syntax_error`; the cut test; the repo's-own-source test | all of §7 |
 | 6 | `rust-cli outline <file>` | prints the outline of a file of this repo |
 
-Q-RS1 is answered before step 3. Nothing is tagged until RS2.
+Q-RS1 is answered (D29): step 3 builds §3 and §3.1 as written. Nothing is tagged until RS2.
 
 Next: [`03-rs2-markers.md`](03-rs2-markers.md)

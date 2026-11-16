@@ -10,7 +10,7 @@ the context layer
 ├── 6. the precision policy  (the table every fixture follows)
 ├── 7. limits: what widens, and what cuts
 ├── 8. closures: one decision to make  (Q-RC1)
-├── 9. an option, not a phase: possible implementations  (Q-RC2)
+├── 9. not built: possible implementations  (D36)
 ├── 10. which file changes in which phase
 └── 11. how it is tested
 ```
@@ -237,13 +237,14 @@ once, for both languages, in `02-tree-rules/`. RS4 already tags each site with i
 Named functions do not have this question: `each(encode)` under RC2 shows `encode` under `each` (it is called there) **and** keeps the
 `[Passed]` edge under `main` (it is handed over there). D22 already says a def can have both.
 
-## 9. An option, not a phase: possible implementations
+## 9. Not built: possible implementations (D36)
 
 When a `dyn` value is `Unknown`, the engine can still list every impl of the trait in the project (`Impl::all_for_trait`). Showing them
-as children marked "possible" is class-hierarchy analysis ([`02-tree-rules/03`](../../02-tree-rules/03-the-seam.md) §7). It is cheap,
-needs no key, and can be built at any point after RS4. It is **not** in the phase list because it changes what an edge *means* (may,
-not does) and so needs a new `Basis` value and a renderer option in core, and a yes from you (**Q-RC2**). If the `open_dyn` counter is
-large and RC3–RC5 resolve little of it on real code, this is the fallback that still gives the user something to click.
+as children marked "possible" is class-hierarchy analysis ([`02-tree-rules/03`](../../02-tree-rules/03-the-seam.md) §7). **Decided
+against (D36, 2026-11-16)**: a `dyn` is resolved the way Python resolves an attribute, by following the value that was put there
+(RC3–RC5, RC6 A and D). An edge keeps one meaning, "is called"; where the value is not known, the site keeps layer 1's answer (the
+trait's declaration) and is counted `open_dyn`. A large `open_dyn` on real code is a reason to extend the value tracking (the counter
+that names the lost road says which part), not to list impls.
 
 ## 10. Which file changes in which phase
 

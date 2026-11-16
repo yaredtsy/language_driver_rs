@@ -36,7 +36,7 @@ rust-analysis    + ra_ap_hir            Semantics: resolve a call, a path, a met
 
 The first plan called `ide` "the designed API" and meant to stay on it. Reading `crates/ide/src/call_hierarchy.rs` changed that: its
 `outgoing_calls` is about 60 lines over `hir::Semantics`, it **drops** every site it cannot resolve and every construction, and it gives no
-type arguments. We need all three, in layer 1 already (rule 8) and for layer 2. So `sem.rs` is written on `hir`, and `ide` stays as a test
+type arguments. We need all three, in layer 1 already (rule 8) and for layer 2. So `rust-analysis`'s `sem/` is written on `hir`, and `ide` stays as a test
 oracle: for every fixture, the sites the engine's own call hierarchy reports must be a subset of ours ([RS4](04-default-resolver/05-rs4-calls.md) §8).
 Whether leaving `ra_ap_ide` out of the release binary makes it smaller is S-RS1's **[measure]**.
 
@@ -47,9 +47,9 @@ Whether leaving `ra_ap_ide` out of the release binary makes it smaller is S-RS1'
 | We need | rust-analyzer gives | Notes |
 |---|---|---|
 | parse one file | `syntax::SourceFile::parse(text, edition) -> Parse<SourceFile>` | error-tolerant; `Parse::errors()` |
-| walk the tree | typed nodes: `ast::Fn`, `ast::Impl`, `ast::Trait`, `ast::Struct`, `ast::Enum`, `ast::Module`, `ast::Const`, `ast::Static`, `ast::MacroRules`; `HasName`, `HasAttrs`, `HasDocComments`, `HasVisibility` | generated from the grammar (`ungrammar`) |
-| ranges | `node.syntax().text_range()`, UTF-8 bytes | attributes, doc comments **and plain comments directly above an item** (no blank line between) are part of the item's node. The rule is `n_attached_trivias` in `crates/parser/src/shortcuts.rs` |
-| comments above an item | the item node's first tokens (`SyntaxKind::COMMENT`, `WHITESPACE`) | the tree is lossless: every byte is in it. The parser's "a blank line detaches a comment" rule is the same as our marker rule, so the item's doc lines (where the marker lives) are simply the node's first children |
+| walk the tree | typed nodes: `ast::Fn`, `ast::Impl`, `ast::Trait`, `ast::Struct`, `ast::Enum`, `ast::Module`, `ast::Const`, `ast::Static`, `ast::MacroRules`; `HasName`, `HasAttrs`, `HasVisibility` | generated from the grammar (`ungrammar`). **There is no `HasDocComments` in 0.0.358** (S-RS4): `HasAttrs::doc_comments()` and `attrs_with_doc()` give the doc lines |
+| ranges | `node.syntax().text_range()`, UTF-8 bytes | attributes, doc comments and plain comments directly above an item are part of the item's node, **and so is a trailing `// c` on the previous item's line**: do not take `text_range().start()` as the start of a def (S-RS4). The rule is `n_attached_trivias` in `crates/parser/src/shortcuts.rs` |
+| comments above an item | the item node's first children: `DOC_COMMENT` and `ATTR` **nodes** (a `DOC_COMMENT` wraps one `OUTER_DOC_COMMENT` token), plain `COMMENT` and `WHITESPACE` tokens | the tree is lossless: every byte is in it. **A blank line does not detach a `///` block** (the parser keeps outer doc comments across it, as `rustc` does); it does detach a plain `//` in an LF file, and not in a CRLF file (S-RS4, `ENGINE.md`). So the item's doc lines (where the marker lives) are always its node's children |
 | memory | ordinary Rust ownership: `Parse` is dropped, memory is freed | no arenas to manage |
 
 ### For `rust-analysis`
@@ -62,10 +62,10 @@ Whether leaving `ra_ap_ide` out of the release binary makes it smaller is S-RS1'
 | **what a function calls** | `Analysis::outgoing_calls(&config, FilePosition) -> Option<Vec<CallItem>>` | the engine's own call hierarchy. **Our test oracle, not our resolver** (§2). `CallItem { target: NavigationTarget, ranges: Vec<FileRange> }` |
 | the same, by hand | `hir::Semantics::resolve_method_call(&ast::MethodCallExpr) -> Option<hir::Function>`; `sema.type_of_expr(&expr)` → `.as_callable(db)` → `CallableKind::{Function, TupleStruct, TupleEnumVariant, Closure, FnPtr, FnImpl}`; `sema.resolve_path` | this is what `outgoing_calls` is made of (`crates/ide/src/call_hierarchy.rs`, about 60 lines). **This is what we call** |
 | the same, with the type arguments of the call | `resolve_method_call_fallback(&call) -> Option<(Either<Function, Field>, Option<GenericSubstitution>)>`; `resolve_path_with_subst(&path)` | the plain functions are these with the substitution thrown away (`semantics.rs`). Layer 1 calls these and ignores the substitution; RC1 reads it |
-| a trait method → the impl's method | inside `resolve_method_call`: `SourceAnalyzer::resolve_impl_method_or_trait_def` asks `lookup_impl_method` with the call's substitution. So `json_writer.write()` gives the method in `impl Writer for JsonWriter`, and `w.write()` with `w: &T` gives the trait's declaration (read from the source; **[check]** in S-RS2) | answers the first plan's open question |
+| a trait method → the impl's method | inside `resolve_method_call`: `SourceAnalyzer::resolve_impl_method_or_trait_def` asks `lookup_impl_method` with the call's substitution. So `json_writer.write()` gives the method in `impl Writer for JsonWriter`, and `w.write()` with `w: &T` gives the trait's declaration (checked in S-RS2, 2026-11-16: yes, **except** that a return-position `impl Trait` is seen through to the hidden type, so `make().write()` gives the impl's method) | answers the first plan's open question |
 | a declaration's place | `NavigationTarget { file_id, full_range, focus_range, name, kind, container_name }`; `hir::Function::module(db)`, `.name(db)`, `HasSource` | |
 | project code or external | the file's `SourceRoot::is_library` | registry crates and the sysroot are library roots |
-| macros | `sema.descend_into_macros(token)`: calls *inside* a macro call's arguments are found (`println!("{}", f())`) | built into `outgoing_calls` |
+| macros | `sema.expand_macro_call(&MacroCall)` and walk the expansion (recursively): calls *inside* a macro call's arguments (`println!("{}", f())`) are found there, with an exact `original_range_opt`. **`outgoing_calls` does not do this** (S-RS2: it walks the written body only); a call from a macro's own body has `original_range_opt` = `None` | ours, not the engine's: the oracle is a subset check |
 | edits and unsaved text | `host.apply_change(change)` with the new file text | incremental for free |
 | cancel | applying a change cancels running queries; `Cancellable<T>` returns `Err(Cancelled)` | built in |
 
@@ -119,7 +119,7 @@ rust-analyzer pins `salsa 0.28.5` with its own feature set. This is the concrete
 
 | Risk | How likely | What limits the damage |
 |---|---|---|
-| a weekly release breaks an item we call | certain | `=` pins; `sem.rs`; using `ide` (the most stable layer) wherever it is enough |
+| a weekly release breaks an item we call | certain | `=` pins; every engine call inside `sem` (D35); using `ide` (the most stable layer) wherever it is enough |
 | the driver binary is large, and a cold load of a big workspace takes many seconds | certain | tier 1–2 does not link it; V-NOC's per-language extension; `Session` keeps the database alive |
 | the user's toolchain is missing or broken | medium | fact (a): clear errors, and tier 1–2 unaffected |
 | trait dispatch looks "wrong" to users (`x.fmt()` on a generic goes to the trait's declaration) | certain | the policy table says so; "show implementations" ([`02-tree-rules/03`](../02-tree-rules/03-the-seam.md) §7) is cheap here, rust-analyzer has go-to-implementations |

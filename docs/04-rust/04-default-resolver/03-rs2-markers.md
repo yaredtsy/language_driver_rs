@@ -44,7 +44,8 @@ pub fn parse_order(raw: &str) -> Order {
 |---|---|
 | which comments | the item's own **outer** doc comments: `///` lines and `/** */` blocks that are children of the item's node (S-RS4) |
 | which line | the first line that reads `<label>: <text>` after the `///` and one optional space (or after the leading `*` in a block). `text` is the rest of the line, trimmed at the end |
-| a blank line between the doc lines and the item, or between two doc lines | whatever the engine's node holds is the item's (S-RS4 says which). TypeScript's lesson (D15, point 4): follow what the compiler applies, not what looks tidy |
+| a blank line between the doc lines and the item, or between two doc lines | whatever the engine's node holds is the item's. S-RS4 answered: a blank line does **not** detach a `///` block (`ENGINE.md`). TypeScript's lesson (D15, point 4): follow what the compiler applies, not what looks tidy |
+| an outer doc comment above the item that a plain comment and a blank line separate from the next doc line: `/// a` · `// plain` · blank line · `/// b` · item | **S-RS4 answered (2026-11-16, `ENGINE.md`): the engine's node holds both.** Doc comments are not trivia in `ra_ap_parser 0.0.358`; the grammar eats them as `DOC_COMMENT` attributes, so `/// a`, the `// plain` (a `COMMENT` child) and the blank line are all inside the item's node, in LF and in CRLF. `rustc`'s count and the engine's agree. The first reading of `n_attached_trivias` (a doc line outside the node) was wrong: that function only sees plain comments |
 | `#[doc = "…"]` | not read |
 | inner doc comments (`//!` inside a module or a body) | belong to the enclosing item. Never read as this def's marker |
 | `////`, `//`, `/* */`, `/***/` | not doc comments in Rust. Not read |
@@ -80,6 +81,7 @@ Two side effects to state in `languages/rust/docs/markers.md`, because users wil
 | `UnsafeDocComment` | the last doc comment is a `/** */` block we cannot edit safely (closed on its opening line, a line without its `*`) |
 | `InvalidText` | the text is empty, starts or ends with a blank, or has a line break, or `*/` |
 | `UnknownDef` | the `Def` is not one this text's outline has (a stale outline) |
+| `DetachedDocComment` | **not built**: S-RS4 found no shape that produces it in 0.0.358 (an outer doc line above an item is always the item's child, §3). Kept in this table only until a case appears; if none does by RS2 step 3, delete the row |
 | `PlacementNotSupported` | any placement but `Docstring` |
 
 Not skips, because they are not defs and so are never asked about: items inside a macro call, enum variants, fields.
@@ -93,6 +95,7 @@ A plain comment in every language: `// <label>: <text>`, through core's `comment
 | where | after a leading licence comment (a `//` run or a `/* */` block at byte 0, whatever its style: D15 point 5) and a `#!` shebang line, and **before** inner attributes and inner doc comments (`#![…]`, `//!`). Those must come before any item but may follow a plain comment |
 | a file that starts with `//!` | the header goes above it, followed by an empty line, so it cannot be read as part of the crate docs (it is `//`, not `//!`, so rustdoc ignores it anyway) |
 | reading | the first `// <label>: …` line before the first item, inner attribute or inner doc comment |
+| "before the first item" | measured from the item's start as RS1's `range` gives it (its first doc comment or attribute, else its first token that is not a comment or whitespace), **never** from the start of the engine's node. The node can begin with plain comments: a header written directly above the first item is inside the first item's node in any file, and in a CRLF file it is inside even across a blank line (S-RS4). Measured from the node, such a header would not be found and a second one would be planned |
 
 ## 7. Tests
 
@@ -104,6 +107,7 @@ A plain comment in every language: `// <label>: <text>`, through core's `comment
 | **`rustfmt` leaves it alone**: every marked fixture is formatted with the repo's `rustfmt.toml`, and again with `wrap_comments = true`, and the marker line is byte-identical | the first plan's **[check]**. A test, not a spike, because a `rustfmt` update can change the answer |
 | **`rustc` reads it as docs**: `cargo doc` is not run; instead the marked text is parsed again and the marker line is among the item's doc comment children | the marker did not detach the docs from the item or attach itself to the next one |
 | line endings: one `\r\n` fixture | the edit keeps them |
+| the header directly above the first item; the header, a blank line and the first item in a `\r\n` file | §6's "before the first item": found, and a second plan is `AlreadyMarked` |
 
 ## 8. Steps
 
