@@ -1,0 +1,8 @@
+Function plain [0..13] name [3..8]
+Function public [14..64] name [21..27] (x, (y, z))
+Function restricted_async [65..106] name [85..101]
+Function constant [107..129] name [116..124]
+Function dangerous [130..154] name [140..149]
+Function c_abi [155..179] name [169..174]
+Function generic [180..239] name [183..190] (t, arr)
+Function with_where [240..279] name [243..253] (t)

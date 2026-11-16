@@ -10,6 +10,7 @@ workspace = true
 
 [dependencies]
 analyzer-core = { workspace = true }
+ra_ap_syntax  = { workspace = true }
 
 [dev-dependencies]
 analyzer-testkit = { workspace = true }

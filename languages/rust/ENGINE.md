@@ -4,12 +4,19 @@ The RS0 spikes below were run on 2026-11-16 (macOS, Darwin 23.6.0, Rust 1.99.1) 
 (`languages/rust/spikes/`: `s1-*` S-RS1/S-RS2 loaders, `s2-policy`, `s2-oracle`, `s2-cancel`, `s4-docs`, `fixtures/policy`).
 
 - Upstream URL: https://github.com/rust-lang/rust-analyzer (read from `../language_clone/rust-analyzer` at `2a362a4`; **built from crates.io**, not git)
-- Pinned commit / version: `ra_ap_* =0.0.358` for **every** `ra_ap_*` crate we name (published 2026-10-12). See S-RS1 for why one number and why not newer.
+- Pinned commit / version: `ra_ap_* =0.0.358` for **every** `ra_ap_*` crate we name (published 2026-10-12), written once in `languages/rust/Cargo.toml` (RS1 step 1). See S-RS1 for why one number and why not newer.
 - Engine crates used: `rust-syntax`: `ra_ap_syntax` (its `ra_ap_parser`, `rowan` come with it). `rust-analysis`: + `ra_ap_hir`, `ra_ap_ide_db`,
   `ra_ap_load-cargo`, `ra_ap_project_model`, `ra_ap_vfs`. Dev only: `ra_ap_ide` (the oracle). Final list confirmed when RS3 and RS4 are built.
 - Patches: none
-- How to bump: written when RS1 pins the crates. Two things already known, from S-RS1: the whole set moves together (`=` pins), and a bump
-  must re-check the `unicode-properties` / `unicode-ident` pair (below).
+- How to bump: an engine bump is a change of its own (only the pins, the lockfile, the `sem` module and this file).
+  1. Look for a newer set: `cargo info ra_ap_hir`, `ra_ap_ide`, `ra_ap_ide_db`, `ra_ap_load-cargo`, `ra_ap_project_model` (these five were the ones that stopped at
+     0.0.358). Move **every** `ra_ap_*` line of `[workspace.dependencies]` in `languages/rust/Cargo.toml` to one `=` version that all of them have.
+  2. `cargo update`, then check the pair that broke a fresh lock (S-RS1): `grep -A1 'name = "unicode-' Cargo.lock`. `ra_ap_hir_def` pins `unicode-ident` exactly; if
+     `unicode-properties` is a different Unicode version, `ra-ap-rustc_lexer` does not compile: `cargo update -p unicode-properties --precise <the matching one>`. Commit the lockfile.
+  3. `cargo test`, then `cargo test -p rust-syntax` alone, and `scripts/check-all.sh --static` (its `cargo tree` line: `rust-syntax` has no `salsa`, `ra_ap_hir` or `ra_ap_ide`).
+  4. Re-check every item this file names (the S-RS2 policy table, the `attach_db` rule, `Sysroot::discover`'s `rustup` call, the `set_test` default, the doc-comment node shapes
+     of S-RS4) against the new source; fix `sem` only.
+  5. Write the new version and the date here.
 - Licence notice: rust-analyzer is MIT OR Apache-2.0. (Notice text to be copied from the published crates when RS3 ships a binary.)
 
 ## S-RS1: does it build as a dependency?

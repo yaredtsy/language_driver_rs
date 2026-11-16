@@ -56,6 +56,13 @@ none "unsafe_code is allowed outside the sem module (rule 4)" \
 # core stays engine-free
 if (cd core && cargo tree 2>/dev/null | grep -E 'salsa|ruff_|tsrs_|ra_ap_'); then bad "core depends on an engine"; fi
 
+# the fast crate stays fast: rust-syntax has no salsa, no ra_ap_hir, no ra_ap_ide in its tree (RS1 §7), and does have the parser
+if [ -d languages/rust ]; then
+  tree=$(cd languages/rust && cargo tree -p rust-syntax 2>&1) || bad "cargo tree -p rust-syntax failed: $tree"
+  if grep -E 'salsa|ra_ap_hir|ra_ap_ide' <<<"$tree"; then bad "rust-syntax depends on a slow engine crate"; fi
+  grep -q 'ra_ap_syntax' <<<"$tree" || bad "rust-syntax does not depend on ra_ap_syntax (is the tree check reading the right crate?)"
+fi
+
 # relative links in docs and the top-level markdown files resolve (anchors are not checked)
 while IFS= read -r md; do
   dir=$(dirname "$md")

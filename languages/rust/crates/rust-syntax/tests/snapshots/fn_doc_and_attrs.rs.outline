@@ -1,0 +1,6 @@
+Function doc_only [0..30] name [17..25]
+Function attr_only [32..59] name [45..54]
+Function interleaved [61..123] name [107..118]
+Function attr_then_doc [125..184] name [166..179]
+Function block_doc [186..220] name [206..215]
+Function doc_attribute [222..286] name [268..281]

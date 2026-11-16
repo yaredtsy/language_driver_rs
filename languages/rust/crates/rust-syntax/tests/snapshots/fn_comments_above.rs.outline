@@ -1,0 +1,6 @@
+Function plain_above [32..51] name [35..46]
+Function plain_then_blank [90..114] name [93..109]
+Function trailing_before [116..139] name [119..134]
+Function after_trailing [181..203] name [184..198]
+Function four_slashes [243..263] name [246..258]
+Function block_comment_above [285..312] name [288..307]
