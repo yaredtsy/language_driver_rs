@@ -1,0 +1,12 @@
+Struct S [104..113] name [111..112]
+Struct G [114..129] name [121..122]
+Struct P [130..152] name [137..138]
+Struct W [153..176] name [160..161]
+Other("const") S::LIMIT [239..259] name [245..250]
+Method S::new [264..287] name [271..274]
+Method S::get [292..353] name [333..336] (&self, n)
+Method G<T>::m [376..390] name [379..380] (&self)
+Method G<u8>::m [410..424] name [413..414] (&self)
+Method G<u16>::m [445..459] name [448..449] (&self)
+Method P::m [484..498] name [487..488] (&self)
+Method W<T>::m [528..542] name [531..532] (&self)

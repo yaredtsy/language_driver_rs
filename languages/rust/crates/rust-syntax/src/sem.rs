@@ -6,7 +6,7 @@
 
 use analyzer_core::text::Span;
 use ra_ap_syntax::{
-    AstNode, SourceFile, SyntaxKind, SyntaxNode, TextRange,
+    AstNode, NodeOrToken, SourceFile, SyntaxKind, SyntaxNode, SyntaxToken, TextRange,
     ast::{self, HasModuleItem, HasName},
 };
 
@@ -16,6 +16,8 @@ use crate::Edition;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum ItemKind {
     Function,
+    /// a function of a trait or of an impl, with or without a receiver
+    Method,
     /// `struct` and `union`
     Struct,
     Enum,
@@ -40,6 +42,25 @@ pub(crate) struct Item {
     pub(crate) range: Span,
     pub(crate) name_range: Span,
     pub(crate) params: Vec<String>,
+    /// For an item of an `impl`: the header that names it. An `impl` is not a def, so it is not in the list; its items are, and this
+    /// is what their qualname is built from (`docs/qualnames.md`, I1 to I12).
+    pub(crate) impl_head: Option<ImplHead>,
+}
+
+/// An impl header, read from its tokens only. `where` clauses, the impl's own generics and its keywords are not part of it.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct ImplHead {
+    pub(crate) self_ty: HeadType,
+    pub(crate) trait_: Option<HeadType>,
+}
+
+/// A type of an impl header, printed as type text (`docs/qualnames.md`, P1 to P8).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct HeadType {
+    /// A path is shortened to its last segment, arguments whole; any other type is printed whole.
+    pub(crate) text: String,
+    /// The written type is a path without a `<A as B>::` qualifier (I1, I8).
+    pub(crate) is_path: bool,
 }
 
 fn engine_edition(edition: Edition) -> ra_ap_syntax::Edition {
@@ -54,20 +75,38 @@ fn engine_edition(edition: Edition) -> ra_ap_syntax::Edition {
 /// Every item of the file that is a def, in source order, parents before children.
 pub(crate) fn items(text: &str, edition: Edition) -> Vec<Item> {
     // `parse` never fails: a file that does not parse still gives a tree (with error nodes), and `Parse::errors()` lists the problems.
-    let file = SourceFile::parse(text, engine_edition(edition)).tree();
+    let parse = SourceFile::parse(text, engine_edition(edition));
+    let errors: Vec<TextRange> = parse.errors().iter().map(|e| e.range()).collect();
     let mut out = Vec::new();
-    collect(file.items(), None, &mut out);
+    collect(parse.tree().items(), None, &errors, &mut out);
     out
 }
 
-fn collect(items: impl Iterator<Item = ast::Item>, parent: Option<usize>, out: &mut Vec<Item>) {
+fn collect(
+    items: impl Iterator<Item = ast::Item>,
+    parent: Option<usize>,
+    errors: &[TextRange],
+    out: &mut Vec<Item>,
+) {
     for item in items {
         match item {
-            ast::Item::Fn(f) => out.extend(function(&f, parent)),
+            ast::Item::Fn(f) => out.extend(function(&f, ItemKind::Function, parent)),
             ast::Item::Struct(s) => out.extend(named(&s, ItemKind::Struct, parent)),
             ast::Item::Union(u) => out.extend(named(&u, ItemKind::Struct, parent)),
             ast::Item::Enum(e) => out.extend(named(&e, ItemKind::Enum, parent)),
-            ast::Item::Trait(t) => out.extend(named(&t, ItemKind::Trait, parent)),
+            ast::Item::Trait(t) => {
+                if let Some(def) = named(&t, ItemKind::Trait, parent) {
+                    out.push(def);
+                    let this = Some(out.len() - 1);
+                    collect_assoc(t.assoc_item_list(), this, None, out);
+                }
+            }
+            // an impl is no def: it names its items, and an impl whose header cannot be read has nothing to name them from (I10)
+            ast::Item::Impl(i) => {
+                if let Some(head) = impl_head(&i, errors) {
+                    collect_assoc(i.assoc_item_list(), parent, Some(head), out);
+                }
+            }
             ast::Item::TypeAlias(t) => out.extend(named(&t, ItemKind::Type, parent)),
             // `const _: () = …` has no name (its `_` is a separate token), so it is no def (RS1 §2)
             ast::Item::Const(c) => out.extend(named(&c, ItemKind::Const, parent)),
@@ -80,7 +119,7 @@ fn collect(items: impl Iterator<Item = ast::Item>, parent: Option<usize>, out: &
                 {
                     out.push(module);
                     let this = Some(out.len() - 1);
-                    collect(list.items(), this, out);
+                    collect(list.items(), this, errors, out);
                 }
             }
             // an `extern` block is not a def and adds nothing to a name: its functions belong to the enclosing module
@@ -91,12 +130,84 @@ fn collect(items: impl Iterator<Item = ast::Item>, parent: Option<usize>, out: &
                     .flat_map(|l| l.extern_items())
                 {
                     if let ast::ExternItem::Fn(f) = inner {
-                        out.extend(function(&f, parent));
+                        out.extend(function(&f, ItemKind::Function, parent));
                     }
                 }
             }
             _ => {}
         }
+    }
+}
+
+/// The items of a trait or of an impl. Only functions and consts are defs; an associated `type` and a macro call are not (D14, D15).
+fn collect_assoc(
+    list: Option<ast::AssocItemList>,
+    parent: Option<usize>,
+    head: Option<ImplHead>,
+    out: &mut Vec<Item>,
+) {
+    for item in list.into_iter().flat_map(|l| l.assoc_items()) {
+        let found = match item {
+            ast::AssocItem::Fn(f) => function(&f, ItemKind::Method, parent),
+            ast::AssocItem::Const(c) => named(&c, ItemKind::Const, parent),
+            _ => None,
+        };
+        out.extend(found.map(|mut item| {
+            item.impl_head.clone_from(&head);
+            item
+        }));
+    }
+}
+
+/// `None` when the header cannot be read (I10): a parse error lies in it, or it has no self type, or a `for` with no type on one side.
+/// The engine recovers from `impl for S` by reading `for S` as a higher-ranked type with no `<`, so a header with an error is not read
+/// at all: a name made from a guess would be stored in a file.
+fn impl_head(i: &ast::Impl, errors: &[TextRange]) -> Option<ImplHead> {
+    let start = i.syntax().text_range().start();
+    let end = i.assoc_item_list().map_or_else(
+        || i.syntax().text_range().end(),
+        |l| l.syntax().text_range().start(),
+    );
+    if errors
+        .iter()
+        .any(|e| start <= e.start() && e.start() <= end)
+    {
+        return None;
+    }
+    let self_ty = head_type(&i.self_ty()?);
+    let trait_ = match (i.for_token(), i.trait_()) {
+        (None, _) => None,
+        (Some(_), Some(t)) => Some(head_type(&t)),
+        (Some(_), None) => return None,
+    };
+    Some(ImplHead { self_ty, trait_ })
+}
+
+/// I1, I4, I6, I8: a path is its last segment, anything else (and a path with a `<A as B>::` qualifier) is the whole type.
+fn head_type(ty: &ast::Type) -> HeadType {
+    if let ast::Type::PathType(p) = ty
+        && let Some(path) = p.path()
+        && path
+            .first_segment()
+            .is_some_and(|s| s.type_anchor().is_none())
+        && let Some(segment) = path.segment()
+    {
+        // a leading `::` belongs to the first segment: it is written, but the head is only the last segment's name and arguments
+        let mut tokens = Vec::new();
+        for child in segment.syntax().children_with_tokens() {
+            match child {
+                NodeOrToken::Token(t) if t.kind() == SyntaxKind::COLON2 => {}
+                other => print(other, &mut tokens),
+            }
+        }
+        return HeadType {
+            text: join(&tokens),
+            is_path: true,
+        };
+    }
+    HeadType {
+        text: type_text(ty.syntax()),
+        is_path: false,
     }
 }
 
@@ -110,11 +221,12 @@ fn named<N: AstNode + HasName>(node: &N, kind: ItemKind, parent: Option<usize>) 
         range: span(item_range(node.syntax())),
         name_range: span(name.syntax().text_range()),
         params: Vec::new(),
+        impl_head: None,
     })
 }
 
-fn function(f: &ast::Fn, parent: Option<usize>) -> Option<Item> {
-    let mut item = named(f, ItemKind::Function, parent)?;
+fn function(f: &ast::Fn, kind: ItemKind, parent: Option<usize>) -> Option<Item> {
+    let mut item = named(f, kind, parent)?;
     if let Some(list) = f.param_list() {
         if let Some(receiver) = list.self_param() {
             item.params.push(receiver_text(&receiver));
@@ -166,6 +278,247 @@ fn item_range(node: &SyntaxNode) -> TextRange {
     TextRange::new(start, node.text_range().end())
 }
 
+/// A token the printer kept, with what the spacing rules ask about it.
+struct Tok {
+    text: String,
+    kind: SyntaxKind,
+    /// the `"C"` of `extern "C"` (P7: a space follows it)
+    abi: bool,
+}
+
+/// `docs/qualnames.md`, P1 to P8: the tokens of a type, with lifetimes and optional punctuation gone and one space where the rule puts one.
+/// It reads the tokens and nothing else, so spacing, line breaks and comments never change the text.
+fn type_text(node: &SyntaxNode) -> String {
+    let mut tokens = Vec::new();
+    print(NodeOrToken::Node(node.clone()), &mut tokens);
+    join(&tokens)
+}
+
+fn print(element: NodeOrToken<SyntaxNode, SyntaxToken>, out: &mut Vec<Tok>) {
+    match element {
+        NodeOrToken::Token(token) => print_token(&token, out),
+        NodeOrToken::Node(node) => match node.kind() {
+            // P2: a lifetime, a lifetime argument and a `for<'a>` binder print nothing
+            SyntaxKind::LIFETIME | SyntaxKind::LIFETIME_ARG | SyntaxKind::FOR_BINDER => {}
+            SyntaxKind::GENERIC_ARG_LIST
+            | SyntaxKind::PARENTHESIZED_ARG_LIST
+            | SyntaxKind::TUPLE_TYPE
+            | SyntaxKind::PARAM_LIST
+            | SyntaxKind::TYPE_BOUND_LIST => print_list(&node, out),
+            // everything else, a macro's token tree and a braced const argument included, is printed token by token (P8)
+            _ => {
+                for child in node.children_with_tokens() {
+                    print(child, out);
+                }
+            }
+        },
+    }
+}
+
+fn print_token(token: &SyntaxToken, out: &mut Vec<Tok>) {
+    let kind = token.kind();
+    // P1
+    if matches!(
+        kind,
+        SyntaxKind::WHITESPACE
+            | SyntaxKind::COMMENT
+            | SyntaxKind::OUTER_DOC_COMMENT
+            | SyntaxKind::INNER_DOC_COMMENT
+    ) {
+        return;
+    }
+    out.push(Tok {
+        // P6
+        text: plain_name(token.text()),
+        kind,
+        abi: kind == SyntaxKind::STRING
+            && token.parent().is_some_and(|p| p.kind() == SyntaxKind::ABI),
+    });
+}
+
+/// A list: its items (the child nodes) are printed one after the other, and the `,` or `+` between them only where two items are left
+/// (P2, P5). Empty angle brackets go (P3); parentheses never do.
+fn print_list(list: &SyntaxNode, out: &mut Vec<Tok>) {
+    let mut body = Vec::new();
+    let mut items = 0;
+    let mut separator = None;
+    let mut comma_seen = false;
+    for child in list.children_with_tokens() {
+        match child {
+            NodeOrToken::Node(node) => {
+                let mut item = Vec::new();
+                print(NodeOrToken::Node(node), &mut item);
+                if item.is_empty() {
+                    continue;
+                }
+                if items > 0 {
+                    body.extend(separator.take());
+                }
+                separator = None;
+                items += 1;
+                body.append(&mut item);
+            }
+            NodeOrToken::Token(token) => match token.kind() {
+                SyntaxKind::COMMA | SyntaxKind::PLUS => {
+                    comma_seen |= token.kind() == SyntaxKind::COMMA;
+                    let mut sep = Vec::new();
+                    print_token(&token, &mut sep);
+                    separator = sep.pop();
+                }
+                // P4: the `::` before `<` is optional
+                SyntaxKind::COLON2 if list.kind() == SyntaxKind::GENERIC_ARG_LIST => {}
+                kind => {
+                    if matches!(
+                        kind,
+                        SyntaxKind::R_PAREN | SyntaxKind::R_BRACK | SyntaxKind::R_ANGLE
+                    ) {
+                        // P5: a trailing separator goes, but the comma of `(A,)` is what makes it a tuple
+                        if list.kind() == SyntaxKind::TUPLE_TYPE && items == 1 && comma_seen {
+                            body.extend(separator.take());
+                        }
+                        separator = None;
+                    }
+                    print_token(&token, &mut body);
+                }
+            },
+        }
+    }
+    if list.kind() == SyntaxKind::GENERIC_ARG_LIST && items == 0 {
+        return;
+    }
+    out.append(&mut body);
+}
+
+/// P7: one space after `,` `;` `:` and the keywords of the list, on both sides of `+` `=` `->` `as`, after an ABI string, and between two
+/// word tokens that would otherwise touch. Never before a closing bracket, and nowhere else.
+fn join(tokens: &[Tok]) -> String {
+    let mut text = String::new();
+    for (i, token) in tokens.iter().enumerate() {
+        if i > 0 && space_between(&tokens[i - 1], token) {
+            text.push(' ');
+        }
+        text.push_str(&token.text);
+    }
+    text
+}
+
+fn space_between(prev: &Tok, next: &Tok) -> bool {
+    use SyntaxKind::*;
+    let closing = matches!(next.kind, R_PAREN | R_BRACK | R_ANGLE | R_CURLY);
+    let both_sides = |k| matches!(k, PLUS | EQ | THIN_ARROW | AS_KW);
+    let after = matches!(
+        prev.kind,
+        COMMA | SEMICOLON | COLON | DYN_KW | IMPL_KW | MUT_KW | CONST_KW | UNSAFE_KW | EXTERN_KW
+    ) || prev.abi;
+    !closing
+        && (after
+            || both_sides(prev.kind)
+            || both_sides(next.kind)
+            || (is_word(prev) && is_word(next)))
+}
+
+/// An identifier, a keyword or a literal: what runs into the next word if no space is put between them.
+fn is_word(token: &Tok) -> bool {
+    token
+        .text
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '"' | '\''))
+}
+
 fn span(range: TextRange) -> Span {
     Span::new(range.start().into(), range.end().into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The type text of one type, written as the right side of a `type` alias.
+    fn text_of(written: &str) -> String {
+        let file = SourceFile::parse(
+            &format!("type X = {written};"),
+            ra_ap_syntax::Edition::Edition2024,
+        )
+        .tree();
+        let alias = file
+            .items()
+            .find_map(|i| match i {
+                ast::Item::TypeAlias(t) => Some(t),
+                _ => None,
+            })
+            .expect("a type alias");
+        type_text(alias.ty().expect("a type").syntax())
+    }
+
+    /// Every row of `docs/qualnames.md`'s printing rule (P1 to P8).
+    #[test]
+    fn the_printing_rule() {
+        let rows = [
+            ("S< u8 >", "S<u8>"),
+            ("S</* why */ u8>", "S<u8>"),
+            ("Cow<'a, str>", "Cow<str>"),
+            ("S<T, 'a>", "S<T>"),
+            ("S<'a>", "S"),
+            ("S<'_>", "S"),
+            ("&'a mut T", "&mut T"),
+            ("dyn Tr + 'static", "dyn Tr"),
+            ("dyn 'a + Tr + Send", "dyn Tr + Send"),
+            ("for<'a> fn(&'a str) -> &'a str", "fn(&str) -> &str"),
+            ("S<>", "S"),
+            ("()", "()"),
+            ("fn()", "fn()"),
+            ("Box<dyn Fn()>", "Box<dyn Fn()>"),
+            ("Vec::<u8>", "Vec<u8>"),
+            ("HashMap<K,V,>", "HashMap<K, V>"),
+            ("(A, B,)", "(A, B)"),
+            ("(A,)", "(A,)"),
+            ("fn(A,)", "fn(A)"),
+            ("r#type", "type"),
+            ("&'a mut [u8 ;4]", "&mut [u8; 4]"),
+            (
+                "Box<dyn Fn(u8)->u8+Send+'static>",
+                "Box<dyn Fn(u8) -> u8 + Send>",
+            ),
+            ("dyn Iterator<Item=u8>", "dyn Iterator<Item = u8>"),
+            ("<T as Tr>::Out", "<T as Tr>::Out"),
+            ("fn(a:u8)", "fn(a: u8)"),
+            ("a :: B", "a::B"),
+            ("*const T", "*const T"),
+            ("unsafe extern \"C\" fn(i32)", "unsafe extern \"C\" fn(i32)"),
+            ("S<{ N+1 }>", "S<{N + 1}>"),
+            ("S<{N + 1}>", "S<{N + 1}>"),
+            ("m!( a  b )", "m!(a b)"),
+        ];
+        for (written, printed) in rows {
+            assert_eq!(text_of(written), printed, "written: {written}");
+        }
+    }
+
+    fn heads(text: &str) -> Vec<ImplHead> {
+        items(text, Edition::E2024)
+            .into_iter()
+            .filter_map(|i| i.impl_head)
+            .collect()
+    }
+
+    /// The name of an impl's items depends on the header's tokens only: spacing, line breaks, comments, lifetimes, the impl's own
+    /// generics' bounds and the `where` clause change nothing, and the same holds inside a braced const argument and a macro (P8).
+    #[test]
+    fn a_header_is_read_from_its_tokens_only() {
+        let clean = [
+            "impl<'a, T: Clone> From<&'a [T]> for Wrapper<'a, T> where T: Copy { fn m() {} }",
+            "impl<T> Tr<{ N + 1 }, m!(a b)> for S<T> { fn m() {} }",
+            "impl Tr<Box<dyn Fn(u8) -> u8 + Send>> for a::S<dyn Iterator<Item = u8>> { fn m() {} }",
+        ];
+        let noisy = [
+            "impl <'x,T:Clone+Copy>   From  <  & 'x  /* why */ [T] , >   for  Wrapper\n  < 'x , T >\n where T : Send\n{ fn m() {} }",
+            "impl<T>\nTr<{N+1},\n // c\n m!(  a\n b )>\n for\nS < T , >\n{ fn m() {} }",
+            "impl Tr< Box<dyn 'static + Fn(u8)->u8 + Send + 'static> > for a :: S < dyn Iterator < Item=u8 , > > { fn m() {} }",
+        ];
+        for (clean, noisy) in clean.into_iter().zip(noisy) {
+            assert_eq!(heads(clean), heads(noisy), "clean: {clean}");
+            assert_eq!(heads(clean).len(), 1);
+        }
+    }
 }

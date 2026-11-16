@@ -4,6 +4,7 @@ Struct Record [54..77] name [61..67]
 Struct Bits [78..105] name [84..88]
 Enum Choice [106..143] name [111..117]
 Trait Speak [144..180] name [150..155]
+  Method Speak::speak [162..178] name [165..170] (&self)
 Type Alias [181..202] name [186..191]
 Other("const") LIMIT [203..226] name [209..214]
 Other("static") GREETING [227..256] name [234..242]

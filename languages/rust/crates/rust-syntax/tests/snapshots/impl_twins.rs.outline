@@ -1,0 +1,5 @@
+Method S::m [138..147] name [141..142]
+Method S::m [159..168] name [162..163]
+Method S::m [193..202] name [196..197]
+Method S<u8>::m [218..227] name [221..222]
+Method S<u16>::m [244..253] name [247..248]

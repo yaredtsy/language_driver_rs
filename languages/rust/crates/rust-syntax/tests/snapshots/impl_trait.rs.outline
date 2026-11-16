@@ -1,0 +1,10 @@
+Struct S [140..149] name [147..148]
+Trait T [150..197] name [156..157]
+  Method T::m [160..172] name [163..164] (&self)
+  Other("const") T::C [173..185] name [179..180]
+Other("const") <S as T>::C [218..234] name [224..225]
+Method <S as T>::m [258..272] name [261..262] (&self)
+Method <W<T> as Clone>::clone [325..360] name [328..333] (&self)
+Method <P as T>::m [386..400] name [389..390] (&self)
+Other("const") <P as T>::C [401..417] name [407..408]
+Method <S as UnsafeT>::danger [463..489] name [473..479] (&self)

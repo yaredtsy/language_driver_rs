@@ -1,0 +1,16 @@
+Trait Speak [144..313] name [150..155]
+  Other("const") Speak::LOUD [162..179] name [168..172]
+  Other("const") Speak::DEFAULT [184..206] name [190..197]
+  Method Speak::speak [225..241] name [228..233] (&self)
+  Method Speak::shout [246..278] name [249..254] (&self)
+  Method Speak::make [283..301] name [286..290]
+Trait Generic [314..361] name [320..327]
+  Method Generic::m [341..359] name [344..345] (&self, a)
+Trait Lifetimed [362..409] name [368..377]
+  Method Lifetimed::m [384..407] name [387..388] (&self)
+Trait Danger [410..455] name [423..429]
+  Method Danger::run [432..453] name [442..445] (&self)
+Trait Empty [456..470] name [462..467]
+Module audio [471..519] name [475..480]
+  Trait audio::Mixer [487..517] name [493..498]
+    Method audio::Mixer::mix [501..515] name [504..507] (&self)

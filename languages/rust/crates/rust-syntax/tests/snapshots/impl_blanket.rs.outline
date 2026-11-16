@@ -1,0 +1,3 @@
+Method <T as Tr>::m [95..109] name [98..99] (&self)
+Method <&T as Tr>::m [132..146] name [135..136] (&self)
+Method <Box<T> as Tr>::m [181..195] name [184..185] (&self)

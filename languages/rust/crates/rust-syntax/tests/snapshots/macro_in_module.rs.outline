@@ -1,0 +1,6 @@
+Other("macro") top! [142..172] name [155..158]
+Module outer [173..355] name [177..182]
+  Other("macro") outer::shallow! [189..223] name [202..209]
+  Module outer::inner [228..353] name [232..237]
+    Other("macro") outer::inner::deep! [248..279] name [261..265]
+    Other("macro") outer::inner::exported! [288..347] name [325..333]
