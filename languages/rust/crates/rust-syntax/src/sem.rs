@@ -16,12 +16,26 @@ use crate::Edition;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum ItemKind {
     Function,
+    /// `struct` and `union`
+    Struct,
+    Enum,
+    Trait,
+    /// an inline `mod m { }`
+    Module,
+    /// `type A = …`
+    Type,
+    Const,
+    Static,
+    /// `macro_rules! m`
+    Macro,
 }
 
 /// One item of the file, as plain data.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct Item {
     pub(crate) kind: ItemKind,
+    /// Index of the enclosing item in the same list. A parent always comes before its children.
+    pub(crate) parent: Option<usize>,
     pub(crate) name: String,
     pub(crate) range: Span,
     pub(crate) name_range: Span,
@@ -37,50 +51,96 @@ fn engine_edition(edition: Edition) -> ra_ap_syntax::Edition {
     }
 }
 
-/// The items written at the top level of the file, in source order.
-pub(crate) fn top_level_items(text: &str, edition: Edition) -> Vec<Item> {
+/// Every item of the file that is a def, in source order, parents before children.
+pub(crate) fn items(text: &str, edition: Edition) -> Vec<Item> {
     // `parse` never fails: a file that does not parse still gives a tree (with error nodes), and `Parse::errors()` lists the problems.
     let file = SourceFile::parse(text, engine_edition(edition)).tree();
-    file.items()
-        .filter_map(|item| match item {
-            ast::Item::Fn(f) => function(&f),
-            _ => None,
-        })
-        .collect()
+    let mut out = Vec::new();
+    collect(file.items(), None, &mut out);
+    out
 }
 
-fn function(f: &ast::Fn) -> Option<Item> {
-    // a function the parser could not finish has no name: there is nothing to name it by
-    let name = f.name()?;
-    let mut params = Vec::new();
+fn collect(items: impl Iterator<Item = ast::Item>, parent: Option<usize>, out: &mut Vec<Item>) {
+    for item in items {
+        match item {
+            ast::Item::Fn(f) => out.extend(function(&f, parent)),
+            ast::Item::Struct(s) => out.extend(named(&s, ItemKind::Struct, parent)),
+            ast::Item::Union(u) => out.extend(named(&u, ItemKind::Struct, parent)),
+            ast::Item::Enum(e) => out.extend(named(&e, ItemKind::Enum, parent)),
+            ast::Item::Trait(t) => out.extend(named(&t, ItemKind::Trait, parent)),
+            ast::Item::TypeAlias(t) => out.extend(named(&t, ItemKind::Type, parent)),
+            // `const _: () = …` has no name (its `_` is a separate token), so it is no def (RS1 §2)
+            ast::Item::Const(c) => out.extend(named(&c, ItemKind::Const, parent)),
+            ast::Item::Static(s) => out.extend(named(&s, ItemKind::Static, parent)),
+            ast::Item::MacroRules(m) => out.extend(named(&m, ItemKind::Macro, parent)),
+            // `mod m;` has no item list: it names a file, and the file is the def's home (RS1 §2)
+            ast::Item::Module(m) => {
+                if let (Some(list), Some(module)) =
+                    (m.item_list(), named(&m, ItemKind::Module, parent))
+                {
+                    out.push(module);
+                    let this = Some(out.len() - 1);
+                    collect(list.items(), this, out);
+                }
+            }
+            // an `extern` block is not a def and adds nothing to a name: its functions belong to the enclosing module
+            ast::Item::ExternBlock(block) => {
+                for inner in block
+                    .extern_item_list()
+                    .into_iter()
+                    .flat_map(|l| l.extern_items())
+                {
+                    if let ast::ExternItem::Fn(f) = inner {
+                        out.extend(function(&f, parent));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// An item that has a name and nothing else the outline reads. `None` when the parser could not find the name.
+fn named<N: AstNode + HasName>(node: &N, kind: ItemKind, parent: Option<usize>) -> Option<Item> {
+    let name = node.name()?;
+    Some(Item {
+        kind,
+        parent,
+        name: plain_name(name.text()),
+        range: span(item_range(node.syntax())),
+        name_range: span(name.syntax().text_range()),
+        params: Vec::new(),
+    })
+}
+
+fn function(f: &ast::Fn, parent: Option<usize>) -> Option<Item> {
+    let mut item = named(f, ItemKind::Function, parent)?;
     if let Some(list) = f.param_list() {
         if let Some(receiver) = list.self_param() {
-            params.push(receiver_text(&receiver));
+            item.params.push(receiver_text(&receiver));
         }
-        params.extend(
+        item.params.extend(
             list.params()
                 .filter_map(|p| p.pat())
                 .map(|pat| pat.syntax().text().to_string()),
         );
     }
-    Some(Item {
-        kind: ItemKind::Function,
-        name: plain_name(name.text()),
-        range: span(item_range(f.syntax())),
-        name_range: span(name.syntax().text_range()),
-        params,
-    })
+    Some(item)
 }
 
-/// The receiver as the three forms the plan names: `self`, `&self`, `&mut self`. A lifetime, `mut` on a by-value receiver and an
-/// explicit type (`self: Box<Self>`) are spelling, not a different receiver for a reader of the outline.
+/// The receiver as the four forms of RS1 §5: `self`, `mut self`, `&self`, `&mut self`. A typed receiver (`self: Box<Self>`,
+/// `mut self: Rc<Self>`) prints `self`, because its type is not a pattern of the outline; a lifetime (`&'a self`) is dropped, as in
+/// every other name (§3.1).
 fn receiver_text(receiver: &ast::SelfParam) -> String {
-    if receiver.amp_token().is_none() {
+    let mutable = receiver.mut_token().is_some();
+    if receiver.ty().is_some() {
         "self".to_owned()
-    } else if receiver.mut_token().is_some() {
-        "&mut self".to_owned()
+    } else if receiver.amp_token().is_some() {
+        if mutable { "&mut self" } else { "&self" }.to_owned()
+    } else if mutable {
+        "mut self".to_owned()
     } else {
-        "&self".to_owned()
+        "self".to_owned()
     }
 }
 

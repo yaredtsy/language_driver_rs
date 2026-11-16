@@ -1,0 +1,6 @@
+Struct struct [0..16] name [7..15]
+Enum enum [17..31] name [22..28]
+Module mod [32..58] name [36..41]
+  Function mod::fn [44..56] name [47..51]
+Other("macro") raw! [59..91] name [72..77]
+Struct Ünï [92..105] name [99..104]

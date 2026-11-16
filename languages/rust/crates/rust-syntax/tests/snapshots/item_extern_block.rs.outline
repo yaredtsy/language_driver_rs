@@ -1,0 +1,5 @@
+Function abs [24..78] name [59..62] (x)
+Function getpid [83..107] name [91..97]
+Function legacy [167..179] name [170..176]
+Module ffi [182..253] name [186..189]
+  Function ffi::inside_mod [217..245] name [220..230] (p)

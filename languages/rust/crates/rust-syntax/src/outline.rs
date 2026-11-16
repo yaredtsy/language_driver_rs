@@ -11,18 +11,40 @@ use crate::sem::{self, Item, ItemKind};
 /// `_style` is read from RS2 on (the marker of each def).
 pub(crate) fn outline(text: &str, edition: Edition, _style: MarkerStyle<'_>) -> Outline {
     let mut outline = Outline::default();
-    outline.defs = sem::top_level_items(text, edition)
-        .iter()
-        .map(def)
-        .collect();
+    for item in sem::items(text, edition) {
+        // `sem` lists a parent before its children, so the parent's def is already there
+        let parent = item.parent.map(|p| &outline.defs[p]);
+        let name = defined_name(&item);
+        let qualname = match parent {
+            Some(p) => format!("{}::{name}", p.qualname),
+            None => name.clone(),
+        };
+        let mut def = Def::new(qualname, name, kind(&item), item.range, item.name_range);
+        def.parent = item.parent;
+        def.params = item.params;
+        outline.defs.push(def);
+    }
     outline
 }
 
-fn def(item: &Item) -> Def {
-    let kind = match item.kind {
+/// The name as it is called: a macro ends in `!`, and `m!` is its whole name (RS1 §3).
+fn defined_name(item: &Item) -> String {
+    match item.kind {
+        ItemKind::Macro => format!("{}!", item.name),
+        _ => item.name.clone(),
+    }
+}
+
+fn kind(item: &Item) -> DefKind {
+    match item.kind {
         ItemKind::Function => DefKind::Function,
-    };
-    let mut def = Def::new(&item.name, &item.name, kind, item.range, item.name_range);
-    def.params = item.params.clone();
-    def
+        ItemKind::Struct => DefKind::Struct,
+        ItemKind::Enum => DefKind::Enum,
+        ItemKind::Trait => DefKind::Trait,
+        ItemKind::Module => DefKind::Module,
+        ItemKind::Type => DefKind::Type,
+        ItemKind::Const => DefKind::Other("const".to_owned()),
+        ItemKind::Static => DefKind::Other("static".to_owned()),
+        ItemKind::Macro => DefKind::Other("macro".to_owned()),
+    }
 }

@@ -1,0 +1,3 @@
+Enum Complete [7..23] name [12..20]
+Module open [24..60] name [28..32]
+  Function open::inside [39..53] name [42..48]
