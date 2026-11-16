@@ -12,7 +12,7 @@ all=$(scripts/list-languages.sh)
 if [ -z "$base" ] || [ "$base" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
   files=$'core/\nscripts/'
 else
-  files=$(git diff --name-only "$base" "$head")
+  files=$(git diff --no-renames --name-only "$base" "$head")
 fi
 
 core=false

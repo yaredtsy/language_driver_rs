@@ -2,7 +2,17 @@
 name: ci
 # No workflow-level `paths:` filter: a workflow that does not start reports nothing, and a required check that
 # never reports blocks the pull request forever. Jobs are skipped with `if:` instead.
-on: { pull_request: {}, push: { branches: [main] } }
+# `push` is for main only: a branch is tested through its pull request, so a push to a PR branch starts one run, not two.
+# `workflow_dispatch` runs a branch without a PR (no base: everything runs).
+on: { pull_request: {}, push: { branches: [main] }, workflow_dispatch: {} }
+
+permissions: { contents: read }
+
+# A newer push to the same PR cancels the older run. main and runs by hand are never cancelled: each merge gets a complete run,
+# which is also the run that saves the caches.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -10,6 +20,7 @@ env:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       core: ${{ steps.f.outputs.core }}
       languages: ${{ steps.f.outputs.languages }}
@@ -23,6 +34,7 @@ jobs:
 
   repo:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - run: scripts/check-all.sh --static
@@ -34,15 +46,22 @@ jobs:
       fail-fast: false
       matrix: { os: [ubuntu-latest, macos-latest, windows-latest] }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     defaults: { run: { working-directory: core } }
     steps:
       - uses: actions/checkout@v4
+      # rust-toolchain.toml names the toolchain; install it here, before rust-cache hashes `rustc`, not on the first cargo call
+      - run: rustup toolchain install
+      # `key:` and `save-if:` reasons: docs/01-monorepo/05-ci.md §4
       - uses: Swatinem/rust-cache@v2
-        with: { workspaces: core }
+        with:
+          workspaces: core
+          key: core
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
-      - run: cargo doc --no-deps
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: cargo doc --locked --no-deps
         env: { RUSTDOCFLAGS: "-D warnings" }
 
   # A language's fast crate: `cargo test -p <lang>-syntax` never compiles the type checker.
@@ -55,14 +74,20 @@ jobs:
         lang: ${{ fromJSON(needs.changes.outputs.languages) }}
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     defaults: { run: { working-directory: "languages/${{ matrix.lang }}" } }
     steps:
       - uses: actions/checkout@v4
+      # rust-toolchain.toml names the toolchain; install it here, before rust-cache hashes `rustc`, not on the first cargo call
+      - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-        with: { workspaces: "languages/${{ matrix.lang }}" }
+        with:
+          workspaces: "languages/${{ matrix.lang }}"
+          key: ${{ matrix.lang }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
-      - run: cargo clippy -p ${{ matrix.lang }}-syntax --all-targets -- -D warnings
-      - run: cargo test -p ${{ matrix.lang }}-syntax
+      - run: cargo clippy --locked -p ${{ matrix.lang }}-syntax --all-targets -- -D warnings
+      - run: cargo test --locked -p ${{ matrix.lang }}-syntax
 
   # The slow crates, and the scenarios for that language.
   analysis:
@@ -74,14 +99,20 @@ jobs:
         lang: ${{ fromJSON(needs.changes.outputs.languages) }}
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     defaults: { run: { working-directory: "languages/${{ matrix.lang }}" } }
     steps:
       - uses: actions/checkout@v4
+      # rust-toolchain.toml names the toolchain; install it here, before rust-cache hashes `rustc`, not on the first cargo call
+      - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-        with: { workspaces: "languages/${{ matrix.lang }}" }
-      - run: cargo clippy -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli --all-targets -- -D warnings
+        with:
+          workspaces: "languages/${{ matrix.lang }}"
+          key: ${{ matrix.lang }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo clippy --locked -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli --all-targets -- -D warnings
       # --no-fail-fast: a failing test binary must not hide the results of the others
-      - run: cargo test --no-fail-fast -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli
+      - run: cargo test --locked --no-fail-fast -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli
       # compile-fail proofs sit behind a feature, so `cargo test` above does not see them (scripts/check-proofs.sh says why)
       - run: ../../scripts/check-proofs.sh ${{ matrix.lang }}
         shell: bash
@@ -91,8 +122,10 @@ jobs:
     needs: [changes, repo, core, syntax, analysis]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with: { sparse-checkout: scripts }
       - name: every needed job succeeded or was skipped
         env: { NEEDS: "${{ toJSON(needs) }}" }
         run: echo "$NEEDS" | python3 scripts/all-ok.py
