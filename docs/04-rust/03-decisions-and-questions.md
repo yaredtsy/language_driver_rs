@@ -29,7 +29,7 @@ When a question below is answered, the answer goes into that log as a `D` row an
 | D30 | a project macro's body calls are sites, an external macro's are not; per-language scenario trees; `Some(x)` / `Ok(x)` are `External` edges | RS4 §3, §5, §8 |
 | D35 | the `sem` module may be a folder: `sem/` in `rust-analysis`, one `sem.rs` in `rust-syntax` | RS3 §5, RS4 §7 |
 | D36 | a `dyn` value is resolved by following the value (Python's attribute tracking), never by listing the trait's impls as possible | RC3–RC5, RC6 A and D; design §9 |
-| D37 | an incomplete or old Rust install is loaded with what there is, and a `Warning` says what is missing; only no `cargo` (or no manifest, or a broken one) is an error | RS3 §6 |
+| D37 | an incomplete or old Rust install is loaded with what there is, and a `Warning` says what is missing; with no `cargo` the crate graph is read from `Cargo.toml` by us, with no manifest the file alone is loaded; only a file that is not there is an error | RS3 §6, the ladder |
 | M12, M13 | `Key = ()`, the module names, `resolve(site, &env)`; an anonymous function's calls belong to the enclosing def | RS4; the closure question (Q-RC1) builds on M13 |
 
 ## 2. Draft rows

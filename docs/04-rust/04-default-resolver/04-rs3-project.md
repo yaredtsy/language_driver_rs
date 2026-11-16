@@ -48,8 +48,8 @@ and holds five workspaces (`core/`, one per language). So, as TypeScript finds t
 1. from `file`'s folder, climb to the nearest `Cargo.toml`, no higher than `root`;
 2. hand it to the engine (`ProjectManifest::from_manifest_file`, then `ProjectWorkspace::load`), which asks `cargo metadata`; Cargo itself
    finds the workspace root above a member, and that root **may** be above the manifest we found but is never accepted above `root`;
-3. no manifest below `root`: `OpenError::NoManifest`. A lone `.rs` file has no call graph in layer 1; its outline and markers work
-   (they never needed a project).
+3. no manifest below `root`: the file alone is the project, a one-file crate with its `mod` children (§6, the ladder's last rung), with
+   the `NoManifest` warning. Its outline and markers work as always (they never needed a project).
 
 | Case | Answer |
 |---|---|
@@ -172,15 +172,13 @@ target is project code**, the cross-crate ones of a workspace separately. Write 
 ## 6. Errors and warnings (D37)
 
 **The rule (owner, 2026-11-16): if the user's Rust is complete and recent, load normally; if not, load with what there is and say so.**
-A missing piece is a **warning** the driver shows the user (a banner in V-NOC), not a failure. Only what makes a call graph impossible is
-an error. This replaces the first plan's "a load without `std` is never returned as a success": it still is never returned *silently*.
+A missing piece is a **warning** the driver shows the user (a banner in V-NOC), not a failure. Only a file that is not there is
+an error: with no Rust at all, the crate graph is read from `Cargo.toml` by us (the ladder, below). This replaces the first plan's "a load without `std` is never returned as a success": it still is never returned *silently*.
 
 ```rust
 #[non_exhaustive]
 pub enum OpenError {
-    NoManifest,                 // no Cargo.toml between the file and the root
-    NoCargo,                    // `cargo` cannot be run, and no installed toolchain has one
-    Metadata(String),           // `cargo metadata` failed even with `--no-deps` (a broken Cargo.toml): cargo's message
+    NotUnderRoot,               // the file does not exist, cannot be read, or is not inside `root`: there is nothing to load
 }
 
 #[non_exhaustive]
@@ -190,6 +188,9 @@ pub enum Warning {
     ToolchainSubstituted { wanted: String, used: String, why: Why },// Why::NotInstalled | Why::TooOld
     DependenciesMissing { message: String },                        // `cargo metadata` failed; loaded with `--no-deps`
     LockfileWritten,                                                // cargo wrote a Cargo.lock into the project (§5, Q-RS6)
+    NoToolchain,                                                    // no cargo: the crate graph was read from Cargo.toml by us (the ladder, rung 3)
+    ManifestUnreadable { message: String },                         // cargo and our reader both failed on a Cargo.toml (rung 4)
+    NoManifest,                                                     // no Cargo.toml up to the root: the file alone (rung 4)
 }
 
 impl Warning {
@@ -200,7 +201,8 @@ impl Warning {
 | What the user has | What `open` does | What the user is told | What is missing from the tree |
 |---|---|---|---|
 | a complete, recent toolchain | loads | nothing | nothing |
-| no `cargo` at all | `Err(NoCargo)`: no workspace can be read | "install Rust (rustup.rs) to see calls" | the call graph. **The outline and markers still work**: `rust-syntax` needs no toolchain |
+| no `cargo` at all (no Rust installed) | loads from **our own reading of the `Cargo.toml` files**, with no `std` (the ladder below, rung 3) | `NoToolchain`: "Rust is not installed: only calls that do not go through the standard library are shown" | every call whose answer needs `std` or a dependency (as `NoStdSource` and `DependenciesMissing` together). What stays: functions called by path (`helper(x)`, `crate::db::save()`, `Order::new()`), and methods on a value whose project type is known without `std` (`self.validate()`, `Order::new().submit()`, `let o: Order = …; o.submit()`), across the workspace's own crates |
+| no `Cargo.toml` up to the root, or one nobody can read | the file alone, as a one-file crate with its `mod` children (rung 4) | `NoManifest` or `ManifestUnreadable` | calls into other files of the package that this file does not reach by `mod` |
 | no `rust-src` | loads without `std` | `NoStdSource`: "install the Rust source (`rustup component add rust-src`) to see all calls" | project method calls whose receiver's type comes through `std` (`parse()?.submit()`, `for x in v.iter() { x.run() }`). A project function called by path still resolves |
 | a toolchain older than the minimum (§7's measurement), a newer one installed | loads with the **newer** toolchain's `cargo` and `std` (`RUSTUP_TOOLCHAIN` in `extra_env` and for `sem::load`'s own `rustc --print sysroot`) | `ToolchainSubstituted { why: TooOld }`: "your project uses Rust 1.74; calls were read with 1.99" | little for in-project calls: `std`'s types change slowly. **[check]** in the §7 measurement |
 | the same, nothing newer installed | loads with the old one | `OldToolchain`: "Rust 1.74 is older than 1.82: some calls may be missing" | whatever the measurement found for that version |
@@ -213,11 +215,32 @@ impl Warning {
 - `Display` of each gives the sentence of the table; the driver can show it as it is or by `code()`.
 - How a warning reaches the screen is the driver's (`vnoc/drivers/rust/`); this crate only returns the data (rule 1, rule 2).
 
+### The ladder: load with what there is (D37)
+
+`open` tries each rung in order and stops at the first that loads. Each rung below the first adds its warning.
+
+| Rung | When | How | Engine call |
+|---|---|---|---|
+| 1 | `cargo` runs and `cargo metadata` succeeds | as §2–§5 | `ProjectWorkspace::load` |
+| 2 | `cargo` runs, `cargo metadata` fails, `--no-deps` works | the engine's own retry | the same (S-RS3) |
+| 3 | no `cargo`, or `cargo` cannot read the manifest but the TOML parses | `sem::load` reads the `Cargo.toml` files itself and builds the crate graph: each member's crate roots by Cargo's documented layout (`src/lib.rs`, `src/main.rs`, `src/bin/*.rs`, `[lib] path`, `[[bin]] path`, `autobins`), its edition (with `edition.workspace = true`), the path dependencies between members, `cfg(test)` on, the default features as `cfg(feature = …)`. No sysroot. What the reader does not understand (a target layout it does not know, `[patch]`, a `build.rs`'s generated module) is counted, `layout_skipped` | `ProjectWorkspace::load_inline(ProjectJson, …)`, sysroot `None` |
+| 4 | no `Cargo.toml` up to the root, or none that parses | the requested file is the crate root; its `mod` children come with it | the same, one crate |
+
+Rung 3 is an approximation of what cargo would say, written from Cargo's documented rules, so it never guesses a name: a member it cannot
+lay out is skipped and counted, never invented (rule 8). It needs a TOML parser in `rust-analysis` (the `toml` crate; not an engine crate,
+so rule 4 does not apply).
+
+**To check before building it** (RS3 step 7): **[check]** `load_inline` with sysroot `None` and **no `rustc` on `PATH`**: the engine asks
+`rustc` for the target's `cfg` and data layout (`QueryConfig::Rustc`); does it fall back or fail? **[check]** that `self.m()`,
+`Self::new()`, `Order::new().submit()` and a call into another member resolve with no `std` (expected: yes; the receiver's type is known
+without `std`). **[measure]** in-project edges at rung 3 against rung 1 on the three projects: a fourth column of §5's table. S-RS3's only
+number so far (no `std`, on `core/`, all calls): 634 of 978 calls and 74 of 914 method calls resolved.
+
 **How each condition is found** (S-RS3, `ENGINE.md`): `sem::load` never calls `Sysroot::discover` (it runs `rustup component add
 rust-src` by itself). It reads the version with `cargo --version` in the manifest's folder, finds the sysroot with `rustc --print sysroot`,
 checks `lib/rustlib/src/rust/library` itself and passes it as `sysroot_src`; it loads through `ProjectWorkspace::load`, then reads
 `sysroot.error()` and `ProjectWorkspaceKind::Cargo { error }` before `load_workspace`. The installed toolchains for a substitution come from
-`rustup toolchain list` (**[check]** the form without `rustup`: then no substitution, and `OldToolchain` / `NoCargo`).
+`rustup toolchain list` (**[check]** the form without `rustup`: then no substitution, and `OldToolchain`, or rung 3 of the ladder when there is no `cargo`).
 
 These are the only errors `rust-analysis` has. Everything after `open` returns `Option` (rule 8).
 
@@ -229,8 +252,8 @@ These are the only errors `rust-analysis` has. Everything after `open` returns `
 | `open` with `root` = the repo root and a file in `languages/rust/` | the right one of five workspaces is chosen; `manifest()` says which |
 | a fixture with a workspace, a member, a path dependency inside and one outside `root` | §4, row by row |
 | a fixture with `build.rs` and one with a derive | `skipped()` counts them |
-| `NoManifest` on a lone file | §2 |
-| `NoCargo`, and `NoStdSource` as a warning on a successful load: with `PATH` and `RUSTUP_TOOLCHAIN` set for the test's child process. **`NoCargo` needs an empty `HOME` as well**: the engine falls back to `~/.cargo/bin/cargo` (S-RS3) | the errors of §6. Marked `#[ignore]` if they cannot run on CI's images, and then run by hand and the result written in `ENGINE.md` |
+| a lone file (no `Cargo.toml`): loads as a one-file crate, `NoManifest` | §2, §6 rung 4 |
+| `NoToolchain` (rung 3) and `NoStdSource` as warnings on a successful load: with `PATH` and `RUSTUP_TOOLCHAIN` set for the test's child process. **No `cargo` needs an empty `HOME` as well**: the engine falls back to `~/.cargo/bin/cargo` (S-RS3) | the errors of §6. Marked `#[ignore]` if they cannot run on CI's images, and then run by hand and the result written in `ENGINE.md` |
 | a fixture with no `Cargo.lock`, and one with a stale lock: after `open`, the folder is byte-identical (under B; under A's fallback, `warnings()` holds `LockfileWritten`) | §5, the lockfile; rule 2 |
 | **the old-toolchain measurement**, once, by hand: a small project (a project method reached through `Option::unwrap` and through `Vec::iter`) loaded with each installed toolchain (1.74.1, 1.94.1, 1.98.0, 1.99.1): loads?, `std` found?, both calls resolved?; and the same project loaded with 1.74 substituted by 1.99. The table goes in `ENGINE.md`; it sets the minimum. Afterwards the old toolchains are uninstalled (about 4 GB) | the minimum of §6, and that a substitution loses nothing in-project |
 | the minimum check: a table test of the version comparison (`1.81.0` → warn, `1.82.0` → none, a version cargo prints with a suffix, an unreadable one) | pure code; needs no old Rust |
@@ -248,6 +271,7 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 | 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI |
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures |
 | 5 | `OpenError` and `Warning` (§6, D37), from S-RS3's texts; the old-toolchain measurement and the minimum; the substitution | §7's error and warning tests; the table in `ENGINE.md` |
+| 7 | the ladder's rungs 3 and 4 (§6): our own `Cargo.toml` reader into `ProjectJson`, the one-file crate; its checks first | a fixture workspace loaded with no `cargo` and no `rustc` on `PATH` and an empty `HOME`: the in-project calls of §6's row resolve, `NoToolchain` is set; a lone `.rs` file; §5's table with rung 3 |
 | 6 | `ENGINE.md`: what `sem::load` calls, the `attach_db` rule, the measured load times | reviewed |
 
 Q-RS3 (`sem` as a folder) is answered before step 1: this is the phase where `sem` gets its second kind of work.

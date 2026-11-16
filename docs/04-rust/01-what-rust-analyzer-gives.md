@@ -89,7 +89,7 @@ public method.
 
 Loading a Cargo workspace runs `cargo metadata` and reads the standard library's source from the sysroot (`rustup component add rust-src`).
 Unlike tsrs (which bundles `lib.d.ts`), nothing is bundled. For Rust users that is a fair requirement, but it is a **user-machine dependency**:
-`Project::open` returns a clear `OpenError::NoCargo`, loads without `std` with a `NoStdSource` warning (D37), and tier 1–2 (`rust-syntax`) never needs either.
+`Project::open` loads with what there is and warns (D37): without `std` (`NoStdSource`), and with no Rust at all from its own reading of `Cargo.toml` (`NoToolchain`); tier 1–2 (`rust-syntax`) never needs any of it.
 
 ### b) Macros hide code from the parser
 
