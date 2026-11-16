@@ -276,7 +276,7 @@ These are the only errors `rust-analysis` has. Everything after `open` returns `
 | Test | Proves |
 |---|---|
 | `open` on `core/` of this repo, from a file in `analyzer-core/src/` | a virtual workspace loads; `files()` is exactly the `.rs` files under `core/*/src` and `tests` |
-| `open` with `root` = the repo root and a file in `languages/rust/` | the right one of five workspaces is chosen; `manifest()` says which |
+| `open` with `root` = the repo root and a file in `languages/rust/` (and one in `core/`) | the right one of five workspaces is chosen; `manifest()` says which. The Rust workspace also lists `core/`'s files: `analyzer-core` is a path dependency under the root, so project code (§2's table). Not `languages/typescript/`: its `cargo metadata` needs `tsrs`'s git repository, so Rust's CI would fetch another language's engine (decided 2026-11-16, step 2 review) |
 | a fixture with a workspace, a member, a path dependency inside and one outside `root` | §4, row by row |
 | a fixture with `build.rs` and one with a derive | `skipped()` counts them |
 | a lone file (no `Cargo.toml`): loads as a one-file crate, `NoManifest` | §2, §6 rung 4 |
@@ -295,7 +295,7 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 |---|---|---|
 | 1 | the engine dependencies (again `cargo update -p unicode-properties --precise 0.1.4`, `ENGINE.md` S-RS1); `sem::load`; `Project::open` on a manifest path; the in-project measurement of §5 (B, D, no `std`), then the lockfile rule Q-RS6 picks | `core/` loads; the table in `ENGINE.md`; the lockfile test. **Done but the lockfile rule** (f4064e4; table in `ENGINE.md`): the measurement picked B (D38) |
 | 1b | the lockfile rule (§5, D38): `cargo --version` in the manifest's folder (step 5 reuses it); from 1.97 and only when the project has no `Cargo.lock`, B (`CARGO_RESOLVER_LOCKFILE_PATH` in `extra_env` to a temporary folder, deleted before `open` returns); below 1.97, A. A's `LockfileWritten` warning comes with `Warning` in step 5; until then the load records that it wrote one | §7's lockfile test: a fixture with no lock and one with a stale lock are byte-identical after `open` (on the installed 1.99.1); a table test of the version rule (`1.96.x` → A, `1.97.0` → B, a suffixed version, an unreadable one → A). **Done** (ccb699e, as built in §5) |
-| 2 | finding the manifest from a file; the root limit | the five-workspaces test |
+| 2 | finding the manifest from a file; the root limit | the five-workspaces test. **Done** (0364d27; UTF-8 fix 98cf4d3): `open(root, file)` without `opts` until step 4; errors are `OpenError::Load` until steps 5 and 7; pure path functions in `paths.rs` |
 | 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI |
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures |
 | 5 | `OpenError` and `Warning` (§6, D37), from S-RS3's texts; the old-toolchain measurement and the minimum; the substitution | §7's error and warning tests; the table in `ENGINE.md` |
