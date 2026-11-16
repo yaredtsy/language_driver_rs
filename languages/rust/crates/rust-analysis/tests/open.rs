@@ -7,14 +7,14 @@ use rust_analysis::{OpenError, Project};
 mod common;
 use common::{copy_of_fixture, rs_files, snapshot};
 
-/// This repo: it has no `Cargo.toml` of its own and holds five workspaces. Written with `..` on purpose, as a caller writes a path.
+/// This repo: it has no `Cargo.toml` of its own and holds five workspaces (the test below opens two: `languages/typescript/` is left out on purpose). Written with `..` on purpose, as a caller writes a path.
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
 }
 
 /// The committed lockfiles must come out of a load as they went in.
 fn locks(repo: &Path) -> Vec<Vec<u8>> {
-    ["core", "languages/typescript", "languages/rust"]
+    ["core", "languages/rust"]
         .map(|workspace| std::fs::read(repo.join(workspace).join("Cargo.lock")).unwrap())
         .to_vec()
 }
@@ -23,18 +23,14 @@ fn locks(repo: &Path) -> Vec<Vec<u8>> {
 fn the_right_one_of_five_workspaces_is_chosen() {
     let repo = repo();
     let before = locks(&repo);
-    // (the file as the caller writes it, the manifest found, the folders that hold project files). The language workspaces have a path dependency on
+    // (the file as the caller writes it, the manifest found, the folders that hold project files). The Rust workspace has a path dependency on
     // `core/analyzer-core`, which is under the root: loaded as a local crate, so project code (§2's table), and its files are listed.
-    let cases: [(&str, &str, &[&str]); 3] = [
+    // `languages/typescript/` is not opened: its `cargo metadata` needs tsrs's git repository, and Rust's CI must not fetch another language's engine.
+    let cases: [(&str, &str, &[&str]); 2] = [
         (
             "core/analyzer-core/src/lib.rs",
             "core/analyzer-core/Cargo.toml",
             &["core/"],
-        ),
-        (
-            "languages/typescript/crates/typescript-analysis/src/lib.rs",
-            "languages/typescript/crates/typescript-analysis/Cargo.toml",
-            &["languages/typescript/", "core/"],
         ),
         (
             "languages/rust/crates/rust-analysis/src/lib.rs",
@@ -43,7 +39,7 @@ fn the_right_one_of_five_workspaces_is_chosen() {
         ),
     ];
     for (file, manifest, folders) in cases {
-        // the first file relative to the root, the others absolute: both are allowed
+        // the first file relative to the root, the other absolute: both are allowed
         let file_arg = if folders == ["core/"] {
             PathBuf::from(file)
         } else {
