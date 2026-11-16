@@ -171,7 +171,7 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
     })
 }
 
-/// §3: what the switches that did not act cut, by name. `build_scripts_skipped`: the packages of the workspace that have a build script, when the
+/// §3: what the switches that did not act cut, by name. `build_scripts_skipped`: the local packages (members and path dependencies: project code, §4) that have a build script, when the
 /// scripts did not run (off, or the run failed). `proc_macros_skipped`: 1 when any crate of the dependency graph is a proc macro and the server did
 /// not run (off, or the build that makes its dylib failed). A switch that is
 /// on, or that cuts nothing, is not listed.
@@ -198,7 +198,7 @@ fn skipped(
                     is_proc_macro: true,
                 };
         }
-        build_scripts += u64::from(script && cargo[package].is_member);
+        build_scripts += u64::from(script && cargo[package].is_local);
         any_proc_macro |= proc_macro;
     }
     let mut skipped = Vec::new();

@@ -106,7 +106,7 @@ impl Project {
         inputs
     }
 
-    /// What this load did not do, by name, sorted (§3): `build_scripts_skipped`, the workspace's packages that have a build script, when the
+    /// What this load did not do, by name, sorted (§3): `build_scripts_skipped`, the local packages (members and path dependencies) that have a build script, when the
     /// scripts did not run; `proc_macros_skipped`, 1 when a crate of the dependency graph is a proc macro and the server is off. A switch that
     /// is on, or that cuts nothing here, is not listed. Copied into every graph's `Stats.language` from RS4 on, so a tree that lacks a call says why.
     pub fn skipped(&self) -> &[(&'static str, u64)] {

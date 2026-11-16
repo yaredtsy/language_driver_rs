@@ -155,3 +155,14 @@ fn a_build_that_fails_is_not_a_failed_load() {
     // the same fixture with the build not asked for says the same: nothing differs between "off" and "failed"
     assert_eq!(open(&options(false, false)).skipped(), both);
 }
+
+/// A path dependency that is not a member of the workspace is project code (§4), so its `build.rs` counts too: `app` has none, `dep` is outside
+/// the workspace folder and has one.
+#[test]
+fn a_path_dependencys_build_script_is_counted() {
+    let copy = copy_of_fixture("pathdep", "switches_pathdep");
+    let app = copy.join("ws/app");
+    let project =
+        Project::open(&copy, &app.join("src/lib.rs"), &options(false, false)).expect("app loads");
+    assert_eq!(project.skipped(), [("build_scripts_skipped", 1)]);
+}
