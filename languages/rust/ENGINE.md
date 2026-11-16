@@ -22,7 +22,7 @@ The RS0 spikes below were run on 2026-11-16 (macOS, Darwin 23.6.0, Rust 1.99.1) 
 ## The engine items we call
 
 What `sem` imports and calls, read from the code (RS2 step 6, 2026-11-16, `ra_ap_syntax =0.0.358`). An engine bump re-checks every row. A
-new call into the engine adds its row in the same commit. `rust-analysis` calls nothing yet; its rows come with RS3 and RS4.
+new call into the engine adds its row in the same commit (the reviewer writes it, from the code).
 
 **`rust-syntax`** (`crates/rust-syntax/src/sem.rs`, the only file that names `ra_ap_syntax`):
 
@@ -47,6 +47,22 @@ new call into the engine adds its row in the same commit. `rust-analysis` calls 
 | `SyntaxToken::{kind, text, text_range, parent}`, `TextRange::{new, start, end}` | tokens and offsets (`TextSize` into `u32`) |
 | `SyntaxKind`: `WHITESPACE`, `COMMENT`, `SHEBANG`, `DOC_COMMENT`, `OUTER_DOC_COMMENT`, `INNER_DOC_COMMENT`, `ATTR` | the tree shapes of S-RS4: a doc line is a `DOC_COMMENT` node around an `OUTER_`/`INNER_DOC_COMMENT` token; a plain comment is a `COMMENT` token and can open an item's node, so an item's range starts at its first `DOC_COMMENT` or `ATTR` child, else its first child that is not `COMMENT` or `WHITESPACE` |
 | `SyntaxKind`: `LIFETIME`, `LIFETIME_ARG`, `FOR_BINDER`, `GENERIC_ARG_LIST`, `PARENTHESIZED_ARG_LIST`, `TUPLE_TYPE`, `PARAM_LIST`, `TYPE_BOUND_LIST`, `ABI`, `STRING`, `COLON2`, `COMMA`, `PLUS`, `EQ`, `THIN_ARROW`, `COLON`, `SEMICOLON`, `R_PAREN`, `R_BRACK`, `R_ANGLE`, `R_CURLY`, `AS_KW`, `DYN_KW`, `IMPL_KW`, `MUT_KW`, `CONST_KW`, `UNSAFE_KW`, `EXTERN_KW` | the type-text printer (`docs/qualnames.md` P1–P8). A renamed or split kind changes stored qualnames: the `the_printing_rule` test and the snapshots catch it |
+
+**`rust-analysis`** (`crates/rust-analysis/src/sem/`, D35; as of RS3 step 3, 457a16a; the test-only calls are marked):
+
+| Item | Where | What we rely on |
+|---|---|---|
+| `ra_ap_project_model::ProjectManifest::from_manifest_file(AbsPathBuf)` | `load.rs` | a `Cargo.toml` path becomes the engine's manifest; cargo finds the workspace root above a member |
+| `ProjectWorkspace::load(manifest, &CargoConfig, progress)` | `load.rs` | runs `cargo metadata` and loads the sysroot; falls back to `--no-deps` metadata by itself when the full one fails (§ "In-project edges by load mode") |
+| `CargoConfig { sysroot: Some(RustLibSource::Path(dir)), set_test: true, extra_env, .. }` | `load.rs` | `Path` looks for `rust-src` without `rustup` (§ "How `sem::load` finds std"); `set_test` makes `cfg(test)` code active (S-RS2); `extra_env` reaches every `cargo` the engine runs, the sysroot's included (`CARGO_RESOLVER_LOCKFILE_PATH`, D38) |
+| `ra_ap_load_cargo::load_workspace(ws, &extra_env, &LoadCargoConfig { load_out_dirs_from_check: false, with_proc_macro_server: ProcMacroServerChoice::None, prefill_caches: false, num_worker_threads: 1, proc_macro_processes: 0 })` | `load.rs` | returns `(RootDatabase, Vfs, _)`; build scripts, proc macros and cache prefill stay off (RS3 §3) |
+| `ra_ap_vfs::{Vfs::iter, Vfs::file_path, VfsPath::as_path, AbsPathBuf}` | `load.rs`, `origin.rs` | every loaded file with its path; a path is compared as engine text (`/`, drive-letter case ignored as the engine's own `VfsPath` encoding does, `vfs_path.rs` `paths_encoding`) |
+| `ra_ap_ide_db::RootDatabase` | `load.rs`, `origin.rs` | owned by `Loaded`; dropping it frees the load |
+| `ra_ap_hir::attach_db(&db, \|\| …)` | `origin.rs` | every `hir` call runs inside it, or the engine panics (S-RS2) |
+| `Function::{module, source, name, as_assoc_item}`, `HasSource::source(..).file_id.file_id()`, `HirFileId → EditionedFileId::file_id(db)` | `origin.rs` | where a def is written; `file_id()` is `None` for a macro file, so a macro-made def is in no file (RS3 §4) |
+| `AsAssocItem`, `AssocItemContainer::{Trait, Impl}`, `Impl::self_ty(..).as_adt()`, `Trait::name`, `Adt::name` | `origin.rs` | the type or trait segment of an external name; a self type that is not an ADT (`[T]`, `&T`) gives none |
+| `Module::{krate, name, path_to_root}`, `Crate::{origin, display_name}`, `CrateOrigin::is_local` | `origin.rs` | `Local` is a workspace member or a path dependency; `Library`, `Lang`, `Rustc` are external; a crate with no display name is `unnamed` |
+| test only: `Semantics::{new, attach_first_edition_opt, parse, resolve_expr_as_callable, resolve_method_call_fallback}`, `CallableKind::Function`, `Either::left`; `ra_ap_syntax::{ast::CallExpr, ast::MethodCallExpr, AstNode}` | `origin.rs` tests | the fixture's call walk, the part of RS4's site walk RS3 needs |
 
 ## S-RS1: does it build as a dependency?
 
