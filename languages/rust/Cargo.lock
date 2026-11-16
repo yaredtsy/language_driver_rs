@@ -251,6 +251,7 @@ dependencies = [
 name = "rust-cli"
 version = "0.0.0"
 dependencies = [
+ "analyzer-core",
  "rust-analysis",
  "rust-syntax",
 ]
