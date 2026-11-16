@@ -3,3 +3,12 @@ Struct F [192..236] name [199..200]
 Enum D [237..281] name [242..243]
 Type T [282..320] name [287..288]
 Other("const") U [321..370] name [327..328]
+syntax error [376..376]: expected fn, trait or impl
+syntax error [377..377]: expected an item
+syntax error [381..381]: expected an item
+syntax error [382..382]: expected an item
+syntax error [384..384]: expected an item
+syntax error [408..408]: expected an item
+syntax error [413..413]: expected a name
+syntax error [414..414]: expected function arguments
+syntax error [414..414]: expected a curly brace

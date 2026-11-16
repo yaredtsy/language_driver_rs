@@ -72,14 +72,34 @@ fn engine_edition(edition: Edition) -> ra_ap_syntax::Edition {
     }
 }
 
-/// Every item of the file that is a def, in source order, parents before children.
-pub(crate) fn items(text: &str, edition: Edition) -> Vec<Item> {
+/// What one file holds: its items, and the parse errors the engine found in it.
+pub(crate) struct Parsed {
+    /// Every item that is a def, in source order, parents before children.
+    pub(crate) items: Vec<Item>,
+    /// A range inside the text and the engine's English message, in the order the engine reports them.
+    pub(crate) errors: Vec<(Span, String)>,
+}
+
+pub(crate) fn parse(text: &str, edition: Edition) -> Parsed {
     // `parse` never fails: a file that does not parse still gives a tree (with error nodes), and `Parse::errors()` lists the problems.
     let parse = SourceFile::parse(text, engine_edition(edition));
-    let errors: Vec<TextRange> = parse.errors().iter().map(|e| e.range()).collect();
-    let mut out = Vec::new();
-    collect(parse.tree().items(), None, &errors, &mut out);
-    out
+    let ranges: Vec<TextRange> = parse.errors().iter().map(|e| e.range()).collect();
+    let mut items = Vec::new();
+    collect(parse.tree().items(), None, &ranges, &mut items);
+    // an error at the end of the text can reach one byte past it; the outline promises ranges inside the text
+    let len = u32::try_from(text.len()).unwrap_or(u32::MAX);
+    let errors = parse
+        .errors()
+        .iter()
+        .map(|e| {
+            let range = span(e.range());
+            (
+                Span::new(range.start.min(len), range.end.min(len)),
+                e.to_string(),
+            )
+        })
+        .collect();
+    Parsed { items, errors }
 }
 
 fn collect(
@@ -570,7 +590,8 @@ mod tests {
             "{ ".repeat(depth),
             " }".repeat(depth)
         );
-        let names: Vec<String> = items(&text, Edition::E2024)
+        let names: Vec<String> = parse(&text, Edition::E2024)
+            .items
             .into_iter()
             .map(|i| i.name)
             .collect();
@@ -578,7 +599,8 @@ mod tests {
     }
 
     fn heads(text: &str) -> Vec<ImplHead> {
-        items(text, Edition::E2024)
+        parse(text, Edition::E2024)
+            .items
             .into_iter()
             .filter_map(|i| i.impl_head)
             .collect()

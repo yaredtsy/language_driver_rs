@@ -1,2 +1,10 @@
 Function complete [0..16] name [3..11]
-Function unfinished [20..55] name [23..33] (after_broken())
+Function unfinished [20..55] name [23..33] (after_broken()) SYNTAX-ERROR
+syntax error [19..19]: expected a name
+syntax error [19..19]: expected function arguments
+syntax error [19..19]: expected a block
+syntax error [35..35]: expected pattern
+syntax error [37..37]: missing type for function parameter
+syntax error [37..37]: expected `,`
+syntax error [52..52]: missing type for function parameter
+syntax error [52..52]: expected R_PAREN

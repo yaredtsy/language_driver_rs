@@ -37,3 +37,17 @@ impl Edition {
 pub fn outline(text: &str, edition: Edition, style: MarkerStyle<'_>) -> Outline {
     outline::outline(text, edition, style)
 }
+
+/// The `occurrence` of each def of `outline`, in the same order: 0-based, the number of defs with the same qualname before it in the
+/// file (D18). A qualname is not unique in a file (D15); (qualname, occurrence) is.
+///
+/// ```
+/// use rust_syntax::{Edition, MarkerStyle, occurrences, outline};
+///
+/// let text = "impl S { fn m() {} }\nimpl S { fn m() {} }\n";
+/// let o = outline(text, Edition::LATEST, MarkerStyle::docstring("ID"));
+/// assert_eq!(occurrences(&o), [0, 1]);
+/// ```
+pub fn occurrences(outline: &Outline) -> Vec<u16> {
+    outline::occurrences(outline)
+}

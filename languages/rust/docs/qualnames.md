@@ -162,8 +162,9 @@ changed lifetimes beside its clean twin: the two outlines must carry the same qu
 **Step 5 adds** `body_collisions.rs` (B11: a const, a static and a `const _` each beside a same-spelled module, trait, struct with an impl, or
 item; their qualnames repeat and `occurrence` counts the twins 0, 1) and `impl_broken_local.rs` (I10 in a body, B2: `fn h() { impl S<u8 { … } fn after() {} }`:
 `h` is a def and is flagged `syntax_error`; the engine reads the unclosed `<` as swallowing what follows, as at the end of `impl_broken.rs`, so the
-impl's items **and `after`** are parts of the header's generic list, not items, and are not defs). `syntax_error` is true on a def when a parse error's
-range overlaps its range (RS1 §5); `item_broken.rs`, `fn_broken.rs`, `impl_broken.rs` and the new fixture pin it, because their snapshots now carry
+impl's items **and `after`** are parts of the header's generic list, not items, and are not defs). `syntax_error` is true on a def when a parse error touches its range (RS1 §5): a
+range overlaps it as ranges do, and an **empty** error (a missing token, such as the `}` of a `mod` that is never closed, which the engine puts at the
+def's last byte) counts from the def's first byte to its last, both included, so a complete def that ends exactly there is flagged with its parent; `item_broken.rs`, `fn_broken.rs`, `impl_broken.rs` and the new fixture pin it, because their snapshots now carry
 the flags. Two tests over the whole crate, not per fixture: the cut test runs on every fixture, the step 4 body fixtures included, and a test over
 the repo's own `core/analyzer-core/src/*.rs` checks that every def has a qualname whose text is where the def says it is and that
 `(qualname, occurrence)` is unique per file.

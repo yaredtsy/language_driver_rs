@@ -1,3 +1,9 @@
 Function before [105..119] name [108..114]
 Method S::kept [218..230] name [221..225]
 Function after [233..246] name [236..241]
+syntax error [128..128]: expected `<`
+syntax error [159..159]: expected type, found `{`
+syntax error [185..185]: expected type, found `{`
+syntax error [334..334]: expected COMMA
+syntax error [356..356]: expected R_ANGLE
+syntax error [356..356]: expected `{`

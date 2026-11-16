@@ -1,3 +1,8 @@
 Enum Complete [7..23] name [12..20]
-Module open [24..60] name [28..32]
+Module open [24..60] name [28..32] SYNTAX-ERROR
   Function open::inside [39..53] name [42..48]
+syntax error [6..6]: expected a name
+syntax error [6..6]: expected `;`, `{`, or `(`
+syntax error [60..60]: expected a name
+syntax error [60..60]: expected `{`
+syntax error [60..60]: expected R_CURLY

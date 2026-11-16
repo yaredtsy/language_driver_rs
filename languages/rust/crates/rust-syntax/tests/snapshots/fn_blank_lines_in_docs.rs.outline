@@ -2,3 +2,4 @@ Function blank_after_doc [0..30] name [10..25]
 Function plain_between_docs [32..80] name [57..75]
 Function doc_plain_blank_item [82..126] name [101..121]
 Function after_inner_doc [173..202] name [182..197]
+syntax error [128..128]: expected an item
