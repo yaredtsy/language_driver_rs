@@ -174,6 +174,23 @@ target is project code**, the cross-crate ones of a workspace separately. Write 
 a call from member A into member B is `Unresolved` under `no_deps`. Worse than the table above says, `CargoConfig::no_deps` also reaches
 the sysroot's own `cargo metadata`, so `std`'s crates lose their links too. **So B, with A as the fallback (D38)**; D is not built.
 
+#### As built (RS3 step 1b, ccb699e, reviewed 2026-11-16)
+
+- **Which lock.** Cargo keeps one `Cargo.lock` beside the workspace's root manifest, not a member's. `sem::load` asks
+  `cargo locate-project --workspace` for it (one fast `cargo` call per load) and falls back to the manifest's folder when cargo cannot say.
+- **The version.** `cargo --version` in the manifest's folder, with `RUSTUP_AUTO_INSTALL=0` (`toolchain.rs`, reused by step 5). A
+  pre-release counts as older than its release, as in semver: `1.97.0-nightly` gets A, `1.98.0-nightly` B; a `+build` suffix is ignored;
+  an unreadable version gets A.
+- **Either guess is safe.** Whether cargo wrote a lock is decided after the load on every path (`!had_lock && lock.exists()`), so a
+  toolchain that ignores the variable on B, or honours it on A, ends in the same place: no lock, or a lock that is reported
+  (`LockfileWritten`, step 5). The version rule only avoids a useless variable.
+- **The temporary folder** is a small `TempDir` (no `tempfile` crate) whose `Drop` deletes it when `load` returns, on every path. A folder
+  that cannot be made falls back to A.
+- Tested on 1.99.1 only: a no-lock fixture and a lock made stale at run time are byte-identical after `open`, and no temporary folder is
+  left. The stale case passes either way, because the engine's own copy already protects a project that has a lock. The A path
+  (`wrote_lockfile`) needs a toolchain below 1.97 and is not run here; it is covered by the version rule's table test, and by §7's
+  old-toolchain measurement in step 5.
+
 ## 6. Errors and warnings (D37)
 
 **The rule (owner, 2026-11-16): if the user's Rust is complete and recent, load normally; if not, load with what there is and say so.**
@@ -273,7 +290,7 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 | # | Do | Proof |
 |---|---|---|
 | 1 | the engine dependencies (again `cargo update -p unicode-properties --precise 0.1.4`, `ENGINE.md` S-RS1); `sem::load`; `Project::open` on a manifest path; the in-project measurement of §5 (B, D, no `std`), then the lockfile rule Q-RS6 picks | `core/` loads; the table in `ENGINE.md`; the lockfile test. **Done but the lockfile rule** (f4064e4; table in `ENGINE.md`): the measurement picked B (D38) |
-| 1b | the lockfile rule (§5, D38): `cargo --version` in the manifest's folder (step 5 reuses it); from 1.97 and only when the project has no `Cargo.lock`, B (`CARGO_RESOLVER_LOCKFILE_PATH` in `extra_env` to a temporary folder, deleted before `open` returns); below 1.97, A. A's `LockfileWritten` warning comes with `Warning` in step 5; until then the load records that it wrote one | §7's lockfile test: a fixture with no lock and one with a stale lock are byte-identical after `open` (on the installed 1.99.1); a table test of the version rule (`1.96.x` → A, `1.97.0` → B, a suffixed version, an unreadable one → A) |
+| 1b | the lockfile rule (§5, D38): `cargo --version` in the manifest's folder (step 5 reuses it); from 1.97 and only when the project has no `Cargo.lock`, B (`CARGO_RESOLVER_LOCKFILE_PATH` in `extra_env` to a temporary folder, deleted before `open` returns); below 1.97, A. A's `LockfileWritten` warning comes with `Warning` in step 5; until then the load records that it wrote one | §7's lockfile test: a fixture with no lock and one with a stale lock are byte-identical after `open` (on the installed 1.99.1); a table test of the version rule (`1.96.x` → A, `1.97.0` → B, a suffixed version, an unreadable one → A). **Done** (ccb699e, as built in §5) |
 | 2 | finding the manifest from a file; the root limit | the five-workspaces test |
 | 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI |
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures |
