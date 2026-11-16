@@ -62,8 +62,8 @@ language_driver_rs/
 │   └── …
 │
 ├── docs/                         this plan now; the repo's docs later
-├── scripts/                      new-language.sh · check-all.sh · list-languages.mjs
-└── .github/workflows/            ci.yml · nightly.yml
+├── scripts/                      new-language.sh · check-all.sh · list-languages.sh · changed-languages.sh · …
+└── .github/workflows/            ci.yml (nightly.yml once it is built: 05-ci.md §5)
 ```
 
 ## 2. The four kinds of folder
