@@ -127,13 +127,24 @@ So `impl<'a, T: Clone> From<&'a [T]> for Wrapper<'a, T>` is named `<Wrapper<T> a
 `io::Error` was). Each is an edit of the impl header, as renaming the trait or the struct is. **What never does:** spacing, line breaks, comments,
 lifetimes, the impl's own generics and bounds, the `where` clause. This holds everywhere in the header, braced const arguments and macros in types included (P8).
 
-## Items in function bodies (RS1 step 4, not built yet)
+## Items in bodies
 
-| # | Syntax | Qualname | Why |
-|---|---|---|---|
-| B1 | a fn, struct, impl, … inside a function body | `outer::{fn}::inner`; a method of a local impl: `outer::{fn}::S::m` | the function-body joiner (as `.<locals>.` in Python and TypeScript). `{fn}` cannot be an identifier, so it cannot collide with a real path |
-| B2 | an item inside a `const` or `static` initializer, a closure, a block | named under the **nearest enclosing def**, with `{fn}` if that def is a function | closures and blocks are not naming frames (D21, rule 4: a new kind of container must not move existing names) |
-| B3 | a `macro_rules!` in a function body | `outer::{fn}::m!` | D9 with B1 |
+An item can stand in a function body, in the initializer of a `const` or a `static`, or in a block, a closure or an `async` block inside any of
+those. It is a def like any other and is named under the **nearest enclosing def**. The `parent` of such an item is that def (never a module
+that is further out), and the joiner after a **function** is `{fn}`; after anything else it is `::`.
+
+| # | Syntax | Qualname | Why | Fixture |
+|---|---|---|---|---|
+| B1 | a fn, struct, enum, union, trait, type, const, static, `mod` or `extern` block inside a function body | `outer::{fn}::inner`; a `mod` in it: `outer::{fn}::m::f`; in a function in a function: `outer::{fn}::inner::{fn}::deep` | the function-body joiner (as `.<locals>.` in Python and TypeScript). `{fn}` cannot be an identifier, so it cannot collide with a real path | `body_items.rs` |
+| B2 | an `impl` or a `trait` inside a function body | a method of a local impl: `outer::{fn}::S::m`, `outer::{fn}::<S as T>::m`; of a local trait: `outer::{fn}::T::m` | B1 followed by I1 to I9 or D11. The impl is still no def | `body_items.rs` |
+| B3 | a `macro_rules!` in a function body | `outer::{fn}::m!` | D9 with B1 | `body_macros.rs` |
+| B4 | an item in a method, in a trait's default method, or in a trait impl's method | `S::m::{fn}::inner`, `T::m::{fn}::inner`, `<S as T>::m::{fn}::inner` | the method's qualname is a function's qualname, so B1 applies to it unchanged | `body_items.rs` |
+| B5 | an item in a **closure**, an `async` block, a `const { }` block, or any block (`if`, `loop`, `match` arm, `unsafe`, labelled) | `outer::{fn}::inner`, as if the closure or block were not there | closures and blocks are not naming frames (D21, rule 4: a new kind of container must not move existing names) | `body_frames.rs` |
+| B6 | an item in the initializer of a **named** `const` or `static` (module level, or an associated const of an impl or a trait) | `C::helper`, `X::helper`, `S::C::helper`, `T::C::helper`: the const is the enclosing def, and only a function takes `{fn}` | the const is a def (D6, D13), so it is the nearest one | `body_const.rs` |
+| B7 | an item in the initializer of `const _: () = { … };` | **named as if the block were not there**: `f` at module level, `m::f` in a module, `outer::{fn}::f` in a function, `<S as T>::m` for an impl in it | `const _` is no def and adds nothing to the names inside (D17). It is the form derive macros and `static_assertions` write | `body_const.rs` |
+| B8 | the same name twice in one function (two blocks, two closures) | one qualname, told apart by `occurrence` | D15 | `body_twins.rs` |
+| B9 | an item in a place that is not a body: an array length or a const argument (`[u8; { fn f() {} 1 }]`), an enum discriminant, a field type, a default | **not looked at**, so not a def | nothing is attached to code that cannot be written there in practice; adding it later is safe | `body_not_looked_at.rs` |
+| B10 | a function with no name the parser could read, with items in its body | **not defs**, as D21 | nothing to name them under | `body_not_looked_at.rs` |
 
 ## Fixtures
 
@@ -143,3 +154,6 @@ D16, I1 to I3), `impl_module_prefix.rs` (I4, I6, I12), `impl_trait.rs` (I5, D14)
 `type_text_spelling.rs` (T1 to T5), `type_text_lifetimes.rs` (P2, P3, with `S<>`, `()`, `fn()` and `Fn()`), `type_text_punctuation.rs` (P4 to P6), `type_text_spacing.rs` (P7),
 `type_text_braces.rs` (P8: `S<{ N+1 }>` and `S<{N + 1}>` side by side, a macro written two ways) and `impl_header_noise.rs` (a header written with extra spaces, line breaks, comments, a `where` clause and
 changed lifetimes beside its clean twin: the two outlines must carry the same qualnames, checked by a unit test on the printer as well, with no exclusion: not even for braces or macros).
+
+**Step 4 adds** `body_items.rs` (B1, B2, B4), `body_macros.rs` (B3), `body_frames.rs` (B5), `body_const.rs` (B6, B7), `body_twins.rs` (B8) and
+`body_not_looked_at.rs` (B9, B10).
