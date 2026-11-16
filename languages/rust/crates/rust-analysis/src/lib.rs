@@ -2,5 +2,6 @@
 
 mod project;
 mod sem;
+mod toolchain;
 
 pub use project::{OpenError, Project};
