@@ -108,16 +108,11 @@ pub(crate) fn load(manifest: &Path) -> Result<Loaded, String> {
     } else {
         None
     };
-    if let Some(redirect) = &redirect {
-        let path = redirect.0.join("Cargo.lock");
-        config.extra_env.insert(
-            "CARGO_RESOLVER_LOCKFILE_PATH".to_owned(),
-            Some(
-                path.to_str()
-                    .ok_or("the temporary folder is not UTF-8")?
-                    .to_owned(),
-            ),
-        );
+    // a temporary folder whose path is not UTF-8 cannot be written into the (String) environment: go on as A, the folder is deleted at the end
+    if let Some(path) = redirect.as_ref().and_then(|dir| lock_in(&dir.0)) {
+        config
+            .extra_env
+            .insert("CARGO_RESOLVER_LOCKFILE_PATH".to_owned(), Some(path));
     }
 
     let workspace =
@@ -163,6 +158,11 @@ fn workspace_dir(root: &Path, manifest: &Path) -> PathBuf {
         .map_or_else(|| root.to_path_buf(), Path::to_path_buf)
 }
 
+/// Where cargo is told to write the lock for a folder `dir`: `dir/Cargo.lock`, as the text of an environment value. `None` when the path is not UTF-8.
+fn lock_in(dir: &Path) -> Option<String> {
+    dir.join("Cargo.lock").to_str().map(str::to_owned)
+}
+
 /// An empty folder in the system's temporary folder, deleted when the value is dropped. (`Drop` is Rust's destructor: it runs when the owner goes
 /// out of scope, however that happens, an early `return` or `?` included. One use does not justify the `tempfile` crate.)
 struct TempDir(PathBuf);
@@ -203,4 +203,23 @@ fn sysroot_dir(dir: &Path) -> Option<AbsPathBuf> {
         return None;
     }
     AbsPathBuf::try_from(String::from_utf8(out.stdout).ok()?.trim()).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_lock_goes_inside_the_folder() {
+        let path = lock_in(Path::new("redirect")).expect("a UTF-8 path is text");
+        assert_eq!(Path::new(&path), Path::new("redirect").join("Cargo.lock"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_that_is_not_utf8_is_no_redirect() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        assert_eq!(lock_in(Path::new(OsStr::from_bytes(b"/tmp/\xff"))), None);
+    }
 }
