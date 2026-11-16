@@ -102,6 +102,7 @@ mod tests {
 
     use super::common;
     use super::*;
+    use crate::LoadOptions;
     use crate::sem::load;
 
     #[test]
@@ -168,9 +169,13 @@ mod tests {
     }
 
     fn open(root: &Path, manifest: &Path) -> Loaded {
+        open_with(root, manifest, &LoadOptions::default())
+    }
+
+    fn open_with(root: &Path, manifest: &Path, opts: &LoadOptions) -> Loaded {
         let root = crate::paths::absolute(root).unwrap();
         let manifest = crate::paths::absolute(manifest).unwrap();
-        load(&root, &manifest).expect("the fixture loads")
+        load(&root, &manifest, opts).expect("the fixture loads")
     }
 
     /// `fixtures/owner/`: `ws/` is a workspace of `app` and `member`; `app` also depends on `inside`, a path dependency next to `ws/`; `member`
@@ -241,6 +246,56 @@ mod tests {
                     external("alloc", "alloc::string::String::len")
                 ),
             ]
+        );
+    }
+
+    /// §3, build scripts: what a `build.rs` writes into `OUT_DIR` and the crate `include!`s is not there while they are off, and is there when on.
+    #[test]
+    fn a_build_script_adds_the_code_it_writes_only_when_asked() {
+        let copy = common::copy_of_fixture("scripts", "scripts_effect");
+        let manifest = copy.join("Cargo.toml");
+
+        let off = open(&copy, &manifest);
+        assert_eq!(call_owners(&off, "src/lib.rs"), []);
+
+        let on = open_with(
+            &copy,
+            &manifest,
+            &LoadOptions {
+                build_scripts: true,
+                proc_macros: false,
+            },
+        );
+        // written by an `include!`, so in no file of the text: external, named by its own crate
+        assert_eq!(
+            call_owners(&on, "src/lib.rs"),
+            [(
+                "generated".to_owned(),
+                external("scripts", "scripts::generated")
+            )]
+        );
+    }
+
+    /// §3, proc macros: `#[derive(Hello)]` gives `Thing::hello`, which a call finds only when the proc-macro server ran.
+    #[test]
+    fn a_derive_expands_only_when_asked() {
+        let copy = common::copy_of_fixture("derive", "derive_effect");
+        let manifest = copy.join("app/Cargo.toml");
+
+        let off = open(&copy, &manifest);
+        assert_eq!(call_owners(&off, "app/src/lib.rs"), []);
+
+        let on = open_with(
+            &copy,
+            &manifest,
+            &LoadOptions {
+                build_scripts: false,
+                proc_macros: true,
+            },
+        );
+        assert_eq!(
+            call_owners(&on, "app/src/lib.rs"),
+            [("hello".to_owned(), external("app", "app::Thing::hello"))]
         );
     }
 }

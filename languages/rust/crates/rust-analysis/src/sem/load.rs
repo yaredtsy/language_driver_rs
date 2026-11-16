@@ -4,11 +4,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use crate::{paths, toolchain};
+use crate::{LoadOptions, paths, toolchain};
 
 use ra_ap_ide_db::RootDatabase;
 use ra_ap_load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace};
-use ra_ap_project_model::{CargoConfig, ProjectManifest, ProjectWorkspace, RustLibSource};
+use ra_ap_project_model::{
+    CargoConfig, ProjectManifest, ProjectWorkspace, ProjectWorkspaceKind, RustLibSource,
+    TargetDirectoryConfig, TargetKind,
+};
 use ra_ap_vfs::{AbsPathBuf, Vfs, VfsPath};
 
 /// A loaded workspace: the engine's database and the table of its files. It owns both, so dropping it frees everything.
@@ -23,6 +26,10 @@ pub(crate) struct Loaded {
     wrote_lockfile: bool,
     /// The caller's root (absolute, clean): `files()` lists what is under it and nothing else, wherever the workspace's own root manifest is.
     root: PathBuf,
+    /// What this load left out, by name (RS3 §3). Only what was off and cut something.
+    skipped: Vec<(&'static str, u64)>,
+    /// Manifests (and the lock) that fed the load and sit outside the root, as engine text: no glob relative to the root covers them.
+    outside_inputs: Vec<String>,
 }
 
 impl Loaded {
@@ -49,6 +56,14 @@ impl Loaded {
         paths::relative(&self.root, path.as_path()?.as_ref())
     }
 
+    pub(crate) fn skipped(&self) -> &[(&'static str, u64)] {
+        &self.skipped
+    }
+
+    pub(crate) fn outside_inputs(&self) -> &[String] {
+        &self.outside_inputs
+    }
+
     pub(super) fn db(&self) -> &RootDatabase {
         &self.db
     }
@@ -58,8 +73,8 @@ impl Loaded {
     }
 }
 
-/// Loads the Cargo workspace of `manifest` (absolute, clean, inside `root`) with std, `cfg(test)` on, and the three expensive switches off (build
-/// scripts, proc macros, cache prefill). `Err` carries the engine's message; the ladder that turns most of these into a warning is RS3 step 7.
+/// Loads the Cargo workspace of `manifest` (absolute, clean, inside `root`) with std and `cfg(test)` on. Build scripts, proc macros and cache
+/// prefill are off unless `opts` turns the first two on (§3); what is off and cuts something is counted in `Loaded::skipped`. `Err` carries the engine's message; the ladder that turns most of these into a warning is RS3 step 7.
 ///
 /// Cargo finds the workspace root, which may be above `root`: it is loaded because cargo needs all of it for one member, and `root` stays the limit
 /// of what is the user's project (`Loaded::files`).
@@ -67,7 +82,7 @@ impl Loaded {
 /// A load must not write into the project (RS3 §5, D38). With no `Cargo.lock`, cargo would write one, so on a toolchain that honours it
 /// (`toolchain::honours_lockfile_path`) cargo is told to write it into a folder that is deleted before this returns. On an older toolchain the
 /// load goes on and `Loaded::wrote_lockfile` says what happened.
-pub(crate) fn load(root: &Path, manifest: &Path) -> Result<Loaded, String> {
+pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<Loaded, String> {
     let dir = manifest
         .parent()
         .ok_or_else(|| format!("{}: has no folder", manifest.display()))?;
@@ -99,23 +114,111 @@ pub(crate) fn load(root: &Path, manifest: &Path) -> Result<Loaded, String> {
             .insert("CARGO_RESOLVER_LOCKFILE_PATH".to_owned(), Some(path));
     }
 
-    let workspace =
+    let mut workspace =
         ProjectWorkspace::load(manifest, &config, &|_| {}).map_err(|e| format!("{e:#}"))?;
-    let no_server = LoadCargoConfig {
-        load_out_dirs_from_check: false,
-        with_proc_macro_server: ProcMacroServerChoice::None,
+
+    // A proc macro is a dylib that the build step (`cargo check`) builds, so asking for proc macros runs it too. It runs inside the lock
+    // redirect above, and into `target/rust-analyzer`, not into the user's own `target/` build.
+    let build_scripts_ran = if opts.build_scripts || opts.proc_macros {
+        config.target_dir_config = TargetDirectoryConfig::UseSubdirectory;
+        let scripts = workspace
+            .run_build_scripts(&config, &|_| {})
+            .map_err(|e| format!("{e:#}"))?;
+        // a run that failed still has what it built; it is counted as not run (below), and step 5 turns the message into a warning
+        let ran = scripts.error().is_none();
+        workspace.set_build_scripts(scripts);
+        ran
+    } else {
+        false
+    };
+    let skipped = skipped(&workspace, build_scripts_ran, opts.proc_macros);
+    let outside_inputs = outside_inputs(&workspace, root);
+
+    let switches = LoadCargoConfig {
+        load_out_dirs_from_check: build_scripts_ran,
+        with_proc_macro_server: if opts.proc_macros {
+            ProcMacroServerChoice::Sysroot
+        } else {
+            ProcMacroServerChoice::None
+        },
         prefill_caches: false,
         num_worker_threads: 1,
-        proc_macro_processes: 0,
+        // a pool of none has no process to ask
+        proc_macro_processes: usize::from(opts.proc_macros),
     };
-    let (db, vfs, _no_proc_macro_client) =
-        load_workspace(workspace, &config.extra_env, &no_server).map_err(|e| format!("{e:#}"))?;
+    // each proc macro the database knows holds the server's pool (an `Arc`), so the client may be dropped here
+    let (db, vfs, _proc_macro_client) =
+        load_workspace(workspace, &config.extra_env, &switches).map_err(|e| format!("{e:#}"))?;
     Ok(Loaded {
         db,
         vfs,
         wrote_lockfile: !had_lock && lock.exists(),
         root: root.to_path_buf(),
+        skipped,
+        outside_inputs,
     })
+}
+
+/// §3: what the switches that are off cut, by name. `build_scripts_skipped`: the packages of the workspace that have a build script, when the
+/// scripts did not run. `proc_macros_skipped`: 1 when any crate of the dependency graph is a proc macro and the server is off. A switch that is
+/// on, or that cuts nothing, is not listed.
+fn skipped(
+    workspace: &ProjectWorkspace,
+    build_scripts_ran: bool,
+    proc_macros: bool,
+) -> Vec<(&'static str, u64)> {
+    let ProjectWorkspaceKind::Cargo { cargo, .. } = &workspace.kind else {
+        return Vec::new();
+    };
+    let mut build_scripts = 0;
+    let mut any_proc_macro = false;
+    for package in cargo.packages() {
+        let targets = cargo[package]
+            .targets
+            .iter()
+            .map(|&target| cargo[target].kind);
+        let (mut script, mut proc_macro) = (false, false);
+        for kind in targets {
+            script |= kind == TargetKind::BuildScript;
+            proc_macro |= kind
+                == TargetKind::Lib {
+                    is_proc_macro: true,
+                };
+        }
+        build_scripts += u64::from(script && cargo[package].is_member);
+        any_proc_macro |= proc_macro;
+    }
+    let mut skipped = Vec::new();
+    if !build_scripts_ran && build_scripts > 0 {
+        skipped.push(("build_scripts_skipped", build_scripts));
+    }
+    if !proc_macros && any_proc_macro {
+        skipped.push(("proc_macros_skipped", 1));
+    }
+    skipped.sort_unstable_by_key(|(name, _)| *name);
+    skipped
+}
+
+/// The manifests of the workspace's own packages (members and path dependencies), the workspace's root manifest and the lock beside it, that sit
+/// outside `root`: engine text, absolute (`paths::engine_text`). Sorted, each once. Inside the root a glob covers them.
+fn outside_inputs(workspace: &ProjectWorkspace, root: &Path) -> Vec<String> {
+    let ProjectWorkspaceKind::Cargo { cargo, .. } = &workspace.kind else {
+        return Vec::new();
+    };
+    let root_manifest: &Path = cargo.manifest_path().as_ref();
+    let mut files: Vec<PathBuf> = vec![root_manifest.with_file_name("Cargo.lock")];
+    files.push(root_manifest.to_path_buf());
+    for package in cargo.packages().filter(|&p| cargo[p].is_local) {
+        files.push(AsRef::<Path>::as_ref(&cargo[package].manifest).to_path_buf());
+    }
+    let mut inputs: Vec<String> = files
+        .into_iter()
+        .filter(|file| paths::relative(root, file).is_none() && file.is_file())
+        .filter_map(|file| paths::engine_text(&file))
+        .collect();
+    inputs.sort();
+    inputs.dedup();
+    inputs
 }
 
 /// The folder of the workspace's root manifest, where cargo keeps `Cargo.lock`: `cargo locate-project --workspace` says (a member's folder is

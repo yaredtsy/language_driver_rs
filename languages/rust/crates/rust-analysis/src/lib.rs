@@ -5,4 +5,4 @@ mod project;
 mod sem;
 mod toolchain;
 
-pub use project::{OpenError, Project};
+pub use project::{LoadOptions, OpenError, Project};

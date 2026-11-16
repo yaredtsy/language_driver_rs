@@ -1,8 +1,8 @@
-//! `Project::open(root, file)`: which workspace owns a file, and what is project code (RS3 §2).
+//! `Project::open(root, file, opts)`: which workspace owns a file, and what is project code (RS3 §2).
 
 use std::path::{Path, PathBuf};
 
-use rust_analysis::{OpenError, Project};
+use rust_analysis::{LoadOptions, OpenError, Project};
 
 mod common;
 use common::{copy_of_fixture, rs_files, snapshot};
@@ -45,7 +45,8 @@ fn the_right_one_of_five_workspaces_is_chosen() {
         } else {
             repo.join(file)
         };
-        let project = Project::open(&repo, &file_arg).unwrap_or_else(|e| panic!("{file}: {e:?}"));
+        let project = Project::open(&repo, &file_arg, &LoadOptions::default())
+            .unwrap_or_else(|e| panic!("{file}: {e:?}"));
         assert_eq!(project.manifest(), manifest);
         let files = project.files();
         assert!(
@@ -80,8 +81,12 @@ fn a_file_in_a_member_finds_the_members_manifest_and_the_workspaces_files() {
     let lock = core.join("Cargo.lock");
     let before = std::fs::read(&lock).unwrap();
 
-    let project =
-        Project::open(&core, &core.join("analyzer-core/src/lib.rs")).expect("core/ loads");
+    let project = Project::open(
+        &core,
+        &core.join("analyzer-core/src/lib.rs"),
+        &LoadOptions::default(),
+    )
+    .expect("core/ loads");
     assert_eq!(project.manifest(), "analyzer-core/Cargo.toml");
 
     // the member's manifest was found, and the load is the whole workspace: both members' files
@@ -106,7 +111,8 @@ fn a_workspace_root_above_the_root_is_loaded_and_is_not_project_code() {
     let before = snapshot(&copy);
     let member = copy.join("member");
 
-    let project = Project::open(&member, &member.join("src/lib.rs")).expect("the member loads");
+    let project = Project::open(&member, &member.join("src/lib.rs"), &LoadOptions::default())
+        .expect("the member loads");
 
     // the manifest is the member's own, below the root; the sibling's file (in the workspace, outside the root) is not listed
     assert_eq!(project.manifest(), "Cargo.toml");
@@ -119,8 +125,12 @@ fn a_workspace_root_above_the_root_is_loaded_and_is_not_project_code() {
     );
 
     // the same file with the root at the workspace: now the sibling is under the root, so it is listed. It was loaded both times; the root decides.
-    let project =
-        Project::open(&copy, Path::new("member/src/lib.rs")).expect("the workspace loads");
+    let project = Project::open(
+        &copy,
+        Path::new("member/src/lib.rs"),
+        &LoadOptions::default(),
+    )
+    .expect("the workspace loads");
     assert_eq!(project.manifest(), "member/Cargo.toml");
     assert_eq!(project.files(), ["member/src/lib.rs", "sibling/src/lib.rs"]);
     assert_eq!(snapshot(&copy), before);
@@ -134,7 +144,7 @@ fn a_file_with_no_cargo_toml_up_to_the_root_is_an_error() {
     std::fs::create_dir_all(root.join("src")).unwrap();
     std::fs::write(root.join("src/lone.rs"), "pub fn lone() {}\n").unwrap();
 
-    let error = Project::open(&root, Path::new("src/lone.rs"))
+    let error = Project::open(&root, Path::new("src/lone.rs"), &LoadOptions::default())
         .err()
         .expect("no manifest");
     assert!(
@@ -151,7 +161,7 @@ fn a_file_that_is_not_there_or_not_under_the_root_is_an_error() {
         "../Cargo.toml",
         "../languages/rust/crates/rust-analysis/src/lib.rs",
     ] {
-        let error = Project::open(&core, Path::new(file))
+        let error = Project::open(&core, Path::new(file), &LoadOptions::default())
             .err()
             .unwrap_or_else(|| panic!("{file} opened"));
         assert!(matches!(error, OpenError::Load(_)), "{file}: {error:?}");

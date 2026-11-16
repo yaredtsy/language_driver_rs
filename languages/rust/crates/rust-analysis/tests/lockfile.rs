@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard};
 
-use rust_analysis::Project;
+use rust_analysis::{LoadOptions, Project};
 
 mod common;
 use common::{copy_of_fixture, snapshot};
@@ -64,8 +64,12 @@ fn a_project_with_no_lock_gets_none() {
         before.keys()
     );
 
-    let project =
-        Project::open(&copy.join("app"), &copy.join("app/src/lib.rs")).expect("app loads");
+    let project = Project::open(
+        &copy.join("app"),
+        &copy.join("app/src/lib.rs"),
+        &LoadOptions::default(),
+    )
+    .expect("app loads");
     assert_eq!(project.files(), ["src/lib.rs"]);
 
     assert_eq!(
@@ -102,7 +106,8 @@ fn a_stale_lock_is_left_as_it_is() {
     assert!(!lock.contains("helper"), "the lock must be stale: {lock}");
 
     let before = snapshot(&copy);
-    let project = Project::open(&app, &app.join("src/lib.rs")).expect("app loads");
+    let project =
+        Project::open(&app, &app.join("src/lib.rs"), &LoadOptions::default()).expect("app loads");
     assert_eq!(project.files(), ["src/lib.rs"]);
 
     assert_eq!(

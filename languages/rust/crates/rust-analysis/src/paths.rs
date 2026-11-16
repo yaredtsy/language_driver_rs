@@ -55,7 +55,7 @@ fn without_verbatim_prefix(path: &str) -> String {
 
 /// `path` as the engine spells it: `/` separators, no verbatim prefix, the drive letter upper case, no trailing `/` (except a bare root). `None`
 /// when it is not UTF-8.
-fn engine_text(path: &Path) -> Option<String> {
+pub(crate) fn engine_text(path: &Path) -> Option<String> {
     let mut text = without_verbatim_prefix(path.to_str()?).replace('\\', "/");
     if text.len() > 1 && text.ends_with('/') {
         text.pop();
