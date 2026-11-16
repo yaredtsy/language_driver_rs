@@ -132,3 +132,26 @@ fn a_build_run_writes_only_under_target() {
         "the build did not go to target/rust-analyzer"
     );
 }
+
+/// A `build.rs` that panics makes the build run fail. That is not a failed load: the project loads as if the scripts had not run, and both
+/// counters say what was cut, the proc macro's too when it was asked for (its dylib is made by the same run).
+#[test]
+fn a_build_that_fails_is_not_a_failed_load() {
+    let copy = copy_of_fixture("broken", "switches_broken");
+    let open = |opts: &LoadOptions| {
+        Project::open(&copy, &copy.join("app/src/lib.rs"), opts)
+            .expect("a failed build still loads")
+    };
+    let both = [("build_scripts_skipped", 1), ("proc_macros_skipped", 1)];
+
+    let scripts = open(&options(true, false));
+    assert_eq!(scripts.skipped(), both);
+    assert!(scripts.files().iter().any(|f| f == "app/src/lib.rs"));
+
+    let proc_macros = open(&options(false, true));
+    assert_eq!(proc_macros.skipped(), both);
+    assert!(proc_macros.files().iter().any(|f| f == "app/src/lib.rs"));
+
+    // the same fixture with the build not asked for says the same: nothing differs between "off" and "failed"
+    assert_eq!(open(&options(false, false)).skipped(), both);
+}

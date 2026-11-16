@@ -26,6 +26,9 @@ pub(crate) struct Loaded {
     wrote_lockfile: bool,
     /// The caller's root (absolute, clean): `files()` lists what is under it and nothing else, wherever the workspace's own root manifest is.
     root: PathBuf,
+    /// Why the build scripts did not run (or ran with an error), when they were asked for: the message of the engine's `cargo check`.
+    #[expect(dead_code, reason = "becomes a warning in RS3 step 5")]
+    build_error: Option<String>,
     /// What this load left out, by name (RS3 §3). Only what was off and cut something.
     skipped: Vec<(&'static str, u64)>,
     /// Manifests (and the lock) that fed the load and sit outside the root, as engine text: no glob relative to the root covers them.
@@ -119,24 +122,32 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
 
     // A proc macro is a dylib that the build step (`cargo check`) builds, so asking for proc macros runs it too. It runs inside the lock
     // redirect above, and into `target/rust-analyzer`, not into the user's own `target/` build.
+    //
+    // A build that fails (a `build.rs` that panics, or one cargo cannot start) is not a failed load: the project loads as if the scripts had not
+    // run, they are counted as skipped, and the message is kept for step 5's warning. A run that reports an error still has what it built, and
+    // that is used.
+    let mut build_error = None;
     let build_scripts_ran = if opts.build_scripts || opts.proc_macros {
         config.target_dir_config = TargetDirectoryConfig::UseSubdirectory;
-        let scripts = workspace
-            .run_build_scripts(&config, &|_| {})
-            .map_err(|e| format!("{e:#}"))?;
-        // a run that failed still has what it built; it is counted as not run (below), and step 5 turns the message into a warning
-        let ran = scripts.error().is_none();
-        workspace.set_build_scripts(scripts);
-        ran
+        match workspace.run_build_scripts(&config, &|_| {}) {
+            Ok(scripts) => {
+                build_error = scripts.error().map(str::to_owned);
+                workspace.set_build_scripts(scripts);
+            }
+            Err(error) => build_error = Some(format!("{error:#}")),
+        }
+        build_error.is_none()
     } else {
         false
     };
-    let skipped = skipped(&workspace, build_scripts_ran, opts.proc_macros);
+    // a proc macro needs the dylib that the build made: a build that did not succeed leaves the server with nothing to expand
+    let proc_macros_ran = opts.proc_macros && build_scripts_ran;
+    let skipped = skipped(&workspace, build_scripts_ran, proc_macros_ran);
     let outside_inputs = outside_inputs(&workspace, root);
 
     let switches = LoadCargoConfig {
         load_out_dirs_from_check: build_scripts_ran,
-        with_proc_macro_server: if opts.proc_macros {
+        with_proc_macro_server: if proc_macros_ran {
             ProcMacroServerChoice::Sysroot
         } else {
             ProcMacroServerChoice::None
@@ -144,7 +155,7 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
         prefill_caches: false,
         num_worker_threads: 1,
         // a pool of none has no process to ask
-        proc_macro_processes: usize::from(opts.proc_macros),
+        proc_macro_processes: usize::from(proc_macros_ran),
     };
     // each proc macro the database knows holds the server's pool (an `Arc`), so the client may be dropped here
     let (db, vfs, _proc_macro_client) =
@@ -154,18 +165,20 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
         vfs,
         wrote_lockfile: !had_lock && lock.exists(),
         root: root.to_path_buf(),
+        build_error,
         skipped,
         outside_inputs,
     })
 }
 
-/// §3: what the switches that are off cut, by name. `build_scripts_skipped`: the packages of the workspace that have a build script, when the
-/// scripts did not run. `proc_macros_skipped`: 1 when any crate of the dependency graph is a proc macro and the server is off. A switch that is
+/// §3: what the switches that did not act cut, by name. `build_scripts_skipped`: the packages of the workspace that have a build script, when the
+/// scripts did not run (off, or the run failed). `proc_macros_skipped`: 1 when any crate of the dependency graph is a proc macro and the server did
+/// not run (off, or the build that makes its dylib failed). A switch that is
 /// on, or that cuts nothing, is not listed.
 fn skipped(
     workspace: &ProjectWorkspace,
     build_scripts_ran: bool,
-    proc_macros: bool,
+    proc_macros_ran: bool,
 ) -> Vec<(&'static str, u64)> {
     let ProjectWorkspaceKind::Cargo { cargo, .. } = &workspace.kind else {
         return Vec::new();
@@ -192,7 +205,7 @@ fn skipped(
     if !build_scripts_ran && build_scripts > 0 {
         skipped.push(("build_scripts_skipped", build_scripts));
     }
-    if !proc_macros && any_proc_macro {
+    if !proc_macros_ran && any_proc_macro {
         skipped.push(("proc_macros_skipped", 1));
     }
     skipped.sort_unstable_by_key(|(name, _)| *name);
