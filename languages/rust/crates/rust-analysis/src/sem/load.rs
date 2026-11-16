@@ -1,10 +1,10 @@
 //! Loading a Cargo workspace into the engine's database. The only file that names `ra_ap_load_cargo`, `ra_ap_project_model` and `ra_ap_vfs`.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use crate::toolchain;
+use crate::{paths, toolchain};
 
 use ra_ap_ide_db::RootDatabase;
 use ra_ap_load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace};
@@ -22,7 +22,7 @@ pub(crate) struct Loaded {
         reason = "becomes the LockfileWritten warning in RS3 step 5"
     )]
     wrote_lockfile: bool,
-    /// Absolute, spelled as the engine spells the paths it reports (`std::path::absolute`, never `canonicalize`: on Windows that adds a `\\?\` prefix).
+    /// The caller's root (absolute, clean): `files()` lists what is under it and nothing else, wherever the workspace's own root manifest is.
     root: PathBuf,
 }
 
@@ -38,7 +38,7 @@ impl Loaded {
                 if path.extension()? != "rs" {
                     return None;
                 }
-                relative(&self.root, path)
+                paths::relative(&self.root, path)
             })
             .collect();
         files.sort();
@@ -46,64 +46,36 @@ impl Loaded {
     }
 }
 
-/// The one place a path becomes root-relative: `path` below `root`, components joined with `/`. `None` when it is not below, or not UTF-8.
-fn relative(root: &Path, path: &Path) -> Option<String> {
-    let below = path.strip_prefix(root).ok()?;
-    let parts: Option<Vec<&str>> = below.components().map(|c| c.as_os_str().to_str()).collect();
-    Some(parts?.join("/"))
-}
-
-/// `path` without its `.` and `..` components, by text alone (no symlink is followed, which is how the engine spells the paths it reports).
-/// `std::path::absolute` keeps `..`, and then no loaded file would start with the root.
-fn clean(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other),
-        }
-    }
-    out
-}
-
-/// Loads the Cargo workspace of `manifest` with std, `cfg(test)` on, and the three expensive switches off (build scripts, proc macros, cache
-/// prefill). `Err` carries the engine's message; the ladder that turns most of these into a warning is RS3 step 7.
+/// Loads the Cargo workspace of `manifest` (absolute, clean, inside `root`) with std, `cfg(test)` on, and the three expensive switches off (build
+/// scripts, proc macros, cache prefill). `Err` carries the engine's message; the ladder that turns most of these into a warning is RS3 step 7.
+///
+/// Cargo finds the workspace root, which may be above `root`: it is loaded because cargo needs all of it for one member, and `root` stays the limit
+/// of what is the user's project (`Loaded::files`).
 ///
 /// A load must not write into the project (RS3 §5, D38). With no `Cargo.lock`, cargo would write one, so on a toolchain that honours it
 /// (`toolchain::honours_lockfile_path`) cargo is told to write it into a folder that is deleted before this returns. On an older toolchain the
 /// load goes on and `Loaded::wrote_lockfile` says what happened.
-pub(crate) fn load(manifest: &Path) -> Result<Loaded, String> {
-    let manifest_path = std::path::absolute(manifest)
-        .map(|p| clean(&p))
-        .map_err(|e| format!("{}: {e}", manifest.display()))?;
-    let root = manifest_path
+pub(crate) fn load(root: &Path, manifest: &Path) -> Result<Loaded, String> {
+    let dir = manifest
         .parent()
-        .ok_or_else(|| format!("{}: has no folder", manifest_path.display()))?
-        .to_path_buf();
-    let abs = AbsPathBuf::try_from(
-        manifest_path
-            .to_str()
-            .ok_or("the manifest path is not UTF-8")?,
-    )
-    .map_err(|p| format!("{p}: not an absolute path"))?;
+        .ok_or_else(|| format!("{}: has no folder", manifest.display()))?;
+    let abs = AbsPathBuf::try_from(manifest.to_str().ok_or("the manifest path is not UTF-8")?)
+        .map_err(|p| format!("{p}: not an absolute path"))?;
+    let manifest_path = manifest;
     let manifest = ProjectManifest::from_manifest_file(abs).map_err(|e| format!("{e:#}"))?;
 
     let mut config = CargoConfig {
         // `RustLibSource::Discover` would run `rustup component add rust-src` when the source is missing (S-RS3); `Path` only looks.
-        sysroot: sysroot_dir(&root).map(RustLibSource::Path),
+        sysroot: sysroot_dir(dir).map(RustLibSource::Path),
         // without it `#[cfg(test)]` code is inactive and no call inside it resolves (S-RS2)
         set_test: true,
         ..CargoConfig::default()
     };
 
-    let lock = workspace_dir(&root, &manifest_path).join("Cargo.lock");
+    let lock = workspace_dir(dir, manifest_path).join("Cargo.lock");
     let had_lock = lock.exists();
     // `redirect` is dropped (its folder deleted) when this function returns, after the last cargo has run, on every path out of it
-    let redirect = if !had_lock && toolchain::honours_lockfile_path(toolchain::cargo_version(&root))
-    {
+    let redirect = if !had_lock && toolchain::honours_lockfile_path(toolchain::cargo_version(dir)) {
         TempDir::new()
     } else {
         None
@@ -130,13 +102,13 @@ pub(crate) fn load(manifest: &Path) -> Result<Loaded, String> {
         db,
         vfs,
         wrote_lockfile: !had_lock && lock.exists(),
-        root,
+        root: root.to_path_buf(),
     })
 }
 
 /// The folder of the workspace's root manifest, where cargo keeps `Cargo.lock`: `cargo locate-project --workspace` says (a member's folder is
-/// not it). Falls back to `root` when cargo cannot say.
-fn workspace_dir(root: &Path, manifest: &Path) -> PathBuf {
+/// not it). Falls back to `dir`, the manifest's folder, when cargo cannot say.
+fn workspace_dir(dir: &Path, manifest: &Path) -> PathBuf {
     let located = Command::new("cargo")
         .args([
             "locate-project",
@@ -146,7 +118,7 @@ fn workspace_dir(root: &Path, manifest: &Path) -> PathBuf {
             "--manifest-path",
         ])
         .arg(manifest)
-        .current_dir(root)
+        .current_dir(dir)
         .env("RUSTUP_AUTO_INSTALL", "0")
         .output()
         .ok()
@@ -155,7 +127,7 @@ fn workspace_dir(root: &Path, manifest: &Path) -> PathBuf {
     located
         .as_deref()
         .and_then(|text| Path::new(text.trim()).parent())
-        .map_or_else(|| root.to_path_buf(), Path::to_path_buf)
+        .map_or_else(|| dir.to_path_buf(), Path::to_path_buf)
 }
 
 /// Where cargo is told to write the lock for a folder `dir`: `dir/Cargo.lock`, as the text of an environment value. `None` when the path is not UTF-8.

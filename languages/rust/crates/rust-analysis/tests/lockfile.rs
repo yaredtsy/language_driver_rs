@@ -2,58 +2,23 @@
 //! `Cargo.lock`: none is committed, because the case is "cargo has to make one". Each test loads a copy under `target/`, so a load that does write
 //! one leaves nothing in the repo, and the copy sits inside the repo's folder tree, so `rust-toolchain.toml` still selects the toolchain.
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
+use std::sync::{Mutex, MutexGuard};
 
 use rust_analysis::Project;
 
-/// Every file under `dir` with its text (lossy: all of them are text, and a failed comparison is then readable), by path relative to `dir` with `/`.
-fn snapshot(dir: &Path) -> BTreeMap<String, String> {
-    fn walk(base: &Path, dir: &Path, out: &mut BTreeMap<String, String>) {
-        for entry in std::fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                walk(base, &path, out);
-            } else {
-                let parts: Vec<_> = path
-                    .strip_prefix(base)
-                    .unwrap()
-                    .components()
-                    .map(|c| c.as_os_str().to_str().unwrap())
-                    .collect();
-                out.insert(
-                    parts.join("/"),
-                    String::from_utf8_lossy(&std::fs::read(&path).unwrap()).into_owned(),
-                );
-            }
-        }
-    }
-    let mut out = BTreeMap::new();
-    walk(dir, dir, &mut out);
-    out
-}
+mod common;
+use common::{copy_of_fixture, snapshot};
 
-fn copy_dir(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).unwrap();
-    for entry in std::fs::read_dir(from).unwrap() {
-        let entry = entry.unwrap();
-        let target = to.join(entry.file_name());
-        if entry.path().is_dir() {
-            copy_dir(&entry.path(), &target);
-        } else {
-            std::fs::copy(entry.path(), &target).unwrap();
-        }
-    }
-}
+/// The two tests run in one process, so they share a process id and a temporary folder: while one has its redirect, the other must not look for
+/// leftovers. Each holds this for its whole length. (A test that panics poisons the mutex; the next one takes it anyway.)
+static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
-/// A fresh copy of the fixture, named after the test.
-fn copy_of_fixture(name: &str) -> PathBuf {
-    let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/lock");
-    let to = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
-    let _ = std::fs::remove_dir_all(&to);
-    copy_dir(&from, &to);
-    to
+fn one_at_a_time() -> MutexGuard<'static, ()> {
+    ONE_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// The tests are about the redirect, which is for toolchains from 1.97: say so when the toolchain here is older, instead of passing for nothing.
@@ -89,7 +54,8 @@ fn assert_no_redirect_left() {
 
 #[test]
 fn a_project_with_no_lock_gets_none() {
-    let copy = copy_of_fixture("lock_none");
+    let _one = one_at_a_time();
+    let copy = copy_of_fixture("lock", "lock_none");
     assert_toolchain_honours_the_redirect(&copy.join("app"));
     let before = snapshot(&copy);
     assert!(
@@ -98,7 +64,8 @@ fn a_project_with_no_lock_gets_none() {
         before.keys()
     );
 
-    let project = Project::open(&copy.join("app/Cargo.toml")).expect("app loads");
+    let project =
+        Project::open(&copy.join("app"), &copy.join("app/src/lib.rs")).expect("app loads");
     assert_eq!(project.files(), ["src/lib.rs"]);
 
     assert_eq!(
@@ -111,7 +78,8 @@ fn a_project_with_no_lock_gets_none() {
 
 #[test]
 fn a_stale_lock_is_left_as_it_is() {
-    let copy = copy_of_fixture("lock_stale");
+    let _one = one_at_a_time();
+    let copy = copy_of_fixture("lock", "lock_stale");
     let app = copy.join("app");
     assert_toolchain_honours_the_redirect(&app);
 
@@ -134,7 +102,7 @@ fn a_stale_lock_is_left_as_it_is() {
     assert!(!lock.contains("helper"), "the lock must be stale: {lock}");
 
     let before = snapshot(&copy);
-    let project = Project::open(&app.join("Cargo.toml")).expect("app loads");
+    let project = Project::open(&app, &app.join("src/lib.rs")).expect("app loads");
     assert_eq!(project.files(), ["src/lib.rs"]);
 
     assert_eq!(
