@@ -144,6 +144,50 @@ pub mod comment_marker {
             && !marker_text.contains("*/")
     }
 
+    /// Only whitespace and at most one line break between `from` and `to`: no blank line separates them. `false` when the range is not in
+    /// the text.
+    pub fn adjacent(text: &str, from: u32, to: u32) -> bool {
+        text.get(from as usize..to as usize).is_some_and(|between| {
+            between.chars().all(char::is_whitespace) && line_breaks(between) <= 1
+        })
+    }
+
+    /// How many line breaks `text` has (`\r\n` is one).
+    fn line_breaks(text: &str) -> usize {
+        let mut count = 0;
+        let mut chars = text.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '\n' => count += 1,
+                '\r' => {
+                    count += 1;
+                    if chars.peek() == Some(&'\n') {
+                        chars.next();
+                    }
+                }
+                _ => {}
+            }
+        }
+        count
+    }
+
+    /// The offset of the line after the one `comment` ends on, when nothing but blanks follows the comment on its line; the end of the text
+    /// when there is no next line; `None` when code follows it.
+    pub fn line_after(text: &str, comment: Span) -> Option<u32> {
+        let rest = text.get(comment.end as usize..)?;
+        let line_end = rest.find(['\n', '\r']).unwrap_or(rest.len());
+        if !rest[..line_end].chars().all(|c| c == ' ' || c == '\t') {
+            return None;
+        }
+        let mut next = comment.end as usize + line_end;
+        if text[next..].starts_with("\r\n") {
+            next += 2;
+        } else if next < text.len() {
+            next += 1;
+        }
+        Some(next as u32)
+    }
+
     /// The line ending the file already uses: the first one found, `\n` when it has none.
     pub fn line_ending(text: &str) -> &'static str {
         match text.find(['\n', '\r']) {
@@ -540,6 +584,39 @@ mod tests {
             Some("k"),
             "the label is the caller's"
         );
+    }
+
+    #[test]
+    fn adjacent_means_blanks_and_at_most_one_line_break_between() {
+        use super::comment_marker::adjacent;
+        let text = "// a\n// b\n\n// c\r\n// d\r\n\r\n// e x";
+        // end of `// a` to start of `// b`: one `\n`
+        assert!(adjacent(text, 4, 5));
+        // a blank line
+        assert!(!adjacent(text, 9, 11));
+        // `\r\n` is one line break, and `\r\n\r\n` are two
+        assert!(adjacent(text, 15, 17));
+        assert!(!adjacent(text, 21, 25));
+        // nothing between them; a character that is not a blank; a range outside the text
+        assert!(adjacent("ab", 1, 1));
+        assert!(!adjacent("a;b", 1, 3));
+        assert!(!adjacent("ab", 1, 9));
+    }
+
+    #[test]
+    fn line_after_is_the_next_line_when_only_blanks_follow_on_this_one() {
+        use super::comment_marker::line_after;
+        let span = |start, end| Span::new(start, end);
+        assert_eq!(line_after("/* c */\nfn f() {}", span(0, 7)), Some(8));
+        assert_eq!(line_after("/* c */  \t\nfn f() {}", span(0, 7)), Some(11));
+        assert_eq!(line_after("/* c */\r\nfn f() {}", span(0, 7)), Some(9));
+        // no next line: the end of the text, with or without the break
+        assert_eq!(line_after("/* c */", span(0, 7)), Some(7));
+        assert_eq!(line_after("/* c */  ", span(0, 7)), Some(9));
+        assert_eq!(line_after("/* c */\n", span(0, 7)), Some(8));
+        // code on the line
+        assert_eq!(line_after("/* c */ fn f() {}", span(0, 7)), None);
+        assert_eq!(line_after("/* c */", span(0, 99)), None);
     }
 
     #[test]

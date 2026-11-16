@@ -5,7 +5,6 @@
 //! that points at the next line, above the first def's own JSDoc, and above code.
 
 use analyzer_core::edit::{Edit, MarkerStyle, comment_marker};
-use analyzer_core::text::Span;
 
 use crate::Skip;
 use crate::marker;
@@ -75,7 +74,7 @@ pub(crate) fn plan(
             break;
         }
         // a block comment with code after it on its line: the header goes above that line
-        let Some(next_line) = line_after(text, c.span) else {
+        let Some(next_line) = comment_marker::line_after(text, c.span) else {
             break;
         };
         at = next_line;
@@ -85,7 +84,7 @@ pub(crate) fn plan(
             .map(|next| next.span.start)
             .or(first_token)
             .unwrap_or(c.span.end);
-        if !marker::adjacent(text, c.span.end, below) {
+        if !comment_marker::adjacent(text, c.span.end, below) {
             break;
         }
     }
@@ -104,21 +103,4 @@ pub(crate) fn plan(
 fn is_pragma(comment: &Comment, written: &str) -> bool {
     comment.kind == CommentKind::Line
         && (written.starts_with("///") || written[2..].trim_start().starts_with('@'))
-}
-
-/// The offset of the line after the one `comment` ends on, when nothing but blanks follows the comment on its line; the end of the text when
-/// there is no next line; `None` when code follows it.
-fn line_after(text: &str, comment: Span) -> Option<u32> {
-    let rest = text.get(comment.end as usize..)?;
-    let line_end = rest.find(['\n', '\r']).unwrap_or(rest.len());
-    if !rest[..line_end].chars().all(|c| c == ' ' || c == '\t') {
-        return None;
-    }
-    let mut next = comment.end as usize + line_end;
-    if text[next..].starts_with("\r\n") {
-        next += 2;
-    } else if next < text.len() {
-        next += 1;
-    }
-    Some(next as u32)
 }

@@ -51,13 +51,13 @@ pub(crate) fn plan(text: &str, marker_text: &str, style: MarkerStyle<'_>) -> Res
     // the header is the last line of the file's opening comment: the first run of comments, up to a blank line
     for (i, c) in top.comments.iter().enumerate() {
         // a block comment with code after it on its line: the header goes above that line
-        let Some(next_line) = line_after(text, *c) else {
+        let Some(next_line) = comment_marker::line_after(text, *c) else {
             break;
         };
         at = next_line;
         above = Some(*c);
         let below = top.comments.get(i + 1).map_or(top.first, |next| next.start);
-        if !adjacent(text, c.end, below) {
+        if !comment_marker::adjacent(text, c.end, below) {
             break;
         }
     }
@@ -103,47 +103,4 @@ fn is_empty_line_comment(text: &str, comment: Span) -> bool {
     text[comment.start as usize + 2..comment.end as usize]
         .trim()
         .is_empty()
-}
-
-/// Only whitespace and at most one line break between `from` and `to`: no blank line separates them.
-fn adjacent(text: &str, from: u32, to: u32) -> bool {
-    text.get(from as usize..to as usize).is_some_and(|between| {
-        between.chars().all(char::is_whitespace) && line_breaks(between) <= 1
-    })
-}
-
-/// How many line breaks `text` has (`\r\n` is one).
-fn line_breaks(text: &str) -> usize {
-    let mut count = 0;
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\n' => count += 1,
-            '\r' => {
-                count += 1;
-                if chars.peek() == Some(&'\n') {
-                    chars.next();
-                }
-            }
-            _ => {}
-        }
-    }
-    count
-}
-
-/// The offset of the line after the one `comment` ends on, when nothing but blanks follows the comment on its line; the end of the text when
-/// there is no next line; `None` when code follows it.
-fn line_after(text: &str, comment: Span) -> Option<u32> {
-    let rest = text.get(comment.end as usize..)?;
-    let line_end = rest.find(['\n', '\r']).unwrap_or(rest.len());
-    if !rest[..line_end].chars().all(|c| c == ' ' || c == '\t') {
-        return None;
-    }
-    let mut next = comment.end as usize + line_end;
-    if text[next..].starts_with("\r\n") {
-        next += 2;
-    } else if next < text.len() {
-        next += 1;
-    }
-    Some(next as u32)
 }

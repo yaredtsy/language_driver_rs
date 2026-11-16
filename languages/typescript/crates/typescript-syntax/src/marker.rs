@@ -9,13 +9,6 @@ use analyzer_core::text::Span;
 use crate::Skip;
 use crate::sem::{Above, Comment, CommentKind};
 
-/// Only whitespace and at most one line break between `from` and `to`: no blank line separates them.
-pub(crate) fn adjacent(text: &str, from: u32, to: u32) -> bool {
-    text.get(from as usize..to as usize).is_some_and(|between| {
-        between.chars().all(char::is_whitespace) && line_breaks(between) <= 1
-    })
-}
-
 /// The JSDoc block that documents a def: the nearest `/** */` block among the comments above it. Blank lines and `//` or `/* */` comments
 /// between the block and the def do **not** detach it: this is the block TypeScript applies to the def, and the only one it applies (a
 /// second block written below it would hide the first, and switch its tags off).
@@ -49,28 +42,9 @@ fn in_file_comment(text: &str, above: &Above, i: usize) -> bool {
     // the first comment with a blank line after it ends the opening comment
     let end = (0..comments.len()).find(|&k| {
         let next = comments.get(k + 1).map_or(above.start, |c| c.span.start);
-        !adjacent(text, comments[k].span.end, next)
+        !comment_marker::adjacent(text, comments[k].span.end, next)
     });
     end.is_some_and(|end| i <= end)
-}
-
-/// How many line breaks `text` has (`\r\n` is one).
-fn line_breaks(text: &str) -> usize {
-    let mut count = 0;
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\n' => count += 1,
-            '\r' => {
-                count += 1;
-                if chars.peek() == Some(&'\n') {
-                    chars.next();
-                }
-            }
-            _ => {}
-        }
-    }
-    count
 }
 
 /// Does a block comment's text carry a block tag: a line that, after its leading `*` and spaces, starts with `@`? An inline `{@link …}` is
@@ -154,7 +128,7 @@ fn directive_above(text: &str, above: &Above) -> bool {
     let written = |c: &Comment| c.span.slice(text).unwrap_or("");
     // a tool's directive applies to the next line: only the comment directly above the def can point at it
     if let Some(last) = above.comments.last()
-        && adjacent(text, last.span.end, above.start)
+        && comment_marker::adjacent(text, last.span.end, above.start)
         && is_directive(written(last))
     {
         return true;
