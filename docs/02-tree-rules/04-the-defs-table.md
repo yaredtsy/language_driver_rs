@@ -91,6 +91,8 @@ impl Graph {
 - `DefInfo::new(id, qname, kind, file, range)` and `Context::new(id)` (status `Finished`) are the constructors.
 - `Graph::new` sorts `defs` by `(id, file, range.start)` and keeps the first row of each id. So two definitions that carry the same marker
   (a copied function) give the same graph on every run. That case is not new and is not solved here: their contexts were already merged.
+  **Since D34 (2026-11-16)** a language names the later def of one **file** by where it is, so the two no longer share an id there; across
+  files they still do, and `Graph::new` counts the rows it drops ([`03-typescript/10`](../03-typescript/10-review-fixes.md) §4).
 - **`solve::FuncInfo` is deleted.** It has the same five fields. `Lang::describe` returns `DefInfo` (the field `stable` is now `id`).
 - `EdgeTo` does not change. `Construct { class: StableDef, .. }` is now a key into `defs`, the same way `ContextId::func` is.
 - `External` stays on the edge. An external is never entered, is never a `from`, and has no file in the project; `{ package, name }` is

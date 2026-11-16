@@ -82,7 +82,8 @@ language_driver_rs
 │   ├── the engine's callee        a fix: where the walk cannot call, the engine's def (D27) ─ 08-the-engines-callee.md
 │   ├── a def past an unknown base a fix: the engine's def beside Unknown, a likely call (D28) ─ 09-a-def-past-an-unknown-base.md
 │   ├── class summaries            objects that cross a call (Q-PY1): pylspt's part 04, CS0–CS9 ─ 10-class-summaries/
-│   └── PY9: the driver's needs    cancel, the project kept open, environmentInputs; no frontier ─ 11-driver-needs.md
+│   ├── PY9: the driver's needs    cancel, the project kept open, environmentInputs; no frontier ─ 11-driver-needs.md
+│   └── a file's own code          the module root after D32, a coverage scan first (PYM0–PYM3) ─ 12-module-code.md
 │
 ├── THE ROADMAP ───────────────────────────────────── 06-roadmap.md
 │   └── B0 bootstrap, then three tracks; what blocks what
