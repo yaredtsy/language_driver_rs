@@ -14,10 +14,39 @@ The RS0 spikes below were run on 2026-11-16 (macOS, Darwin 23.6.0, Rust 1.99.1) 
   2. `cargo update`, then check the pair that broke a fresh lock (S-RS1): `grep -A1 'name = "unicode-' Cargo.lock`. `ra_ap_hir_def` pins `unicode-ident` exactly; if
      `unicode-properties` is a different Unicode version, `ra-ap-rustc_lexer` does not compile: `cargo update -p unicode-properties --precise <the matching one>`. Commit the lockfile.
   3. `cargo test`, then `cargo test -p rust-syntax` alone, and `scripts/check-all.sh --static` (its `cargo tree` line: `rust-syntax` has no `salsa`, `ra_ap_hir` or `ra_ap_ide`).
-  4. Re-check every item this file names (the S-RS2 policy table, the `attach_db` rule, `Sysroot::discover`'s `rustup` call, the `set_test` default, the doc-comment node shapes
+  4. Re-check every item this file names ("The engine items we call" below, the S-RS2 policy table, the `attach_db` rule, `Sysroot::discover`'s `rustup` call, the `set_test` default, the doc-comment node shapes
      of S-RS4) against the new source; fix `sem` only.
   5. Write the new version and the date here.
 - Licence notice: rust-analyzer is MIT OR Apache-2.0. (Notice text to be copied from the published crates when RS3 ships a binary.)
+
+## The engine items we call
+
+What `sem` imports and calls, read from the code (RS2 step 6, 2026-11-16, `ra_ap_syntax =0.0.358`). An engine bump re-checks every row. A
+new call into the engine adds its row in the same commit. `rust-analysis` calls nothing yet; its rows come with RS3 and RS4.
+
+**`rust-syntax`** (`crates/rust-syntax/src/sem.rs`, the only file that names `ra_ap_syntax`):
+
+| Item | What we rely on |
+|---|---|
+| `Edition` (`Edition2015`, `2018`, `2021`, `2024`) | mapped one to one from our `Edition`; never `Edition::DEFAULT` (2015, see S-RS1) |
+| `SourceFile::parse(&str, Edition) -> Parse<SourceFile>` | never fails: a broken file still gives a tree. Does **not** skip a byte-order mark (an error at 0), so `sem` parses after it and shifts every offset back |
+| `Parse::errors()`, `SyntaxError::range()` | one range per error; an empty range can sit at the end of the text, or one byte past it (clamped by `sem`) |
+| `Parse::tree()`, `Parse::syntax_node()` | the typed root, and the untyped root for the token walk of the file header |
+| `ast::HasModuleItem::items()` | the items of a `SourceFile` and of a `mod`'s `ItemList` |
+| `ast::Item::{Fn, Struct, Union, Enum, Trait, Impl, TypeAlias, Const, Static, MacroRules, Module, ExternBlock}`, `ast::Item::cast` | the kinds of def (RS1 §2); `cast` finds an item inside a body |
+| `Trait::assoc_item_list()`, `Impl::assoc_item_list()`, `AssocItemList::assoc_items()`, `ast::AssocItem::{Fn, Const}` | the items of a trait and an impl |
+| `Module::item_list()`; `ExternBlock::extern_item_list()`, `ExternItemList::extern_items()`, `ast::ExternItem::Fn` | an inline `mod`'s items (`None` for `mod m;`); a foreign `fn` |
+| `Fn::body()`, `Const::body()`, `Static::body()`, `Const::underscore_token()` | where items in bodies are looked for (B1–B11); `const _` is no def |
+| `Impl::self_ty()`, `Impl::trait_()`, `Impl::for_token()` | the impl header (I1–I12); a `for` with no type on one side, or a parse error in the header, and it is not read (I10) |
+| `ast::Type::PathType`, `PathType::path()`, `Path::first_segment()`, `Path::segment()`, `PathSegment::type_anchor()` | a header type is a path whose last segment is its name, unless it has a `<A as B>::` qualifier |
+| `ast::HasName::name()`, `Name::text()` | the def's name, `r#` still on (stripped by `sem`); `None` when the parser could not find one |
+| `ast::HasAttrs::attrs()`, `Attr::kind()`, `Attr::meta()`, `ast::Meta::KeyValueMeta`, `Attr::simple_name()`, `AttrKind::Outer` | the `#[doc = …]` fragments for placing a marker (RS2 §4) |
+| `ast::HasAttrs::doc_comments()`, `DocComment::kind()`, `DocComment::text_with_markers()` | the item's outer doc lines in source order, outer and inner mixed (`sem` keeps `Outer`); the text keeps `///`, `/**`, and a CRLF file's `\r` (S-RS4) |
+| `Fn::param_list()`, `ParamList::self_param()`, `ParamList::params()`, `Param::pat()`; `SelfParam::mut_token()`, `amp_token()`, `ty()` | the params of the outline and the four receiver forms (RS1 §5) |
+| `AstNode::syntax()`, `SyntaxNode::{kind, text, text_range, children_with_tokens, preorder, preorder_with_tokens}`, `Preorder::skip_subtree`, `WalkEvent::Enter`, `NodeOrToken` | the walks: a body's items (iterative, so deep nesting cannot overflow the stack), an item's range, the type-text printer, the header's token scan |
+| `SyntaxToken::{kind, text, text_range, parent}`, `TextRange::{new, start, end}` | tokens and offsets (`TextSize` into `u32`) |
+| `SyntaxKind`: `WHITESPACE`, `COMMENT`, `SHEBANG`, `DOC_COMMENT`, `OUTER_DOC_COMMENT`, `INNER_DOC_COMMENT`, `ATTR` | the tree shapes of S-RS4: a doc line is a `DOC_COMMENT` node around an `OUTER_`/`INNER_DOC_COMMENT` token; a plain comment is a `COMMENT` token and can open an item's node, so an item's range starts at its first `DOC_COMMENT` or `ATTR` child, else its first child that is not `COMMENT` or `WHITESPACE` |
+| `SyntaxKind`: `LIFETIME`, `LIFETIME_ARG`, `FOR_BINDER`, `GENERIC_ARG_LIST`, `PARENTHESIZED_ARG_LIST`, `TUPLE_TYPE`, `PARAM_LIST`, `TYPE_BOUND_LIST`, `ABI`, `STRING`, `COLON2`, `COMMA`, `PLUS`, `EQ`, `THIN_ARROW`, `COLON`, `SEMICOLON`, `R_PAREN`, `R_BRACK`, `R_ANGLE`, `R_CURLY`, `AS_KW`, `DYN_KW`, `IMPL_KW`, `MUT_KW`, `CONST_KW`, `UNSAFE_KW`, `EXTERN_KW` | the type-text printer (`docs/qualnames.md` P1–P8). A renamed or split kind changes stored qualnames: the `the_printing_rule` test and the snapshots catch it |
 
 ## S-RS1: does it build as a dependency?
 
