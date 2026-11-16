@@ -88,6 +88,20 @@ and holds five workspaces (`core/`, one per language). So, as TypeScript finds t
 `CrateOrigin::Library` (registry and git dependencies), `Lang` (`std`, `core`, `alloc`) and `Rustc` are external. "Under `root`" is the
 same extra test TypeScript has: a file relative to the root is what a `DefInfo` holds.
 
+**As built (RS3 step 3, 457a16a, reviewed 2026-11-17).** `sem/origin.rs`: `Owner::Project { file }` or `Owner::External { package, name }`,
+crate-private until RS4 calls it.
+
+- A def a `macro_rules!` of a **project** crate makes (`make!(generated)`) is in no file (its source is a macro file), so it is
+  `External { package: <its crate> }`, as the table says. It has no line a marker could go on either. RS4 counts these if they matter.
+- `name` is `<crate>::<modules>::<Type or Trait>::<fn>` (`alloc::string::String::len`); a method whose impl's self type is not a named type
+  (`[T]`, `&T`) gets no type segment. **Provisional**: how an external target is named on the wire is RS4's to settle, and unlike a project
+  def's qualname it is not stored in users' files, so it may still change.
+- The `Library` row has no fixture (a registry or git source needs the network or a vendored registry); the rule is a table test.
+  `fixtures/owner/` covers `Local` under the root, `Local` above the root (root at `app`), a macro-made def, and `Lang` (`String`).
+- Paths are compared as engine text in one function (`paths::relative`): `/` separators, no `\\?\` prefix, the drive letter upper case.
+  The engine also treats `C:/x.rs` and `c:/x.rs` as one path (`ra_ap_vfs` `vfs_path.rs`, `paths_encoding`). Python and TypeScript strip the
+  prefix and do not fold the letter. **Not yet run on Windows**: the `windows-latest` job is the proof.
+
 ## 5. Inside
 
 ```
@@ -296,7 +310,7 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 | 1 | the engine dependencies (again `cargo update -p unicode-properties --precise 0.1.4`, `ENGINE.md` S-RS1); `sem::load`; `Project::open` on a manifest path; the in-project measurement of §5 (B, D, no `std`), then the lockfile rule Q-RS6 picks | `core/` loads; the table in `ENGINE.md`; the lockfile test. **Done but the lockfile rule** (f4064e4; table in `ENGINE.md`): the measurement picked B (D38) |
 | 1b | the lockfile rule (§5, D38): `cargo --version` in the manifest's folder (step 5 reuses it); from 1.97 and only when the project has no `Cargo.lock`, B (`CARGO_RESOLVER_LOCKFILE_PATH` in `extra_env` to a temporary folder, deleted before `open` returns); below 1.97, A. A's `LockfileWritten` warning comes with `Warning` in step 5; until then the load records that it wrote one | §7's lockfile test: a fixture with no lock and one with a stale lock are byte-identical after `open` (on the installed 1.99.1); a table test of the version rule (`1.96.x` → A, `1.97.0` → B, a suffixed version, an unreadable one → A). **Done** (ccb699e, as built in §5) |
 | 2 | finding the manifest from a file; the root limit | the five-workspaces test. **Done** (0364d27; UTF-8 fix 98cf4d3): `open(root, file)` without `opts` until step 4; errors are `OpenError::Load` until steps 5 and 7; pure path functions in `paths.rs` |
-| 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI |
+| 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI. **Done but Windows** (457a16a; test scope 193402f; as built in §4): the Windows job has not run, nothing is pushed |
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures |
 | 5 | `OpenError` and `Warning` (§6, D37), from S-RS3's texts; the old-toolchain measurement and the minimum; the substitution | §7's error and warning tests; the table in `ENGINE.md` |
 | 7 | the ladder's rungs 3 and 4 (§6): our own `Cargo.toml` reader into `ProjectJson`, the one-file crate; its checks first | a fixture workspace loaded with no `cargo` and no `rustc` on `PATH` and an empty `HOME`: the in-project calls of §6's row resolve, `NoToolchain` is set; a lone `.rs` file; §5's table with rung 3 |
