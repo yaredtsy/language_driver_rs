@@ -373,3 +373,68 @@ The three checks of RS3 §5, with `CARGO_RESOLVER_LOCKFILE_PATH=<temp>/Cargo.loc
   `resolve_method_call`, `resolve_method_call_fallback`, `resolve_path`, `resolve_path_with_subst`, `resolve_variant(RecordExpr) -> Option<Variant>`, `type_of_expr`,
   `expand_macro_call`, `original_range`, `original_range_opt`; `hir::CallableKind::{Function, TupleStruct, TupleEnumVariant, Closure, FnPtr, FnImpl}` (note `TupleEnumVariant`
   holds an `EnumVariant`); `AnalysisHost::with_database`, `Analysis::outgoing_calls(&CallHierarchyConfig, FilePosition)`. **`resolve_record_literal` does not exist.**
+
+## RS3: loading a workspace
+
+### How `sem::load` finds the standard library (step 1, f4064e4)
+
+`CargoConfig.sysroot = RustLibSource::Path(<rustc --print sysroot>)`, run in the manifest's folder (so a `rust-toolchain.toml` there counts)
+with `RUSTUP_AUTO_INSTALL=0`. `ProjectWorkspace::load` maps `(Path(dir), None)` to `Sysroot::discover_rust_lib_src_dir(dir)`
+(`ra_ap_project_model-0.0.358/src/workspace.rs` ~237), which looks for `lib/rustlib/src/rust/library` and records "can't find standard
+library sources" in `sysroot.error()` when it is not there; it never runs `rustup`. Only `RustLibSource::Discover` goes through
+`discover_rust_lib_src_dir_or_add_component` (`sysroot.rs` ~467), which runs `rustup component add rust-src`. So `sem` does not check the
+folder itself, and `sysroot_src` stays `None`. The engine sets `RUSTUP_AUTO_INSTALL=0` on its own `cargo` and `rustc` commands
+(`ra_ap_toolchain`, `NO_RUSTUP_AUTO_INSTALL_ENV`). A manifest path is made absolute and cleaned of `.` and `..` by text:
+`std::path::absolute` keeps `..`, and then no loaded file starts with the root and `files()` is silently empty.
+
+### In-project edges by load mode (step 1, 2026-11-16)
+
+The measurement RS3 §5 asked for before Q-RS6. A throwaway probe (`languages/rust/spikes/rs3-probe/`, deleted after this was written down),
+release, `set_test` on, one process per load. Every call site written outside a macro, resolved as in S-RS2. A target is **project code**
+when its crate is `CrateOrigin::Local` and its file is under the root; a constructor counts as a target; a def made by a macro counts as
+external. Modes: **a** full; **b** `CargoConfig::no_deps = true`; **c** no `std` (sysroot `None`); **d** both (close to the ladder's
+rung 3). Re-counted by the reviewer from the probe's per-site dumps; a site's class was compared between modes by its position.
+
+| Project | Mode | Sites | Same crate | Same package, other target | Cross-package | External | Function-typed | Unresolved | Load | Peak memory |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `core/` | a | 2035 | 781 | – | 45 | 1182 | 27 | 0 | 0.95 s | 474 MB |
+| | b | 2035 | 768 | – | **0** | 179 | 25 | 1063 | 0.50 s | 351 MB |
+| | c | 2035 | 686 | – | 34 | 4 | 11 | 1300 | 0.22 s | 85 MB |
+| | d | 2035 | 686 | – | 0 | 0 | 11 | 1338 | 0.10 s | 35 MB |
+| `languages/typescript/` | a | 4654 | 1152 | 105 | 16 | 3284 | 97 | 0 | 0.95 s | 763 MB |
+| | b | 4654 | 1095 | 104 | **0** | 373 | 96 | 2986 | 0.64 s | 350 MB |
+| | c | 4654 | 862 | 81 | 9 | 302 | 88 | 3312 | 0.48 s | 374 MB |
+| | d | 4654 | 862 | 81 | 0 | 0 | 88 | 3623 | 0.42 s | 36 MB |
+| the outside project of S-RS2 (232 packages) | a | 463 | 19 | 2 | 7 | 421 | 14 | 0 | 4.3 s | 854 MB |
+| | b | 463 | 19 | 2 | **0** | 45 | 14 | 383 | 0.76 s | 375 MB |
+| | c | 463 | 8 | 1 | 7 | 50 | 14 | 383 | 2.2 s | 588 MB |
+| | d | 463 | 8 | 1 | 0 | 0 | 14 | 440 | 0.18 s | 35 MB |
+
+Site totals differ from S-RS2's calls plus method calls (1892 on `core/`, 4759 on `typescript/`; up on one, down on the other): the code
+changed since and the two probes count sites differently. Not reconciled; the counts that decide are each mode against mode a of the same
+run. Mode a has 0 unresolved on all three, as S-RS2 found.
+
+**In-project edges lost, against mode a** (core 826, typescript 1273, outside 28):
+
+| Mode | `core/` | `languages/typescript/` | outside |
+|---|---|---|---|
+| b `no_deps` | −58: **all 45 cross-package**, 13 same-crate | −74: **all 16 cross-package**, 57 same-crate, 1 same-package | −7: **all 7 cross-package** |
+| c no `std` | −106: 11 cross-package, 95 same-crate | −321 | −12 |
+
+- **Cross-package (the [check] of RS3 §5, option D): a call from one workspace member into another does not resolve under `no_deps`.**
+  Every one of the 45 / 16 / 7 becomes `Unresolved`, and every one is a plain call by path (`EdgeTo::External(..)`, `render(&graph, ..)`,
+  `ContextId::of(..)` from `analyzer-testkit` into `analyzer-core`; `Dialect::from_path` from the CLI and tests; the spike crates into
+  `s1_hir::load`). Not a type question: `--no-deps` leaves `metadata.resolve` empty, and the engine builds every crate's dependencies from
+  it (`cargo_workspace.rs`), so the members have no dependency edge between them.
+- **Same-crate losses are `std`-typed**: `line_at(text, at)?.slice(text)` (the `?`), `all.iter().map(|c| c.as_str())` (a closure
+  parameter of an adapter), `for child in &node.children { child.edge_marks() }`, `Project::open(..).unwrap().sem.call_sites(..)`. No lost
+  edge needed a third-party crate's type.
+- **`no_deps` also cripples `std`.** `ProjectWorkspace::load` passes `config.no_deps` to the sysroot's own `cargo metadata`
+  (`workspace.rs` lines 410, 514, 525, 587 into `Sysroot::load_workspace`), so `std`, `alloc` and `core` lose their links to each other:
+  under b on `core/`, 649 `core`, 291 `alloc` and 20 `std` calls went unresolved, and only 179 external calls resolve. A "no project
+  dependencies, working `std`" load cannot be asked for through `CargoConfig`.
+- **The engine's own offline fallback loses the same cross-package edges, but keeps `std`** (read from the source, not measured):
+  `FetchMetadata` always pre-fetches `--no-deps` metadata, and when the full `cargo metadata` fails it returns that one
+  (`cargo_workspace.rs` ~831, "This makes r-a still work partially when offline"). That `no_deps` is local to the project's fetch; the
+  sysroot is loaded with `config.no_deps`, which stays `false`. So under `DependenciesMissing` (D37, the ladder's rung 2) `std` works,
+  and **every call between the workspace's own crates is `Unresolved`**.
