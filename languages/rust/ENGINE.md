@@ -48,7 +48,7 @@ new call into the engine adds its row in the same commit (the reviewer writes it
 | `SyntaxKind`: `WHITESPACE`, `COMMENT`, `SHEBANG`, `DOC_COMMENT`, `OUTER_DOC_COMMENT`, `INNER_DOC_COMMENT`, `ATTR` | the tree shapes of S-RS4: a doc line is a `DOC_COMMENT` node around an `OUTER_`/`INNER_DOC_COMMENT` token; a plain comment is a `COMMENT` token and can open an item's node, so an item's range starts at its first `DOC_COMMENT` or `ATTR` child, else its first child that is not `COMMENT` or `WHITESPACE` |
 | `SyntaxKind`: `LIFETIME`, `LIFETIME_ARG`, `FOR_BINDER`, `GENERIC_ARG_LIST`, `PARENTHESIZED_ARG_LIST`, `TUPLE_TYPE`, `PARAM_LIST`, `TYPE_BOUND_LIST`, `ABI`, `STRING`, `COLON2`, `COMMA`, `PLUS`, `EQ`, `THIN_ARROW`, `COLON`, `SEMICOLON`, `R_PAREN`, `R_BRACK`, `R_ANGLE`, `R_CURLY`, `AS_KW`, `DYN_KW`, `IMPL_KW`, `MUT_KW`, `CONST_KW`, `UNSAFE_KW`, `EXTERN_KW` | the type-text printer (`docs/qualnames.md` P1–P8). A renamed or split kind changes stored qualnames: the `the_printing_rule` test and the snapshots catch it |
 
-**`rust-analysis`** (`crates/rust-analysis/src/sem/`, D35; as of RS3 step 3, 457a16a; the test-only calls are marked):
+**`rust-analysis`** (`crates/rust-analysis/src/sem/`, D35; as of RS3 step 4, 888c228; the test-only calls are marked):
 
 | Item | Where | What we rely on |
 |---|---|---|
@@ -62,6 +62,9 @@ new call into the engine adds its row in the same commit (the reviewer writes it
 | `Function::{module, source, name, as_assoc_item}`, `HasSource::source(..).file_id.file_id()`, `HirFileId → EditionedFileId::file_id(db)` | `origin.rs` | where a def is written; `file_id()` is `None` for a macro file, so a macro-made def is in no file (RS3 §4) |
 | `AsAssocItem`, `AssocItemContainer::{Trait, Impl}`, `Impl::self_ty(..).as_adt()`, `Trait::name`, `Adt::name` | `origin.rs` | the type or trait segment of an external name; a self type that is not an ADT (`[T]`, `&T`) gives none |
 | `Module::{krate, name, path_to_root}`, `Crate::{origin, display_name}`, `CrateOrigin::is_local` | `origin.rs` | `Local` is a workspace member or a path dependency; `Library`, `Lang`, `Rustc` are external; a crate with no display name is `unnamed` |
+| `ProjectWorkspace::{run_build_scripts(&config, progress), set_build_scripts}`, `WorkspaceBuildScripts::error`, `CargoConfig::target_dir_config = TargetDirectoryConfig::UseSubdirectory` | `load.rs` | the build run (`cargo check`) when a switch is on (RS3 §3); its output goes to `<target-dir>/rust-analyzer`; a run that reports an error still hands back what it built |
+| `LoadCargoConfig { load_out_dirs_from_check, with_proc_macro_server: ProcMacroServerChoice::Sysroot, proc_macro_processes }` | `load.rs` | `OUT_DIR` code after a build run; the toolchain's own proc-macro server, a pool of one; the client may be dropped after the load (each macro the database knows holds the pool) |
+| `ProjectWorkspaceKind::Cargo { cargo, .. }`, `CargoWorkspace::{packages, manifest_path}`, `PackageData::{targets, is_member, is_local, manifest}`, `TargetData::kind`, `TargetKind::{BuildScript, Lib { is_proc_macro }}` | `load.rs` | what `skipped()` counts and which manifests `environment_inputs()` names |
 | test only: `Semantics::{new, attach_first_edition_opt, parse, resolve_expr_as_callable, resolve_method_call_fallback}`, `CallableKind::Function`, `Either::left`; `ra_ap_syntax::{ast::CallExpr, ast::MethodCallExpr, AstNode}` | `origin.rs` tests | the fixture's call walk, the part of RS4's site walk RS3 needs |
 
 ## S-RS1: does it build as a dependency?

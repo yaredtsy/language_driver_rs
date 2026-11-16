@@ -79,6 +79,25 @@ and holds five workspaces (`core/`, one per language). So, as TypeScript finds t
 `Project::skipped()` holds them, and `call_graph` copies them into `Stats.language`, so a tree that is missing a derive's call says why.
 `LoadOptions` lets the driver turn the first two on; the default stays off until S-RS2's numbers argue otherwise.
 
+**As built (RS3 step 4, 888c228, reviewed 2026-11-17).**
+
+- `LoadOptions { build_scripts, proc_macros }`, `#[non_exhaustive]`, `Default` both off; `open(root, file, &opts)`.
+- **`proc_macros` runs the build too**: the proc-macro dylibs come out of the build run (`cargo check`), so a derive cannot expand without
+  it. With `proc_macros` on, `build_scripts_skipped` is not counted.
+- **Where the build run writes: `<target-dir>/rust-analyzer`** (`TargetDirectoryConfig::UseSubdirectory`), the folder rust-analyzer in an
+  editor uses, not the user's own `target/` build and its lock. It runs under the lockfile redirect (D38). This is the one place a load
+  writes inside the user's tree, and only when the caller asks for a switch; the default load writes nothing. Rule 2 is about the source
+  tree and the results; a build cache under cargo's target folder is what any cargo command makes. Rejected: a temporary folder (a full
+  rebuild on every load).
+- **A counter is listed only when it cut something** (absent when 0, as `Stats.language` counters are elsewhere, D28). `build_scripts_skipped`
+  counts the **local** packages (`CrateOrigin::Local`: members and path dependencies, the project code of §4) that have a build script.
+  `proc_macros_skipped` is 1 when the graph has any proc-macro crate and none could expand.
+- **A build run that fails never fails the load**: the load goes on, counted as not run (`build_scripts_skipped`, and `proc_macros_skipped`
+  when proc macros were asked for), and step 5 turns its message into a warning.
+- `environment_inputs()`: the five globs, `**/build.rs` when the build ran, then the exact files no glob covers: the manifests of the local
+  packages, the workspace's root manifest and its lock, when outside the root, spelled as the engine spells them (absolute, `/`), as
+  TypeScript's `config_files` are. Copied into `Stats.language` from RS4 on.
+
 ## 4. What is project code
 
 | A def is project code when | Else |
@@ -311,7 +330,7 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 | 1b | the lockfile rule (§5, D38): `cargo --version` in the manifest's folder (step 5 reuses it); from 1.97 and only when the project has no `Cargo.lock`, B (`CARGO_RESOLVER_LOCKFILE_PATH` in `extra_env` to a temporary folder, deleted before `open` returns); below 1.97, A. A's `LockfileWritten` warning comes with `Warning` in step 5; until then the load records that it wrote one | §7's lockfile test: a fixture with no lock and one with a stale lock are byte-identical after `open` (on the installed 1.99.1); a table test of the version rule (`1.96.x` → A, `1.97.0` → B, a suffixed version, an unreadable one → A). **Done** (ccb699e, as built in §5) |
 | 2 | finding the manifest from a file; the root limit | the five-workspaces test. **Done** (0364d27; UTF-8 fix 98cf4d3): `open(root, file)` without `opts` until step 4; errors are `OpenError::Load` until steps 5 and 7; pure path functions in `paths.rs` |
 | 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI. **Done but Windows** (457a16a; test scope 193402f; as built in §4): the Windows job has not run, nothing is pushed |
-| 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures |
+| 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures. **Done** (888c228; as built in §3), with two fixes asked in review: a failed build run must not fail the load, and `build_scripts_skipped` counts local packages |
 | 5 | `OpenError` and `Warning` (§6, D37), from S-RS3's texts; the old-toolchain measurement and the minimum; the substitution | §7's error and warning tests; the table in `ENGINE.md` |
 | 7 | the ladder's rungs 3 and 4 (§6): our own `Cargo.toml` reader into `ProjectJson`, the one-file crate; its checks first | a fixture workspace loaded with no `cargo` and no `rustc` on `PATH` and an empty `HOME`: the in-project calls of §6's row resolve, `NoToolchain` is set; a lone `.rs` file; §5's table with rung 3 |
 | 6 | `ENGINE.md`: what `sem::load` calls, the `attach_db` rule, the measured load times | reviewed |
