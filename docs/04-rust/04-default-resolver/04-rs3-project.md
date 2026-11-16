@@ -47,7 +47,11 @@ and holds five workspaces (`core/`, one per language). So, as TypeScript finds t
 
 1. from `file`'s folder, climb to the nearest `Cargo.toml`, no higher than `root`;
 2. hand it to the engine (`ProjectManifest::from_manifest_file`, then `ProjectWorkspace::load`), which asks `cargo metadata`; Cargo itself
-   finds the workspace root above a member, and that root **may** be above the manifest we found but is never accepted above `root`;
+   finds the workspace root above a member, and that root **may** be above the manifest we found. **Above `root` it is loaded but not
+   project code** (decided 2026-11-16, before step 2, as D33 for TypeScript): cargo needs the whole workspace to load a member, and reading
+   it writes nothing, but `root` stays the limit of what is the user's. So `files()` lists only files under `root`, a def in a sibling
+   member above `root` is `External` (§4's "under `root`"), and `manifest()` is the manifest we found, never a path with `..`. The lockfile
+   rule (§5) looks beside the workspace's root manifest wherever it is;
 3. no manifest below `root`: the file alone is the project, a one-file crate with its `mod` children (§6, the ladder's last rung), with
    the `NoManifest` warning. Its outline and markers work as always (they never needed a project).
 
