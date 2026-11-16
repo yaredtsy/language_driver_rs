@@ -110,16 +110,19 @@ and nothing else (rule 2).
 
 1. **Comments and whitespace** are dropped.
 2. **Lifetimes** are dropped, with the `,` or `+` that joined them: a lifetime argument (`S<'a, T>` is `S<T>`; `S<'a>` and `S<'_>`
-   are `S`, and empty brackets go), the lifetime of a reference (`&'a mut T` is `&mut T`), a lifetime bound (`dyn Tr + 'static` is
+   are `S`: empty **angle** brackets go, written or left empty, and parentheses never do: `()`, `fn()`, `Fn()` stay), the lifetime of a reference (`&'a mut T` is `&mut T`), a lifetime bound (`dyn Tr + 'static` is
    `dyn Tr`), and a `for<'a>` binder.
 3. **Optional punctuation** is dropped: the `::` before `<` in a type path (`Vec::<u8>` is `Vec<u8>`), and a trailing comma in a list
    (`<A, B,>`, `(A, B,)`), **except** the comma of a one-element tuple, which makes it a tuple: `(A,)` stays `(A,)`.
 4. **`r#`** is dropped from a raw identifier, as in §3's last row.
-5. **One space** is put after `,` and `;`; on both sides of `+`, `=` and `->`; after the keywords `dyn`, `impl`, `mut`, `const`,
-   `unsafe`, `extern` and after an ABI string (`"C"`). Nowhere else.
-6. A **const argument in braces** (`S<{ N + 1 }>`) and a **macro in a type position** are the exception to rule 5: their own text, with
-   every run of whitespace and comments turned into one space and none just inside the braces (`S<{N + 1}>`). Both are rare, and their
-   inside is an expression, not a type.
+5. **One space** is put after `,`, `;` and a single `:` (the token `:`, never inside `::`); on both sides of `+`, `=`, `->` and `as`;
+   after the keywords `dyn`, `impl`, `mut`, `const`, `unsafe`, `extern` and after an ABI string (`"C"`); and, as a backstop, between
+   any two word tokens (identifiers, keywords, literals) that would otherwise touch. Nowhere else. (`:` and `as` were added on
+   2026-11-16, from `qualnames.md`: without them `fn(a: u8)` and `<T as Tr>::Out` print as `fn(a:u8)` and `<TasTr>::Out`. The backstop
+   makes a keyword this list forgot print with a space instead of merging into the next word.)
+6. A **const argument in braces** (`S<{ N + 1 }>`) and a **macro in a type position** follow rules 1 to 5 like every other token: no
+   exception (changed 2026-11-16; the first draft kept their own text). `S<{ N+1 }>` and `S<{N + 1}>` are both `S<{N + 1}>`, and
+   `m!( a  b )` is `m!(a b)`. So spacing, line breaks and comments never rename a def, anywhere.
 
 | Written | Type text |
 |---|---|
@@ -133,7 +136,9 @@ and nothing else (rule 2).
 | `dyn Iterator<Item=u8>` | `dyn Iterator<Item = u8>` |
 | `( A , B , )`, `(A,)` | `(A, B)`, `(A,)` |
 | `*const T`, `unsafe extern "C" fn(i32)` | `*const T`, `unsafe extern "C" fn(i32)` |
-| `S<{ N+1 }>` | `S<{N+1}>` |
+| `S<{ N+1 }>`, `S<{N + 1}>` | `S<{N + 1}>` |
+| `<T as Tr>::Out`, `fn(a:u8)` | `<T as Tr>::Out`, `fn(a: u8)` |
+| `S<>`, `fn()`, `()` | `S`, `fn()`, `()` |
 
 So `impl<'a, T: Clone> From<&'a [T]> for Wrapper<'a, T>` is named `<Wrapper<T> as From<&[T]>>::from`.
 
