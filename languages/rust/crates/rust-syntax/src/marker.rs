@@ -2,7 +2,7 @@
 //! (`docs/04-rust/04-default-resolver/03-rs2-markers.md` §3 and §4). Text in, text out: which comments are the def's is `sem`'s, and nothing
 //! here knows the engine.
 
-use analyzer_core::edit::{Edit, MarkerStyle, Placement, apply, comment_marker};
+use analyzer_core::edit::{Edit, MarkerStyle, Placement, apply, block_marker, comment_marker};
 use analyzer_core::outline::Def;
 use analyzer_core::text::Span;
 
@@ -18,28 +18,10 @@ use crate::{Edition, Skip, outline};
 pub(crate) fn read(docs: &[DocComment], label: &str) -> Option<String> {
     docs.iter().find_map(|doc| {
         if doc.text.starts_with("/**") {
-            read_block(&doc.text, label)
+            block_marker::read(&doc.text, label)
         } else {
             read_line(doc.text.strip_prefix("///")?, label)
         }
-    })
-}
-
-/// A `/** */` block: its lines, each without its indentation and its leading `*`.
-fn read_block(block: &str, label: &str) -> Option<String> {
-    let lines: Vec<&str> = block.lines().collect();
-    let last = lines.len().checked_sub(1)?;
-    lines.iter().enumerate().find_map(|(i, line)| {
-        let mut line = line.trim_start();
-        if i == 0 {
-            line = line.strip_prefix("/**")?;
-        } else {
-            line = line.strip_prefix('*').unwrap_or(line);
-        }
-        if i == last {
-            line = line.trim_end().strip_suffix("*/").unwrap_or(line);
-        }
-        read_line(line, label)
     })
 }
 
@@ -51,37 +33,12 @@ fn read_line(after_marker: &str, label: &str) -> Option<String> {
     (!text.is_empty()).then(|| text.to_owned())
 }
 
-/// The offset of the first byte of the line that `start` is on, past a byte-order mark. `None` when something other than blanks stands
-/// before `start` on that line: the def does not own its line.
-fn own_line(text: &str, start: u32) -> Option<u32> {
-    let before = text.get(..start as usize)?;
-    let line = before.rfind(['\n', '\r']).map_or(0, |i| i + 1);
-    let bom = if line == 0 && before.starts_with('\u{feff}') {
-        '\u{feff}'.len_utf8()
-    } else {
-        0
-    };
-    before[line + bom..]
-        .chars()
-        .all(|c| c == ' ' || c == '\t')
-        .then_some((line + bom) as u32)
-}
-
 /// The offset of the first byte of the line after the one `from` is on. `None` when the text ends on that line.
 fn next_line_start(text: &str, from: u32) -> Option<u32> {
     let rest = text.get(from as usize..)?;
     let at = rest.find(['\n', '\r'])?;
     let eol = if rest[at..].starts_with("\r\n") { 2 } else { 1 };
     Some(from + (at + eol) as u32)
-}
-
-/// Can this text be written as a marker and read back the same? It is on one line, not empty, has no blanks around it (reading trims them
-/// away, so the caller would get back another text than it wrote), and does not close a block comment.
-fn fits_a_line(marker_text: &str) -> bool {
-    !marker_text.is_empty()
-        && marker_text == marker_text.trim()
-        && !marker_text.contains(['\n', '\r'])
-        && !marker_text.contains("*/")
 }
 
 /// The edit that puts `marker_text` on `def`, or why not (RS2 §4, §5). The def must be one of this text's outline: its offsets are used.
@@ -105,7 +62,7 @@ pub(crate) fn plan(
     let (def, item) = (&found.defs[at], &items[at]);
 
     // the order of the checks is Python's and TypeScript's (RS2 §5): what the caller can act on first, the shape of the text last
-    if !fits_a_line(marker_text) {
+    if !comment_marker::fits_a_line(marker_text) {
         return Err(Skip::InvalidText);
     }
     if def.syntax_error {
@@ -115,7 +72,7 @@ pub(crate) fn plan(
     if let Some(existing) = def.marker.clone() {
         return Err(Skip::AlreadyMarked { existing });
     }
-    let own = own_line(text, def.range.start).ok_or(Skip::NotOnOwnLine)?;
+    let own = comment_marker::own_line(text, def.range.start).ok_or(Skip::NotOnOwnLine)?;
     let edit = place(text, item, own, style.label, marker_text)?;
     // In a file with a parse error, the new doc line may not become the def's: an unfinished item above it can take it (`struct` with no
     // name, then the def). So the edit is tried first, and refused unless the same defs come back and this one carries the marker. A file
@@ -154,10 +111,11 @@ fn place(text: &str, item: &Item, own: u32, label: &str, marker_text: &str) -> R
         // no fragment at all (row 6): a new line above the first attribute or the keyword
         Fragment::None => Ok(Edit::insert(own, line)),
         Fragment::Comment(comment) => {
-            // a block as the last doc comment is step 3's: its lines cannot be edited yet, and a `///` line put below it would be a second
-            // doc comment of another shape beside it
+            // a block as the last doc comment: the marker goes on a line of its own before its `*/`, in the block's own style. One that cannot
+            // be edited safely (closed on its opening line, a line without its `*`, text on the closing line) is not touched
             if comment.text.starts_with("/**") {
-                return Err(Skip::UnsafeDocComment);
+                return block_marker::plan(text, comment.range, label, marker_text, false)
+                    .ok_or(Skip::UnsafeDocComment);
             }
             let empty = comment
                 .text

@@ -49,7 +49,7 @@ pub(crate) fn plan(
     marker_text: &str,
     style: MarkerStyle<'_>,
 ) -> Result<Edit, Skip> {
-    if !marker::fits_a_line(marker_text) {
+    if !comment_marker::fits_a_line(marker_text) {
         return Err(Skip::InvalidText);
     }
     if let Some(existing) = read(p, text, style) {

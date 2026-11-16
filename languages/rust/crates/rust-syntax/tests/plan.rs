@@ -247,17 +247,67 @@ fn a_def_of_another_text_is_unknown() {
     );
 }
 
-/// Until step 3 moves the block helper to core, a block as the last doc comment is refused, not rewritten and not stacked under.
 #[test]
-fn a_block_as_the_last_doc_comment_waits_for_step_3() {
+fn row_3_a_block_as_the_last_doc_comment_gets_the_marker_before_its_closing_line() {
     assert_eq!(
-        skip("/** a\n * b\n */\nfn f() {}\n", "f"),
+        marked("/**\n * Parses.\n */\nfn f() {}\n", "f"),
+        "/**\n * Parses.\n * ID: m1\n */\nfn f() {}\n"
+    );
+    // the block's own prefix and indentation, whatever they are
+    assert_eq!(
+        marked(
+            "impl S {\n    /**\n     * Parses.\n     */\n    fn m() {}\n}\n",
+            "S::m"
+        ),
+        "impl S {\n    /**\n     * Parses.\n     * ID: m1\n     */\n    fn m() {}\n}\n"
+    );
+    assert_eq!(
+        marked("/**\r\n * Parses.\r\n */\r\nfn f() {}\r\n", "f"),
+        "/**\r\n * Parses.\r\n * ID: m1\r\n */\r\nfn f() {}\r\n"
+    );
+    // rustdoc has no block tags: a line that starts with `@` is text like any other
+    assert_eq!(
+        marked("/**\n * @a\n * b\n */\nfn f() {}\n", "f"),
+        "/**\n * @a\n * b\n * ID: m1\n */\nfn f() {}\n"
+    );
+    // an attribute after the block does not change where it goes
+    assert_eq!(
+        marked("/**\n * a\n */\n#[inline]\nfn f() {}\n", "f"),
+        "/**\n * a\n * ID: m1\n */\n#[inline]\nfn f() {}\n"
+    );
+}
+
+#[test]
+fn a_block_that_cannot_be_edited_safely_is_left_alone() {
+    // closed on its opening line
+    assert_eq!(skip("/** a */\nfn f() {}\n", "f"), Skip::UnsafeDocComment);
+    // text on the closing line
+    assert_eq!(
+        skip("/**\n * a\n * b */\nfn f() {}\n", "f"),
         Skip::UnsafeDocComment
     );
+    // a line without its star
+    assert_eq!(
+        skip("/**\n * a\n b\n */\nfn f() {}\n", "f"),
+        Skip::UnsafeDocComment
+    );
+}
+
+#[test]
+fn only_the_last_doc_comment_decides() {
     // a block earlier in the docs is no obstacle: the last doc comment is a line
     assert_eq!(
         marked("/** a */\n/// b\nfn f() {}\n", "f"),
-        "/** a */\n/// b\n///\n/// ID: m1\nfn f() {}\n"
+        "/** a */\n/// b\n///\n/// ID: m1\n".to_owned() + "fn f() {}\n"
+    );
+    // a block after a line is the last one, and decides
+    assert_eq!(
+        marked("/// a\n/**\n * b\n */\nfn f() {}\n", "f"),
+        "/// a\n/**\n * b\n * ID: m1\n */\nfn f() {}\n"
+    );
+    assert_eq!(
+        skip("/// a\n/** b */\nfn f() {}\n", "f"),
+        Skip::UnsafeDocComment
     );
 }
 

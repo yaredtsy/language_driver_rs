@@ -3,27 +3,11 @@
 //!
 //! The rule is `docs/03-typescript/04-ts2-markers.md` §3 and `languages/typescript/docs/markers.md`.
 
-use analyzer_core::edit::{Edit, comment_marker};
+use analyzer_core::edit::{Edit, block_marker, comment_marker};
 use analyzer_core::text::Span;
 
 use crate::Skip;
 use crate::sem::{Above, Comment, CommentKind};
-
-/// The offset of the first byte of the line that `start` is on, past a byte-order mark. `None` when something other than blanks stands
-/// before `start` on that line: the def does not own its line.
-pub(crate) fn own_line(text: &str, start: u32) -> Option<u32> {
-    let before = text.get(..start as usize)?;
-    let line = before.rfind(['\n', '\r']).map_or(0, |i| i + 1);
-    let bom = if line == 0 && before.starts_with('\u{feff}') {
-        '\u{feff}'.len_utf8()
-    } else {
-        0
-    };
-    before[line + bom..]
-        .chars()
-        .all(|c| c == ' ' || c == '\t')
-        .then_some((line + bom) as u32)
-}
 
 /// Only whitespace and at most one line break between `from` and `to`: no blank line separates them.
 pub(crate) fn adjacent(text: &str, from: u32, to: u32) -> bool {
@@ -89,84 +73,29 @@ fn line_breaks(text: &str) -> usize {
     count
 }
 
-/// Can this text be written as a marker and read back the same? It is on one line, not empty, and has no blanks around it (reading
-/// trims them away, so the caller would get back another text than it wrote).
-pub(crate) fn fits_a_line(marker_text: &str) -> bool {
-    !marker_text.is_empty()
-        && marker_text == marker_text.trim()
-        && !marker_text.contains(['\n', '\r'])
-}
-
-/// The marker in a block comment's text, `/** … */`: the first line that, after its leading `*` and spaces, reads `<label>:<spaces><text>`.
-/// The text is returned as written, trimmed. A one-line block (`/** ID: x */`) is read the same way. A marker under a block tag is read too.
-pub(crate) fn read(block: &str, label: &str) -> Option<String> {
-    let lines: Vec<&str> = split_lines(block);
-    let last = lines.len() - 1;
-    lines.iter().enumerate().find_map(|(i, line)| {
-        let mut s = line.trim();
-        if i == last {
-            s = s.strip_suffix("*/").unwrap_or(s).trim_end();
-        }
-        if i == 0 {
-            s = s.strip_prefix("/**").unwrap_or(s);
-        } else {
-            s = s.strip_prefix('*').unwrap_or(s);
-        }
-        let rest = s.trim_start().strip_prefix(label)?;
-        let text = rest.trim_start().strip_prefix(':')?.trim();
-        (!text.is_empty()).then(|| text.to_owned())
-    })
-}
-
 /// Does a block comment's text carry a block tag: a line that, after its leading `*` and spaces, starts with `@`? An inline `{@link …}` is
 /// not one.
 fn has_block_tag(block: &str) -> bool {
-    split_lines(block).iter().enumerate().any(|(i, line)| {
-        let s = line.trim();
-        let s = if i == 0 {
-            s.strip_prefix("/**").unwrap_or(s)
-        } else {
-            s.strip_prefix('*').unwrap_or(s)
-        };
-        s.trim_start().starts_with('@')
-    })
-}
-
-/// The lines of a text, without their breaks (`\n`, `\r\n` or a lone `\r`). Always at least one line.
-fn split_lines(text: &str) -> Vec<&str> {
-    let mut lines = Vec::new();
-    let mut from = 0;
-    let bytes = text.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\n' => {
-                lines.push(&text[from..i]);
-                i += 1;
-                from = i;
-            }
-            b'\r' => {
-                lines.push(&text[from..i]);
-                i += if bytes.get(i + 1) == Some(&b'\n') {
-                    2
-                } else {
-                    1
-                };
-                from = i;
-            }
-            _ => i += 1,
-        }
-    }
-    lines.push(&text[from..]);
-    lines
+    block_marker::lines(block)
+        .iter()
+        .enumerate()
+        .any(|(i, line)| {
+            let s = line.trim();
+            let s = if i == 0 {
+                s.strip_prefix("/**").unwrap_or(s)
+            } else {
+                s.strip_prefix('*').unwrap_or(s)
+            };
+            s.trim_start().starts_with('@')
+        })
 }
 
 /// The marker on a def, or `None`: the def must own its line, have a JSDoc block above it (`doc_above`), and the block must carry a
 /// `<label>:` line.
 pub(crate) fn marker_of(text: &str, above: &Above, label: &str) -> Option<String> {
-    own_line(text, above.start)?;
+    comment_marker::own_line(text, above.start)?;
     let block = doc_above(text, above)?;
-    read(block.slice(text)?, label)
+    block_marker::read(block.slice(text)?, label)
 }
 
 /// The compiler's own directives. They apply to the next line that is neither blank nor a `//` comment, so they reach a def through blank
@@ -252,9 +181,9 @@ pub(crate) fn plan(
     marker_text: &str,
 ) -> Result<Edit, Skip> {
     let start = above.start;
-    let own = own_line(text, start).ok_or(Skip::NotOnOwnLine)?;
+    let own = comment_marker::own_line(text, start).ok_or(Skip::NotOnOwnLine)?;
     // the marker goes inside a `/** */` block: it must also not close the comment
-    if !fits_a_line(marker_text) || marker_text.contains("*/") {
+    if !comment_marker::fits_a_line(marker_text) {
         return Err(Skip::InvalidText);
     }
     let block = doc_above(text, above);
@@ -268,7 +197,7 @@ pub(crate) fn plan(
     }
     if let Some(existing) = block
         .and_then(|b| b.slice(text))
-        .and_then(|b| read(b, label))
+        .and_then(|b| block_marker::read(b, label))
     {
         return Err(Skip::AlreadyMarked { existing });
     }
@@ -304,75 +233,14 @@ pub(crate) fn plan(
     }
 }
 
-/// Where a block's lines begin and end (without their breaks), as offsets into `text`.
-fn line_spans(text: &str, block: Span) -> Vec<Span> {
-    let body = block.slice(text).unwrap_or("");
-    let mut spans = Vec::new();
-    let mut from = 0usize;
-    let bytes = body.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\n' | b'\r' => {
-                spans.push(Span::new(block.start + from as u32, block.start + i as u32));
-                i += if bytes[i] == b'\r' && bytes.get(i + 1) == Some(&b'\n') {
-                    2
-                } else {
-                    1
-                };
-                from = i;
-            }
-            _ => i += 1,
-        }
-    }
-    spans.push(Span::new(block.start + from as u32, block.end));
-    spans
-}
-
-fn leading_blanks(line: &str) -> &str {
-    &line[..line.len() - line.trim_start_matches([' ', '\t']).len()]
-}
-
 /// Put the marker in an existing JSDoc block. A multi-line block gets a ` * <label>: <text>` line before its first block tag, or before the
-/// closing line when it has none. A one-line block is rewritten as several lines.
+/// closing line when it has none (core's `block_marker::plan`). A one-line block is rewritten as several lines.
 fn plan_in_block(text: &str, block: Span, label: &str, marker_text: &str) -> Result<Edit, Skip> {
     let body = block.slice(text).ok_or(Skip::UnsafeDocComment)?;
-    let lines = line_spans(text, block);
-    if lines.len() == 1 {
+    if !body.contains(['\n', '\r']) {
         return one_line(text, block, body, label, marker_text);
     }
-    let eol = comment_marker::line_ending(body);
-    let at = |i: usize| lines[i].slice(text).unwrap_or("");
-    let last = lines.len() - 1;
-    if at(last).trim() != "*/" {
-        return Err(Skip::UnsafeDocComment);
-    }
-    let opening = at(0).trim_start().strip_prefix("/**").unwrap_or("").trim();
-    if opening.starts_with('@') {
-        return Err(Skip::UnsafeDocComment);
-    }
-    let mut star_indent: Option<&str> = None;
-    let mut tag_line: Option<usize> = None;
-    for i in 1..last {
-        let line = at(i);
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let Some(after_star) = trimmed.strip_prefix('*') else {
-            return Err(Skip::UnsafeDocComment);
-        };
-        star_indent.get_or_insert_with(|| leading_blanks(line));
-        if tag_line.is_none() && after_star.trim_start().starts_with('@') {
-            tag_line = Some(i);
-        }
-    }
-    let star_indent = star_indent.unwrap_or_else(|| leading_blanks(at(last)));
-    let insert_at = lines[tag_line.unwrap_or(last)].start;
-    Ok(Edit::insert(
-        insert_at,
-        format!("{star_indent}* {label}: {marker_text}{eol}"),
-    ))
+    block_marker::plan(text, block, label, marker_text, true).ok_or(Skip::UnsafeDocComment)
 }
 
 fn one_line(
@@ -382,7 +250,7 @@ fn one_line(
     label: &str,
     marker_text: &str,
 ) -> Result<Edit, Skip> {
-    let line_start = own_line(text, block.start).ok_or(Skip::NotOnOwnLine)?;
+    let line_start = comment_marker::own_line(text, block.start).ok_or(Skip::NotOnOwnLine)?;
     let indent = &text[line_start as usize..block.start as usize];
     let eol = comment_marker::line_ending(text);
     let content = body
@@ -545,63 +413,6 @@ mod tests {
     }
 
     #[test]
-    fn read_finds_the_label_line() {
-        assert_eq!(read("/** ID: abc */", "ID").as_deref(), Some("abc"));
-        assert_eq!(
-            read("/**\n * Parses.\n * ID: abc\n */", "ID").as_deref(),
-            Some("abc")
-        );
-        assert_eq!(
-            read("/**\n * Parses.\n * @returns x\n * ID: abc\n */", "ID").as_deref(),
-            Some("abc"),
-            "under a tag it is still read"
-        );
-        assert_eq!(
-            read("/**\n  ID:abc  \n*/", "ID").as_deref(),
-            Some("abc"),
-            "loose spacing"
-        );
-        assert_eq!(
-            read("/**\r\n * ID: abc\r\n */", "ID").as_deref(),
-            Some("abc"),
-            "CRLF"
-        );
-        assert_eq!(
-            read("/**\n * ID : abc\n */", "ID").as_deref(),
-            Some("abc"),
-            "a space before the colon"
-        );
-        assert_eq!(
-            read("/** ID: abc\n * more */", "ID").as_deref(),
-            Some("abc"),
-            "on the first line"
-        );
-        assert_eq!(
-            read("/**\n * first\n * ID: one\n * ID: two\n */", "ID").as_deref(),
-            Some("one"),
-            "the first wins"
-        );
-    }
-
-    #[test]
-    fn read_is_not_fooled() {
-        assert_eq!(read("/** ID: */", "ID"), None, "empty text");
-        assert_eq!(read("/** IDENT: x */", "ID"), None, "longer label");
-        assert_eq!(
-            read("/** see ID: x */", "ID"),
-            None,
-            "not at the start of a line"
-        );
-        assert_eq!(read("/** note: x */", "ID"), None, "other label");
-        assert_eq!(read("/**\n * Parses an ID: x\n */", "ID"), None);
-        assert_eq!(
-            read("/** Ref: k */", "Ref").as_deref(),
-            Some("k"),
-            "the label is the caller's"
-        );
-    }
-
-    #[test]
     fn a_block_tag_starts_a_line() {
         assert!(has_block_tag("/** @type {number} */"));
         assert!(has_block_tag("/**\n * Doc.\n * @param x a value\n */"));
@@ -641,22 +452,5 @@ mod tests {
         ] {
             assert!(!is_directive(no), "{no}");
         }
-    }
-
-    #[test]
-    fn own_line_means_only_blanks_before_the_def() {
-        assert_eq!(own_line("  function f() {}", 2), Some(0));
-        assert_eq!(own_line("a;\n\tfunction f() {}", 4), Some(3));
-        assert_eq!(own_line("a; function f() {}", 3), None);
-        assert_eq!(
-            own_line("/* c */ function f() {}", 8),
-            None,
-            "a comment before it on the line"
-        );
-        assert_eq!(
-            own_line("\u{feff}function f() {}", 3),
-            Some(3),
-            "a byte-order mark is not code and stays first"
-        );
     }
 }

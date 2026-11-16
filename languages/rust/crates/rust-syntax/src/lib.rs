@@ -114,7 +114,8 @@ impl std::fmt::Display for Skip {
                  be read back from the definition"
             }
             Skip::UnsafeDocComment => {
-                "the last doc comment of the definition is a `/** */` block that cannot be edited safely"
+                "the last doc comment of the definition is a `/** */` block that cannot be edited safely: it is closed on its opening line, a line has no \
+                 leading `*`, or text stands on its closing line"
             }
             Skip::InvalidText => {
                 "the marker text is empty, starts or ends with a space, has a line break, or contains `*/`"

@@ -118,6 +118,32 @@ pub mod comment_marker {
         })
     }
 
+    /// The offset of the first byte of the line that `start` is on, past a byte-order mark. `None` when something other than blanks stands
+    /// before `start` on that line: whatever starts at `start` does not own its line, and a marker line put above it would not be its own.
+    pub fn own_line(text: &str, start: u32) -> Option<u32> {
+        let before = text.get(..start as usize)?;
+        let line = before.rfind(['\n', '\r']).map_or(0, |i| i + 1);
+        let bom = if line == 0 && before.starts_with('\u{feff}') {
+            '\u{feff}'.len_utf8()
+        } else {
+            0
+        };
+        before[line + bom..]
+            .chars()
+            .all(|c| c == ' ' || c == '\t')
+            .then_some((line + bom) as u32)
+    }
+
+    /// Can this text be written as a marker and read back the same? It is on one line, not empty, has no blanks around it (reading trims
+    /// them away, so the caller would get back another text than it wrote), and does not close a block comment (`*/`), which a marker
+    /// written into one would.
+    pub fn fits_a_line(marker_text: &str) -> bool {
+        !marker_text.is_empty()
+            && marker_text == marker_text.trim()
+            && !marker_text.contains(['\n', '\r'])
+            && !marker_text.contains("*/")
+    }
+
     /// The line ending the file already uses: the first one found, `\n` when it has none.
     pub fn line_ending(text: &str) -> &'static str {
         match text.find(['\n', '\r']) {
@@ -146,6 +172,147 @@ pub mod comment_marker {
         Some(Edit::insert(
             line.start,
             format!("{indent}{prefix} {}: {marker_text}{eol}", style.label),
+        ))
+    }
+}
+
+/// A marker in a `/** … */` block comment: JSDoc in TypeScript, a doc block in Rust. The text work is the same and knows no language: only
+/// the block's own lines are read and written. Which blocks are the def's, and what to do with one that cannot be edited, is the caller's.
+pub mod block_marker {
+    use super::{Edit, comment_marker};
+    use crate::text::Span;
+
+    /// The lines of a text, without their breaks (`\n`, `\r\n` or a lone `\r`). Always at least one line.
+    pub fn lines(text: &str) -> Vec<&str> {
+        let mut lines = Vec::new();
+        let mut from = 0;
+        let bytes = text.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\n' => {
+                    lines.push(&text[from..i]);
+                    i += 1;
+                    from = i;
+                }
+                b'\r' => {
+                    lines.push(&text[from..i]);
+                    i += if bytes.get(i + 1) == Some(&b'\n') {
+                        2
+                    } else {
+                        1
+                    };
+                    from = i;
+                }
+                _ => i += 1,
+            }
+        }
+        lines.push(&text[from..]);
+        lines
+    }
+
+    /// The marker in a block comment's text, `/** … */`: the first line that, after its leading `*` and any blanks, reads
+    /// `<label>:<blanks><text>`. The text is returned as written, trimmed. A one-line block (`/** ID: x */`) is read the same way, and so is a
+    /// marker under a tag. An empty text is no marker.
+    pub fn read(block: &str, label: &str) -> Option<String> {
+        let lines = lines(block);
+        let last = lines.len() - 1;
+        lines.iter().enumerate().find_map(|(i, line)| {
+            let mut s = line.trim();
+            if i == last {
+                s = s.strip_suffix("*/").unwrap_or(s).trim_end();
+            }
+            if i == 0 {
+                s = s.strip_prefix("/**").unwrap_or(s);
+            } else {
+                s = s.strip_prefix('*').unwrap_or(s);
+            }
+            let rest = s.trim_start().strip_prefix(label)?;
+            let text = rest.trim_start().strip_prefix(':')?.trim();
+            (!text.is_empty()).then(|| text.to_owned())
+        })
+    }
+
+    /// Where a block's lines begin and end (without their breaks), as offsets into `text`.
+    fn line_spans(text: &str, block: Span) -> Vec<Span> {
+        let body = block.slice(text).unwrap_or("");
+        let mut spans = Vec::new();
+        let mut from = 0usize;
+        let bytes = body.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\n' | b'\r' => {
+                    spans.push(Span::new(block.start + from as u32, block.start + i as u32));
+                    i += if bytes[i] == b'\r' && bytes.get(i + 1) == Some(&b'\n') {
+                        2
+                    } else {
+                        1
+                    };
+                    from = i;
+                }
+                _ => i += 1,
+            }
+        }
+        spans.push(Span::new(block.start + from as u32, block.end));
+        spans
+    }
+
+    fn leading_blanks(line: &str) -> &str {
+        &line[..line.len() - line.trim_start_matches([' ', '\t']).len()]
+    }
+
+    /// The edit that puts ` * <label>: <marker_text>` on a line of its own in a **multi-line** block (`block` is its span in `text`): before
+    /// the first block tag when `block_tags` is true (a line starting with `@`, the way JSDoc has them; the marker ends the description),
+    /// else before the closing line. The line has the block's own ` * ` prefix and indentation and the block's own line ending.
+    ///
+    /// `None` when the block cannot be edited safely, and nothing is guessed: the text does not fit a line (`comment_marker::fits_a_line`),
+    /// the block is closed on its opening line (the caller may rewrite it, or not), its closing `*/` has other text on its line, a middle
+    /// line has no `*`, or (with `block_tags`) a tag stands on the opening line.
+    pub fn plan(
+        text: &str,
+        block: Span,
+        label: &str,
+        marker_text: &str,
+        block_tags: bool,
+    ) -> Option<Edit> {
+        if !comment_marker::fits_a_line(marker_text) {
+            return None;
+        }
+        let body = block.slice(text)?;
+        let lines = line_spans(text, block);
+        let last = lines.len() - 1;
+        if last == 0 {
+            return None;
+        }
+        let eol = comment_marker::line_ending(body);
+        let at = |i: usize| lines[i].slice(text).unwrap_or("");
+        if at(last).trim() != "*/" {
+            return None;
+        }
+        let opening = at(0).trim_start().strip_prefix("/**").unwrap_or("").trim();
+        if block_tags && opening.starts_with('@') {
+            return None;
+        }
+        let mut star_indent: Option<&str> = None;
+        let mut tag_line: Option<usize> = None;
+        for i in 1..last {
+            let line = at(i);
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let after_star = trimmed.strip_prefix('*')?;
+            star_indent.get_or_insert_with(|| leading_blanks(line));
+            if block_tags && tag_line.is_none() && after_star.trim_start().starts_with('@') {
+                tag_line = Some(i);
+            }
+        }
+        let star_indent = star_indent.unwrap_or_else(|| leading_blanks(at(last)));
+        let insert_at = lines[tag_line.unwrap_or(last)].start;
+        Some(Edit::insert(
+            insert_at,
+            format!("{star_indent}* {label}: {marker_text}{eol}"),
         ))
     }
 }
@@ -284,6 +451,191 @@ mod tests {
         let at = text.find("console").unwrap() as u32;
         let edit = plan(text, at, "//", ID, "k").unwrap();
         let out = apply(text, std::slice::from_ref(&edit)).unwrap();
+        let (a, b) = (
+            edit.at.start as usize,
+            edit.at.start as usize + edit.text.len(),
+        );
+        assert_eq!(format!("{}{}", &out[..a], &out[b..]), text);
+    }
+
+    // ---- block_marker and the helpers TypeScript and Rust share ----
+
+    use super::block_marker;
+
+    #[test]
+    fn block_read_finds_the_label_line() {
+        let read = |block| block_marker::read(block, "ID");
+        assert_eq!(read("/** ID: abc */").as_deref(), Some("abc"));
+        assert_eq!(
+            read("/**\n * Parses.\n * ID: abc\n */").as_deref(),
+            Some("abc")
+        );
+        assert_eq!(
+            read("/**\n * Parses.\n * @returns x\n * ID: abc\n */").as_deref(),
+            Some("abc"),
+            "under a tag it is still read"
+        );
+        assert_eq!(
+            read("/**\n  ID:abc  \n*/").as_deref(),
+            Some("abc"),
+            "loose spacing"
+        );
+        assert_eq!(
+            read("/**\r\n * ID: abc\r\n */").as_deref(),
+            Some("abc"),
+            "CRLF"
+        );
+        assert_eq!(
+            read("/**\n * ID : abc\n */").as_deref(),
+            Some("abc"),
+            "a space before the colon"
+        );
+        assert_eq!(
+            read("/** ID: abc\n * more */").as_deref(),
+            Some("abc"),
+            "on the first line"
+        );
+        assert_eq!(
+            read("/**\n * first\n * ID: one\n * ID: two\n */").as_deref(),
+            Some("one"),
+            "the first wins"
+        );
+        assert_eq!(
+            read("/**\n *  ID: x\n */").as_deref(),
+            Some("x"),
+            "any blanks after the star"
+        );
+        assert_eq!(
+            read("/**\r * ID: x\r */").as_deref(),
+            Some("x"),
+            "a lone carriage return is a line break"
+        );
+    }
+
+    #[test]
+    fn block_read_is_not_fooled() {
+        let read = |block| block_marker::read(block, "ID");
+        assert_eq!(read("/** ID: */"), None, "empty text");
+        assert_eq!(read("/** IDENT: x */"), None, "longer label");
+        assert_eq!(read("/** see ID: x */"), None, "not at the start of a line");
+        assert_eq!(read("/** note: x */"), None, "other label");
+        assert_eq!(read("/**\n * Parses an ID: x\n */"), None);
+        assert_eq!(
+            block_marker::read("/** Ref: k */", "Ref").as_deref(),
+            Some("k"),
+            "the label is the caller's"
+        );
+    }
+
+    #[test]
+    fn own_line_means_only_blanks_before_the_def() {
+        use super::comment_marker::own_line;
+        assert_eq!(own_line("  function f() {}", 2), Some(0));
+        assert_eq!(own_line("a;\n\tfunction f() {}", 4), Some(3));
+        assert_eq!(own_line("a; function f() {}", 3), None);
+        assert_eq!(
+            own_line("/* c */ function f() {}", 8),
+            None,
+            "a comment before it on the line"
+        );
+        assert_eq!(
+            own_line("\u{feff}function f() {}", 3),
+            Some(3),
+            "a byte-order mark is not code and stays first"
+        );
+        assert_eq!(own_line("abc", 9), None, "out of bounds");
+    }
+
+    #[test]
+    fn a_marker_fits_a_line_when_it_reads_back_the_same() {
+        use super::comment_marker::fits_a_line;
+        for ok in ["k1", "a b", "a-b_c.9", "a/b"] {
+            assert!(fits_a_line(ok), "{ok:?}");
+        }
+        for bad in ["", " a", "a ", "\t", "a\nb", "a\rb", "a*/b", "*/"] {
+            assert!(!fits_a_line(bad), "{bad:?}");
+        }
+    }
+
+    /// The block `text` holds, and the text after a marker `m1` is planned in it and applied.
+    fn planned_in(text: &str, tags: bool) -> Option<String> {
+        let start = text.find("/**").unwrap() as u32;
+        let end = text.find("*/").unwrap() as u32 + 2;
+        let edit = block_marker::plan(text, Span::new(start, end), "ID", "m1", tags)?;
+        apply(text, &[edit])
+    }
+
+    #[test]
+    fn a_marker_goes_before_the_closing_line_with_the_blocks_own_prefix() {
+        assert_eq!(
+            planned_in("/**\n * Parses.\n */\nfn f() {}\n", false).as_deref(),
+            Some("/**\n * Parses.\n * ID: m1\n */\nfn f() {}\n")
+        );
+        assert_eq!(
+            planned_in("    /**\n     * Parses.\n     */\n    fn f() {}\n", false).as_deref(),
+            Some("    /**\n     * Parses.\n     * ID: m1\n     */\n    fn f() {}\n")
+        );
+        // an empty block takes the closing line's indentation
+        assert_eq!(
+            planned_in("  /**\n   */\n", false).as_deref(),
+            Some("  /**\n   * ID: m1\n   */\n")
+        );
+        // the block's own line ending, not the marker's
+        assert_eq!(
+            planned_in("/**\r\n * a\r\n */\r\n", false).as_deref(),
+            Some("/**\r\n * a\r\n * ID: m1\r\n */\r\n")
+        );
+        // blank lines inside are kept
+        assert_eq!(
+            planned_in("/**\n * a\n *\n */\n", false).as_deref(),
+            Some("/**\n * a\n *\n * ID: m1\n */\n")
+        );
+    }
+
+    #[test]
+    fn with_block_tags_the_marker_ends_the_description() {
+        let text = "/**\n * Doc.\n * @param x a value\n * @returns y\n */\n";
+        assert_eq!(
+            planned_in(text, true).as_deref(),
+            Some("/**\n * Doc.\n * ID: m1\n * @param x a value\n * @returns y\n */\n")
+        );
+        // without tags (Rust), an `@` line is text like any other
+        assert_eq!(
+            planned_in(text, false).as_deref(),
+            Some("/**\n * Doc.\n * @param x a value\n * @returns y\n * ID: m1\n */\n")
+        );
+        // a tag on the opening line: with tags the block is not edited
+        assert_eq!(planned_in("/** @type {x}\n */\n", true), None);
+        assert!(planned_in("/** @type {x}\n */\n", false).is_some());
+    }
+
+    #[test]
+    fn a_block_that_cannot_be_edited_safely_gives_no_edit() {
+        // closed on its opening line: the caller decides what to do with it
+        assert_eq!(planned_in("/** a */\n", false), None);
+        // text on the closing line
+        assert_eq!(planned_in("/**\n * a\n * b */\n", false), None);
+        // a middle line with no star
+        assert_eq!(planned_in("/**\n * a\n b\n */\n", false), None);
+        // a marker that does not fit a line, or would close the block
+        let text = "/**\n * a\n */\n";
+        let block = Span::new(0, text.find("*/").unwrap() as u32 + 2);
+        for bad in ["", " x", "a\nb", "a*/b"] {
+            assert_eq!(
+                block_marker::plan(text, block, "ID", bad, false),
+                None,
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_planned_block_marker_is_read_back_and_nothing_else_changed() {
+        let text = "/**\n * Parses.\n * @returns x\n */\n";
+        let block = Span::new(0, text.len() as u32 - 1);
+        let edit = block_marker::plan(text, block, "ID", "m1", true).unwrap();
+        let out = apply(text, std::slice::from_ref(&edit)).unwrap();
+        assert_eq!(block_marker::read(&out, "ID").as_deref(), Some("m1"));
         let (a, b) = (
             edit.at.start as usize,
             edit.at.start as usize + edit.text.len(),

@@ -12,6 +12,17 @@ fn row2_last_line_text() {}
 #[must_use]
 fn row4_interleaved() {}
 
+/**
+ * A block.
+ */
+fn row3_block() {}
+
+/// a
+/**
+ * b
+ */
+fn row3_line_then_block() {}
+
 #[doc = "from an attribute"]
 fn row5_doc_attribute() {}
 
@@ -35,6 +46,11 @@ struct S;
 impl S {
     /// indented docs
     fn indented_method() {}
+
+    /**
+     * An indented block.
+     */
+    fn indented_block() {}
 
     fn indented_no_docs() {}
 }
