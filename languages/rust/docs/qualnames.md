@@ -54,7 +54,7 @@ takes a qualname from a person lists the matches and asks; it never picks the fi
 | D20 | an item under `#[cfg(…)]` | a def, always | the outline lists what is in the text; whether it compiles is the engine's business | `item_modules.rs` |
 | D21 | an item that has no name the parser could read | **not a def** | `fn` with no name, `struct` with no name: nothing to name | `item_broken.rs` |
 
-Rows D1 to D10 and D16 to D21 are built (RS1 steps 1 and 2); D11 to D15 are step 3.
+Every row of this section is built (RS1 steps 1 to 3).
 
 ## Naming an impl's items
 
@@ -73,7 +73,7 @@ and the keywords `unsafe`, `default`, `const` and `!` of the header are **not** 
 | I7 | trait impl, the trait has generic arguments | **kept** (D29), as type text | `impl From<A> for S` → `<S as From<A>>::from`; `impl From<io::Error> for a::S<b::T>` → `<S<b::T> as From<io::Error>>::from` | the common way to have two same-named methods on one type: `From<A>` and `From<B>` must not both be `<S as From>::from` |
 | I8 | the self type is **not a path** (`&S`, `[T]`, `(A, B)`, `dyn Tr`, `fn()`, `*const T`, `!`, a macro in type position, a path with a `<A as B>::` qualifier) | the whole type as type text, in angle brackets when inherent | inherent `impl [T]` → `<[T]>::len`; `impl dyn Tr` → `<dyn Tr>::m`; trait impl `impl T for &S` → `<&S as T>::m` | no better name exists; the brackets keep `dyn Tr::m` from reading as a path. In a trait impl the angle brackets are the form's own |
 | I9 | a blanket impl | follows from I5 and I8: the self type is the parameter's name | `impl<T: Display> Tr for T` → `<T as Tr>::m` | |
-| I10 | the header cannot be read: no self type, or `for` with no type on one side (a file being typed) | the impl's items are **not defs** | `impl for S { fn m() {} }` lists nothing | as D21: nothing to name from. A guess would be stored in a file |
+| I10 | the header cannot be read: a parse error lies in it (from `impl` to the `{` of its items), or it has no self type, or `for` has no type on one side (a file being typed) | the impl's items are **not defs** | `impl for S { fn m() {} }`, `impl Tr for { … }`, `impl S<u8 { … }` list nothing | as D21: nothing to name from. The engine recovers from `impl for S` by reading `for S` as a higher-ranked type, so a header with an error is not read at all: a guess would be stored in a file |
 | I11 | `impl` twins: two impls whose headers spell the same type (`impl S` twice, each with `fn m`) | the same qualname, told apart by `occurrence` | `S::m`, `S::m` | `impl S<u8>` and `impl S<u16>` are **not** twins: their names differ (I2) |
 | I12 | an impl in an inline module | the module path, then the prefix | `mod a { mod b { impl S {} } }` → `a::b::S::m`; the trait form: `a::b::<S as T>::m` | the module path is a def's name like any other |
 
@@ -114,6 +114,10 @@ that is not a path (I8).
 | P6 | **`r#`** is dropped from a raw identifier | `From<r#type>` | `From<type>` |
 | P7 | **One space** after `,`, `;` and a single `:` (the token `:`, never inside `::`); on both sides of `+`, `=`, `->` and `as`; after the keywords `dyn`, `impl`, `mut`, `const`, `unsafe`, `extern`, and after an ABI string (`"C"`); and, as a **backstop**, one space between any two word tokens (identifiers, keywords, literals) that would otherwise touch. **Nowhere else** | `&'a mut [u8 ;4]`; `Box<dyn Fn(u8)->u8+Send+'static>`; `dyn Iterator<Item=u8>`; `<T as Tr>::Out`; `fn(a:u8)`; `*const T`; `unsafe extern "C" fn(i32)`; `a::B`, `a :: B` | `&mut [u8; 4]`; `Box<dyn Fn(u8) -> u8 + Send>`; `dyn Iterator<Item = u8>`; `<T as Tr>::Out`; `fn(a: u8)`; `*const T`; `unsafe extern "C" fn(i32)`; `a::B`, `a::B` |
 | P8 | A **const argument in braces** and a **macro in a type position** follow P1 to P7 like every other token. **No exception** | `S<{ N+1 }>`, `S<{N + 1}>`, `S<{ N + /* c */ 1 }>`; `m!( a  b )`, `m!(a\nb)` | `S<{N + 1}>`; `m!(a b)` |
+
+**What P8 means at the edges** (all pinned by `type_text_braces.rs`). The inside of a macro call is a token tree, not a type, so what P2 to P5 say
+about types does not apply to it: a lifetime stays (`m!('a x)`), a trailing comma stays (`m!(a,)`). P1, P6 and P7 apply to every token. P7 spaces
+only the tokens it names, so `{ N+1 }` prints `{N + 1}` but `{ N-1 }` prints `{N-1}`: a name is never a re-formatted expression.
 
 (P7 has `:` and `as` and the backstop because without them `fn(a: u8)` and `<T as Tr>::Out` would print as `fn(a:u8)` and `<TasTr>::Out`, and a keyword the list forgot would merge into the next word. The backstop is why `m!(a b)` keeps its space.)
 
