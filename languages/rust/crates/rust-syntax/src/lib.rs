@@ -11,6 +11,7 @@
 //! assert_eq!(defs[0].params, ["raw"]);
 //! ```
 
+mod header;
 mod marker;
 mod outline;
 mod sem;
@@ -74,6 +75,22 @@ pub fn plan_marker(
     style: MarkerStyle<'_>,
 ) -> Result<Edit, Skip> {
     marker::plan(text, edition, def, marker_text, style)
+}
+
+/// The file's own marker, from a `// <label>: <text>` comment at the top of the file: the first one before the first item, inner attribute or
+/// inner doc comment (RS2 §6). It takes no edition: a file's header does not depend on one.
+pub fn header_marker(text: &str, style: MarkerStyle<'_>) -> Option<String> {
+    header::read(text, style)
+}
+
+/// The edit that writes the file's marker, or why it cannot be done. It goes after a `#!` line and as the last line of a leading licence
+/// comment, and before `#![…]`, `//!` and the first item; above a `//!` it is followed by an empty line (RS2 §6).
+pub fn plan_header_marker(
+    text: &str,
+    marker_text: &str,
+    style: MarkerStyle<'_>,
+) -> Result<Edit, Skip> {
+    header::plan(text, marker_text, style)
 }
 
 /// Why a marker was not planned. Match on the variant to act on it; `to_string()` gives the reason as a sentence a person can read, for an

@@ -117,6 +117,60 @@ pub(crate) fn parse(text: &str, edition: Edition) -> Parsed {
     Parsed { items, errors }
 }
 
+/// The top of a file, for its header marker: everything before the first token that is not a shebang, a comment or whitespace.
+pub(crate) struct Top {
+    /// Where the first line after a `#!` line begins; past a byte-order mark when there is no shebang; else 0.
+    pub(crate) start: u32,
+    /// The plain comments (`//`, `/* */`) before the first real token, in order. A doc comment is no plain comment: it is a token of
+    /// its own, and ends the scan.
+    pub(crate) comments: Vec<Span>,
+    /// Where the first real token begins: an item, an outer or inner doc comment, `#`; the end of the text when there is none. Measured
+    /// from the token, never from the start of an engine node: a node can begin with the plain comments above its item (S-RS4).
+    pub(crate) first: u32,
+    /// The first real token is an inner doc comment (`//!`, `/*!`).
+    pub(crate) first_is_inner_doc: bool,
+    /// The file has a parse error somewhere (the byte-order mark is not one).
+    pub(crate) has_errors: bool,
+}
+
+/// The top of `text`, scanned by tokens. The engine does not strip a byte-order mark (it makes an error token), so it is left out of the
+/// text that is parsed and every offset is put back.
+pub(crate) fn top(text: &str, edition: Edition) -> Top {
+    let bom = if text.starts_with('\u{feff}') {
+        '\u{feff}'.len_utf8()
+    } else {
+        0
+    };
+    let parse = SourceFile::parse(&text[bom..], engine_edition(edition));
+    let shift = |range: TextRange| {
+        let range = span(range);
+        Span::new(range.start + bom as u32, range.end + bom as u32)
+    };
+    let mut top = Top {
+        start: bom as u32,
+        comments: Vec::new(),
+        first: text.len() as u32,
+        first_is_inner_doc: false,
+        has_errors: !parse.errors().is_empty(),
+    };
+    for event in parse.syntax_node().preorder_with_tokens() {
+        let WalkEvent::Enter(NodeOrToken::Token(token)) = event else {
+            continue;
+        };
+        match token.kind() {
+            SyntaxKind::WHITESPACE => {}
+            SyntaxKind::SHEBANG => top.start = shift(token.text_range()).end,
+            SyntaxKind::COMMENT => top.comments.push(shift(token.text_range())),
+            kind => {
+                top.first = shift(token.text_range()).start;
+                top.first_is_inner_doc = kind == SyntaxKind::INNER_DOC_COMMENT;
+                break;
+            }
+        }
+    }
+    top
+}
+
 fn collect(
     items: impl Iterator<Item = ast::Item>,
     parent: Option<usize>,

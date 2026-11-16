@@ -1,0 +1,3 @@
+//! Crate docs.
+
+fn f() {}
