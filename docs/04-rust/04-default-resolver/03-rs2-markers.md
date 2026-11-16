@@ -131,7 +131,7 @@ A plain comment in every language: `// <label>: <text>`, through core's `comment
 | 3 | the `/** */` helper moves to core, and with it `own_line` and `fits_a_line` (written and tested twice now: TypeScript's `marker.rs` and Rust's; one function, with the `*/` check TypeScript makes at its call site); `plan_marker` for blocks | core's tests and TypeScript's stay green (rule 5); the round trip on every fixture; §7's `rustfmt` test on every marked fixture |
 | 4 | the header | fixtures; the round trip. **Done** (7b414ec, 7c14777; empty `//` line 81d758d; BOM fix ec935ad) |
 | 5 | `rust-cli marker` (plan and, in the CLI only, apply) | a marker written into a scratch copy of a file of this repo, and read back. **Done** (270ab70), as built below |
-| 5b | `adjacent` and `line_after` move to core's `comment_marker` (byte-identical in TypeScript's `marker.rs` / `header.rs` and Rust's `header.rs`: rule of two, as `own_line` in step 3) | core's, TypeScript's and Rust's tests green |
+| 5b | `adjacent` and `line_after` move to core's `comment_marker` (byte-identical in TypeScript's `marker.rs` / `header.rs` and Rust's `header.rs`: rule of two, as `own_line` in step 3) | core's, TypeScript's and Rust's tests green. **Done** (edbd3f9; `line_breaks` private beside `adjacent`; core tests both directly) |
 | 6 | `languages/rust/docs/markers.md`; `ENGINE.md`'s list of engine items | reviewed |
 | | **tag `rust-v0.1.0`** | the qualname rule is frozen from here. Before it: the full `scripts/check-all.sh` (Python included), once, after step 6 |
 
