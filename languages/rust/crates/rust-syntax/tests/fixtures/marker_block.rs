@@ -1,4 +1,4 @@
-// §3: a `/** */` block is read line by line, after its leading `*` and one optional space; the first line after the `/**`.
+// §3: a `/** */` block is read line by line, after its leading `*` (if it has one) and any blanks; the first line after the `/**`.
 /** ID: one_line */
 fn one_line() {}
 
@@ -26,7 +26,7 @@ fn no_star() {}
 fn closed_on_the_marker_line() {}
 
 /**
- *  ID: two_spaces_is_not_read
+ *  ID: two_spaces
  */
 fn two_spaces() {}
 

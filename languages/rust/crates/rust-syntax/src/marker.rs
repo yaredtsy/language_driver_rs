@@ -3,9 +3,10 @@
 
 /// The marker in the doc comments of one def, given in source order as written: the first line of them that reads `<label>: <text>`.
 ///
-/// A `///` line is read after the `///` and **one** optional space, a `/** */` line after its leading `*` (if it has one) and one optional
-/// space; the first line of a block after the `/**`. Then the line must be the label, optional blanks, `:`, and a text, which is returned
-/// trimmed. An empty text is no marker. A `\r` before a line break is not part of the line.
+/// A `///` line is read after the `///` and any blanks, a `/** */` line after its leading `*` (if it has one) and any blanks; the first line of
+/// a block after the `/**`. Then the line must be the label, optional blanks, `:`, and a text, which is returned trimmed. An empty text is no
+/// marker. A `\r` before a line break is not part of the line. This is TypeScript's and core's `comment_marker` rule (RS2 §3): a marker that
+/// goes unread makes `plan_marker` plan a second one.
 pub(crate) fn read(docs: &[String], label: &str) -> Option<String> {
     docs.iter().find_map(|doc| {
         if doc.starts_with("/**") {
@@ -34,11 +35,10 @@ fn read_block(block: &str, label: &str) -> Option<String> {
     })
 }
 
-/// What follows the comment's own marker: one optional space, then `<label>`, optional blanks, `:`, the text.
+/// What follows the comment's own marker: any blanks, then `<label>`, optional blanks, `:`, the text.
 fn read_line(after_marker: &str, label: &str) -> Option<String> {
     let line = after_marker.trim_end_matches('\r');
-    let line = line.strip_prefix(' ').unwrap_or(line);
-    let rest = line.strip_prefix(label)?;
+    let rest = line.trim_start().strip_prefix(label)?;
     let text = rest.trim_start().strip_prefix(':')?.trim();
     (!text.is_empty()).then(|| text.to_owned())
 }
@@ -52,7 +52,7 @@ mod tests {
     }
 
     #[test]
-    fn a_line_is_read_after_one_optional_space() {
+    fn a_line_is_read_after_any_blanks() {
         for (line, want) in [
             ("/// ID: x", Some("x")),
             ("///ID: x", Some("x")),
@@ -60,8 +60,9 @@ mod tests {
             ("/// ID : x", Some("x")),
             ("/// ID:   x y  ", Some("x y")),
             ("/// ID: x\r", Some("x")),
-            // two spaces: the line is `\u{20}ID: x`, which is not the label
-            ("///  ID: x", None),
+            ("///  ID: x", Some("x")),
+            ("///     ID: x", Some("x")),
+            ("///\tID: x", Some("x")),
             ("/// ID:", None),
             ("/// ID:   ", None),
             ("/// id: x", None),
@@ -84,7 +85,8 @@ mod tests {
             ("/**\n    * ID: x\n    */", Some("x")),
             ("/**\n ID: x\n */", Some("x")),
             ("/** a\n * ID: x */", Some("x")),
-            ("/**\n *  ID: x\n */", None),
+            ("/**\n *  ID: x\n */", Some("x")),
+            ("/**   ID: x */", Some("x")),
             ("/** ID: */", None),
             ("/** a */", None),
         ] {

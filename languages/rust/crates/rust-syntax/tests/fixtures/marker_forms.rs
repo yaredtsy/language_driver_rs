@@ -1,4 +1,4 @@
-// §3: a line is read after `///` and one optional space; then the label, optional blanks, `:` and a text, trimmed. An empty text is no marker.
+// §3: a line is read after `///` and any blanks; then the label, optional blanks, `:` and a text, trimmed. An empty text is no marker.
 /// ID: plain
 fn plain() {}
 
@@ -14,7 +14,7 @@ fn blank_before_colon() {}
 /// ID:     trimmed text with spaces   
 fn trimmed() {}
 
-///  ID: two_spaces_is_not_read
+///  ID: two_spaces
 fn two_spaces() {}
 
 /// ID:

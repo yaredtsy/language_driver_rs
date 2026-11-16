@@ -1,0 +1,3 @@
+Function fenced_example [211..321] name [302..316] marker="from_a_fenced_example"
+Function indented_line [323..422] name [404..417] marker="from_an_indented_line"
+Function example_wins [424..609] name [592..604] marker="example_wins"
