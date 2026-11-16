@@ -54,7 +54,8 @@ none "unsafe_code is allowed outside the sem module (rule 4)" \
 [ ! -e Cargo.toml ] || bad "a Cargo.toml at the repo root (ruff and rust-analyzer pin different salsa)"
 
 # core stays engine-free
-if (cd core && cargo tree --locked 2>/dev/null | grep -E 'salsa|ruff_|tsrs_|ra_ap_'); then bad "core depends on an engine"; fi
+core_tree=$(cd core && cargo tree --locked 2>&1) || bad "cargo tree in core failed: $core_tree"
+if grep -E 'salsa|ruff_|tsrs_|ra_ap_' <<<"$core_tree"; then bad "core depends on an engine"; fi
 
 # the fast crate stays fast: rust-syntax has no salsa, no ra_ap_hir, no ra_ap_ide in its tree (RS1 §7), and does have the parser
 if [ -d languages/rust ]; then
