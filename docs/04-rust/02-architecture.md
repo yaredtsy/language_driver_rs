@@ -42,7 +42,7 @@ disagree about what a def is called (D20).
 | Crate | Public API (all of it) | Engine |
 |---|---|---|
 | `rust-syntax` | `outline`, `marker`, `plan_marker`, `header_marker`, `plan_header_marker`, `Edition`, `Skip`, and core's `Def`, `DefKind`, `Outline`, `Edit`, `MarkerStyle`, `Span` re-exported | `ra_ap_syntax` only |
-| `rust-analysis` | `Project` (`open`, `files`, `manifest`, `environment_inputs`, `defs_named`), `OpenError`, `call_graph`, `Options`, `Breakdown`, `breakdown`, and core's graph, render, wire and `Cancel` / `Limits` re-exported, the same list as `typescript-analysis/src/lib.rs` | `ra_ap_hir` and the loaders |
+| `rust-analysis` | `Project` (`open`, `files`, `manifest`, `environment_inputs`, `warnings`, `defs_named`), `OpenError`, `Warning`, `call_graph`, `Options`, `Breakdown`, `breakdown`, and core's graph, render, wire and `Cancel` / `Limits` re-exported, the same list as `typescript-analysis/src/lib.rs` | `ra_ap_hir` and the loaders |
 | `rust-cli` | a binary | none directly |
 
 Layer 2 adds **nothing** to either public API except fields on `Options` (which level to run at, the precision policy). That is the test of

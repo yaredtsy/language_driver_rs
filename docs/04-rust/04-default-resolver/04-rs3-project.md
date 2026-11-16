@@ -29,8 +29,8 @@ impl Project {
     pub fn environment_inputs(&self) -> Vec<String>;
     /// What this load did not do (§3). Copied into every graph's `Stats.language`.
     pub fn skipped(&self) -> &[(&'static str, u64)];
-    /// The load had to let cargo write a `Cargo.lock` into the project (§5, the lockfile; Q-RS6).
-    pub fn wrote_lockfile(&self) -> bool;
+    /// What this load could not do as asked, for the driver to show the user (§6, D37). Sorted, each once.
+    pub fn warnings(&self) -> &[Warning];
 }
 
 #[non_exhaustive]
@@ -131,7 +131,7 @@ every fixture of ours. The options:
 | **B** | redirect: when the project has no `Cargo.lock` and its toolchain is ≥ 1.97, `sem::load` sets `CARGO_RESOLVER_LOCKFILE_PATH=<temporary folder>/Cargo.lock` in `CargoConfig::extra_env`. Cargo writes the new lock there, and the folder is deleted before `open` returns | a temporary file, of the same kind the engine's own copy already makes; three **[check]**s below |
 | **C** | refuse: pass `--locked`. With no lock, `cargo metadata` fails, the engine retries with `--no-deps`, and every call into a dependency is `Unresolved` | a quiet half answer (rule 8) for a reason the user cannot see |
 
-**Recommendation: B, with A as the fallback** for a toolchain older than 1.97, reported by `Project::wrote_lockfile() -> bool` so the
+**Recommendation: B, with A as the fallback** for a toolchain older than 1.97, reported by the `LockfileWritten` warning (§6) so the
 driver can tell the user. Two things need your yes (Q-RS6): that a temporary file deleted before `open` returns is not a "write" in rule 2's
 sense (the rule is about the user's tree and the results), and the fallback.
 
@@ -169,29 +169,55 @@ target is project code**, the cross-crate ones of a workspace separately. Write 
 - D loses no in-project edge, or only ones a counter can name: **D is the default** (faster, offline, no lockfile), and A/B are not built;
 - D loses cross-crate or `std`-typed project edges: **B** as written above, and D stays what the engine already does offline (S-RS3, and a counter).
 
-## 6. Errors
+## 6. Errors and warnings (D37)
+
+**The rule (owner, 2026-11-16): if the user's Rust is complete and recent, load normally; if not, load with what there is and say so.**
+A missing piece is a **warning** the driver shows the user (a banner in V-NOC), not a failure. Only what makes a call graph impossible is
+an error. This replaces the first plan's "a load without `std` is never returned as a success": it still is never returned *silently*.
 
 ```rust
 #[non_exhaustive]
 pub enum OpenError {
     NoManifest,                 // no Cargo.toml between the file and the root
-    NoCargo,                    // `cargo` cannot be run
-    NoSysroot,                  // no rust-src: the standard library's source is missing
-    Toolchain(String),          // the toolchain a rust-toolchain file names is not installed
-    Metadata(String),           // `cargo metadata` failed: the message, as cargo printed it
+    NoCargo,                    // `cargo` cannot be run, and no installed toolchain has one
+    Metadata(String),           // `cargo metadata` failed even with `--no-deps` (a broken Cargo.toml): cargo's message
+}
+
+#[non_exhaustive]
+pub enum Warning {
+    NoStdSource { toolchain: String },                              // no rust-src: loaded without the standard library
+    OldToolchain { found: String, minimum: String },                // older than the measured minimum, nothing newer installed
+    ToolchainSubstituted { wanted: String, used: String, why: Why },// Why::NotInstalled | Why::TooOld
+    DependenciesMissing { message: String },                        // `cargo metadata` failed; loaded with `--no-deps`
+    LockfileWritten,                                                // cargo wrote a Cargo.lock into the project (§5, Q-RS6)
+}
+
+impl Warning {
+    pub fn code(&self) -> &'static str;   // "no_std_source", "old_toolchain", …: stable, for the driver and Stats
 }
 ```
 
-Each has a `Display` a user can act on ("run `rustup component add rust-src`"). The exact conditions come from S-RS3. If a missing
-sysroot does not fail the engine's load, `sem::load` checks for it itself and returns `NoSysroot`: a load without `std` is never returned
-as a success.
+| What the user has | What `open` does | What the user is told | What is missing from the tree |
+|---|---|---|---|
+| a complete, recent toolchain | loads | nothing | nothing |
+| no `cargo` at all | `Err(NoCargo)`: no workspace can be read | "install Rust (rustup.rs) to see calls" | the call graph. **The outline and markers still work**: `rust-syntax` needs no toolchain |
+| no `rust-src` | loads without `std` | `NoStdSource`: "install the Rust source (`rustup component add rust-src`) to see all calls" | project method calls whose receiver's type comes through `std` (`parse()?.submit()`, `for x in v.iter() { x.run() }`). A project function called by path still resolves |
+| a toolchain older than the minimum (§7's measurement), a newer one installed | loads with the **newer** toolchain's `cargo` and `std` (`RUSTUP_TOOLCHAIN` in `extra_env` and for `sem::load`'s own `rustc --print sysroot`) | `ToolchainSubstituted { why: TooOld }`: "your project uses Rust 1.74; calls were read with 1.99" | little for in-project calls: `std`'s types change slowly. **[check]** in the §7 measurement |
+| the same, nothing newer installed | loads with the old one | `OldToolchain`: "Rust 1.74 is older than 1.82: some calls may be missing" | whatever the measurement found for that version |
+| `rust-toolchain.toml` names a toolchain that is not installed | loads with an installed one (the default first) | `ToolchainSubstituted { why: NotInstalled }`: "Rust 1.50 is not installed; calls were read with 1.99" | as above. **Never installs anything** (the engine sets `RUSTUP_AUTO_INSTALL=0`; §5's rule against `Sysroot::discover` stays) |
+| offline, or a dependency that cannot be fetched | the engine's `--no-deps` retry | `DependenciesMissing`: cargo's message | project methods on values whose type comes from a dependency; possibly calls between the workspace's own crates (§5, option D's **[check]**) |
+| no `Cargo.lock`, and the lock could not be redirected | loads | `LockfileWritten`: "a Cargo.lock was created in your project" | nothing |
 
-**S-RS3 answered (2026-11-16, `ENGINE.md`): it does not fail**, and two more things follow. (1) `RustLibSource::Discover` without `sysroot_src` runs
-`rustup component add rust-src` on the user's machine; `sem::load` must not use it. It runs `rustc --print sysroot`, checks
-`lib/rustlib/src/rust/library` itself (`NoSysroot` if absent) and passes it as `sysroot_src`. (2) The load also succeeds when a dependency is not
-downloaded and `cargo metadata` fails (the engine retries with `--no-deps`); the message is only in `ProjectWorkspaceKind::Cargo { error }`. So
-`sem::load` goes through `ProjectWorkspace::load` and reads `sysroot.error()` and that `error` before `load_workspace`. What to do with the second
-(an error, or a counter in `Stats`) is a decision for RS3 step 1: the load did work, but every call into a dependency is `Unresolved`.
+- Each warning is also copied into every graph's `Stats.language` as `warning_<code>: 1`, the way `skipped()` is (§3), so a tree with
+  holes says why even when it is read without the `Project` (rule 8: every limit that cuts is marked and counted).
+- `Display` of each gives the sentence of the table; the driver can show it as it is or by `code()`.
+- How a warning reaches the screen is the driver's (`vnoc/drivers/rust/`); this crate only returns the data (rule 1, rule 2).
+
+**How each condition is found** (S-RS3, `ENGINE.md`): `sem::load` never calls `Sysroot::discover` (it runs `rustup component add
+rust-src` by itself). It reads the version with `cargo --version` in the manifest's folder, finds the sysroot with `rustc --print sysroot`,
+checks `lib/rustlib/src/rust/library` itself and passes it as `sysroot_src`; it loads through `ProjectWorkspace::load`, then reads
+`sysroot.error()` and `ProjectWorkspaceKind::Cargo { error }` before `load_workspace`. The installed toolchains for a substitution come from
+`rustup toolchain list` (**[check]** the form without `rustup`: then no substitution, and `OldToolchain` / `NoCargo`).
 
 These are the only errors `rust-analysis` has. Everything after `open` returns `Option` (rule 8).
 
@@ -204,8 +230,11 @@ These are the only errors `rust-analysis` has. Everything after `open` returns `
 | a fixture with a workspace, a member, a path dependency inside and one outside `root` | §4, row by row |
 | a fixture with `build.rs` and one with a derive | `skipped()` counts them |
 | `NoManifest` on a lone file | §2 |
-| `NoCargo`, `NoSysroot`: with `PATH` and `RUSTUP_TOOLCHAIN` set for the test's child process. **`NoCargo` needs an empty `HOME` as well**: the engine falls back to `~/.cargo/bin/cargo` (S-RS3) | the errors of §6. Marked `#[ignore]` if they cannot run on CI's images, and then run by hand and the result written in `ENGINE.md` |
-| a fixture with no `Cargo.lock`, and one with a stale lock: after `open`, the folder is byte-identical (under B; under A's fallback, `wrote_lockfile()` is `true`) | §5, the lockfile; rule 2 |
+| `NoCargo`, and `NoStdSource` as a warning on a successful load: with `PATH` and `RUSTUP_TOOLCHAIN` set for the test's child process. **`NoCargo` needs an empty `HOME` as well**: the engine falls back to `~/.cargo/bin/cargo` (S-RS3) | the errors of §6. Marked `#[ignore]` if they cannot run on CI's images, and then run by hand and the result written in `ENGINE.md` |
+| a fixture with no `Cargo.lock`, and one with a stale lock: after `open`, the folder is byte-identical (under B; under A's fallback, `warnings()` holds `LockfileWritten`) | §5, the lockfile; rule 2 |
+| **the old-toolchain measurement**, once, by hand: a small project (a project method reached through `Option::unwrap` and through `Vec::iter`) loaded with each installed toolchain (1.74.1, 1.94.1, 1.98.0, 1.99.1): loads?, `std` found?, both calls resolved?; and the same project loaded with 1.74 substituted by 1.99. The table goes in `ENGINE.md`; it sets the minimum. Afterwards the old toolchains are uninstalled (about 4 GB) | the minimum of §6, and that a substitution loses nothing in-project |
+| the minimum check: a table test of the version comparison (`1.81.0` → warn, `1.82.0` → none, a version cargo prints with a suffix, an unreadable one) | pure code; needs no old Rust |
+| one test per row of §6's table that CI can make (no `rust-src` with a `RUSTUP_TOOLCHAIN` that lacks it; a toolchain that is not installed; offline with a missing dependency) | the warning and its `code()`; `Stats.language` holds `warning_<code>` |
 | load twice, drop, in a loop of 20: memory is flat **[measure]** | ordinary ownership should make this trivially true; it is one cheap test that says so |
 
 Loading is slow (seconds). The tests of this crate share loads: one `#[test]` per fixture workspace, many checks inside it.
@@ -218,7 +247,7 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 | 2 | finding the manifest from a file; the root limit | the five-workspaces test |
 | 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI |
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures |
-| 5 | `OpenError`, from S-RS3's texts | §7's error tests |
+| 5 | `OpenError` and `Warning` (§6, D37), from S-RS3's texts; the old-toolchain measurement and the minimum; the substitution | §7's error and warning tests; the table in `ENGINE.md` |
 | 6 | `ENGINE.md`: what `sem::load` calls, the `attach_db` rule, the measured load times | reviewed |
 
 Q-RS3 (`sem` as a folder) is answered before step 1: this is the phase where `sem` gets its second kind of work.
