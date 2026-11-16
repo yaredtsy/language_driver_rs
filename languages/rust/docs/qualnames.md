@@ -12,7 +12,7 @@ qualname  =  the enclosing defs' names, then the def's own name, joined by "::"
 
             joiner    "::"       between a def and what is declared in it     outer::inner::f · T::m
                       "::{fn}::" between a function and an item declared in    outer::{fn}::inner
-                                 its body (RS1 step 4, not built yet)
+                                 its body
 ```
 
 The qualname never contains the file path: a file module adds **nothing** (`src/a/b.rs` holding `fn f` gives `f`), because the file is already
@@ -145,6 +145,7 @@ that is further out), and the joiner after a **function** is `{fn}`; after anyth
 | B8 | the same name twice in one function (two blocks, two closures) | one qualname, told apart by `occurrence` | D15 | `body_twins.rs` |
 | B9 | an item in a place that is not a body: an array length or a const argument (`[u8; { fn f() {} 1 }]`), an enum discriminant, a field type, a default | **not looked at**, so not a def | nothing is attached to code that cannot be written there in practice; adding it later is safe | `body_not_looked_at.rs` |
 | B10 | a function, or a const that is not `const _`, with no name the parser could read, with items in its body | **not defs**, as D21 | nothing to name them under | `body_not_looked_at.rs` |
+| B11 | a **const or static** and a def of the **type namespace** spelled the same (`mod C`, `struct C {}` with an `impl C`, `trait C`), each holding an item of one name; and an item of `const _` and an item of the module (or function, or impl) around it | the **same qualname**, told apart by `occurrence`: `const C: u8 = { fn helper() {} 1 };` and `mod C { fn helper() {} }` are both `C::helper`; `mod m { const _: () = { fn f() {} }; fn f() {} }` has `m::f` twice | the const is the nearest def and the joiner after it is `::` (B6), so what it holds is named as what a module, a trait or an impl of that spelling holds; `const _` adds nothing (B7), so its items are named as the enclosing def's own. Both are legal Rust, because a value and a type live in two namespaces. After a **function** the joiner is `{fn}`, which is not an identifier, so a function never collides with a type. Accepted (RS1 §3, 04d6763): a qualname is not unique in a file (D15), and `occurrence` is what separates them. Rare: it needs a const with helper items beside a same-spelled type or module | `body_collisions.rs` |
 
 ## Fixtures
 
@@ -157,3 +158,12 @@ changed lifetimes beside its clean twin: the two outlines must carry the same qu
 
 **Step 4 adds** `body_items.rs` (B1, B2, B4), `body_macros.rs` (B3), `body_frames.rs` (B5), `body_const.rs` (B6, B7), `body_twins.rs` (B8) and
 `body_not_looked_at.rs` (B9, B10).
+
+**Step 5 adds** `body_collisions.rs` (B11: a const, a static and a `const _` each beside a same-spelled module, trait, struct with an impl, or
+item; their qualnames repeat and `occurrence` counts the twins 0, 1) and `impl_broken_local.rs` (I10 in a body, B2: `fn h() { impl S<u8 { … } fn after() {} }`:
+`h` is a def and is flagged `syntax_error`; the engine reads the unclosed `<` as swallowing what follows, as at the end of `impl_broken.rs`, so the
+impl's items **and `after`** are parts of the header's generic list, not items, and are not defs). `syntax_error` is true on a def when a parse error's
+range overlaps its range (RS1 §5); `item_broken.rs`, `fn_broken.rs`, `impl_broken.rs` and the new fixture pin it, because their snapshots now carry
+the flags. Two tests over the whole crate, not per fixture: the cut test runs on every fixture, the step 4 body fixtures included, and a test over
+the repo's own `core/analyzer-core/src/*.rs` checks that every def has a qualname whose text is where the def says it is and that
+`(qualname, occurrence)` is unique per file.
