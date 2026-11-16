@@ -62,8 +62,8 @@ pub fn parse_order(raw: &str) -> Order {
 | `///` lines, the last one empty (`///`) | insert `/// <label>: <text>` after it |
 | `///` lines, the last one not empty | insert an empty `///` line, then the marker. In Markdown a line directly under a paragraph joins it, so without the empty line rustdoc would glue the marker to the user's sentence |
 | a `/** */` block as its **last** doc comment | the marker goes on a line of its own before `*/`, with the block's own ` * ` prefix. TypeScript's JSDoc code does this text work; this is its second user, so the helper moves to `analyzer-core::edit` now (rule of two), with TypeScript's tests moving with it |
-| doc comments and attributes interleaved (`/// a` · `#[inline]` · `/// b`) | after the **last doc comment**, wherever it stands |
-| only `#[doc = "…"]` attributes | a new `///` line above the item's first attribute. The attributes are not edited |
+| doc comments and attributes interleaved (`/// a` · `#[inline]` · `/// b`) | after the **last doc fragment**, wherever it stands |
+| a `#[doc = …]` attribute as the last doc fragment (`/// a` · `#[doc = "b"]`, or only `#[doc = include_str!("x.md")]`) | after it, an empty `///` line first. A `#[doc = …]` attribute is a doc fragment for **placing** (rustdoc joins it with the `///` lines, in source order) but never **read** (§3). Put before it, the marker would be the item's rustdoc summary (`include_str!`) or glue to its first sentence (`ID: x` · `b` is one Markdown paragraph). `#[doc(hidden)]` and other `doc(…)` lists are not fragments. The attributes are not edited. Changed 2026-11-16 (RS2 step 2 review; the step-2 code put the line above the first attribute) |
 | no doc at all | one new line `/// <label>: <text>` directly above the item's first attribute or keyword, with the item's indentation |
 
 Indentation is copied from the item's first line. Line endings are copied from the file (`\r\n` stays `\r\n`): core's edit helpers do it.
@@ -81,12 +81,16 @@ Two side effects to state in `languages/rust/docs/markers.md`, because users wil
 |---|---|
 | `AlreadyMarked { existing }` | §3 found one |
 | `NotOnOwnLine` | something other than blanks stands before the item on its first line (`fn a() {} fn b() {}`, generated code). Never reformat the user's code to make room |
-| `SyntaxError` | a parse error overlaps the item or its doc comments |
+| `SyntaxError` | a parse error overlaps the item or its doc comments (`Def::syntax_error`); or the file has any parse error and the edit, applied to a copy and outlined again, does not give back the same defs with the marker on this one and every other def's marker unchanged. Found in step 2: an unfinished item with no name above a clean def (`struct` · `enum Complete {}`) takes the new doc line, though `Complete` touches no error. The trial costs one parse, only in a file with errors; a clean file needs none (the round trip proves it) |
 | `UnsafeDocComment` | the last doc comment is a `/** */` block we cannot edit safely (closed on its opening line, a line without its `*`) |
 | `InvalidText` | the text is empty, starts or ends with a blank, or has a line break, or `*/` |
 | `UnknownDef` | the `Def` is not one this text's outline has (a stale outline) |
 | `DetachedDocComment` | **not built**: S-RS4 found no shape that produces it in 0.0.358 (an outer doc line above an item is always the item's child, §3). Kept in this table only until a case appears; if none does by RS2 step 3, delete the row |
 | `PlacementNotSupported` | any placement but `Docstring` |
+
+**Order of the checks**, as in Python (`python-syntax/src/edit.rs`) and TypeScript: `PlacementNotSupported`, `UnknownDef`, `InvalidText`,
+`SyntaxError`, `AlreadyMarked`, then the shape (`NotOnOwnLine`, `UnsafeDocComment`). `AlreadyMarked` carries a fact the caller uses (the
+existing marker), so a marked def answers it even when its line is shared (`struct A; /// ID: x` · `fn b() {}`).
 
 Not skips, because they are not defs and so are never asked about: items inside a macro call, enum variants, fields.
 
@@ -109,7 +113,7 @@ A plain comment in every language: `// <label>: <text>`, through core's `comment
 | the cut-every-50-bytes test, now also planning a marker on each def | never panics |
 | one fixture per row of §3, §4, §5 and §6 | the tables are the tests |
 | **`rustfmt` leaves it alone**: every marked fixture is formatted with the repo's `rustfmt.toml`, and again with `wrap_comments = true`, and the marker line is byte-identical | the first plan's **[check]**. A test, not a spike, because a `rustfmt` update can change the answer |
-| **`rustc` reads it as docs**: `cargo doc` is not run; instead the marked text is parsed again and the marker line is among the item's doc comment children | the marker did not detach the docs from the item or attach itself to the next one |
+| **`rustc` reads it as docs**: `cargo doc` is not run; instead the marked text is parsed again and the marker line is among the item's doc comment children | the marker did not detach the docs from the item or attach itself to the next one. **Covered by the round trip** (step 2 review): reading takes only the item's own `DOC_COMMENT` children (§3), and the round trip asks for the same defs with the marker on this one, so no separate test |
 | line endings: one `\r\n` fixture | the edit keeps them |
 | the header directly above the first item; the header, a blank line and the first item in a `\r\n` file | §6's "before the first item": found, and a second plan is `AlreadyMarked` |
 
@@ -119,7 +123,7 @@ A plain comment in every language: `// <label>: <text>`, through core's `comment
 |---|---|---|
 | 1 | `marker`: reading, §3 | fixtures |
 | 2 | `plan_marker` for `///` and no-doc items; `Skip` | the round trip on those fixtures |
-| 3 | the `/** */` helper moves to core; `plan_marker` for blocks | core's tests and TypeScript's stay green (rule 5); the round trip on every fixture |
+| 3 | the `/** */` helper moves to core, and with it `own_line` and `fits_a_line` (written and tested twice now: TypeScript's `marker.rs` and Rust's; one function, with the `*/` check TypeScript makes at its call site); `plan_marker` for blocks | core's tests and TypeScript's stay green (rule 5); the round trip on every fixture; §7's `rustfmt` test on every marked fixture |
 | 4 | the header | fixtures; the round trip |
 | 5 | `rust-cli marker` (plan and, in the CLI only, apply) | a marker written into a scratch copy of a file of this repo, and read back |
 | 6 | `languages/rust/docs/markers.md`; `ENGINE.md`'s list of engine items | reviewed |
