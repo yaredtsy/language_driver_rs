@@ -129,9 +129,26 @@ A plain comment in every language: `// <label>: <text>`, through core's `comment
 | 1 | `marker`: reading, §3 | fixtures |
 | 2 | `plan_marker` for `///` and no-doc items; `Skip` | the round trip on those fixtures |
 | 3 | the `/** */` helper moves to core, and with it `own_line` and `fits_a_line` (written and tested twice now: TypeScript's `marker.rs` and Rust's; one function, with the `*/` check TypeScript makes at its call site); `plan_marker` for blocks | core's tests and TypeScript's stay green (rule 5); the round trip on every fixture; §7's `rustfmt` test on every marked fixture |
-| 4 | the header | fixtures; the round trip |
-| 5 | `rust-cli marker` (plan and, in the CLI only, apply) | a marker written into a scratch copy of a file of this repo, and read back |
+| 4 | the header | fixtures; the round trip. **Done** (7b414ec, 7c14777; empty `//` line 81d758d; BOM fix ec935ad) |
+| 5 | `rust-cli marker` (plan and, in the CLI only, apply) | a marker written into a scratch copy of a file of this repo, and read back. **Done** (270ab70), as built below |
+| 5b | `adjacent` and `line_after` move to core's `comment_marker` (byte-identical in TypeScript's `marker.rs` / `header.rs` and Rust's `header.rs`: rule of two, as `own_line` in step 3) | core's, TypeScript's and Rust's tests green |
 | 6 | `languages/rust/docs/markers.md`; `ENGINE.md`'s list of engine items | reviewed |
-| | **tag `rust-v0.1.0`** | the qualname rule is frozen from here |
+| | **tag `rust-v0.1.0`** | the qualname rule is frozen from here. Before it: the full `scripts/check-all.sh` (Python included), once, after step 6 |
+
+**Step 5 as built** (`rust-cli`, reviewed 2026-11-16):
+
+```
+rust-cli marker <file> (--def <qualname> [--occurrence <n>] | --header) --text <text> [--write] [--label L] [--edition E]
+```
+
+- Without `--write` it prints the plan (`plan #0: insert at <line>:<col>`, then the added lines with `+ `) and changes nothing. With
+  `--write` it applies the edit, writes the file, reads it again, and prints `written: <label>: <text>` only if the same marker reads back.
+  The text is always the caller's (rule 2: the CLI is the only place that writes, and it still invents nothing).
+- A qualname with twins (D15) and no `--occurrence` lists them (`#0 line 5`, `#1 line 6`) and picks none.
+- Exit codes: **0** planned, or written and read back; **1** a file that cannot be read or written, or a marker that does not read back;
+  **2** bad usage, or twins with no `--occurrence`; **3** a `Skip`, printed with its reason, the file untouched. Python's and TypeScript's
+  CLIs have no marker command, so 3 is Rust's first; a later marker command in another language uses the same four codes.
+- Probed by the reviewer: a repo file (plan, write, second plan exits 3 `AlreadyMarked`), and a BOM + CRLF file with twins (header under a
+  `//` licence gets the empty `//` line; `--occurrence 1` marks only the second twin; BOM and `\r\n` kept byte for byte).
 
 Next: [`04-rs3-project.md`](04-rs3-project.md)
