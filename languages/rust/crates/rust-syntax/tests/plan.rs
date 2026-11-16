@@ -67,10 +67,78 @@ fn row_4_after_the_last_doc_comment_wherever_it_stands() {
 }
 
 #[test]
-fn row_5_only_doc_attributes_get_a_new_line_above_the_first_attribute() {
+fn row_5_a_doc_attribute_as_the_last_fragment_gets_the_marker_after_it() {
+    // rustdoc joins `///` lines and `#[doc = …]` in source order: put before the attribute, the marker would glue to its text
+    assert_eq!(
+        marked("/// a\n#[doc = \"b\"]\nfn f() {}\n", "f"),
+        "/// a\n#[doc = \"b\"]\n///\n/// ID: m1\nfn f() {}\n"
+    );
+    // an `include_str!` page: a marker above it would be the item's rustdoc summary
+    assert_eq!(
+        marked("#[doc = include_str!(\"x.md\")]\nfn f() {}\n", "f"),
+        "#[doc = include_str!(\"x.md\")]\n///\n/// ID: m1\nfn f() {}\n"
+    );
+    // only attributes: after the last `doc = …`, before the others
     assert_eq!(
         marked("#[doc = \"d\"]\n#[inline]\nfn f() {}\n", "f"),
-        "/// ID: m1\n#[doc = \"d\"]\n#[inline]\nfn f() {}\n"
+        "#[doc = \"d\"]\n///\n/// ID: m1\n#[inline]\nfn f() {}\n"
+    );
+    assert_eq!(
+        marked(
+            "#[doc = \"a\"]\n#[inline]\n#[doc = \"b\"]\nfn f() {}\n",
+            "f"
+        ),
+        "#[doc = \"a\"]\n#[inline]\n#[doc = \"b\"]\n///\n/// ID: m1\nfn f() {}\n"
+    );
+    // a `///` line after the attribute is the last fragment, so the rule for lines applies
+    assert_eq!(
+        marked("#[doc = \"a\"]\n/// b\nfn f() {}\n", "f"),
+        "#[doc = \"a\"]\n/// b\n///\n/// ID: m1\nfn f() {}\n"
+    );
+    // indented, and in a CRLF file
+    assert_eq!(
+        marked("mod m {\n    #[doc = \"b\"]\n    fn f() {}\n}\n", "m::f"),
+        "mod m {\n    #[doc = \"b\"]\n    ///\n    /// ID: m1\n    fn f() {}\n}\n"
+    );
+    assert_eq!(
+        marked("#[doc = \"b\"]\r\nfn f() {}\r\n", "f"),
+        "#[doc = \"b\"]\r\n///\r\n/// ID: m1\r\nfn f() {}\r\n"
+    );
+}
+
+#[test]
+fn doc_lists_and_conditional_docs_are_not_fragments() {
+    // `doc(hidden)` has no text: the marker goes above the first attribute, as for an item with no docs
+    assert_eq!(
+        marked("#[doc(hidden)]\nfn f() {}\n", "f"),
+        "/// ID: m1\n#[doc(hidden)]\nfn f() {}\n"
+    );
+    assert_eq!(
+        marked("#[doc(alias = \"g\")]\n#[inline]\nfn f() {}\n", "f"),
+        "/// ID: m1\n#[doc(alias = \"g\")]\n#[inline]\nfn f() {}\n"
+    );
+    // `cfg_attr` may or may not give a doc: not a fragment either
+    assert_eq!(
+        marked("#[cfg_attr(x, doc = \"d\")]\nfn f() {}\n", "f"),
+        "/// ID: m1\n#[cfg_attr(x, doc = \"d\")]\nfn f() {}\n"
+    );
+    // a `doc = …` is never READ as the marker
+    let text = "#[doc = \"ID: x\"]\nfn f() {}\n";
+    assert_eq!(outline(text, Edition::E2024, STYLE).defs[0].marker, None);
+}
+
+#[test]
+fn a_doc_attribute_that_shares_its_line_with_code_is_not_on_its_own_line() {
+    // a line after this one would be inside the item
+    assert_eq!(skip("#[doc = \"b\"] fn f() {}\n", "f"), Skip::NotOnOwnLine);
+    assert_eq!(
+        skip("#[doc = \"b\"] #[inline]\nfn f() {}\n", "f"),
+        Skip::NotOnOwnLine
+    );
+    // a trailing comment is no code
+    assert_eq!(
+        marked("#[doc = \"b\"] // why\nfn f() {}\n", "f"),
+        "#[doc = \"b\"] // why\n///\n/// ID: m1\nfn f() {}\n"
     );
 }
 
@@ -221,4 +289,30 @@ fn a_def_below_an_unfinished_item_is_refused_when_the_marker_would_not_be_its() 
     assert_eq!(skip(text, "Complete"), Skip::SyntaxError);
     // the same shape one item further down is fine
     assert!(planned("fn a() {}\nstruct\nfn b() {}\n", "a").is_ok());
+}
+
+/// RS2 §5, the order of the checks: a marked def answers `AlreadyMarked` with its marker even when its line is shared, because the caller uses
+/// the fact; the shape of the text (`NotOnOwnLine`) is asked last.
+#[test]
+fn the_order_of_the_checks() {
+    assert_eq!(
+        skip("struct A; /// ID: x\nfn b() {}\n", "b"),
+        Skip::AlreadyMarked {
+            existing: "x".to_owned()
+        }
+    );
+    // unmarked, the same shape is a shared line
+    assert_eq!(
+        skip("struct A; /// y\nfn b() {}\n", "b"),
+        Skip::NotOnOwnLine
+    );
+    // the text is asked before the shape, and the syntax error before the marker
+    let text = "struct A; fn b() {}\n";
+    let defs = outline(text, Edition::E2024, STYLE).defs;
+    let b = defs.iter().find(|d| d.qualname == "b").unwrap();
+    assert_eq!(
+        plan_marker(text, Edition::E2024, b, " bad", STYLE),
+        Err(Skip::InvalidText)
+    );
+    assert_eq!(skip("/// ID: x\nfn f( {\n", "f"), Skip::SyntaxError);
 }

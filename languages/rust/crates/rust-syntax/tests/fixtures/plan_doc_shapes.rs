@@ -15,6 +15,16 @@ fn row4_interleaved() {}
 #[doc = "from an attribute"]
 fn row5_doc_attribute() {}
 
+/// a
+#[doc = "b"]
+fn row5_line_then_doc_attribute() {}
+
+#[doc = include_str!("page.md")]
+fn row5_include_str() {}
+
+#[doc(hidden)]
+fn row6_doc_hidden_is_not_a_fragment() {}
+
 #[inline]
 fn row6_attribute_only() {}
 

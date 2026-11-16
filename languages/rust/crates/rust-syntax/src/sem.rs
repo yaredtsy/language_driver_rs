@@ -48,6 +48,10 @@ pub(crate) struct Item {
     /// The item's own outer doc comments, in source order. An inner one (`//!`) belongs to the item around it, and `#[doc = "…"]` is an
     /// attribute: neither is here (RS2 §3).
     pub(crate) docs: Vec<DocComment>,
+    /// The ranges of its outer `#[doc = …]` attributes, in source order. They are doc fragments for **placing** a marker (rustdoc joins them
+    /// with the `///` lines) and are never read (RS2 §3, §4). `#[doc(hidden)]` and the other `doc(…)` lists are not here, nor is a
+    /// `#[cfg_attr(…, doc = …)]`.
+    pub(crate) doc_attrs: Vec<Span>,
 }
 
 /// One outer doc comment of an item, as written.
@@ -323,6 +327,15 @@ fn named<N: AstNode + HasName + HasAttrs>(
         name_range: span(name.syntax().text_range()),
         params: Vec::new(),
         impl_head: None,
+        doc_attrs: node
+            .attrs()
+            .filter(|attr| {
+                attr.kind() == AttrKind::Outer
+                    && matches!(attr.meta(), Some(ast::Meta::KeyValueMeta(_)))
+                    && attr.simple_name().is_some_and(|name| name == "doc")
+            })
+            .map(|attr| span(attr.syntax().text_range()))
+            .collect(),
         docs: node
             .doc_comments()
             .filter(|doc| doc.kind() == AttrKind::Outer)

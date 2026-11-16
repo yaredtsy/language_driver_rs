@@ -4,6 +4,7 @@
 
 use analyzer_core::edit::{Edit, MarkerStyle, Placement, apply, comment_marker};
 use analyzer_core::outline::Def;
+use analyzer_core::text::Span;
 
 use crate::sem::{DocComment, Item};
 use crate::{Edition, Skip, outline};
@@ -103,17 +104,18 @@ pub(crate) fn plan(
         .ok_or(Skip::UnknownDef)?;
     let (def, item) = (&found.defs[at], &items[at]);
 
-    let start = def.range.start;
-    let own = own_line(text, start).ok_or(Skip::NotOnOwnLine)?;
+    // the order of the checks is Python's and TypeScript's (RS2 §5): what the caller can act on first, the shape of the text last
     if !fits_a_line(marker_text) {
         return Err(Skip::InvalidText);
     }
     if def.syntax_error {
         return Err(Skip::SyntaxError);
     }
+    // a marked def answers with the marker even when its line is shared: the caller uses the fact
     if let Some(existing) = def.marker.clone() {
         return Err(Skip::AlreadyMarked { existing });
     }
+    let own = own_line(text, def.range.start).ok_or(Skip::NotOnOwnLine)?;
     let edit = place(text, item, own, style.label, marker_text)?;
     // In a file with a parse error, the new doc line may not become the def's: an unfinished item above it can take it (`struct` with no
     // name, then the def). So the edit is tried first, and refused unless the same defs come back and this one carries the marker. A file
@@ -148,28 +150,67 @@ fn place(text: &str, item: &Item, own: u32, label: &str, marker_text: &str) -> R
     let indent = &text[own as usize..item.range.start as usize];
     let eol = comment_marker::line_ending(text);
     let line = format!("{indent}/// {label}: {marker_text}{eol}");
-    match item.docs.last() {
-        // no doc comment, or only `#[doc = "…"]` attributes (rows 5 and 6): a new line above the first attribute or the keyword
-        None => Ok(Edit::insert(own, line)),
-        // a block as the last doc comment is step 3's: its lines cannot be edited yet, and a `///` line put below it would be a second
-        // doc comment of another shape beside it
-        Some(last) if last.text.starts_with("/**") => Err(Skip::UnsafeDocComment),
-        // rows 1, 2 and 4: after the last doc comment, wherever it stands among the attributes
-        Some(last) => {
-            let after = next_line_start(text, last.range.end).ok_or(Skip::SyntaxError)?;
-            // an empty `///` line ends the paragraph; after any other line the marker would join its sentence in Markdown
-            let empty = last
+    match last_fragment(item) {
+        // no fragment at all (row 6): a new line above the first attribute or the keyword
+        Fragment::None => Ok(Edit::insert(own, line)),
+        Fragment::Comment(comment) => {
+            // a block as the last doc comment is step 3's: its lines cannot be edited yet, and a `///` line put below it would be a second
+            // doc comment of another shape beside it
+            if comment.text.starts_with("/**") {
+                return Err(Skip::UnsafeDocComment);
+            }
+            let empty = comment
                 .text
                 .strip_prefix("///")
                 .is_some_and(|t| t.trim().is_empty());
-            let separator = if empty {
-                String::new()
-            } else {
-                format!("{indent}///{eol}")
-            };
-            Ok(Edit::insert(after, format!("{separator}{line}")))
+            after_line_of(text, comment.range.end, indent, eol, !empty, line)
+        }
+        // an attribute is the last fragment: it can share its line with code, and a line put after that one would be inside the item
+        Fragment::Attr(attr) => {
+            let rest = text.get(attr.end as usize..).unwrap_or("");
+            let rest = rest.split(['\n', '\r']).next().unwrap_or("").trim();
+            if !rest.is_empty() && !rest.starts_with("//") {
+                return Err(Skip::NotOnOwnLine);
+            }
+            after_line_of(text, attr.end, indent, eol, true, line)
         }
     }
+}
+
+/// The last doc fragment of an item in source order (RS2 §4): the last of its doc comments and of its `#[doc = …]` attributes.
+enum Fragment<'a> {
+    None,
+    Comment(&'a DocComment),
+    Attr(Span),
+}
+
+fn last_fragment(item: &Item) -> Fragment<'_> {
+    match (item.docs.last(), item.doc_attrs.last()) {
+        (None, None) => Fragment::None,
+        (Some(comment), None) => Fragment::Comment(comment),
+        (None, Some(attr)) => Fragment::Attr(*attr),
+        (Some(comment), Some(attr)) if attr.end > comment.range.end => Fragment::Attr(*attr),
+        (Some(comment), Some(_)) => Fragment::Comment(comment),
+    }
+}
+
+/// The marker line on the line after the one `end` is on, with an empty `///` line before it when `separate`: after a line of text the
+/// marker would join its sentence in Markdown (RS2 §4 rows 1 and 2).
+fn after_line_of(
+    text: &str,
+    end: u32,
+    indent: &str,
+    eol: &str,
+    separate: bool,
+    line: String,
+) -> Result<Edit, Skip> {
+    let after = next_line_start(text, end).ok_or(Skip::SyntaxError)?;
+    let separator = if separate {
+        format!("{indent}///{eol}")
+    } else {
+        String::new()
+    };
+    Ok(Edit::insert(after, format!("{separator}{line}")))
 }
 
 #[cfg(test)]
