@@ -46,8 +46,8 @@ fn mark_everything(text: &str) -> (String, Vec<(String, String)>) {
 }
 
 /// Is the header of `marked` directly under a block of `//` lines in which one is wider than `rustfmt`'s `comment_width` (80)? With
-/// `wrap_comments` the block is refilled as one paragraph, and the header line, which is part of it, is joined to the text above
-/// (`// end ID: fmt-header`): the one shape a header is not safe in (see `a_header_under_a_wide_comment_is_joined_by_wrap_comments`).
+/// `wrap_comments` such a block is refilled as one paragraph: a header that is part of it is joined to the text above
+/// (`// end ID: fmt-header`; see `a_header_with_no_empty_line_under_a_wide_comment_is_joined_by_wrap_comments`).
 fn header_is_under_a_wide_comment(marked: &str) -> bool {
     let lines: Vec<&str> = marked.lines().collect();
     let Some(at) = lines.iter().position(|l| l.trim() == "// ID: fmt-header") else {
@@ -104,6 +104,7 @@ fn homes(text: &str) -> Vec<(String, String)> {
 fn rustfmt_leaves_every_planned_marker_alone() {
     let mut checked = 0;
     let mut files = 0;
+    let mut wide_headers = 0;
     for entry in fs::read_dir("tests/fixtures").unwrap() {
         let path = entry.unwrap().path();
         let text = fs::read_to_string(&path).unwrap();
@@ -133,9 +134,11 @@ fn rustfmt_leaves_every_planned_marker_alone() {
                     path.display()
                 );
             }
-            // the header is read from the formatted text too, except in the one shape that is known not to survive `wrap_comments`
-            let at_risk = name == "wrap_comments" && header_is_under_a_wide_comment(&marked);
-            if marked.contains("ID: fmt-header") && !at_risk {
+            // the header is read from the formatted text too, under a wide `//` run or not (RS2 §6: the empty `//` line)
+            if name == "wrap_comments" && header_is_under_a_wide_comment(&marked) {
+                wide_headers += 1;
+            }
+            if marked.contains("ID: fmt-header") {
                 assert!(
                     formatted.lines().any(|l| l.trim() == "// ID: fmt-header"),
                     "{} with {name}: the header line was changed",
@@ -161,6 +164,11 @@ fn rustfmt_leaves_every_planned_marker_alone() {
         files >= 20 && checked >= 300,
         "{files} files, {checked} markers checked"
     );
+    // the shape the empty `//` line is for was among them, not only a few lucky ones
+    assert!(
+        wide_headers >= 10,
+        "{wide_headers} headers under a wide comment"
+    );
 }
 
 /// The control: `wrap_comments` does change a comment, here a long summary line, so a marker that comes out unchanged was left alone by a
@@ -185,37 +193,47 @@ fn wrap_comments_is_in_effect_and_still_leaves_the_marker() {
     assert!(wrapped.lines().any(|l| l.trim() == line));
 }
 
-/// A known gap, pinned so that it is seen and is the first thing to fail when it is fixed (RS2 §6, found in step 4): a header put as the last
-/// line of a `//` block in which one line is wider than `comment_width` (80) is joined to the text above by `wrap_comments`, which refills the
-/// block as one paragraph, and then reads as nothing. A second plan would write another header. The repo's own config leaves it alone, and
-/// so does a header under short lines.
+/// The reason for the empty `//` line of RS2 §6, kept as a canary: a header that is the last line of a `//` block in which one line is wider
+/// than `comment_width` (80) is joined to the text above by `wrap_comments`, which refills the block as one paragraph, and then reads as
+/// nothing (a second plan would write another). The text is written by hand here, with no empty `//` line, because a plan never does. If
+/// `rustfmt` stops doing this, the empty line is no longer needed: say so in §6.
 #[test]
-fn a_header_under_a_wide_comment_is_joined_by_wrap_comments() {
+fn a_header_with_no_empty_line_under_a_wide_comment_is_joined_by_wrap_comments() {
     // 90 columns and a short tail, so that the refill leaves the header on the tail's line
+    let wide = format!("// {}end\n", "word ".repeat(18));
+    let by_hand = format!("{wide}// ID: fmt-header\nfn f() {{}}\n");
+    assert!(header_is_under_a_wide_comment(&by_hand));
+    assert_eq!(
+        header_marker(&rustfmt(&by_hand, &[]).unwrap(), STYLE).as_deref(),
+        Some("fmt-header"),
+        "the repo's own config leaves it alone"
+    );
+    let wrapped = rustfmt(&by_hand, &["--config", "wrap_comments=true"]).unwrap();
+    assert!(wrapped.contains("end ID: fmt-header"), "{wrapped}");
+    assert_eq!(header_marker(&wrapped, STYLE), None);
+}
+
+/// What the plan writes instead survives: under the same wide block the plan puts an empty `//` line first, and the header comes out of
+/// `wrap_comments` unchanged, still read, and a second plan still answers `AlreadyMarked`.
+#[test]
+fn a_planned_header_under_a_wide_comment_survives_wrap_comments() {
     let wide = format!("// {}end\nfn f() {{}}\n", "word ".repeat(18));
     let edit = plan_header_marker(&wide, "fmt-header", STYLE).unwrap();
     let marked = apply(&wide, &[edit]).unwrap();
     assert!(header_is_under_a_wide_comment(&marked));
-    assert_eq!(
-        header_marker(&rustfmt(&marked, &[]).unwrap(), STYLE).as_deref(),
-        Some("fmt-header"),
-        "the repo's own config leaves it alone"
-    );
+    assert!(marked.contains("end\n//\n// ID: fmt-header\n"), "{marked}");
     let wrapped = rustfmt(&marked, &["--config", "wrap_comments=true"]).unwrap();
-    assert!(wrapped.contains("end ID: fmt-header"), "{wrapped}");
-    assert_eq!(
-        header_marker(&wrapped, STYLE),
-        None,
-        "the gap is closed: delete this test and the `at_risk` exception"
+    assert_eq!(wrapped.matches("ID: fmt-header").count(), 1);
+    assert!(
+        wrapped.lines().any(|l| l == "// ID: fmt-header"),
+        "{wrapped}"
     );
-    // short lines above are safe
-    let short = "// short licence\n// another short line\nfn f() {}\n";
-    let edit = plan_header_marker(short, "fmt-header", STYLE).unwrap();
-    let marked = apply(short, &[edit]).unwrap();
-    assert!(!header_is_under_a_wide_comment(&marked));
-    let wrapped = rustfmt(&marked, &["--config", "wrap_comments=true"]).unwrap();
     assert_eq!(
         header_marker(&wrapped, STYLE).as_deref(),
         Some("fmt-header")
     );
+    assert!(matches!(
+        plan_header_marker(&wrapped, "other", STYLE),
+        Err(rust_syntax::Skip::AlreadyMarked { .. })
+    ));
 }

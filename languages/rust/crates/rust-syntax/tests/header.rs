@@ -42,6 +42,11 @@ const READ: &[(&str, Option<&str>)] = &[
     ("header_crlf_blank_then_item.rs", Some("crlf_blank")),
     ("header_crlf_blank_then_doc.rs", Some("crlf_doc")),
     ("header_crlf_unmarked.rs", None),
+    // the run's last line is an empty `//` already: the header goes right under it, with no second one (§6)
+    ("header_run_ends_empty.rs", None),
+    ("header_crlf_run_ends_empty.rs", None),
+    // under a block the header needs no empty `//`; under a `//` line that follows a block it does
+    ("header_block_then_line.rs", None),
     // after the first token, or not a `// ID:` line: not a header
     ("header_after_the_first_token.rs", None),
     ("header_other_label.rs", None),
@@ -200,10 +205,10 @@ fn a_header_directly_above_the_first_item_is_found_and_planned_again_is_marked()
             existing: "above_item".to_owned()
         })
     );
-    // unmarked, with a comment directly above the item: the header goes below it, still directly above the item
+    // unmarked, with a comment directly above the item: an empty `//` and the header go below it, still directly above the item
     let text = fixture("header_comment_above_item.rs");
     let new = planned(&text);
-    assert_eq!(new, "// About f.\n// ID: h1\nfn f() {}\n");
+    assert_eq!(new, "// About f.\n//\n// ID: h1\nfn f() {}\n");
     assert_eq!(header_marker(&new, STYLE).as_deref(), Some("h1"));
     assert!(matches!(
         plan_header_marker(&new, "h2", STYLE),
@@ -236,7 +241,7 @@ fn a_header_and_a_blank_line_in_a_crlf_file_is_found_and_never_planned_twice() {
     let new = planned(&text);
     assert_eq!(
         new,
-        "// Copyright (c) Someone.\r\n// ID: h1\r\n\r\nfn f() {}\r\n"
+        "// Copyright (c) Someone.\r\n//\r\n// ID: h1\r\n\r\nfn f() {}\r\n"
     );
     assert!(
         !new.replace("\r\n", "").contains(['\r', '\n']),

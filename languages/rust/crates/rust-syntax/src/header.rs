@@ -2,7 +2,7 @@
 //! in). The rule is `docs/04-rust/04-default-resolver/03-rs2-markers.md` §6.
 //!
 //! Where it goes: after a `#!` line, and as the last line of the file's opening comment (a licence, in `//` lines or a `/* */` block), so that
-//! the licence keeps its place on the first line; before inner attributes (`#![…]`) and inner doc comments (`//!`), and above the first item.
+//! the licence keeps its place on the first line, with an empty `//` line between a `//` run and the header; before inner attributes (`#![…]`) and inner doc comments (`//!`), and above the first item.
 //! "Before the first item" is measured by tokens from the top of the file, which is the start of the item's range (its first doc comment or
 //! attribute, else its first token): never from the start of the engine's node, which can begin with the comments above it.
 
@@ -29,7 +29,7 @@ fn read_top(text: &str, top: &Top, style: MarkerStyle<'_>) -> Option<String> {
     top.comments
         .iter()
         // a `/* */` block is not a header, and a `//` that starts a line is the only kind `comment_marker` reads
-        .filter(|c| text[c.start as usize..].starts_with("//"))
+        .filter(|c| is_line_comment(text, **c))
         .find_map(|c| comment_marker::read(text, c.start, "//", style).map(|found| found.text))
 }
 
@@ -46,6 +46,8 @@ pub(crate) fn plan(text: &str, marker_text: &str, style: MarkerStyle<'_>) -> Res
         return Err(Skip::AlreadyMarked { existing });
     }
     let mut at = top.start;
+    // the comment the header goes under, when there is one
+    let mut above = None;
     // the header is the last line of the file's opening comment: the first run of comments, up to a blank line
     for (i, c) in top.comments.iter().enumerate() {
         // a block comment with code after it on its line: the header goes above that line
@@ -53,6 +55,7 @@ pub(crate) fn plan(text: &str, marker_text: &str, style: MarkerStyle<'_>) -> Res
             break;
         };
         at = next_line;
+        above = Some(*c);
         let below = top.comments.get(i + 1).map_or(top.first, |next| next.start);
         if !adjacent(text, c.end, below) {
             break;
@@ -60,6 +63,11 @@ pub(crate) fn plan(text: &str, marker_text: &str, style: MarkerStyle<'_>) -> Res
     }
     let eol = comment_marker::line_ending(text);
     let mut line = format!("// {}: {marker_text}{eol}", style.label);
+    // Under a `//` line an empty `//` goes first, unless the line is one already: `rustfmt` with `wrap_comments` refills a `//` run as one
+    // paragraph, and would join a header that is the run's last line to the text above it (RS2 §6).
+    if above.is_some_and(|c| is_line_comment(text, c) && !is_empty_line_comment(text, c)) {
+        line.insert_str(0, &format!("//{eol}"));
+    }
     // a header directly above `//!` or `/*!` gets an empty line after it, so that nothing reads it as the start of the crate's docs
     let inner_doc_below = top.first_is_inner_doc
         && text
@@ -83,6 +91,18 @@ pub(crate) fn plan(text: &str, marker_text: &str, style: MarkerStyle<'_>) -> Res
         }
     }
     Ok(edit)
+}
+
+/// Is `comment` a `//` comment (not a `/* */` block)?
+fn is_line_comment(text: &str, comment: Span) -> bool {
+    text[comment.start as usize..].starts_with("//")
+}
+
+/// Is `comment`, a `//` comment, a bare `//`: nothing but blanks after the slashes (a `\r` of a CRLF file included)?
+fn is_empty_line_comment(text: &str, comment: Span) -> bool {
+    text[comment.start as usize + 2..comment.end as usize]
+        .trim()
+        .is_empty()
 }
 
 /// Only whitespace and at most one line break between `from` and `to`: no blank line separates them.
