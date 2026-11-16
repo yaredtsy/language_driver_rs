@@ -146,6 +146,29 @@ To check before step 1, with S-RS2's loader:
    ignores it** (the lock was written into the project, also when `rust-toolchain.toml` chose 1.94.1 under another loader toolchain); 1.74.1 (< 1.82) makes no copy and rewrote a
    stale lock. The boundary 1.97 itself was not tested (not installed); `sem::load` reads `cargo --version` itself and applies B from 1.97.
 
+#### Parked: measure a load without dependencies first (owner, 2026-11-16)
+
+The owner's goal for the call tree is **calls inside the project**; calls into a dependency are not needed. That opens a fourth option:
+
+| | What | Cost |
+|---|---|---|
+| **D** | load with `CargoConfig::no_deps = true`: `cargo metadata --no-deps` resolves nothing, needs no network, and **never writes a lockfile** (the engine's comment in `cargo_workspace.rs`), so Q-RS6 does not arise | the dependencies' types are unknown, so a project method called on a value whose type came from a dependency is unresolved. And the links **between the workspace's own crates** may be lost too: the engine builds a crate's dependencies from `metadata.resolve` (`cargo_workspace.rs`, the loop over `meta.resolve` nodes), which `--no-deps` leaves empty. **[check]**: a call from member A into member B, under D |
+
+What each piece gives in-project calls, to say why the measurement is the one below:
+
+| Piece | Needed for in-project calls? |
+|---|---|
+| dependencies downloaded | mostly not: only where a project value's type comes from a dependency (`let c = toml::from_str(s)?; c.validate()`) |
+| the standard library (`rust-src`) | **yes**: types flow through `std` in project code (`?`, `for x in v.iter()`, `Box::new(p).run()`); without it those method calls are unresolved. A free function by path (`crate::utils::save()`) resolves without it |
+| `cargo` | **yes**: which files form which crate, each crate's edition, which member depends on which |
+
+**The measurement (RS3 step 1, before Q-RS6 is answered).** Load `core/`, `languages/typescript/` and the 232-package project of S-RS2
+three ways: full (with B), `no_deps = true` (D), and without `std` (the S-RS3 case), and count, for each, **only the call edges whose
+target is project code**, the cross-crate ones of a workspace separately. Write the table in `ENGINE.md`. Then:
+
+- D loses no in-project edge, or only ones a counter can name: **D is the default** (faster, offline, no lockfile), and A/B are not built;
+- D loses cross-crate or `std`-typed project edges: **B** as written above, and D stays what the engine already does offline (S-RS3, and a counter).
+
 ## 6. Errors
 
 ```rust
@@ -191,7 +214,7 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | the engine dependencies (again `cargo update -p unicode-properties --precise 0.1.4`, `ENGINE.md` S-RS1); `sem::load`; `Project::open` on a manifest path; the lockfile rule (§5, after Q-RS6) | `core/` loads; the lockfile test |
+| 1 | the engine dependencies (again `cargo update -p unicode-properties --precise 0.1.4`, `ENGINE.md` S-RS1); `sem::load`; `Project::open` on a manifest path; the in-project measurement of §5 (B, D, no `std`), then the lockfile rule Q-RS6 picks | `core/` loads; the table in `ENGINE.md`; the lockfile test |
 | 2 | finding the manifest from a file; the root limit | the five-workspaces test |
 | 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI |
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures |
