@@ -50,8 +50,12 @@ jobs:
     defaults: { run: { working-directory: core } }
     steps:
       - uses: actions/checkout@v4
+      # `key:` and `save-if:` reasons: docs/01-monorepo/05-ci.md §4
       - uses: Swatinem/rust-cache@v2
-        with: { workspaces: core }
+        with:
+          workspaces: core
+          key: core
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
@@ -73,7 +77,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-        with: { workspaces: "languages/${{ matrix.lang }}" }
+        with:
+          workspaces: "languages/${{ matrix.lang }}"
+          key: ${{ matrix.lang }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
       - run: cargo clippy -p ${{ matrix.lang }}-syntax --all-targets -- -D warnings
       - run: cargo test -p ${{ matrix.lang }}-syntax
@@ -93,7 +100,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-        with: { workspaces: "languages/${{ matrix.lang }}" }
+        with:
+          workspaces: "languages/${{ matrix.lang }}"
+          key: ${{ matrix.lang }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo clippy -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli --all-targets -- -D warnings
       # --no-fail-fast: a failing test binary must not hide the results of the others
       - run: cargo test --no-fail-fast -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli
