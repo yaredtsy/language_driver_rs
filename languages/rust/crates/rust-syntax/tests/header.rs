@@ -1,5 +1,5 @@
 //! The file header (RS2 §6): what `header_marker` reads and where `plan_header_marker` writes it, one fixture per row. The planned text of
-//! every `header_*.rs` fixture is a reviewed file under `tests/header_planned/` (`ANALYZER_BLESS=1` writes it; read it before committing).
+//! every `header_*.rs` fixture is a reviewed file under `tests/snapshots/header_planned/` (`ANALYZER_BLESS=1` writes it; read it before committing).
 
 use std::fs;
 use std::path::Path;
@@ -91,7 +91,7 @@ fn the_planned_text_of_every_header_fixture_is_the_reviewed_one() {
     for (name, _) in READ {
         let text = fixture(name);
         expect_file(
-            &Path::new("tests/header_planned").join(name),
+            &Path::new("tests/snapshots/header_planned").join(name),
             &planned(&text),
         );
     }
