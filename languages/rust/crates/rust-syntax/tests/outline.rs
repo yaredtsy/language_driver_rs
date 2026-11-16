@@ -102,6 +102,41 @@ fn a_cut_file_reports_its_errors_inside_the_text() {
     }
 }
 
+/// RS1 §5: a leading byte-order mark is not a syntax error, and every offset is into the text as given: the outline of a file with a mark is
+/// the outline of the same file without it, 3 bytes on, and a def on the first line is found.
+#[test]
+fn a_byte_order_mark_is_no_error_and_moves_every_offset_by_its_length() {
+    let with = fs::read_to_string("tests/fixtures/outline_bom.rs").unwrap();
+    let without = with
+        .strip_prefix('\u{feff}')
+        .expect("the fixture has a mark");
+    let (with_outline, without_outline) = (outline_2024(&with), outline_2024(without));
+    assert!(with_outline.syntax_errors.is_empty());
+    assert!(with_outline.defs.iter().all(|d| !d.syntax_error));
+    assert_eq!(with_outline.defs.len(), 3);
+    assert_eq!(with_outline.defs.len(), without_outline.defs.len());
+    for (a, b) in with_outline.defs.iter().zip(&without_outline.defs) {
+        assert_eq!(a.qualname, b.qualname);
+        assert_eq!(a.marker, b.marker);
+        assert_eq!(
+            (a.range.start, a.range.end),
+            (b.range.start + 3, b.range.end + 3)
+        );
+        assert_eq!(
+            (a.name_range.start, a.name_range.end),
+            (b.name_range.start + 3, b.name_range.end + 3)
+        );
+    }
+    // the marker is the first line of the file, right after the mark
+    assert_eq!(with_outline.defs[0].marker.as_deref(), Some("bom1"));
+    assert_eq!(with_outline.defs[0].range.start, 3);
+    assert_eq!(
+        &with[with_outline.defs[0].name_range.start as usize
+            ..with_outline.defs[0].name_range.end as usize],
+        "f"
+    );
+}
+
 /// `(qualname, occurrence)` of every def of a file, in source order.
 fn names(outline: &Outline) -> Vec<(&str, u16)> {
     outline

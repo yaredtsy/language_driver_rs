@@ -1,0 +1,3 @@
+Function f [3..25] name [19..20] marker="bom1"
+Struct S [26..35] name [33..34]
+Method S::m [49..63] name [52..53] (&self)

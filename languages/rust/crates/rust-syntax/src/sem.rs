@@ -96,18 +96,24 @@ pub(crate) struct Parsed {
 }
 
 pub(crate) fn parse(text: &str, edition: Edition) -> Parsed {
+    // The engine does not skip a byte-order mark: it reports an error at the start of the text. So the mark is left out of what is parsed
+    // and its bytes are added back to every offset, and the ranges stay offsets into the text as given.
+    let bom = bom_len(text);
     // `parse` never fails: a file that does not parse still gives a tree (with error nodes), and `Parse::errors()` lists the problems.
-    let parse = SourceFile::parse(text, engine_edition(edition));
+    let parse = SourceFile::parse(&text[bom as usize..], engine_edition(edition));
     let ranges: Vec<TextRange> = parse.errors().iter().map(|e| e.range()).collect();
     let mut items = Vec::new();
     collect(parse.tree().items(), None, &ranges, &mut items);
+    for item in &mut items {
+        item.shift(bom);
+    }
     // an error at the end of the text can reach one byte past it; the outline promises ranges inside the text
     let len = u32::try_from(text.len()).unwrap_or(u32::MAX);
     let errors = parse
         .errors()
         .iter()
         .map(|e| {
-            let range = span(e.range());
+            let range = shifted(span(e.range()), bom);
             (
                 Span::new(range.start.min(len), range.end.min(len)),
                 e.to_string(),
@@ -115,6 +121,33 @@ pub(crate) fn parse(text: &str, edition: Edition) -> Parsed {
         })
         .collect();
     Parsed { items, errors }
+}
+
+/// The length of a leading byte-order mark (U+FEFF), or 0.
+fn bom_len(text: &str) -> u32 {
+    if text.starts_with('\u{feff}') {
+        '\u{feff}'.len_utf8() as u32
+    } else {
+        0
+    }
+}
+
+impl Item {
+    /// Move every offset `by` bytes on.
+    fn shift(&mut self, by: u32) {
+        self.range = shifted(self.range, by);
+        self.name_range = shifted(self.name_range, by);
+        for doc in &mut self.docs {
+            doc.range = shifted(doc.range, by);
+        }
+        for attr in &mut self.doc_attrs {
+            *attr = shifted(*attr, by);
+        }
+    }
+}
+
+fn shifted(span: Span, by: u32) -> Span {
+    Span::new(span.start + by, span.end + by)
 }
 
 /// The top of a file, for its header marker: everything before the first token that is not a shebang, a comment or whitespace.
@@ -136,11 +169,7 @@ pub(crate) struct Top {
 /// The top of `text`, scanned by tokens. The engine does not strip a byte-order mark (it makes an error token), so it is left out of the
 /// text that is parsed and every offset is put back.
 pub(crate) fn top(text: &str, edition: Edition) -> Top {
-    let bom = if text.starts_with('\u{feff}') {
-        '\u{feff}'.len_utf8()
-    } else {
-        0
-    };
+    let bom = bom_len(text) as usize;
     let parse = SourceFile::parse(&text[bom..], engine_edition(edition));
     let shift = |range: TextRange| {
         let range = span(range);
