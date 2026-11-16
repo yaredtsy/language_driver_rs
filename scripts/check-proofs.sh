@@ -14,8 +14,8 @@ want_fail=$(sed -n 's/^compile_fail=//p' "$expected")
 want_pass=$(sed -n 's/^pass=//p' "$expected")
 cd "$root/languages/$lang"
 
-cargo clippy -p "$lang-analysis" --all-targets --features __proof -- -D warnings
-out=$(cargo test -p "$lang-analysis" --doc --features __proof 2>&1) || { echo "$out" >&2; echo "check-proofs: a proof doctest failed" >&2; exit 1; }
+cargo clippy --locked -p "$lang-analysis" --all-targets --features __proof -- -D warnings
+out=$(cargo test --locked -p "$lang-analysis" --doc --features __proof 2>&1) || { echo "$out" >&2; echo "check-proofs: a proof doctest failed" >&2; exit 1; }
 
 # a proof doctest is named "<file> - proof (line N)", with " - compile fail" for the ones that must not compile
 got_fail=$(grep -cE ' - proof \(line [0-9]+\) - compile fail \.\.\. ok$' <<<"$out" || true)

@@ -54,11 +54,11 @@ none "unsafe_code is allowed outside the sem module (rule 4)" \
 [ ! -e Cargo.toml ] || bad "a Cargo.toml at the repo root (ruff and rust-analyzer pin different salsa)"
 
 # core stays engine-free
-if (cd core && cargo tree 2>/dev/null | grep -E 'salsa|ruff_|tsrs_|ra_ap_'); then bad "core depends on an engine"; fi
+if (cd core && cargo tree --locked 2>/dev/null | grep -E 'salsa|ruff_|tsrs_|ra_ap_'); then bad "core depends on an engine"; fi
 
 # the fast crate stays fast: rust-syntax has no salsa, no ra_ap_hir, no ra_ap_ide in its tree (RS1 §7), and does have the parser
 if [ -d languages/rust ]; then
-  tree=$(cd languages/rust && cargo tree -p rust-syntax 2>&1) || bad "cargo tree -p rust-syntax failed: $tree"
+  tree=$(cd languages/rust && cargo tree --locked -p rust-syntax 2>&1) || bad "cargo tree -p rust-syntax failed: $tree"
   if grep -E 'salsa|ra_ap_hir|ra_ap_ide' <<<"$tree"; then bad "rust-syntax depends on a slow engine crate"; fi
   grep -q 'ra_ap_syntax' <<<"$tree" || bad "rust-syntax does not depend on ra_ap_syntax (is the tree check reading the right crate?)"
 fi
@@ -77,11 +77,11 @@ done < <(find docs languages scenarios -name '*.md' -not -path '*/target/*' -not
 if [ "$fail" != 0 ]; then echo "check-all: static checks FAILED" >&2; exit 1; fi
 [ "${1:-}" = "--static" ] && { echo "static checks passed"; exit 0; }
 
-(cd core && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
+(cd core && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked)
 
 langs=${1:-$(scripts/list-languages.sh)}
 for l in $langs; do
   (cd "languages/$l" && cargo fmt --check &&
-    cargo clippy -p "$l-syntax" -p "$l-analysis" -p "$l-cli" --all-targets -- -D warnings &&
-    cargo test) && scripts/check-proofs.sh "$l"
+    cargo clippy --locked -p "$l-syntax" -p "$l-analysis" -p "$l-cli" --all-targets -- -D warnings &&
+    cargo test --locked) && scripts/check-proofs.sh "$l"
 done

@@ -57,9 +57,9 @@ jobs:
           key: core
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
-      - run: cargo doc --no-deps
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: cargo doc --locked --no-deps
         env: { RUSTDOCFLAGS: "-D warnings" }
 
   # A language's fast crate: `cargo test -p <lang>-syntax` never compiles the type checker.
@@ -82,8 +82,8 @@ jobs:
           key: ${{ matrix.lang }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
-      - run: cargo clippy -p ${{ matrix.lang }}-syntax --all-targets -- -D warnings
-      - run: cargo test -p ${{ matrix.lang }}-syntax
+      - run: cargo clippy --locked -p ${{ matrix.lang }}-syntax --all-targets -- -D warnings
+      - run: cargo test --locked -p ${{ matrix.lang }}-syntax
 
   # The slow crates, and the scenarios for that language.
   analysis:
@@ -104,9 +104,9 @@ jobs:
           workspaces: "languages/${{ matrix.lang }}"
           key: ${{ matrix.lang }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: cargo clippy -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli --all-targets -- -D warnings
+      - run: cargo clippy --locked -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli --all-targets -- -D warnings
       # --no-fail-fast: a failing test binary must not hide the results of the others
-      - run: cargo test --no-fail-fast -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli
+      - run: cargo test --locked --no-fail-fast -p ${{ matrix.lang }}-analysis -p ${{ matrix.lang }}-cli
       # compile-fail proofs sit behind a feature, so `cargo test` above does not see them (scripts/check-proofs.sh says why)
       - run: ../../scripts/check-proofs.sh ${{ matrix.lang }}
         shell: bash
