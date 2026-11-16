@@ -61,7 +61,8 @@ pub fn parse_order(raw: &str) -> Order {
 |---|---|
 | `///` lines, the last one empty (`///`) | insert `/// <label>: <text>` after it |
 | `///` lines, the last one not empty | insert an empty `///` line, then the marker. In Markdown a line directly under a paragraph joins it, so without the empty line rustdoc would glue the marker to the user's sentence |
-| a `/** */` block as its **last** doc comment | the marker goes on a line of its own before `*/`, with the block's own ` * ` prefix. TypeScript's JSDoc code does this text work; this is its second user, so the helper moves to `analyzer-core::edit` now (rule of two), with TypeScript's tests moving with it |
+| a `/** */` block as its **last** doc comment | the marker goes on a line of its own before `*/`, with the block's own ` * ` prefix. TypeScript's JSDoc code does this text work; this is its second user, so the helper moves to `analyzer-core::edit` now (rule of two), with TypeScript's tests moving with it. **An empty ` *` line goes first**, for row 2's reason (rustdoc would glue the marker to the sentence above), unless the line above is already empty (` *`, blanks only) or is a bare `/**`. TypeScript keeps its shape (no empty line, as tagged): the choice is a parameter of `block_marker::plan`. Decided 2026-11-16 (RS2 step 3 review) |
+| a one-line block as the last doc comment (`/** Summary. */`) | `UnsafeDocComment` (§5). TypeScript rewrites such a block into several lines; Rust does not, because doc blocks are rare in Rust and a rewrite edits the user's text. Revisit if a project shows them |
 | doc comments and attributes interleaved (`/// a` · `#[inline]` · `/// b`) | after the **last doc fragment**, wherever it stands |
 | a `#[doc = …]` attribute as the last doc fragment (`/// a` · `#[doc = "b"]`, or only `#[doc = include_str!("x.md")]`) | after it, an empty `///` line first. A `#[doc = …]` attribute is a doc fragment for **placing** (rustdoc joins it with the `///` lines, in source order) but never **read** (§3). Put before it, the marker would be the item's rustdoc summary (`include_str!`) or glue to its first sentence (`ID: x` · `b` is one Markdown paragraph). `#[doc(hidden)]` and other `doc(…)` lists are not fragments. The attributes are not edited. Changed 2026-11-16 (RS2 step 2 review; the step-2 code put the line above the first attribute) |
 | no doc at all | one new line `/// <label>: <text>` directly above the item's first attribute or keyword, with the item's indentation |
@@ -82,11 +83,13 @@ Two side effects to state in `languages/rust/docs/markers.md`, because users wil
 | `AlreadyMarked { existing }` | §3 found one |
 | `NotOnOwnLine` | something other than blanks stands before the item on its first line (`fn a() {} fn b() {}`, generated code). Never reformat the user's code to make room |
 | `SyntaxError` | a parse error overlaps the item or its doc comments (`Def::syntax_error`); or the file has any parse error and the edit, applied to a copy and outlined again, does not give back the same defs with the marker on this one and every other def's marker unchanged. Found in step 2: an unfinished item with no name above a clean def (`struct` · `enum Complete {}`) takes the new doc line, though `Complete` touches no error. The trial costs one parse, only in a file with errors; a clean file needs none (the round trip proves it) |
-| `UnsafeDocComment` | the last doc comment is a `/** */` block we cannot edit safely (closed on its opening line, a line without its `*`) |
+| `UnsafeDocComment` | the last doc fragment is a `/** */` block we cannot edit safely: closed on its opening line, a middle line without its `*`, or text before the `*/` on the closing line (core's `block_marker::plan` answers `None`) |
 | `InvalidText` | the text is empty, starts or ends with a blank, or has a line break, or `*/` |
 | `UnknownDef` | the `Def` is not one this text's outline has (a stale outline) |
-| `DetachedDocComment` | **not built**: S-RS4 found no shape that produces it in 0.0.358 (an outer doc line above an item is always the item's child, §3). Kept in this table only until a case appears; if none does by RS2 step 3, delete the row |
 | `PlacementNotSupported` | any placement but `Docstring` |
+
+`DetachedDocComment` was in this table until RS2 step 3 and is deleted: S-RS4 found no shape that produces it in 0.0.358 (an outer doc line
+above an item is always the item's child, §3), and no fixture of steps 1–3 did either.
 
 **Order of the checks**, as in Python (`python-syntax/src/edit.rs`) and TypeScript: `PlacementNotSupported`, `UnknownDef`, `InvalidText`,
 `SyntaxError`, `AlreadyMarked`, then the shape (`NotOnOwnLine`, `UnsafeDocComment`). `AlreadyMarked` carries a fact the caller uses (the
