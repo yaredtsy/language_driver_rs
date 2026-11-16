@@ -114,7 +114,7 @@ fn place(text: &str, item: &Item, own: u32, label: &str, marker_text: &str) -> R
             // a block as the last doc comment: the marker goes on a line of its own before its `*/`, in the block's own style. One that cannot
             // be edited safely (closed on its opening line, a line without its `*`, text on the closing line) is not touched
             if comment.text.starts_with("/**") {
-                return block_marker::plan(text, comment.range, label, marker_text, false)
+                return block_marker::plan(text, comment.range, label, marker_text, false, true)
                     .ok_or(Skip::UnsafeDocComment);
             }
             let empty = comment

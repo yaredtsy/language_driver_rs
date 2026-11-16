@@ -266,6 +266,10 @@ pub mod block_marker {
     /// the first block tag when `block_tags` is true (a line starting with `@`, the way JSDoc has them; the marker ends the description),
     /// else before the closing line. The line has the block's own ` * ` prefix and indentation and the block's own line ending.
     ///
+    /// With `blank_line` an empty ` *` line goes first, so that a Markdown renderer does not glue the marker to the sentence above it, unless
+    /// the line above the marker is already empty (` *`, blanks only) or is a bare `/**`. TypeScript's JSDoc has no such need and passes
+    /// `false`.
+    ///
     /// `None` when the block cannot be edited safely, and nothing is guessed: the text does not fit a line (`comment_marker::fits_a_line`),
     /// the block is closed on its opening line (the caller may rewrite it, or not), its closing `*/` has other text on its line, a middle
     /// line has no `*`, or (with `block_tags`) a tag stands on the opening line.
@@ -275,6 +279,7 @@ pub mod block_marker {
         label: &str,
         marker_text: &str,
         block_tags: bool,
+        blank_line: bool,
     ) -> Option<Edit> {
         if !comment_marker::fits_a_line(marker_text) {
             return None;
@@ -309,10 +314,20 @@ pub mod block_marker {
             }
         }
         let star_indent = star_indent.unwrap_or_else(|| leading_blanks(at(last)));
-        let insert_at = lines[tag_line.unwrap_or(last)].start;
+        let before = tag_line.unwrap_or(last);
+        let insert_at = lines[before].start;
+        // the line above the marker: empty after its star, or a bare `/**`
+        let above = at(before - 1).trim();
+        let paragraph_ends =
+            above == "/**" || above.strip_prefix('*').unwrap_or(above).trim().is_empty();
+        let separator = if blank_line && !paragraph_ends {
+            format!("{star_indent}*{eol}")
+        } else {
+            String::new()
+        };
         Some(Edit::insert(
             insert_at,
-            format!("{star_indent}* {label}: {marker_text}{eol}"),
+            format!("{separator}{star_indent}* {label}: {marker_text}{eol}"),
         ))
     }
 }
@@ -559,9 +574,18 @@ mod tests {
 
     /// The block `text` holds, and the text after a marker `m1` is planned in it and applied.
     fn planned_in(text: &str, tags: bool) -> Option<String> {
+        planned(text, tags, false)
+    }
+
+    /// As `planned_in`, with the empty line before the marker that Rust asks for.
+    fn planned_with_blank_line(text: &str) -> Option<String> {
+        planned(text, false, true)
+    }
+
+    fn planned(text: &str, tags: bool, blank_line: bool) -> Option<String> {
         let start = text.find("/**").unwrap() as u32;
         let end = text.find("*/").unwrap() as u32 + 2;
-        let edit = block_marker::plan(text, Span::new(start, end), "ID", "m1", tags)?;
+        let edit = block_marker::plan(text, Span::new(start, end), "ID", "m1", tags, blank_line)?;
         apply(text, &[edit])
     }
 
@@ -589,6 +613,81 @@ mod tests {
         assert_eq!(
             planned_in("/**\n * a\n *\n */\n", false).as_deref(),
             Some("/**\n * a\n *\n * ID: m1\n */\n")
+        );
+    }
+
+    #[test]
+    fn the_empty_line_goes_before_the_marker_when_the_paragraph_is_not_over() {
+        // text above: an empty ` *` line first, with the block's own prefix
+        assert_eq!(
+            planned_with_blank_line("/**\n * Parses.\n */\nfn f() {}\n").as_deref(),
+            Some("/**\n * Parses.\n *\n * ID: m1\n */\nfn f() {}\n")
+        );
+        assert_eq!(
+            planned_with_blank_line("    /**\n     * Parses.\n     */\n").as_deref(),
+            Some("    /**\n     * Parses.\n     *\n     * ID: m1\n     */\n")
+        );
+        assert_eq!(
+            planned_with_blank_line("/**\r\n * Parses.\r\n */\r\n").as_deref(),
+            Some("/**\r\n * Parses.\r\n *\r\n * ID: m1\r\n */\r\n")
+        );
+        // text on the opening line is text above too
+        assert_eq!(
+            planned_with_blank_line("/** Parses.\n */\n").as_deref(),
+            Some("/** Parses.\n *\n * ID: m1\n */\n")
+        );
+    }
+
+    #[test]
+    fn no_empty_line_when_the_line_above_is_empty_or_a_bare_opening() {
+        // already ` *`, with blanks after the star too
+        assert_eq!(
+            planned_with_blank_line("/**\n * Parses.\n *\n */\n").as_deref(),
+            Some("/**\n * Parses.\n *\n * ID: m1\n */\n")
+        );
+        assert_eq!(
+            planned_with_blank_line("/**\n * Parses.\n *   \n */\n").as_deref(),
+            Some("/**\n * Parses.\n *   \n * ID: m1\n */\n")
+        );
+        // a line with no star at all, blank
+        assert_eq!(
+            planned_with_blank_line("/**\n * Parses.\n\n */\n").as_deref(),
+            Some("/**\n * Parses.\n\n * ID: m1\n */\n")
+        );
+        // a bare `/**` above: the block starts with the marker
+        assert_eq!(
+            planned_with_blank_line("/**\n */\n").as_deref(),
+            Some("/**\n * ID: m1\n */\n")
+        );
+        assert_eq!(
+            planned_with_blank_line("/**  \n */\n").as_deref(),
+            Some("/**  \n * ID: m1\n */\n")
+        );
+    }
+
+    #[test]
+    fn the_empty_line_is_asked_for_and_never_the_default() {
+        let text = "/**\n * Parses.\n */\n";
+        assert_eq!(
+            planned_in(text, false).as_deref(),
+            Some("/**\n * Parses.\n * ID: m1\n */\n"),
+            "TypeScript's shape"
+        );
+        assert_eq!(
+            planned_with_blank_line(text).as_deref(),
+            Some("/**\n * Parses.\n *\n * ID: m1\n */\n")
+        );
+        // with tags, the line above the marker is the one above the first tag
+        let tagged = "/**\n * Doc.\n * @param x\n */\n";
+        let edit = |blank| {
+            let block = Span::new(0, tagged.find("*/").unwrap() as u32 + 2);
+            let e = block_marker::plan(tagged, block, "ID", "m1", true, blank).unwrap();
+            apply(tagged, &[e]).unwrap()
+        };
+        assert_eq!(edit(false), "/**\n * Doc.\n * ID: m1\n * @param x\n */\n");
+        assert_eq!(
+            edit(true),
+            "/**\n * Doc.\n *\n * ID: m1\n * @param x\n */\n"
         );
     }
 
@@ -622,7 +721,7 @@ mod tests {
         let block = Span::new(0, text.find("*/").unwrap() as u32 + 2);
         for bad in ["", " x", "a\nb", "a*/b"] {
             assert_eq!(
-                block_marker::plan(text, block, "ID", bad, false),
+                block_marker::plan(text, block, "ID", bad, false, true),
                 None,
                 "{bad:?}"
             );
@@ -633,7 +732,7 @@ mod tests {
     fn a_planned_block_marker_is_read_back_and_nothing_else_changed() {
         let text = "/**\n * Parses.\n * @returns x\n */\n";
         let block = Span::new(0, text.len() as u32 - 1);
-        let edit = block_marker::plan(text, block, "ID", "m1", true).unwrap();
+        let edit = block_marker::plan(text, block, "ID", "m1", true, false).unwrap();
         let out = apply(text, std::slice::from_ref(&edit)).unwrap();
         assert_eq!(block_marker::read(&out, "ID").as_deref(), Some("m1"));
         let (a, b) = (

@@ -240,7 +240,7 @@ fn plan_in_block(text: &str, block: Span, label: &str, marker_text: &str) -> Res
     if !body.contains(['\n', '\r']) {
         return one_line(text, block, body, label, marker_text);
     }
-    block_marker::plan(text, block, label, marker_text, true).ok_or(Skip::UnsafeDocComment)
+    block_marker::plan(text, block, label, marker_text, true, false).ok_or(Skip::UnsafeDocComment)
 }
 
 fn one_line(

@@ -248,10 +248,11 @@ fn a_def_of_another_text_is_unknown() {
 }
 
 #[test]
-fn row_3_a_block_as_the_last_doc_comment_gets_the_marker_before_its_closing_line() {
+fn row_3_a_block_gets_an_empty_line_and_the_marker_before_its_closing_line() {
+    // text above: rustdoc would glue the marker to the sentence, so an empty ` *` line goes first
     assert_eq!(
         marked("/**\n * Parses.\n */\nfn f() {}\n", "f"),
-        "/**\n * Parses.\n * ID: m1\n */\nfn f() {}\n"
+        "/**\n * Parses.\n *\n * ID: m1\n */\nfn f() {}\n"
     );
     // the block's own prefix and indentation, whatever they are
     assert_eq!(
@@ -259,21 +260,46 @@ fn row_3_a_block_as_the_last_doc_comment_gets_the_marker_before_its_closing_line
             "impl S {\n    /**\n     * Parses.\n     */\n    fn m() {}\n}\n",
             "S::m"
         ),
-        "impl S {\n    /**\n     * Parses.\n     * ID: m1\n     */\n    fn m() {}\n}\n"
+        "impl S {\n    /**\n     * Parses.\n     *\n     * ID: m1\n     */\n    fn m() {}\n}\n"
     );
     assert_eq!(
         marked("/**\r\n * Parses.\r\n */\r\nfn f() {}\r\n", "f"),
-        "/**\r\n * Parses.\r\n * ID: m1\r\n */\r\nfn f() {}\r\n"
+        "/**\r\n * Parses.\r\n *\r\n * ID: m1\r\n */\r\nfn f() {}\r\n"
     );
     // rustdoc has no block tags: a line that starts with `@` is text like any other
     assert_eq!(
         marked("/**\n * @a\n * b\n */\nfn f() {}\n", "f"),
-        "/**\n * @a\n * b\n * ID: m1\n */\nfn f() {}\n"
+        "/**\n * @a\n * b\n *\n * ID: m1\n */\nfn f() {}\n"
     );
     // an attribute after the block does not change where it goes
     assert_eq!(
         marked("/**\n * a\n */\n#[inline]\nfn f() {}\n", "f"),
-        "/**\n * a\n * ID: m1\n */\n#[inline]\nfn f() {}\n"
+        "/**\n * a\n *\n * ID: m1\n */\n#[inline]\nfn f() {}\n"
+    );
+}
+
+#[test]
+fn row_3_no_empty_line_when_the_line_above_is_already_empty() {
+    // ` *` above: the paragraph is over
+    assert_eq!(
+        marked("/**\n * Parses.\n *\n */\nfn f() {}\n", "f"),
+        "/**\n * Parses.\n *\n * ID: m1\n */\nfn f() {}\n"
+    );
+    assert_eq!(
+        marked("/**\n * Parses.\n *   \n */\nfn f() {}\n", "f"),
+        "/**\n * Parses.\n *   \n * ID: m1\n */\nfn f() {}\n"
+    );
+}
+
+#[test]
+fn row_3_a_bare_opening_above_gets_the_marker_as_the_first_line() {
+    assert_eq!(
+        marked("/**\n */\nfn f() {}\n", "f"),
+        "/**\n * ID: m1\n */\nfn f() {}\n"
+    );
+    assert_eq!(
+        marked("    /**\n     */\n    fn f() {}\n", "f"),
+        "    /**\n     * ID: m1\n     */\n    fn f() {}\n"
     );
 }
 
@@ -303,7 +329,7 @@ fn only_the_last_doc_comment_decides() {
     // a block after a line is the last one, and decides
     assert_eq!(
         marked("/// a\n/**\n * b\n */\nfn f() {}\n", "f"),
-        "/// a\n/**\n * b\n * ID: m1\n */\nfn f() {}\n"
+        "/// a\n/**\n * b\n *\n * ID: m1\n */\nfn f() {}\n"
     );
     assert_eq!(
         skip("/// a\n/** b */\nfn f() {}\n", "f"),
