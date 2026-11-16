@@ -23,8 +23,10 @@ pub fn header_marker(text: &str, style: MarkerStyle<'_>) -> Option<String>;
 pub fn plan_header_marker(text: &str, marker: &str, style: MarkerStyle<'_>) -> Result<Edit, Skip>;
 ```
 
-A library plans an edit and never writes a file or invents the marker text (rule 2). **[check]** the exact parameter order against
-`typescript-syntax/src/lib.rs` when writing it: one shape across languages is worth more than a nicer one here.
+A library plans an edit and never writes a file or invents the marker text (rule 2). **[check] ✅ 2026-11-16:** the order matches
+`typescript-syntax/src/lib.rs` (`text`, dialect/edition, `def`, marker text, `style`; the header pair takes no dialect). Name the parameter
+`marker_text` as TypeScript does, not `marker`, which is also the name of the reading function. One shape across languages is worth more
+than a nicer one here.
 
 ## 2. Where the marker lives
 

@@ -203,7 +203,7 @@ reference-counted values), it is rule 4, and it keeps an engine bump inside one 
 | 3 | impls and traits: the naming rows of §3, the type text of §3.1 | snapshots; `languages/rust/docs/qualnames.md` written **before** the code, reviewed |
 | 4 | items in function bodies, in `const _`, in closures and blocks | snapshots |
 | 5 | occurrence; `syntax_error`; the cut test; the repo's-own-source test | all of §7 |
-| 6 | `rust-cli outline <file>` | prints the outline of a file of this repo |
+| 6 | `rust-cli outline <file> [--label L] [--edition 2015\|2018\|2021\|2024]` (default `Edition::LATEST`: the CLI reads no `Cargo.toml`) | prints the outline of a file of this repo. ✅ 8d38b5b |
 
 Q-RS1 is answered (D29): step 3 builds §3 and §3.1 as written. Nothing is tagged until RS2.
 
