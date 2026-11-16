@@ -30,7 +30,7 @@ impl Project {
         if !file.is_file() {
             return Err(OpenError::Load(format!("{}: not a file", file.display())));
         }
-        if !file.starts_with(&root) {
+        if paths::relative(&root, &file).is_none() {
             return Err(OpenError::Load(format!(
                 "{}: not inside the root {}",
                 file.display(),

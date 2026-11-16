@@ -44,13 +44,22 @@ pub(crate) fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
+/// Where a test may make folders: cargo's scratch folder under `target/` for an integration test, and the same place by name for a unit test (cargo
+/// sets `CARGO_TARGET_TMPDIR` only for integration tests). Inside the repo's folder tree on purpose: `rust-toolchain.toml` still selects the toolchain.
+pub(crate) fn tmp_root() -> PathBuf {
+    match option_env!("CARGO_TARGET_TMPDIR") {
+        Some(dir) => PathBuf::from(dir),
+        None => Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
+    }
+}
+
 /// A fresh copy of `tests/fixtures/<fixture>` under `target/`, named `name`. A load that writes into the project then leaves nothing in the
 /// repo, and the copy is inside the repo's folder tree, so `rust-toolchain.toml` still selects the toolchain.
 pub(crate) fn copy_of_fixture(fixture: &str, name: &str) -> PathBuf {
     let from = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures")
         .join(fixture);
-    let to = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let to = tmp_root().join(name);
     let _ = std::fs::remove_dir_all(&to);
     copy_dir(&from, &to);
     to

@@ -9,11 +9,10 @@ use crate::{paths, toolchain};
 use ra_ap_ide_db::RootDatabase;
 use ra_ap_load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace};
 use ra_ap_project_model::{CargoConfig, ProjectManifest, ProjectWorkspace, RustLibSource};
-use ra_ap_vfs::{AbsPathBuf, Vfs};
+use ra_ap_vfs::{AbsPathBuf, Vfs, VfsPath};
 
 /// A loaded workspace: the engine's database and the table of its files. It owns both, so dropping it frees everything.
 pub(crate) struct Loaded {
-    #[expect(dead_code, reason = "read by the walks of RS3 step 3 and RS4")]
     db: RootDatabase,
     vfs: Vfs,
     /// The project had no `Cargo.lock` and has one now: cargo wrote it into the user's folder (the toolchain does not honour the redirect, §5 option A).
@@ -34,15 +33,28 @@ impl Loaded {
             .vfs
             .iter()
             .filter_map(|(_, path)| {
-                let path: &Path = path.as_path()?.as_ref();
-                if path.extension()? != "rs" {
+                if path.as_path()?.extension()? != "rs" {
                     return None;
                 }
-                paths::relative(&self.root, path)
+                self.root_relative(path)
             })
             .collect();
         files.sort();
         files
+    }
+
+    /// The one place a path the engine reports becomes a path relative to the root, with `/`: `None` for a path that is not a file on disk
+    /// (a virtual path), not under the root, or not UTF-8. Compared as engine text (`paths::relative`), never with `Path::starts_with`.
+    pub(super) fn root_relative(&self, path: &VfsPath) -> Option<String> {
+        paths::relative(&self.root, path.as_path()?.as_ref())
+    }
+
+    pub(super) fn db(&self) -> &RootDatabase {
+        &self.db
+    }
+
+    pub(super) fn vfs(&self) -> &Vfs {
+        &self.vfs
     }
 }
 
