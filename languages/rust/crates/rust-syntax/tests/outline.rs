@@ -1,10 +1,15 @@
-//! The shared checks on every fixture: the outline equals its reviewed snapshot, and nothing panics on a cut file. `plan_marker` is RS2's.
+//! The shared checks on every fixture: the outline equals its reviewed snapshot, nothing panics on a cut file, and a marker planned on each def
+//! and applied gives the same defs, each with its marker.
 
 use std::collections::BTreeMap;
 use std::fs;
 
-use analyzer_testkit::syntax::{Subject, cut_every_50_bytes, snapshot_every_fixture};
-use rust_syntax::{Def, Edition, MarkerStyle, Outline, Placement, marker, occurrences, outline};
+use analyzer_testkit::syntax::{
+    Subject, cut_every_50_bytes, marker_round_trip, snapshot_every_fixture,
+};
+use rust_syntax::{
+    Def, Edition, MarkerStyle, Outline, Placement, marker, occurrences, outline, plan_marker,
+};
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
@@ -15,14 +20,14 @@ fn outline_2024(text: &str) -> Outline {
     outline(text, Edition::E2024, STYLE)
 }
 
-/// RS2 builds the marker edit; until then no def can be marked.
-fn no_marker_yet(_: &str, _: &Def, _: &str) -> Option<analyzer_core::edit::Edit> {
-    None
+/// The testkit's round trip wants an `Option`: a def that is refused (a `Skip`) is left alone.
+fn plan(text: &str, def: &Def, marker_text: &str) -> Option<analyzer_core::edit::Edit> {
+    plan_marker(text, Edition::E2024, def, marker_text, STYLE).ok()
 }
 
 const RS: Subject = Subject {
     outline: outline_2024,
-    plan_marker: no_marker_yet,
+    plan_marker: plan,
     fixtures: "tests/fixtures",
     snapshots: "tests/snapshots",
 };
@@ -35,6 +40,37 @@ fn every_fixture_equals_its_snapshot() {
 #[test]
 fn a_cut_file_never_panics() {
     cut_every_50_bytes(&RS);
+}
+
+/// Plan, apply, outline again: the same defs, the def has its marker, no other def changed, and a second plan is refused (RS2 §7).
+#[test]
+fn a_marker_planned_on_every_def_of_every_fixture_round_trips() {
+    marker_round_trip(&RS);
+}
+
+/// RS2 §7: the cut test, planning a marker on every def of every cut. Never panics, and an edit that is planned applies.
+#[test]
+fn planning_on_a_cut_file_never_panics() {
+    for entry in fs::read_dir("tests/fixtures").unwrap() {
+        let path = entry.unwrap().path();
+        let text = fs::read_to_string(&path).unwrap();
+        for at in (0..=text.len())
+            .step_by(50)
+            .filter(|&at| text.is_char_boundary(at))
+        {
+            let part = &text[..at];
+            for def in &outline_2024(part).defs {
+                if let Ok(edit) = plan_marker(part, Edition::E2024, def, "m1", STYLE) {
+                    assert!(
+                        analyzer_core::edit::apply(part, &[edit]).is_some(),
+                        "{} cut at {at}: the edit for {} does not apply",
+                        path.display(),
+                        def.qualname
+                    );
+                }
+            }
+        }
+    }
 }
 
 /// The cut test of the testkit looks at the defs. This one looks at the errors a cut file reports: inside the text, and a def that
@@ -242,4 +278,17 @@ fn the_label_is_a_parameter() {
             .as_deref(),
         Some("n1")
     );
+}
+
+/// RS2 §4: every def of `plan_doc_shapes.rs` is unmarked and has a row, so every one is planned: the round trip meets each shape.
+#[test]
+fn every_row_of_the_plan_fixture_is_planned() {
+    let text = fs::read_to_string("tests/fixtures/plan_doc_shapes.rs").unwrap();
+    let defs = outline_2024(&text).defs;
+    assert!(defs.len() >= 12, "{} defs", defs.len());
+    for def in &defs {
+        assert!(def.marker.is_none(), "{} is marked already", def.qualname);
+        let planned = plan_marker(&text, Edition::E2024, def, "m1", STYLE);
+        assert!(planned.is_ok(), "{}: {planned:?}", def.qualname);
+    }
 }

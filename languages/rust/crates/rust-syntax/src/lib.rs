@@ -15,7 +15,7 @@ mod marker;
 mod outline;
 mod sem;
 
-pub use analyzer_core::edit::{MarkerStyle, Placement};
+pub use analyzer_core::edit::{Edit, MarkerStyle, Placement};
 pub use analyzer_core::outline::{Def, DefKind, Outline, SyntaxError};
 pub use analyzer_core::text::Span;
 
@@ -63,3 +63,69 @@ pub fn marker(text: &str, edition: Edition, def: &Def, style: MarkerStyle<'_>) -
         .find(|d| d.qualname == def.qualname && d.range == def.range)?
         .marker
 }
+
+/// The edit that puts `marker_text` on this def, or why it cannot be done (RS2 §4, §5). Nothing is written: the edit is for the caller to
+/// apply. `def` must come from the outline of this same text.
+pub fn plan_marker(
+    text: &str,
+    edition: Edition,
+    def: &Def,
+    marker_text: &str,
+    style: MarkerStyle<'_>,
+) -> Result<Edit, Skip> {
+    marker::plan(text, edition, def, marker_text, style)
+}
+
+/// Why a marker was not planned. Match on the variant to act on it; `to_string()` gives the reason as a sentence a person can read, for an
+/// editor to show next to the def.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Skip {
+    /// The def already carries a marker.
+    AlreadyMarked { existing: String },
+    /// Something other than blanks stands before the def on its first line (`fn a() {} fn b() {}`, generated code). Never reformat the
+    /// user's code to make room.
+    NotOnOwnLine,
+    /// A parse error overlaps the def or its doc comments; or the file has one, and the marker, written, would not be read back from this
+    /// def (an unfinished item above it takes the new doc line).
+    SyntaxError,
+    /// The last doc comment is a `/** */` block that cannot be edited safely.
+    UnsafeDocComment,
+    /// The marker text is empty, starts or ends with a blank (it would not read back the same), has a line break, or contains `*/`.
+    InvalidText,
+    /// The text has no def with this qualname and range: the def comes from the outline of another text (an older version of the file).
+    /// Its offsets are not trusted: outline the text again.
+    UnknownDef,
+    /// The style asks for a placement this analyzer does not build.
+    PlacementNotSupported,
+}
+
+impl std::fmt::Display for Skip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let reason = match self {
+            Skip::AlreadyMarked { existing } => {
+                return write!(f, "the definition already has a marker: {existing}");
+            }
+            Skip::NotOnOwnLine => {
+                "the definition does not start on a line of its own, and code is never reformatted to make room"
+            }
+            Skip::SyntaxError => {
+                "a syntax error overlaps the definition or the doc comments above it, or is next to it, and a marker written there would not \
+                 be read back from the definition"
+            }
+            Skip::UnsafeDocComment => {
+                "the last doc comment of the definition is a `/** */` block that cannot be edited safely"
+            }
+            Skip::InvalidText => {
+                "the marker text is empty, starts or ends with a space, has a line break, or contains `*/`"
+            }
+            Skip::UnknownDef => {
+                "the definition was not found in this text: the file changed since it was outlined"
+            }
+            Skip::PlacementNotSupported => "this marker placement is not supported for Rust",
+        };
+        f.write_str(reason)
+    }
+}
+
+impl std::error::Error for Skip {}

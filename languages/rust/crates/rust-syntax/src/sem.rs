@@ -45,9 +45,17 @@ pub(crate) struct Item {
     /// For an item of an `impl`: the header that names it. An `impl` is not a def, so it is not in the list; its items are, and this
     /// is what their qualname is built from (`docs/qualnames.md`, I1 to I12).
     pub(crate) impl_head: Option<ImplHead>,
-    /// The item's own outer doc comments, as written (`/// a`, `/** b */`), in source order. An inner one (`//!`) belongs to the item
-    /// around it, and `#[doc = "…"]` is an attribute: neither is here (RS2 §3). A `\r` before a line break is still in the text.
-    pub(crate) docs: Vec<String>,
+    /// The item's own outer doc comments, in source order. An inner one (`//!`) belongs to the item around it, and `#[doc = "…"]` is an
+    /// attribute: neither is here (RS2 §3).
+    pub(crate) docs: Vec<DocComment>,
+}
+
+/// One outer doc comment of an item, as written.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct DocComment {
+    /// `/// a` or `/** b */`. A `\r` before a line break is still in the text.
+    pub(crate) text: String,
+    pub(crate) range: Span,
 }
 
 /// An impl header, read from its tokens only. `where` clauses, the impl's own generics and its keywords are not part of it.
@@ -318,7 +326,10 @@ fn named<N: AstNode + HasName + HasAttrs>(
         docs: node
             .doc_comments()
             .filter(|doc| doc.kind() == AttrKind::Outer)
-            .map(|doc| doc.text_with_markers().to_owned())
+            .map(|doc| DocComment {
+                text: doc.text_with_markers().to_owned(),
+                range: span(doc.syntax().text_range()),
+            })
             .collect(),
     })
 }

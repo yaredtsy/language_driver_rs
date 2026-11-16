@@ -13,12 +13,21 @@ use crate::marker;
 use crate::sem::{self, ImplHead, Item, ItemKind};
 
 pub(crate) fn outline(text: &str, edition: Edition, style: MarkerStyle<'_>) -> Outline {
+    outline_with_items(text, edition, style).0
+}
+
+/// `outline`, and with it the items it was built from, in the order of `Outline::defs`: what planning an edit needs beyond a `Def`.
+pub(crate) fn outline_with_items(
+    text: &str,
+    edition: Edition,
+    style: MarkerStyle<'_>,
+) -> (Outline, Vec<Item>) {
     let mut outline = Outline::default();
     let parsed = sem::parse(text, edition);
-    for item in parsed.items {
+    for item in &parsed.items {
         // `sem` lists a parent before its children, so the parent's def is already there
         let parent = item.parent.map(|p| &outline.defs[p]);
-        let name = defined_name(&item);
+        let name = defined_name(item);
         // what stands in a function's body is named after the function, then `{fn}` (B1); `{fn}` cannot be an identifier
         let in_body = parent.is_some_and(|p| matches!(p.kind, DefKind::Function | DefKind::Method));
         let qualname = [
@@ -31,9 +40,9 @@ pub(crate) fn outline(text: &str, edition: Edition, style: MarkerStyle<'_>) -> O
         .flatten()
         .collect::<Vec<_>>()
         .join("::");
-        let mut def = Def::new(qualname, name, kind(&item), item.range, item.name_range);
+        let mut def = Def::new(qualname, name, kind(item), item.range, item.name_range);
         def.parent = item.parent;
-        def.params = item.params;
+        def.params = item.params.clone();
         def.marker = match style.placement {
             Placement::Docstring => marker::read(&item.docs, style.label),
             // a placement this analyzer does not build reads nothing
@@ -50,7 +59,7 @@ pub(crate) fn outline(text: &str, edition: Edition, style: MarkerStyle<'_>) -> O
         .into_iter()
         .map(|(range, message)| SyntaxError::new(range, message))
         .collect();
-    outline
+    (outline, parsed.items)
 }
 
 /// For each def of `outline`, how many defs before it have the same qualname: 0 for the first, 1 for the next (D18). A qualname is not
