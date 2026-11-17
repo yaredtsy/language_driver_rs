@@ -135,8 +135,12 @@ Fixture in step 7.
 
 At rungs 3 and 4 (no `std`, RS3 §6) `println!`, `vec!`, `format!`, `assert!` have no definition, so they do not expand: each is
 `macro_not_expanded`, and the calls written in their arguments are lost, counted, and explained by `warning_no_toolchain` (or
-`warning_cargo_failed`, `warning_no_manifest`, `warning_manifest_unreadable`). **[check]** in step 7: that an unexpanded macro call's
-arguments really give no site (the arguments are a token tree, not expressions) and that nothing is counted twice.
+`warning_cargo_failed`, `warning_no_manifest`, `warning_manifest_unreadable`). **Answered in step 7** (8355422): an unexpanded macro call's
+arguments give no site (they are a token tree) and no `unknown_*` reason; an unknown macro inside an unknown one is never met (one count);
+one in the arguments of a macro that expands is met in the expansion, once. **One count per written place** (decided in the step 7
+review): a macro that repeats its argument (`both!(unknown!(f()))`) meets the unknown call twice in its expansion, and it is counted once
+when the unexpanded call has a place in the file (the same rule as a repeated argument's site, below); one with no place in the file (in a
+project macro's body) is counted at each meeting, since each macro call that holds it is its own loss.
 
 The span is relative to the def's `range.start`, as core's `Site` wants. Two sites never share (start, end) and kind except `MacroBody`.
 
@@ -154,12 +158,17 @@ per request; the list is sorted by the span (start, end), so a callee name order
   for one in a disabled statement (there it is the inner `format_args_nl!` of a disabled `println!` that fails), and does not say which.
   Accepted cost: a macro that truly cannot expand inside an **enabled** `#[cfg]` statement is not counted. Over-counting every
   `#[cfg(windows)] println!` on a Mac would be the worse lie.
-- **Known gap, for step 7** ([check] with a fixture): a call written in a project macro's body **as an argument of an external macro**
-  (`macro_rules! wrap { () => { vec![g()] } }`) has no file range, and its innermost macro is `vec!` (external), so it is dropped, with no
-  count. The rule "the innermost macro decides" must ask *whose text the call is*: map the call's name up one expansion
-  (`hir_expand`'s `InMacroFile<SyntaxToken>::upmap_once`, `files.rs:369` in 0.0.358, reached through `ra_ap_hir`'s `InFile` types); if it lands in
-  the inner macro call's arguments, the decision goes one level out (to `wrap`, a project macro: a `MacroBody` site at `wrap!`). Until then
-  the case is one row of the policy table: lost.
+- **Whose text a call is (step 7, 8355422; was the known gap).** A call written in a project macro's body **as an argument of an external
+  macro** (`macro_rules! wrap { () => { vec![g()] } }`) has no file range, and its innermost macro is `vec!`. The walk keeps the macro calls
+  it is inside (`Level`: the expansion's id, its root, project or not, its `at`); `body_owner` maps the call's last token up one expansion
+  at a time (`InMacroFile<SyntaxToken>::upmap_once`, `Sem::upmap_once`) while it came from the **arguments** of the macro call that holds
+  it, and the macro whose **body** it is in decides: a `MacroBody` site at `wrap!`; at `nest_wrap!` through two project levels (the
+  outermost call written in the file); none for an external body (`println!`'s `_print`, where the mapping finds nothing). Only below the
+  outermost level: for a call written in a file the engine maps a body token to the macro's **definition**, and `original_range` has
+  already said "no place in the file". Probed in the review: `println!`, `assert!`, `format!` in a project macro's body, a project macro
+  written in `println!`'s arguments, `vec![vec![g()]]`: all give the call.
+- **Two calls of one target in one project macro's body are one edge** (`format!("{}{}", g(), g())` in a project macro: one `g`): they
+  share the `MacroBody` span, and a site has a target once. Accepted, as a repeated argument's one site.
 - **A file range is compared with its file** (fix asked in the review): `original_range_opt` returns a `FileRange`; the site is in the file
   only when that file is the def's own. A range in another file (a project macro defined in another module) is "no place in this body",
   never a span by offsets alone.
@@ -407,7 +416,7 @@ the whole crate.
 | 4 ✅ | **done** (f5bd90c step-3 changes, 9dc4a52, reviewed 2026-11-17: 21 entries in `tests/snapshots/trees/policy.txt`; probed on `core/`. Core's default render hides externals, unresolved and open answers: the `Breakdown` carries them, as in TypeScript. `rust-cli calls <dir> <file> --entry <qualname> [--id | --occurrence] [--graph] [--timing]`, `--entry` required, several matches listed and none picked, exit 2; warnings on stderr first). `calls.rs`: `impl Lang`, `call_graph` over `graph_within` (`Entry::File` → `None`), `Project::defs_named`, `finish` (the `Stats.language` table of §2, `skipped()` and `warning_*` included), `Breakdown`; `rust-cli calls` | the first trees; invariants; determinism; a graph of a load with a warning has its `warning_<code>` |
 | 5 ✅ | **done** (b4aed14, reviewed 2026-11-17: `tests/fixtures/policy/src/constructions.rs`, six trees in `tests/snapshots/trees/policy.txt`; probed: a union, a type alias of a struct and of an enum, `..base`, `..Default::default()`, a glob-imported variant, `Option::<u8>::Some`, and `core/`'s `RenderOptions` / `Mark` as entries; `core/`'s edge counts unchanged, 22 / 11 / 108 / 0). A struct, union or enum entry is `Root::Construct` with no `init`, a childless tree; a construction is not counted as an unwalked body (§5) | the construction fixtures, with a marked struct, tuple struct and enum shown by name |
 | 6 ✅ | **done** (719b1ad, reviewed 2026-11-17: `tests/fixtures/policy/src/passed.rs`, seven trees; step A takes a path in a value position that `resolve_path` says is a function, a tuple struct or variant, or `Self` of a tuple struct, never the callee of a call (parentheses looked through: `(f)(1)`), only from lowered code; `RawSite::is_passed` tells a `MacroBody` hand-over from a call. Probed: a hand-over in a project macro's body, `&helper`, `helper as fn()`, a struct field, an array, a return value; a macro-made and two derive-made functions handed over, counted `external_passed`; `core/` unchanged) | fixtures: named, as a method path, a constructor (counted, no edge), a local (no site) |
-| 7 | macros: what step 2 left (§3 "As built": a project macro's own call written as an external macro's argument, `upmap_once`), generated targets, built-in derives; the policy rows and counters for what step 2 built | fixtures; the counters; the two [check]s of §3 and §5 |
+| 7 ✅ | **done** (5cee903 `external_passed` label + `generated_handed_over` row, 8355422, reviewed 2026-11-17: `body_owner` + `upmap_once` close the `wrap!` gap; fixtures in `macros.rs`; ten trees; the §3 [check] answered; `macro_generated_target` counts calls to a project macro's function and a derive's methods once per call, `core/`'s 8 are all derives; `core/` unchanged, 22 / 11 / 108 / 0). Fix asked: one `macro_not_expanded` per written place (§3). Was: macros: what step 2 left (§3 "As built": a project macro's own call written as an external macro's argument, `upmap_once`), generated targets, built-in derives; the policy rows and counters for what step 2 built | fixtures; the counters; the two [check]s of §3 and §5 |
 | 8 | the wire and `rust-cli calls --wire [--merged]` | the wire snapshot |
 | 9 | scenarios (per-language trees, D30, one shared workspace), the oracle, no `std`, the real project | all of §8 |
 | 10 | `languages/rust/docs/policy.md`, one fixture named per row; `ENGINE.md` | reviewed |
