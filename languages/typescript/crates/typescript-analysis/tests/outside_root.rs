@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use typescript_analysis::{
-    Cancel, Entry, Graph, MarkerStyle, Options, Placement, Project, RenderOptions, StableDef,
-    WireOptions, WireStyle, breakdown, call_graph, wire,
+    Cancel, Entry, Graph, MarkerStyle, OpenError, Options, Placement, Project, RenderOptions,
+    Session, StableDef, WireOptions, WireStyle, breakdown, call_graph, wire,
 };
 
 mod common;
@@ -181,5 +181,66 @@ fn the_same_project_in_another_folder_gives_the_same_wire() {
 #[test]
 fn files_lists_only_what_is_under_the_root() {
     let project = Project::open(&app(), Path::new("src/main.ts")).unwrap();
+    assert_eq!(project.files(), ["src/local.ts", "src/main.ts"]);
+}
+
+fn entry_in(root: &Path, file: &str, qualname: &str) -> Option<Graph> {
+    let project = Project::open(root, Path::new("src/main.ts")).unwrap();
+    let entry = Entry {
+        qualname,
+        occurrence: 0,
+    };
+    call_graph(&project, file, &entry, &Options::new(STYLE), &Cancel::new())
+}
+
+#[test]
+fn a_def_in_a_file_outside_the_root_is_not_an_entry() {
+    assert!(entry_in(&app(), "../shared/lib.ts", "helper").is_none());
+    assert!(entry_in(&app(), "../shared/lib.ts", "Tool.run").is_none());
+}
+
+#[test]
+fn a_def_in_node_modules_is_not_an_entry() {
+    let root = fixture("node-modules-source");
+    assert!(entry_in(&root, "src/main.ts", "main").is_some());
+    assert!(entry_in(&root, "node_modules/lib/index.ts", "inside").is_none());
+}
+
+#[test]
+fn a_file_outside_the_root_does_not_open() {
+    let beside = Path::new("../shared/lib.ts");
+    assert_eq!(
+        Project::open(&app(), beside).err(),
+        Some(OpenError::OutsideRoot)
+    );
+    let absolute = fixture("outside-root/shared/lib.ts");
+    assert_eq!(
+        Project::open(&app(), &absolute).err(),
+        Some(OpenError::OutsideRoot)
+    );
+    // a folder whose name starts with the root's is not under it
+    assert_eq!(
+        Project::open(
+            &fixture("outside-root/app"),
+            &fixture("outside-root/app-x/f.ts")
+        )
+        .err(),
+        Some(OpenError::OutsideRoot)
+    );
+}
+
+#[test]
+fn a_session_with_a_file_outside_the_root_gives_the_same_error() {
+    let error = Session::open(&app(), Path::new("../shared/lib.ts"), Options::new(STYLE)).err();
+    assert_eq!(error, Some(OpenError::OutsideRoot));
+    assert_eq!(
+        OpenError::OutsideRoot.to_string(),
+        "the file is outside the root"
+    );
+}
+
+#[test]
+fn a_file_under_the_root_by_its_absolute_path_still_opens() {
+    let project = Project::open(&app(), &app().join("src/main.ts")).unwrap();
     assert_eq!(project.files(), ["src/local.ts", "src/main.ts"]);
 }

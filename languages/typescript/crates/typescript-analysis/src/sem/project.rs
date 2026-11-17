@@ -165,12 +165,15 @@ pub(super) fn find_owner(
 
 /// An engine path made relative to `root` (the config's name in `NotInProject`).
 pub(super) fn relative_to(root: &Path, engine_path: &str) -> String {
-    let root = to_engine_path(root);
-    engine_path
-        .strip_prefix(root.as_str())
-        .and_then(|rest| rest.strip_prefix('/'))
+    under_root(&to_engine_path(root), engine_path)
         .unwrap_or(engine_path)
         .to_owned()
+}
+
+/// The one rule for "under the root", for `relative_path`, `relative_to` and `Sem::open`: `path` with the root's engine spelling and then a `/` taken off
+/// its front, so `/a/root` is not a prefix of `/a/rootx/f.ts`. `None` when `path` is not under the root (or is the root itself).
+pub(super) fn under_root<'a>(root: &str, path: &'a str) -> Option<&'a str> {
+    path.strip_prefix(root)?.strip_prefix('/')
 }
 
 /// The path from the directory `root` to `file`, both in the engine's spelling: `src/main.ts` under it, `../shared/lib.ts` beside it. TypeScript's own

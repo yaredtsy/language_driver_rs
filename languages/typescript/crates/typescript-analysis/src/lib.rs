@@ -64,7 +64,8 @@ pub struct Project {
 impl Project {
     /// Loads the project that owns `file` (relative to `root`, or absolute): the nearest `tsconfig.json` or `jsconfig.json` above it,
     /// searching no higher than `root`. With none, an inferred project: `file` alone is the root and its imports pull in the rest. A
-    /// project that loads with type errors is not an error.
+    /// project that loads with type errors is not an error. A file that is not under `root` once `..` is resolved is [`OpenError::OutsideRoot`]:
+    /// project code is under the root (D33), and the tree of a file beside it would name the machine's paths.
     pub fn open(root: &Path, file: &Path) -> Result<Project, OpenError> {
         Ok(Project {
             sem: sem::Sem::open(root, file)?,
@@ -394,6 +395,9 @@ pub enum OpenError {
         /// person looking at "not in project" should look here first.
         skipped: Vec<String>,
     },
+    /// The file is not under the root (D33): project code is under the root, so a file beside it or above it has no tree. `file` is relative to the root
+    /// or absolute, and `..` in it is resolved before the check.
+    OutsideRoot,
 }
 
 impl fmt::Display for OpenError {
@@ -401,6 +405,7 @@ impl fmt::Display for OpenError {
         match self {
             OpenError::NoSuchFile => f.write_str("no such file"),
             OpenError::ConfigError(reason) => write!(f, "config error: {reason}"),
+            OpenError::OutsideRoot => f.write_str("the file is outside the root"),
             OpenError::NotInProject { config, skipped } if skipped.is_empty() => {
                 write!(f, "{config} does not include the file")
             }

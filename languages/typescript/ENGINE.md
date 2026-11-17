@@ -326,6 +326,12 @@ import (`../../shared/lib`), it is not walked, and a call into it is an `Externa
 `Stats.language["outside_root"]`. A `.d.ts` out there is `External` too and is not counted: it has no body. `Project::files()` lists project code only,
 relative to the root. Fixture `outside-root`, `tests/outside_root.rs`.
 
+Two checks keep that true at the door (step R3): `Sem::entry` answers `None` unless the file is project code (a file outside the root and a file in
+`node_modules` have no entry, so `describe`'s `expect` holds), and `Sem::open` answers `OpenError::OutsideRoot` for a file that is not under the root once
+`join` and `canonicalize` have resolved any `..`. Both use `project::under_root`, the one rule `relative_path` uses (the root's engine spelling, then a
+`/`), so open and the analysis cannot disagree. Fixture `node-modules-source` holds a `.ts` file under `node_modules` that the program loads
+(`"types": "index.ts"`), for the entry test.
+
 `Sem::package_of` names the package for an `External` edge: the first segment after the **last** `node_modules/` (pnpm nests them), `@scope/pkg` with
 its scope, **`@types/x` as `x` and `@types/scope__x` as `@scope/x`** (the package a types package describes: a policy, not an engine fact), and
 `typescript:lib` for every bundled library. `None` for the project's own files. Fixture `with-node-modules` covers a plain package, a scoped one and an

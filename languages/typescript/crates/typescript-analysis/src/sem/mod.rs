@@ -50,6 +50,7 @@ use collect::{Body, Collector};
 pub(crate) use handed::Handed;
 use project::{
     INFERRED, Owner, find_owner, inferred_config, place_between, relative_to, to_engine_path,
+    under_root,
 };
 pub(crate) use resolve::{Init, Resolved};
 pub(crate) use uncovered::Uncovered;
@@ -196,7 +197,8 @@ pub struct Sem {
 impl Sem {
     /// Loads the program of the `tsconfig.json` (or `jsconfig.json`) nearest above `file`, looking no further up than `root`; with none, an
     /// inferred project built from `file` alone.
-    /// `file` is relative to `root`, or absolute. A program that loads with type errors is not an error.
+    /// `file` is relative to `root`, or absolute, and must be under `root` once `..` is resolved (`OpenError::OutsideRoot` otherwise: D33). A program that loads
+    /// with type errors is not an error.
     pub fn open(root: &Path, file: &Path) -> Result<Sem, OpenError> {
         let root = root.canonicalize().map_err(|_| OpenError::NoSuchFile)?;
         let file = root
@@ -205,6 +207,10 @@ impl Sem {
             .map_err(|_| OpenError::NoSuchFile)?;
         if !file.is_file() {
             return Err(OpenError::NoSuchFile);
+        }
+        // `join` and `canonicalize` have resolved any `..`; the rule is the analysis's own (`relative_path`), so open and the walk agree on "under"
+        if under_root(&to_engine_path(&root), &to_engine_path(&file)).is_none() {
+            return Err(OpenError::OutsideRoot);
         }
         let cwd = to_engine_path(&root);
         let fs: Arc<dyn FS> = Arc::new(bundled::wrap_fs(cachedvfs::from(osvfs::fs())));
@@ -456,6 +462,10 @@ impl Sem {
         style: MarkerStyle<'_>,
     ) -> Option<Func<'_>> {
         let file = self.file(file)?;
+        // a file outside the root, or in `node_modules`, has no entry (D33): `describe` takes every `Func` to be under the root
+        if !self.is_project_code(file) {
+            return None;
+        }
         let defs = self.file_defs(file, style)?;
         let (def, _) = defs
             .outline
@@ -550,9 +560,7 @@ impl Sem {
 
     /// The file's path relative to the root, with `/`; `None` for a file outside the root, such as the bundled libraries.
     pub(crate) fn relative_path(&self, file: File<'_>) -> Option<String> {
-        let root = to_engine_path(&self.root);
-        let relative = file.node.file_name().strip_prefix(root.as_str())?;
-        Some(relative.strip_prefix('/')?.to_owned())
+        under_root(&to_engine_path(&self.root), file.node.file_name()).map(str::to_owned)
     }
 
     /// The name of a file for an edge or a def: relative to the root with `/`, else the path from the root to it with `..` (`../shared/lib.ts`). Never
