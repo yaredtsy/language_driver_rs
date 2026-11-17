@@ -1,3 +1,4 @@
+use std::fmt;
 use std::path::Path;
 
 use crate::paths;
@@ -50,6 +51,22 @@ pub enum OpenError {
     /// succeeds, `docs/04-rust/04-default-resolver/04-rs3-project.md` §6.)
     Load(String),
 }
+
+impl fmt::Display for OpenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OpenError::NotUnderRoot => {
+                write!(
+                    f,
+                    "the file does not exist, cannot be read, or is not inside the root: there is nothing to load"
+                )
+            }
+            OpenError::Load(message) => write!(f, "the project could not be loaded: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for OpenError {}
 
 impl Project {
     /// The Cargo workspace that owns `file` (absolute, or relative to `root`), searching for its `Cargo.toml` no higher than `root` (§2): the
@@ -120,5 +137,23 @@ impl Project {
     /// recent toolchain. Each is also meant for `Stats.language` as `warning_<code>: 1` (RS4).
     pub fn warnings(&self) -> &[Warning] {
         &self.warnings
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_open_error_says_what_it_is_and_is_an_error() {
+        let not_under = OpenError::NotUnderRoot.to_string();
+        assert!(not_under.contains("not inside the root"), "{not_under}");
+        assert_eq!(
+            OpenError::Load("no Cargo.toml".into()).to_string(),
+            "the project could not be loaded: no Cargo.toml"
+        );
+        // usable where a `Box<dyn Error>` is: the `?` of a caller that returns one
+        let boxed: Box<dyn std::error::Error> = Box::new(OpenError::NotUnderRoot);
+        assert_eq!(boxed.to_string(), not_under);
     }
 }
