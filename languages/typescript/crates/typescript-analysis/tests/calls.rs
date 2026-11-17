@@ -1507,3 +1507,14 @@ fn class_entry_a_class_declared_in_a_function_has_its_definition_sites_in_no_tre
     );
     assert_eq!(counters_of(&graph), (vec![], vec![]));
 }
+
+/// The root is `outside-root/app`: a file beside it is `../shared/…` from there (D33).
+#[test]
+fn a_declaration_file_outside_the_root_is_named_from_the_root() {
+    let graph = graph_of(&fixture("outside-root/app"), "src/main.ts", "main");
+    let edges = edges_as_text(&graph, &fixture("outside-root/app"));
+    assert!(
+        edges.contains(&"main | typed | external ../shared/api.d.ts typed".to_owned()),
+        "{edges:#?}"
+    );
+}

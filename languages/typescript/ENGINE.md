@@ -327,6 +327,18 @@ its scope, **`@types/x` as `x` and `@types/scope__x` as `@scope/x`** (the packag
 `typescript:lib` for every bundled library. `None` for the project's own files. Fixture `with-node-modules` covers a plain package, a scoped one and an
 `@types` one; the pnpm and `__` cases are unit-tested on strings only, not on a real pnpm tree.
 
+A file with no package (not in `node_modules`, not a bundled library) is named by `Sem::place_of`: its path relative to the root with `/` when it is
+under it (`src/types.d.ts`), else the path from the root with `..` (`../shared/api.d.ts`), never the machine's absolute path (D33, step R1). The `..`
+spelling is `tspath::get_relative_path_from_directory` (`path.rs:979` at the pin), through the `tspath` re-export `sem` already imports
+(`tsrs_core::tspath`, `pub use path::*`): **`[check]` answered, yes, it is there and callable.** It panics (an `assert!`) when exactly one of its two paths
+is rooted; both are absolute here, so it cannot. A file on another Windows drive has no path from the root, and the function answers with the file's own
+absolute path (`D:/shared/lib.ts`); `place_between` keeps that, and a unit test pins it on strings (not run on Windows). Names are compared as spelled,
+with `use_case_sensitive_file_names: true`, as `relative_path` compares them.
+
+**`[check]` letter case in `relative_path` (D33, 10-review-fixes §3.3):** the root is `canonicalize`d and the engine's file names come from the file
+system, so both carry the disk's own case. Run on macOS (case-insensitive disk): every existing fixture still finds its files under the root, so it does not
+fail there. Not run on Linux or Windows: CI's three systems are the check, as the design says.
+
 ### The proof that a `File<'p>` cannot outlive its `Sem`
 
 `File<'p>` is `P<SourceFile>` plus `PhantomData<&'p Sem>`; `Sem::drop`'s `unsafe` rests on no `File` outliving it. The proof is a `compile_fail` doctest

@@ -48,7 +48,9 @@ mod uncovered;
 
 use collect::{Body, Collector};
 pub(crate) use handed::Handed;
-use project::{INFERRED, Owner, find_owner, inferred_config, relative_to, to_engine_path};
+use project::{
+    INFERRED, Owner, find_owner, inferred_config, place_between, relative_to, to_engine_path,
+};
 pub(crate) use resolve::{Init, Resolved};
 pub(crate) use uncovered::Uncovered;
 
@@ -551,6 +553,14 @@ impl Sem {
         let root = to_engine_path(&self.root);
         let relative = file.node.file_name().strip_prefix(root.as_str())?;
         Some(relative.strip_prefix('/')?.to_owned())
+    }
+
+    /// The name of a file for an edge or a def: relative to the root with `/`, else the path from the root to it with `..` (`../shared/lib.ts`). Never
+    /// the machine's absolute path, so the same project in another folder gives the same names (rule 9); the one exception is a file on another
+    /// Windows drive, which has no path from the root (`place_between`).
+    pub(crate) fn place_of(&self, file: File<'_>) -> String {
+        self.relative_path(file)
+            .unwrap_or_else(|| place_between(&to_engine_path(&self.root), file.node.file_name()))
     }
 
     /// Code of the project itself: a TypeScript or JavaScript file (`Dialect::from_path`: an imported `.json` is in the program but is not code),

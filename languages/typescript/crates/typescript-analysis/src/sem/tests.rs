@@ -773,3 +773,28 @@ fn sem_contract_in_a_script_the_project_function_with_a_body_wins_over_the_libs_
         ]
     );
 }
+
+#[test]
+fn a_file_beside_the_root_is_named_with_dots() {
+    use super::project::place_between;
+    assert_eq!(
+        place_between("/work/app", "/work/shared/lib.ts"),
+        "../shared/lib.ts"
+    );
+    assert_eq!(
+        place_between("/work/team/app", "/work/lib.ts"),
+        "../../lib.ts"
+    );
+    // a folder whose name starts with the root's is not under it
+    assert_eq!(place_between("/a/root", "/a/rootx/f.ts"), "../rootx/f.ts");
+    assert_eq!(place_between("/a/root", "/a/root/src/f.ts"), "src/f.ts");
+}
+
+#[test]
+fn a_file_on_another_drive_stays_absolute_with_slashes() {
+    use super::project::place_between;
+    assert_eq!(
+        place_between("C:/work/app", "D:/shared/lib.ts"),
+        "D:/shared/lib.ts"
+    );
+}

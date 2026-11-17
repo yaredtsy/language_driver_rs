@@ -16,7 +16,7 @@ use super::*;
 pub(crate) enum Resolved<'p> {
     /// A def of project code: a function, method, accessor or constructor, or a class. The solver walks it.
     Def(Func<'p>),
-    /// Outside project code: the package (`pkg`, `typescript:lib`, or the path of the repo's own `.d.ts`) and the declaration's own name.
+    /// Outside project code: the package (`pkg`, `typescript:lib`, or the path from the root of a `.d.ts` of the repo's, or of a file outside the root) and the declaration's own name.
     External { package: String, name: String },
     /// The engine gives no declaration to enter.
     Unknown(Why),
@@ -364,11 +364,8 @@ impl Sem {
             _one_thread: PhantomData,
         };
         if !self.is_project_code(file) {
-            let package = self.package_of(file).unwrap_or_else(|| {
-                // not in `node_modules` and not a bundled library: the repo's own `.d.ts`, named by where it is
-                self.relative_path(file)
-                    .unwrap_or_else(|| source_file.file_name().to_owned())
-            });
+            // not in `node_modules` and not a bundled library: a `.d.ts` of the repo's, or a file outside the root, named by where it is
+            let package = self.package_of(file).unwrap_or_else(|| self.place_of(file));
             // an arrow held by a property of an object literal is named by the property
             let named = if is_property_function_value(declaration) {
                 declaration.parent()

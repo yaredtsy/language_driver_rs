@@ -173,6 +173,20 @@ pub(super) fn relative_to(root: &Path, engine_path: &str) -> String {
         .to_owned()
 }
 
+/// The path from the directory `root` to `file`, both in the engine's spelling: `src/main.ts` under it, `../shared/lib.ts` beside it. TypeScript's own
+/// function, so a file on another drive (Windows) comes back absolute, with `/`: there is no way from one drive to another. Names are compared as
+/// spelled (case-sensitive), as `relative_path` compares them.
+pub(super) fn place_between(root: &str, file: &str) -> String {
+    tspath::get_relative_path_from_directory(
+        root,
+        file,
+        &tspath::ComparePathsOptions {
+            current_directory: root.to_owned(),
+            use_case_sensitive_file_names: true,
+        },
+    )
+}
+
 /// tsrs spells every path absolute, with `/` as the separator.
 pub(super) fn to_engine_path(path: &Path) -> String {
     tspath::normalize_slashes(&without_verbatim_prefix(&path.to_string_lossy()))
