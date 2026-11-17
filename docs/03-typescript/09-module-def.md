@@ -211,14 +211,21 @@ The other proofs:
 ## 5. Steps (one commit each, stop after each for review)
 
 1. **Built** (2026-11-17, `133c6c2`; D2 `cf0eb8b`). **core**: `Entry` becomes the enum of §3.1; TypeScript's and Python's call sites and both CLIs become `Entry::Def`; Python answers `None` for `File`; TypeScript answers `None` for `File` too until step 2. Python green, Python's snapshots unchanged. **D2 of [`10-review-fixes.md`](10-review-fixes.md) §4 goes with it, as its own commit** (both change `core/`, one run of Python's tests).
-2. **TypeScript, the file entry**: `Entry::File` in `Sem::entry` and in the coverage test's "every def", the `DefInfo` of §3.1, the body of the file's statements;
+2. **Built** (2026-11-17, `7e4a870`; reviewed, accepted). `Func` is `{ file, at: At }` with `At::Module | At::Def(index)`, so no code can index
+   the outline without saying what it does for the module. The sweep went from 595 nodes in 42 programs to 599 in 43; `top-level` (21) and
+   `top-level-anonymous` (10) are drawn, and what is left is steps 3 and 4 (`enum-member` 3, `namespace-class-computed-name` 1,
+   `namespace-level` 2, `nested-class-definition` 7). Two effects that step 4 settles: the module's walk already **draws** the computed
+   member names of a top-level class (`top-class.ts`: one site from counted to drawn), while the construction still counts them; and a file
+   entry counts a top-level class's decorators under `uncovered_local_class_decorator_sites`, a name meant for nested classes. Both are what
+   §3.3 asks for, one step early or under an old name, and both go when step 4 retires the three counters.
+   **TypeScript, the file entry**: `Entry::File` in `Sem::entry` and in the coverage test's "every def", the `DefInfo` of §3.1, the body of the file's statements;
    fixtures; the coverage test drops `top-level` and `top-level-anonymous`; golden unchanged plus the new module entries.
    A file outside the root or in `node_modules` has no file entry (`None`), as R3 makes it for a def entry (D33); a test for each.
    **Also here** (reviewer, 2026-11-17, at D2's review): the coverage sweep gets one more outcome, `Counted("merged_defs")`, for a site
    whose def lost its row to another def with the same id (D34 across files; `Graph::new` counted it). That is rule 8's "counted", per
    def, so the site is accounted for, and `in-named-function` stays a bug category with nothing listed in it. Then
    `tests/limits/duplicate-marker-across/` moves back under `tests/fixtures/`, where the sweep sees it, and `tests/limits/` goes.
-3. **The coverage test enters every namespace** (§3.5, a test fix: namespaces are already entries): `project_defs` keeps
+3. **(next, with step 5)** **The coverage test enters every namespace** (§3.5, a test fix: namespaces are already entries): `project_defs` keeps
    `DefKind::Namespace` too; `namespace-level` and `namespace-class-computed-name` leave the list; `nested-class-definition`'s text loses
    "a decorator of a class declared in a namespace" (it is counted); the dotted-namespace fixture. No analyzer change. Can run before step 1.
 4. **Definition code in the declaring body** (§3.3, accepted 2026-11-17): the counters retire, `enum-member` and `nested-class-definition`
@@ -226,7 +233,7 @@ The other proofs:
    stays as written and runs here. **Also here** (review, 2026-11-16): the label table in `Breakdown`'s `Display` is a second list of the
    `Uncovered` kinds, and a key it does not know is silently not printed. This step edits it anyway: each `Uncovered` gives its label
    next to its `counter()`, and the table goes.
-5. The CLI: `calls <dir> <file>` with no `--entry` is the file's own code (today it is an error). `typescript-cli outline` is unchanged.
+5. **(next, with step 3)** The CLI: `calls <dir> <file>` with no `--entry` is the file's own code (today it is an error). `typescript-cli outline` is unchanged.
 
 ## 6. For the owner
 
