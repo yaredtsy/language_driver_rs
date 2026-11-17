@@ -1097,6 +1097,17 @@ One commit each (`506f945` .. `dc1bc9a`, `10-review-fixes.md` §6). None changes
   parentheses and assertions) is `Unresolved(anonymous_function_called)`, not `no_declaration`: the same edges, a truer reason. No snapshot
   held such an edge. postcss (a) `Processor.process` keeps its one `no_declaration`, which is not an IIFE. **Found, H11:** a *named* function
   expression called in place gets the same reason, and its calls are in no tree but its own (`10-review-fixes.md` §6, H11).
+- **H11 (D40, `6c1dfc4`).** Where the callee is resolved, `function_called_in_place` (one helper for H10 and H11) looks under parentheses and
+  the assertions (`<T>`, `as`, `satisfies`, a postfix `!`) for an arrow or a function expression. A **named** function expression that
+  `def_of` holds is resolved to that def before the engine is asked, through `classify`, as any declaration is: a `Call`, drawn with its body
+  (`named ▸ h`). An anonymous one stays `anonymous_function_called`. It does not look through a prefix inside the parentheses
+  (`(!function n() {})()` calls a boolean); `!function n() {}()` and `void function n() {}()` are calls of the function already, because the prefix
+  is outside the call. Probed by the reviewer: recursion inside a named IIFE draws `loop ▸ loop [Recursive], g`; `(function maker() { return h; })()()`
+  draws `maker ▸ h [Passed]`, and the call of its result is `no_declaration`, as `f()()` is. **Found, H12:** `new (class Named {…})()` is
+  `no_declaration`, and `(function wrapped() {…}).call(this)` is the external `Function.call`, with `wrapped`'s calls under no caller and not
+  counted (`10-review-fixes.md` §6, H12). Sweep 644 nodes in 44 programs, missed 0; TypeScript 303 pass. Re-checked by the reviewer: V-NOC
+  `TaskDetailPanel` unchanged; the 27 golden files byte-identical as above. Neither postcss nor V-NOC has an IIFE in those trees, so the goldens
+  show that nothing else moved, not the rule.
 - **H9.** `DefMatch.owns_marker` (additive; the struct is `#[non_exhaustive]`). `typescript-cli calls … --entry b --id SAME` exits 1 with
   "no def `b` owns ID: SAME" and "`a` at 2:1 owns it, and `b` is named by where it is"; `--entry a --id SAME` works; an id that no def carries
   keeps its message. The owner is found from the outline (`owns_marker`), with no new library function.
