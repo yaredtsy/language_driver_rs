@@ -1,0 +1,17 @@
+MarkedStruct
+Tuple
+Shape
+build_marked
+  Record 44..56 "MarkedStruct"
+build_tuple
+  Call 36..41 "Tuple"
+build_variants
+  Call 146..157 "Shape::Pair"
+  Record 169..181 "Shape::Named"
+build_external
+  Call 151..155 "Some"
+  Call 164..176 "Ok::<u8, u8>"
+  Call 185..198 "Err::<u8, u8>"
+  Record 241..256 "std::ops::Range"
+build_generated
+  Call 155..159 "Made"

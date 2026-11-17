@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use analyzer_testkit::graph::{assert_deterministic, check_invariants};
 use rust_analysis::{
-    Cancel, DefKind, Entry, Graph, LoadOptions, MarkerStyle, Options, Project, RenderOptions,
-    breakdown, call_graph, render, to_text,
+    Cancel, DefKind, EdgeTo, Entry, Graph, LoadOptions, MarkerStyle, Options, Project,
+    RenderOptions, Root, StableDef, breakdown, call_graph, render, to_text,
 };
 
 mod common;
@@ -41,7 +41,7 @@ fn policy(name: &str) -> (PathBuf, Project) {
 
 /// Every entry of the first-trees snapshot: a function, a method, a const's initializer, a struct and an enum (a construction with nothing to enter),
 /// recursion, a project macro defined elsewhere, an `impl Trait` the engine sees through, one it does not, a built-in derive, a std call, a duplicate marker.
-const ENTRIES: [(&str, &str, u16); 21] = [
+const ENTRIES: [(&str, &str, u16); 27] = [
     ("src/calls.rs", "plain_calls", 0),
     ("src/calls.rs", "method_chain", 0),
     ("src/calls.rs", "constructions", 0),
@@ -63,6 +63,13 @@ const ENTRIES: [(&str, &str, u16); 21] = [
     ("src/lib.rs", "uses_the_twins", 0),
     ("src/external.rs", "std_calls", 0),
     ("src/external.rs", "std_naming", 0),
+    // constructions (step 5): a marked struct, a tuple struct and an enum as entries, and what builds them
+    ("src/constructions.rs", "MarkedStruct", 0),
+    ("src/constructions.rs", "Tuple", 0),
+    ("src/constructions.rs", "Shape", 0),
+    ("src/constructions.rs", "build_variants", 0),
+    ("src/constructions.rs", "build_external", 0),
+    ("src/constructions.rs", "build_generated", 0),
 ];
 
 fn text(graph: &Graph) -> String {
@@ -234,6 +241,112 @@ fn a_call_into_a_local_crate_that_is_not_entered_is_counted() {
     let graph = graph_of(&project, "ws/app/src/lib.rs", "run");
     assert!(!graph.stats.language.contains_key("outside_root"));
     assert_eq!(graph.stats.language["macro_generated_target"], 1);
+}
+
+/// A struct, a union or an enum is an entry (RS4 §1): a construction with nothing to enter. The root is `Root::Construct` with no `init`, its row is the type
+/// (named by its marker when it has one), and there is no context and no edge: the same node a construction is as a callee.
+#[test]
+fn a_struct_as_an_entry_is_a_construction_shown_by_name() {
+    let (_copy, project) = policy("calls_struct_entry");
+    let file = "src/constructions.rs";
+    for (qualname, kind, id) in [
+        (
+            "MarkedStruct",
+            DefKind::Struct,
+            StableDef::Marked("marked-struct".to_owned()),
+        ),
+        (
+            "Tuple",
+            DefKind::Struct,
+            StableDef::Path {
+                module: file.to_owned(),
+                qname: "Tuple".to_owned(),
+                nth: 0,
+            },
+        ),
+        (
+            "Shape",
+            DefKind::Enum,
+            StableDef::Path {
+                module: file.to_owned(),
+                qname: "Shape".to_owned(),
+                nth: 0,
+            },
+        ),
+    ] {
+        let graph = graph_of(&project, file, qualname);
+        check_invariants(&graph);
+        let [Root::Construct { class, init: None }] = graph.entries.as_slice() else {
+            panic!("{qualname}: {:?}", graph.entries);
+        };
+        assert_eq!(*class, id, "{qualname}");
+        let [row] = graph.defs.as_slice() else {
+            panic!("{qualname}: {:?}", graph.defs);
+        };
+        assert_eq!((row.qualname.as_str(), &row.kind), (qualname, &kind));
+        assert_eq!(row.file, file);
+        assert!(graph.edges.is_empty() && graph.contexts.is_empty());
+        assert_eq!(text(&graph), format!("{qualname}\n"));
+    }
+}
+
+/// A variant is built as its enum when it is the project's, and keeps its name when it is not: `Some`, `Ok` and `Err` are three targets, not one
+/// `Option` and one `Result` (the merged wire counts a repeated name as one target).
+#[test]
+fn a_variant_is_its_enum_when_it_is_ours_and_named_when_it_is_not() {
+    let (_copy, project) = policy("calls_variants");
+    let file = "src/constructions.rs";
+    let graph = graph_of(&project, file, "build_variants");
+    let built: Vec<_> = graph
+        .edges
+        .iter()
+        .filter_map(|edge| match &edge.to {
+            EdgeTo::Construct { class, .. } => Some(class.clone()),
+            _ => None,
+        })
+        .collect();
+    let shape = StableDef::Path {
+        module: file.to_owned(),
+        qname: "Shape".to_owned(),
+        nth: 0,
+    };
+    // `Shape::Pair(..)` and `Shape::Named { .. }`: the enum twice; `Shape::Unit` as a value is no site
+    assert_eq!(built, [shape.clone(), shape]);
+
+    let graph = graph_of(&project, file, "build_external");
+    let mut names: Vec<String> = graph
+        .edges
+        .iter()
+        .filter_map(|edge| match &edge.to {
+            EdgeTo::External(external, _) => {
+                Some(format!("{} {}", external.package, external.name))
+            }
+            _ => None,
+        })
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            "core ops::range::Range",
+            "core option::Option::Some",
+            "core result::Result::Err",
+            "core result::Result::Ok",
+        ]
+    );
+}
+
+/// A construction is not "a body that was there and was not walked" (rule 8): a struct has no body and Rust has no constructor function. So a struct a
+/// macro made is external and named, and `macro_generated_target` counts only the **calls** to what a macro made.
+#[test]
+fn constructing_what_a_macro_made_is_not_a_body_left_unwalked() {
+    let (_copy, project) = policy("calls_generated_construction");
+    let built = graph_of(&project, "src/constructions.rs", "build_generated");
+    assert_eq!(breakdown(&built).externals, 1);
+    assert!(!built.stats.language.contains_key("macro_generated_target"));
+    // a call to a function a macro made is one
+    let called = graph_of(&project, "src/lib.rs", "calls_generated");
+    assert_eq!(called.stats.language["macro_generated_target"], 1);
 }
 
 /// A graph of a complete load has no `warning_*` and no `*_skipped`: the keys are absent when 0.

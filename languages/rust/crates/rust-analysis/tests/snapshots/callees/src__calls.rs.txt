@@ -51,7 +51,7 @@ Declared::defaulted
   MethodCall "declared" -> Def src/calls.rs:Declared::declared open=self_in_trait
   Call "helper" -> Def src/calls.rs:helper
 operators
-  Call "Some" -> External construct core option::Option
+  Call "Some" -> External construct core option::Option::Some
 order
   Call "twice" -> Def src/calls.rs:twice
   MethodCall "value" -> Def src/shapes.rs:Rec::value

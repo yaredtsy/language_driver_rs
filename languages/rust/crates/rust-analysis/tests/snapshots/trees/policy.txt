@@ -217,3 +217,53 @@ breakdown:
   contexts 1, bodies walked 1, summaries reused 0
   cuts: none
 
+=== src/constructions.rs MarkedStruct
+MarkedStruct
+
+breakdown:
+  edges: 0 call, 0 construct, 0 external, 0 unresolved
+  contexts 0, bodies walked 0, summaries reused 0
+  cuts: none
+
+=== src/constructions.rs Tuple
+Tuple
+
+breakdown:
+  edges: 0 call, 0 construct, 0 external, 0 unresolved
+  contexts 0, bodies walked 0, summaries reused 0
+  cuts: none
+
+=== src/constructions.rs Shape
+Shape
+
+breakdown:
+  edges: 0 call, 0 construct, 0 external, 0 unresolved
+  contexts 0, bodies walked 0, summaries reused 0
+  cuts: none
+
+=== src/constructions.rs build_variants
+build_variants
+  Shape
+  Shape
+
+breakdown:
+  edges: 0 call, 2 construct, 0 external, 0 unresolved
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+
+=== src/constructions.rs build_external
+build_external
+
+breakdown:
+  edges: 0 call, 0 construct, 4 external, 0 unresolved
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+
+=== src/constructions.rs build_generated
+build_generated
+
+breakdown:
+  edges: 0 call, 0 construct, 1 external, 0 unresolved
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+

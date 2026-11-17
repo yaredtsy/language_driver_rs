@@ -11,7 +11,7 @@ use analyzer_core::edit::MarkerStyle;
 use analyzer_core::graph::{DefInfo, StableDef};
 use analyzer_core::outline::{DefKind, Outline};
 use analyzer_core::text::Span;
-use ra_ap_hir::{Macro, Semantics, attach_db};
+use ra_ap_hir::{Macro, Semantics, Variant, attach_db};
 use ra_ap_ide_db::RootDatabase;
 use ra_ap_syntax::{AstNode, NodeOrToken, SyntaxNode, TextRange, ast};
 use rust_syntax::Edition;
@@ -171,9 +171,19 @@ impl<'p> Sem<'p> {
     }
 
     /// What the engine's def is in the graph: its outline def when it is project code, else where it comes from. A variant is passed as the enum
-    /// that owns it (`Item::of_variant`).
+    /// that owns it: `bridge_variant`, which also names an external one with its variant.
     pub(crate) fn bridge(&self, item: Item) -> Bridged<'p> {
-        match self.loaded.owner_of(&self.sema, item) {
+        self.bridged(self.loaded.owner_of(&self.sema, item), item)
+    }
+
+    /// `bridge` for a variant: a project variant is its enum (`Func` of the enum), an external one is named with its variant (`owner_of_variant`).
+    pub(crate) fn bridge_variant(&self, variant: Variant) -> Bridged<'p> {
+        let item = Item::of_variant(self.loaded.db(), variant);
+        self.bridged(self.loaded.owner_of_variant(&self.sema, variant), item)
+    }
+
+    fn bridged(&self, owner: Owner, item: Item) -> Bridged<'p> {
+        match owner {
             Owner::External {
                 package,
                 name,
@@ -463,6 +473,7 @@ mod tests {
                 "src/bom.rs",
                 "src/calls.rs",
                 "src/cfg_off.rs",
+                "src/constructions.rs",
                 "src/dispatch.rs",
                 "src/external.rs",
                 "src/lib.rs",
@@ -549,6 +560,7 @@ mod tests {
             names,
             [
                 "src/calls.rs:Declared",
+                "src/constructions.rs:make_tuple!",
                 "src/dispatch.rs:Step",
                 "src/lib.rs:Writer",
                 "src/lib.rs:Make",
@@ -561,11 +573,11 @@ mod tests {
                 "src/shapes.rs:Alias",
                 "src/shared.rs:from_elsewhere!",
             ],
-            "the four traits, the inline module, the six macros, the type alias"
+            "the four traits, the inline module, the seven macros, the type alias"
         );
-        // every other def: 18 in lib.rs, 16 in shapes.rs, 28 in calls.rs, 30 in dispatch.rs, 10 each in macros.rs and cfg_off.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
+        // every other def: 18 in lib.rs, 8 in constructions.rs, 16 in shapes.rs, 28 in calls.rs, 30 in dispatch.rs, 10 each in macros.rs and cfg_off.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
         // byte-order mark
-        assert_eq!(joined, 122);
+        assert_eq!(joined, 130);
     }
 
     /// What `entry` answers `None` to, besides a def a `cfg` turns off (the join test): no file, a file no module reaches, a kind that cannot start a

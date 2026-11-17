@@ -1,0 +1,14 @@
+build_marked
+  Record "MarkedStruct" -> Construct src/constructions.rs:MarkedStruct
+build_tuple
+  Call "Tuple" -> Construct src/constructions.rs:Tuple
+build_variants
+  Call "Shape::Pair" -> Construct src/constructions.rs:Shape
+  Record "Shape::Named" -> Construct src/constructions.rs:Shape
+build_external
+  Call "Some" -> External construct core option::Option::Some
+  Call "Ok::<u8, u8>" -> External construct core result::Result::Ok
+  Call "Err::<u8, u8>" -> External construct core result::Result::Err
+  Record "std::ops::Range" -> External construct core ops::range::Range
+build_generated
+  Call "Made" -> External construct policy constructions::Made (MacroFile)

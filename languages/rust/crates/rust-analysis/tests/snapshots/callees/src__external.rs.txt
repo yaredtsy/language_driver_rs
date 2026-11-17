@@ -3,8 +3,8 @@ std_calls
   MethodCall "push" -> External alloc string::String::push
   MethodCall "len" -> External alloc string::String::len
   Call "Vec::new" -> External alloc vec::Vec::new
-  Call "Some" -> External construct core option::Option
-  Call "Ok::<u8, ()>" -> External construct core result::Result
+  Call "Some" -> External construct core option::Option::Some
+  Call "Ok::<u8, ()>" -> External construct core result::Result::Ok
   Record "std::ops::Range" -> External construct core ops::range::Range
   Call "Default::default" -> External core default::<u8 as Default>::default
   Call "crate::shapes::derived" -> Def src/shapes.rs:derived

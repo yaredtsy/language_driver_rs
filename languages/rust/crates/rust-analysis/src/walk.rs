@@ -77,7 +77,14 @@ pub(crate) fn body<'a, 'p>(
             if let Some(open) = callee.open {
                 lang.note(open.counter(), 1);
             }
-            if let Found::External { cause, .. } = &callee.found {
+            // a call to a def a macro made, or one beside the root, is a body that was there and was not walked (rule 8). A construction has no body: a struct
+            // has none and Rust has no constructor function, so there was nothing to walk
+            if let Found::External {
+                cause,
+                construct: false,
+                ..
+            } = &callee.found
+            {
                 match cause {
                     Cause::MacroFile | Cause::OtherCrate => {
                         lang.note(calls::MACRO_GENERATED_TARGET, 1);

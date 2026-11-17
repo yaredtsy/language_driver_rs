@@ -93,11 +93,8 @@ pub(crate) enum Found<'p> {
         package: String,
         name: String,
         cause: Cause,
-        /// A construction and not a call: `Some(x)`, `Range { .. }`. Step 5 names an external variant by it; today the snapshots show it.
-        #[cfg_attr(
-            not(test),
-            expect(dead_code, reason = "RS4 step 5 reads it, to name an external variant")
-        )]
+        /// A construction and not a call: `Some(x)`, `Range { .. }`. There is no body to walk, so it is not counted as one that was not walked
+        /// (`macro_generated_target`, `outside_root`).
         construct: bool,
     },
     Unknown(Reason),
@@ -173,10 +170,7 @@ impl<'p> Sem<'p> {
                     return self.constructed(Item::Adt(adt));
                 }
                 PathResolution::Def(ModuleDef::EnumVariant(variant)) => {
-                    return self.constructed(Item::of_variant(
-                        self.loaded().db(),
-                        Variant::EnumVariant(variant),
-                    ));
+                    return self.constructed_variant(Variant::EnumVariant(variant));
                 }
                 // `Self(1, 2)`, a local, a const holding a function, nothing: the callable type says what it is
                 _ => {}
@@ -194,10 +188,7 @@ impl<'p> Sem<'p> {
                 },
             },
             CallableKind::TupleStruct(s) => self.constructed(Item::Adt(s.into())),
-            CallableKind::TupleEnumVariant(v) => self.constructed(Item::of_variant(
-                self.loaded().db(),
-                Variant::EnumVariant(v),
-            )),
+            CallableKind::TupleEnumVariant(v) => self.constructed_variant(Variant::EnumVariant(v)),
             CallableKind::Closure(_) => function_typed(Open::Closure),
             CallableKind::FnPtr => function_typed(Open::FnPointer),
             CallableKind::FnImpl(_) => function_typed(Open::FnParam),
@@ -207,7 +198,7 @@ impl<'p> Sem<'p> {
     fn record_callee(&self, record: &ast::RecordExpr) -> Callee<'p> {
         // `hir::Variant` covers a struct, a union and an enum variant, and answers `Self { .. }` too
         match self.sema().resolve_variant(record.clone()) {
-            Some(variant) => self.constructed(Item::of_variant(self.loaded().db(), variant)),
+            Some(variant) => self.constructed_variant(variant),
             None => unknown(Reason::UnknownCallee),
         }
     }
@@ -348,9 +339,18 @@ impl<'p> Sem<'p> {
         }
     }
 
-    /// A construction: of the struct, or of the enum that a variant belongs to.
+    /// A construction of a struct or union.
     fn constructed(&self, class: Item) -> Callee<'p> {
-        let found = match self.bridge(class) {
+        self.construction(self.bridge(class))
+    }
+
+    /// A construction of a variant: of the enum that owns it when it is the project's, named with its variant when it is not.
+    fn constructed_variant(&self, variant: Variant) -> Callee<'p> {
+        self.construction(self.bridge_variant(variant))
+    }
+
+    fn construction(&self, bridged: Bridged<'p>) -> Callee<'p> {
+        let found = match bridged {
             Bridged::Func(func) => Found::Construct(func),
             Bridged::External {
                 package,
@@ -637,8 +637,9 @@ mod tests {
                     "alloc string::String::push",
                     "alloc string::String::len",
                     "alloc vec::Vec::new",
-                    "core option::Option",
-                    "core result::Result",
+                    // an external variant keeps its name
+                    "core option::Option::Some",
+                    "core result::Result::Ok",
                     "core ops::range::Range",
                     // a trait impl on a builtin type
                     "core default::<u8 as Default>::default",

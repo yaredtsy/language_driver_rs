@@ -167,14 +167,31 @@ impl Loaded {
         self.owner_of(sema, Item::Function(function))
     }
 
-    /// The owner of a variant is its enum's (a struct or union is its own). The tests ask it; the graph asks `Item::of_variant`.
-    #[cfg(test)]
+    /// The owner of a variant: its enum's (a struct or union is its own), because the outline has no variant def and a project variant is built as its
+    /// enum. An **external** variant keeps its name (`option::Option::Some`, `result::Result::Err`): it has no outline row, and `Ok(x)` and `Err(e)` both named
+    /// `result::Result` would be one target of the merged wire (RS4 §5).
     pub(super) fn owner_of_variant(
         &self,
         sema: &Semantics<'_, RootDatabase>,
         variant: Variant,
     ) -> Owner {
-        self.owner_of(sema, Item::of_variant(self.db(), variant))
+        let db = self.db();
+        let owner = self.owner_of(sema, Item::of_variant(db, variant));
+        match (owner, variant) {
+            (
+                Owner::External {
+                    package,
+                    name,
+                    cause,
+                },
+                Variant::EnumVariant(of_enum),
+            ) => Owner::External {
+                package,
+                name: format!("{name}::{}", of_enum.name(db).as_str()),
+                cause,
+            },
+            (owner, _) => owner,
+        }
     }
 
     /// Whether a macro is the project's own (RS3 §4): written in a file under the root, in a crate of the project. `println!` and `vec!` are not; a
