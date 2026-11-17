@@ -208,7 +208,13 @@ fn calls_exits_1_for_a_def_that_is_not_there_and_2_for_wrong_arguments() {
             .code(),
         Some(1)
     );
-    assert_eq!(calls(&dir, "src/main.ts", &[]).status.code(), Some(2));
+    // no `--entry` is the file's own code now (file_entry.rs); two outputs at once is still wrong
+    assert_eq!(
+        calls(&dir, "src/main.ts", &["--graph", "--wire"])
+            .status
+            .code(),
+        Some(2)
+    );
 }
 
 #[test]
