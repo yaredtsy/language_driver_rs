@@ -349,7 +349,7 @@ impl Sem {
         })
     }
 
-    /// Every function, method and class of the project's own files that can be walked (it has a node in the program's tree), in the program's file order
+    /// Every function, method, class and namespace of the project's own files that can be walked (it has a node in the program's tree), in the program's file order
     /// and source order: what a measurement over the whole project starts from.
     #[cfg(test)]
     pub(crate) fn project_defs(&self, style: MarkerStyle<'_>) -> Vec<Func<'_>> {
@@ -367,6 +367,7 @@ impl Sem {
                     typescript_syntax::DefKind::Function
                         | typescript_syntax::DefKind::Method
                         | typescript_syntax::DefKind::Class
+                        | typescript_syntax::DefKind::Namespace
                 ) && defs.nodes[index].is_some()
                 {
                     found.push(Func::def(file, index));

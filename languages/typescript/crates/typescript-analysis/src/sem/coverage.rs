@@ -33,12 +33,12 @@ const TOP_LEVEL: &str = "top-level";
 const TOP_LEVEL_ANONYMOUS: &str = "top-level-anonymous";
 const ENUM_MEMBER: &str = "enum-member";
 const NESTED_CLASS_DEFINITION: &str = "nested-class-definition";
-const NAMESPACE_CLASS_COMPUTED_NAME: &str = "namespace-class-computed-name";
-const NAMESPACE_LEVEL: &str = "namespace-level";
 // A miss in one of these is a bug and not a gap: nothing on the list may name them.
 const TOP_CLASS_DEFINITION: &str = "top-class-definition";
 const TOP_CLASS_COMPUTED_NAME: &str = "top-class-computed-name";
 const NESTED_CLASS_COMPUTED_NAME: &str = "nested-class-computed-name";
+const NAMESPACE_CLASS_COMPUTED_NAME: &str = "namespace-class-computed-name";
+const NAMESPACE_LEVEL: &str = "namespace-level";
 const INSTANCE_INITIALIZER: &str = "instance-initializer";
 const IN_NAMED_FUNCTION: &str = "in-named-function";
 const OTHER: &str = "other";
@@ -53,18 +53,8 @@ const KNOWN_GAPS: &[(&str, &str, &str)] = &[
     ),
     (
         NESTED_CLASS_DEFINITION,
-        "a static field initializer, a static block, the `extends` expression or a decorator of a class declared in a namespace (or an `extends`, a static initializer or a static block of one in a function): the def around it stops at the class, and `definition_sites` is for a class at the top of a file",
+        "a static field initializer, a static block or the `extends` expression of a class declared in a namespace (or of one in a function): the def around it stops at the class, and `definition_sites` is for a class at the top of a file",
         "TS5 row 3b",
-    ),
-    (
-        NAMESPACE_CLASS_COMPUTED_NAME,
-        "`[key()]` of a class declared in a namespace: `computed_name_sites` is for a class at the top of a file, and nothing walks a namespace",
-        "TS5 row 3b",
-    ),
-    (
-        NAMESPACE_LEVEL,
-        "a call in a namespace body outside any function: a namespace is not a def a request can start from, and nothing walks it",
-        "TS5 row 3c: found by the test; the owner decides, with `top-level`",
     ),
 ];
 
@@ -648,15 +638,20 @@ const EXPECTED: &[Expect] = &[
         missed: &[],
     },
     Expect {
+        // entering the namespace (M step 3) draws its own `f()` and the class's `[key()]`, and counts the class's decorator
         file: "src/namespace-class.ts",
-        drawn: 2,
-        counted: 1,
+        drawn: 4,
+        counted: 2,
         excluded: 0,
-        missed: &[
-            (NAMESPACE_CLASS_COMPUTED_NAME, 1),
-            (NAMESPACE_LEVEL, 1),
-            (NESTED_CLASS_DEFINITION, 2),
-        ],
+        missed: &[(NESTED_CLASS_DEFINITION, 1)],
+    },
+    Expect {
+        // `namespace A.B`: the outline has the def `A` (walks nothing) and the def `A.B`, which owns the statement
+        file: "src/namespace-dotted.ts",
+        drawn: 1,
+        counted: 0,
+        excluded: 0,
+        missed: &[],
     },
     Expect {
         file: "src/nested-class.ts",
@@ -923,6 +918,8 @@ fn the_list_has_no_stale_entry() {
         TOP_CLASS_DEFINITION,
         TOP_CLASS_COMPUTED_NAME,
         NESTED_CLASS_COMPUTED_NAME,
+        NAMESPACE_CLASS_COMPUTED_NAME,
+        NAMESPACE_LEVEL,
         INSTANCE_INITIALIZER,
         IN_NAMED_FUNCTION,
         OTHER,
