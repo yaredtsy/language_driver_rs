@@ -3,4 +3,4 @@
 mod load;
 mod origin;
 
-pub(crate) use load::{Loaded, load};
+pub(crate) use load::{Loaded, Rung, load};

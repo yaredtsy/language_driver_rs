@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rust_analysis::{LoadOptions, OpenError, Project};
+use rust_analysis::{LoadOptions, OpenError, Project, Warning};
 
 mod common;
 use common::{copy_of_fixture, rs_files, snapshot};
@@ -137,20 +137,18 @@ fn a_workspace_root_above_the_root_is_loaded_and_is_not_project_code() {
 }
 
 #[test]
-fn a_file_with_no_cargo_toml_up_to_the_root_is_an_error() {
-    // under target/, so a Cargo.toml exists above the root (languages/rust/Cargo.toml): the root is what stops the climb
+fn a_file_with_no_cargo_toml_up_to_the_root_loads_alone() {
+    // under target/, so a Cargo.toml exists above the root (languages/rust/Cargo.toml): the root is what stops the climb, and the file stands alone
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("no_manifest");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("src")).unwrap();
     std::fs::write(root.join("src/lone.rs"), "pub fn lone() {}\n").unwrap();
 
-    let error = Project::open(&root, Path::new("src/lone.rs"), &LoadOptions::default())
-        .err()
-        .expect("no manifest");
-    assert!(
-        matches!(&error, OpenError::Load(message) if message.contains("no Cargo.toml")),
-        "{error:?}"
-    );
+    let project = Project::open(&root, Path::new("src/lone.rs"), &LoadOptions::default())
+        .expect("a lone file is a project of one file");
+    assert_eq!(project.manifest(), "", "no manifest was found");
+    assert_eq!(project.files(), ["src/lone.rs"]);
+    assert_eq!(project.warnings(), [Warning::NoManifest]);
 }
 
 #[test]

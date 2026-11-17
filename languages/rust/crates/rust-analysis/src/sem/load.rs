@@ -3,11 +3,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use crate::manifest::{self, CrateSpec, DiskFs, Layout};
 use crate::warning::Warning;
 use crate::{LoadOptions, paths, toolchain};
 
 use ra_ap_ide_db::RootDatabase;
 use ra_ap_load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace};
+use ra_ap_project_model::project_json::{ProjectJson, ProjectJsonData};
 use ra_ap_project_model::{
     CargoConfig, ProjectManifest, ProjectWorkspace, ProjectWorkspaceKind, RustLibSource,
     TargetDirectoryConfig, TargetKind,
@@ -27,6 +29,15 @@ pub(crate) struct Loaded {
     dependencies_error: Option<String>,
     /// `ToolchainSubstituted` or `OldToolchain`, when the project's toolchain was not used as it was (`toolchain::decide`).
     toolchain_warning: Option<Warning>,
+    /// The ladder (RS3 §6, D37): cargo was asked (rungs 1 and 2), or this crate's own reader built the crate graph (rung 3) or the file stands alone
+    /// (rung 4).
+    rung: Rung,
+    /// No `cargo` at all (rungs 3 and 4).
+    no_toolchain: bool,
+    /// No `Cargo.toml` up to the root (rung 4).
+    no_manifest: bool,
+    /// The reason a `Cargo.toml` could not be read by cargo or by the reader (rung 4).
+    manifest_unreadable: Option<String>,
     /// The caller's root (absolute, clean): `files()` lists what is under it and nothing else, wherever the workspace's own root manifest is.
     root: PathBuf,
     /// Why the build scripts did not run (or ran with an error), when they were asked for: the message of the engine's `cargo check`.
@@ -37,7 +48,54 @@ pub(crate) struct Loaded {
     outside_inputs: Vec<String>,
 }
 
+/// How far down the ladder a load went (RS3 §6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Rung {
+    /// `cargo metadata` answered, with or without dependencies (rungs 1 and 2).
+    Cargo,
+    /// Our reader built the crate graph from `Cargo.toml` (rung 3).
+    Reader,
+    /// The file alone (rung 4).
+    Lone,
+}
+
 impl Loaded {
+    /// The engine's database and files for a load that has nothing to say yet: every warning fact is empty. The caller fills what it knows.
+    fn from_engine(db: RootDatabase, vfs: Vfs, root: &Path, rung: Rung) -> Loaded {
+        Loaded {
+            db,
+            vfs,
+            wrote_lockfile: false,
+            no_std_source: None,
+            dependencies_error: None,
+            toolchain_warning: None,
+            rung,
+            no_toolchain: false,
+            no_manifest: false,
+            manifest_unreadable: None,
+            root: root.to_path_buf(),
+            build_error: None,
+            skipped: Vec::new(),
+            outside_inputs: Vec::new(),
+        }
+    }
+
+    pub(crate) fn rung(&self) -> Rung {
+        self.rung
+    }
+
+    pub(crate) fn no_toolchain(&self) -> bool {
+        self.no_toolchain
+    }
+
+    pub(crate) fn no_manifest(&self) -> bool {
+        self.no_manifest
+    }
+
+    pub(crate) fn manifest_unreadable(&self) -> Option<&str> {
+        self.manifest_unreadable.as_deref()
+    }
+
     /// The `.rs` files of the load that sit under the root, relative to it with `/`, sorted. The standard library and the registry's crates
     /// are loaded too, and are somewhere else on disk, so the root test is what leaves them out.
     pub(crate) fn files(&self) -> Vec<String> {
@@ -98,6 +156,175 @@ impl Loaded {
     }
 }
 
+/// Why `load_cargo` did not give a `Loaded`.
+enum Failed {
+    /// Cargo could not load the workspace: it is not there, or it cannot read the manifest. The ladder goes on (RS3 §6).
+    Cargo {
+        cargo_present: bool,
+        chosen: Option<String>,
+    },
+    /// Something that no rung can get past: a path the engine cannot be given, or the engine's own load failing.
+    Cannot(String),
+}
+
+impl From<String> for Failed {
+    fn from(message: String) -> Failed {
+        Failed::Cannot(message)
+    }
+}
+
+impl From<&str> for Failed {
+    fn from(message: &str) -> Failed {
+        Failed::Cannot(message.to_owned())
+    }
+}
+
+/// The edition of a file that has no manifest to say: the latest, as `rust-syntax` falls back to (`Edition::LATEST`). `rustc` itself would say 2015.
+const LONE_EDITION: &str = "2024";
+
+/// Loads what is at `file`, down the ladder of RS3 §6 (D37). `manifest` is the nearest `Cargo.toml` between the file and the root, if there is one.
+///
+/// 1. and 2. cargo is asked (`load_cargo`, with or without dependencies);
+/// 3. cargo is missing, or cannot read the manifest: our own reader builds the crate graph from the `Cargo.toml` files (`NoToolchain` when there is no
+///    cargo), and there is no standard library;
+/// 4. no manifest, or none that either can read: the file alone, as a one-file crate with its `mod` children (`NoManifest`, `ManifestUnreadable`).
+///
+/// `Err` is only for what no rung can get past (see `Failed::Cannot`).
+pub(crate) fn load(
+    root: &Path,
+    manifest: Option<&Path>,
+    file: &Path,
+    opts: &LoadOptions,
+) -> Result<Loaded, String> {
+    let Some(manifest) = manifest else {
+        let mut loaded = load_lone(root, file, None)?;
+        loaded.no_manifest = true;
+        return Ok(loaded);
+    };
+    match load_cargo(root, manifest, opts) {
+        Ok(loaded) => Ok(loaded),
+        Err(Failed::Cannot(message)) => Err(message),
+        Err(Failed::Cargo {
+            cargo_present,
+            chosen,
+        }) => {
+            let chosen = chosen.as_deref();
+            match manifest::read(&DiskFs, manifest) {
+                Ok(layout) => {
+                    let mut loaded = load_layout(root, layout, chosen)?;
+                    // With cargo present and failing there is no warning named for it yet (RS3 §6): the load is the reader's, and `layout_skipped` is all
+                    // it says.
+                    loaded.no_toolchain = !cargo_present;
+                    Ok(loaded)
+                }
+                Err(reason) => {
+                    let mut loaded = load_lone(root, file, chosen)?;
+                    loaded.manifest_unreadable = Some(reason);
+                    loaded.no_toolchain = !cargo_present;
+                    Ok(loaded)
+                }
+            }
+        }
+    }
+}
+
+/// Rung 3: the crate graph our reader made, handed to the engine as a project description. No sysroot: the engine asks `rustc` for the target's cfg
+/// and data layout, and falls back to nothing when it cannot (ENGINE.md, "Rung 3").
+fn load_layout(root: &Path, layout: Layout, toolchain: Option<&str>) -> Result<Loaded, String> {
+    let mut manifests = layout.manifests.clone();
+    manifests.push(layout.workspace_dir.join("Cargo.lock"));
+    let mut loaded = load_json(root, &layout.crates, Rung::Reader, toolchain)?;
+    loaded.skipped = if layout.skipped > 0 {
+        vec![("layout_skipped", layout.skipped)]
+    } else {
+        Vec::new()
+    };
+    loaded.outside_inputs = outside_of(root, manifests);
+    Ok(loaded)
+}
+
+/// Rung 4: `file` is the root of a crate of its own, and its `mod` children come with it (they are files below its folder).
+fn load_lone(root: &Path, file: &Path, toolchain: Option<&str>) -> Result<Loaded, String> {
+    let dir = file
+        .parent()
+        .ok_or_else(|| format!("{}: has no folder", file.display()))?;
+    let stem = file
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or("the file name is not UTF-8")?;
+    let spec = CrateSpec {
+        name: stem.replace('-', "_"),
+        root_module: file.to_path_buf(),
+        edition: LONE_EDITION,
+        deps: Vec::new(),
+        package_dir: dir.to_path_buf(),
+        cfg: manifest::host_cfgs(),
+        is_proc_macro: false,
+    };
+    load_json(root, &[spec], Rung::Lone, toolchain)
+}
+
+fn load_json(
+    root: &Path,
+    crates: &[CrateSpec],
+    rung: Rung,
+    toolchain: Option<&str>,
+) -> Result<Loaded, String> {
+    let utf8 = |path: &Path| {
+        path.to_str()
+            .map(str::to_owned)
+            .ok_or_else(|| format!("{}: not UTF-8", path.display()))
+    };
+    let mut described = Vec::new();
+    for spec in crates {
+        let deps: Vec<_> = spec
+            .deps
+            .iter()
+            .map(|(name, at)| serde_json::json!({ "crate": at, "name": name }))
+            .collect();
+        described.push(serde_json::json!({
+            "display_name": spec.name,
+            "root_module": utf8(&spec.root_module)?,
+            "edition": spec.edition,
+            "deps": deps,
+            // every package the reader loads is the user's own code (a member, or a path dependency): §4's rule on the file decides what is under the root
+            "is_workspace_member": true,
+            "cfg": spec.cfg,
+            "env": {},
+            "is_proc_macro": spec.is_proc_macro,
+            // the whole package: a `#[path]` module outside `src/` is otherwise not loaded
+            "source": { "include_dirs": [utf8(&spec.package_dir)?], "exclude_dirs": [utf8(&spec.package_dir.join("target"))?] },
+        }));
+    }
+    let data: ProjectJsonData = serde_json::from_value(serde_json::json!({ "crates": described }))
+        .map_err(|e| format!("the crate graph: {e}"))?;
+    let base = AbsPathBuf::try_from(root.to_str().ok_or("the root is not UTF-8")?)
+        .map_err(|p| format!("{p}: not an absolute path"))?;
+    let project = ProjectJson::new(None, &base, data);
+
+    let mut config = CargoConfig {
+        sysroot: None,
+        set_test: true,
+        ..CargoConfig::default()
+    };
+    if let Some(toolchain) = toolchain {
+        config
+            .extra_env
+            .insert("RUSTUP_TOOLCHAIN".to_owned(), Some(toolchain.to_owned()));
+    }
+    let workspace = ProjectWorkspace::load_inline(project, &config, &|_| {});
+    let switches = LoadCargoConfig {
+        load_out_dirs_from_check: false,
+        with_proc_macro_server: ProcMacroServerChoice::None,
+        prefill_caches: false,
+        num_worker_threads: 1,
+        proc_macro_processes: 0,
+    };
+    let (db, vfs, _no_client) =
+        load_workspace(workspace, &config.extra_env, &switches).map_err(|e| format!("{e:#}"))?;
+    Ok(Loaded::from_engine(db, vfs, root, rung))
+}
+
 /// Loads the Cargo workspace of `manifest` (absolute, clean, inside `root`) with std and `cfg(test)` on. Build scripts, proc macros and cache
 /// prefill are off unless `opts` turns the first two on (§3); what is off and cuts something is counted in `Loaded::skipped`. `Err` carries the engine's message; the ladder that turns most of these into a warning is RS3 step 7.
 ///
@@ -107,7 +334,7 @@ impl Loaded {
 /// A load must not write into the project (RS3 §5, D38). With no `Cargo.lock`, cargo would write one, so on a toolchain that honours it
 /// (`toolchain::honours_lockfile_path`) cargo is told to write it into a folder that is deleted before this returns. On an older toolchain the
 /// load goes on and `Loaded::wrote_lockfile` says what happened.
-pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<Loaded, String> {
+fn load_cargo(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<Loaded, Failed> {
     let dir = manifest
         .parent()
         .ok_or_else(|| format!("{}: has no folder", manifest.display()))?;
@@ -157,8 +384,17 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
             .insert("CARGO_RESOLVER_LOCKFILE_PATH".to_owned(), Some(path));
     }
 
-    let mut workspace =
-        ProjectWorkspace::load(manifest, &config, &|_| {}).map_err(|e| format!("{e:#}"))?;
+    let mut workspace = match ProjectWorkspace::load(manifest, &config, &|_| {}) {
+        Ok(workspace) => workspace,
+        // cargo could not be asked, or cannot read the manifest, and the `--no-deps` retry failed too: the next rung may still load it
+        // (cargo's own message is long and about cargo: what a warning needs is why our reader could not read it either)
+        Err(_cargo_error) => {
+            return Err(Failed::Cargo {
+                cargo_present: toolchain::cargo_present(dir, chosen),
+                chosen: chosen.map(str::to_owned),
+            });
+        }
+    };
 
     // What the engine knows and does not say: the standard library source missing (`load_workspace_at` hides it) and a `cargo metadata` that failed
     // and was retried without dependencies (S-RS3). Both are read before the load goes on.
@@ -213,18 +449,16 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
     // each proc macro the database knows holds the server's pool (an `Arc`), so the client may be dropped here
     let (db, vfs, _proc_macro_client) =
         load_workspace(workspace, &config.extra_env, &switches).map_err(|e| format!("{e:#}"))?;
-    Ok(Loaded {
-        db,
-        vfs,
-        wrote_lockfile: lock_written(lock_before.as_deref(), std::fs::read(&lock).ok().as_deref()),
-        no_std_source,
-        dependencies_error,
-        toolchain_warning: decision.warning,
-        root: root.to_path_buf(),
-        build_error,
-        skipped,
-        outside_inputs,
-    })
+    let mut loaded = Loaded::from_engine(db, vfs, root, Rung::Cargo);
+    loaded.wrote_lockfile =
+        lock_written(lock_before.as_deref(), std::fs::read(&lock).ok().as_deref());
+    loaded.no_std_source = no_std_source;
+    loaded.dependencies_error = dependencies_error;
+    loaded.toolchain_warning = decision.warning;
+    loaded.build_error = build_error;
+    loaded.skipped = skipped;
+    loaded.outside_inputs = outside_inputs;
+    Ok(loaded)
 }
 
 /// §3: what the switches that did not act cut, by name. `build_scripts_skipped`: the local packages (members and path dependencies: project code, §4) that have a build script, when the
@@ -280,6 +514,11 @@ fn outside_inputs(workspace: &ProjectWorkspace, root: &Path) -> Vec<String> {
     for package in cargo.packages().filter(|&p| cargo[p].is_local) {
         files.push(AsRef::<Path>::as_ref(&cargo[package].manifest).to_path_buf());
     }
+    outside_of(root, files)
+}
+
+/// Of `files`, those that are files and sit outside `root`: as engine text, absolute, sorted, each once. Inside the root a glob covers them.
+fn outside_of(root: &Path, files: Vec<PathBuf>) -> Vec<String> {
     let mut inputs: Vec<String> = files
         .into_iter()
         .filter(|file| paths::relative(root, file).is_none() && file.is_file())

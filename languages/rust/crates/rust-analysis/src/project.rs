@@ -2,7 +2,7 @@ use std::fmt;
 use std::path::Path;
 
 use crate::paths;
-use crate::sem::{self, Loaded};
+use crate::sem::{self, Loaded, Rung};
 use crate::warning::{self, Facts, Warning};
 
 /// Config, manifest and lock files whose change means "load again". Each is relative to the root, so it starts with `**/`.
@@ -46,9 +46,9 @@ pub struct LoadOptions {
 pub enum OpenError {
     /// The file does not exist, cannot be read, or is not inside `root` (or `root` cannot be used): there is nothing to load.
     NotUnderRoot,
-    /// No `Cargo.toml` lies between the file and the root, or the engine could not load the workspace (no `cargo`, a toolchain that is not
-    /// installed, a manifest nobody can read); the message says which. (Temporary: RS3 steps 5b and 7 turn these into a warning on a load that still
-    /// succeeds, `docs/04-rust/04-default-resolver/04-rs3-project.md` §6.)
+    /// What no rung of the ladder can get past (RS3 §6): a path the engine cannot be given (not UTF-8), or the engine's own load failing after the
+    /// project description was accepted. The message says which. A missing `Cargo.toml`, a manifest nobody can read, a missing `cargo`, a toolchain
+    /// that is not installed: none of these is an error, each is a warning on a load that still succeeds.
     Load(String),
 }
 
@@ -78,28 +78,31 @@ impl Project {
         if !file.is_file() || paths::relative(&root, &file).is_none() {
             return Err(OpenError::NotUnderRoot);
         }
-        let manifest = paths::find_manifest(&root, &file).ok_or_else(|| {
-            OpenError::Load(format!(
-                "no Cargo.toml between {} and the root {}",
-                file.display(),
-                root.display()
-            ))
-        })?;
-        let name = paths::relative(&root, &manifest)
-            .ok_or_else(|| OpenError::Load(format!("{}: not UTF-8", manifest.display())))?;
-        let loaded = sem::load(&root, &manifest, opts).map_err(OpenError::Load)?;
+        // No `Cargo.toml` between the file and the root is not an error: the file stands alone (RS3 §6, rung 4)
+        let manifest = paths::find_manifest(&root, &file);
+        let name = match &manifest {
+            Some(manifest) => paths::relative(&root, manifest)
+                .ok_or_else(|| OpenError::Load(format!("{}: not UTF-8", manifest.display())))?,
+            None => String::new(),
+        };
+        let loaded = sem::load(&root, manifest.as_deref(), &file, opts).map_err(OpenError::Load)?;
+        let loaded_by_cargo = loaded.rung() == Rung::Cargo;
         let warnings = warning::collect(Facts {
             no_std_source: loaded.no_std_source().map(str::to_owned),
             dependencies_error: loaded.dependencies_error().map(str::to_owned),
             wrote_lockfile: loaded.wrote_lockfile(),
             build_error: loaded.build_error().map(str::to_owned),
             toolchain: loaded.toolchain_warning().cloned(),
+            no_toolchain: loaded.no_toolchain(),
+            no_manifest: loaded.no_manifest(),
+            manifest_unreadable: loaded.manifest_unreadable().map(str::to_owned),
         });
         Ok(Project {
             loaded,
             manifest: name,
             warnings,
-            build_scripts_ran: opts.build_scripts || opts.proc_macros,
+            // only cargo runs a build: the reader's and the lone file's loads never did
+            build_scripts_ran: (opts.build_scripts || opts.proc_macros) && loaded_by_cargo,
         })
     }
 

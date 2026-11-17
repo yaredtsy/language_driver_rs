@@ -1,5 +1,6 @@
 //! SLOW: project loading, call sites, call graph. The `sem` folder is the only code that imports the checker.
 
+mod manifest;
 mod paths;
 mod project;
 mod sem;

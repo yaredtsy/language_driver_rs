@@ -103,6 +103,14 @@ pub(crate) fn probe(dir: &Path, toolchain: Option<&str>) -> Probe {
     }
 }
 
+/// Can `cargo` be started at all in `dir`? Not whether it works: a `cargo` that fails on a manifest is present.
+pub(crate) fn cargo_present(dir: &Path, toolchain: Option<&str>) -> bool {
+    command("cargo", dir, toolchain)
+        .arg("--version")
+        .output()
+        .is_ok()
+}
+
 /// The version of the `cargo` that runs in `dir`; `None` when there is none, or it is not installed, or it prints something else.
 pub(crate) fn cargo_version(dir: &Path, toolchain: Option<&str>) -> Option<Version> {
     match probe(dir, toolchain) {

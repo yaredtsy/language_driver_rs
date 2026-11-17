@@ -102,8 +102,8 @@ mod tests {
 
     use super::common;
     use super::*;
-    use crate::LoadOptions;
-    use crate::sem::load;
+    use crate::sem::{Rung, load};
+    use crate::{LoadOptions, Project, Warning};
 
     #[test]
     fn what_is_project_code_row_by_row() {
@@ -175,7 +175,7 @@ mod tests {
     fn open_with(root: &Path, manifest: &Path, opts: &LoadOptions) -> Loaded {
         let root = crate::paths::absolute(root).unwrap();
         let manifest = crate::paths::absolute(manifest).unwrap();
-        load(&root, &manifest, opts).expect("the fixture loads")
+        load(&root, Some(&manifest), &manifest, opts).expect("the fixture loads")
     }
 
     /// `fixtures/owner/`: `ws/` is a workspace of `app` and `member`; `app` also depends on `inside`, a path dependency next to `ws/`; `member`
@@ -337,7 +337,7 @@ mod tests {
         let root = crate::paths::absolute(&copy).unwrap();
         let manifest = root.join("Cargo.toml");
         let started = std::time::Instant::now();
-        let loaded = match load(&root, &manifest, &LoadOptions::default()) {
+        let loaded = match load(&root, Some(&manifest), &manifest, &LoadOptions::default()) {
             Ok(loaded) => loaded,
             Err(error) => {
                 println!(
@@ -369,6 +369,114 @@ mod tests {
             loaded.no_std_source(),
             loaded.dependencies_error().is_some(),
             loaded.toolchain_warning(),
+        );
+    }
+
+    /// Rung 4: a file with no manifest is a crate of its own, and a call into its `mod` child resolves.
+    #[test]
+    fn a_lone_file_resolves_a_call_into_its_mod_child() {
+        let copy = common::copy_of_fixture("lone", "origin_lone");
+        let root = crate::paths::absolute(&copy).unwrap();
+        let loaded = load(&root, None, &root.join("main.rs"), &LoadOptions::default())
+            .expect("a lone file loads");
+        assert_eq!(loaded.rung(), Rung::Lone);
+        assert!(loaded.no_manifest());
+        assert_eq!(
+            call_owners(&loaded, "main.rs"),
+            [("child::go".to_owned(), project("child.rs"))]
+        );
+    }
+
+    /// Rung 3 with no cargo and no rustc on `PATH` and an empty `HOME` (RS3 §6, S-RS3: the engine otherwise finds `~/.cargo/bin/cargo`), in a worker:
+    /// `cargo test` itself puts the toolchain on the path of its children, and this crate may not call `set_var`.
+    #[test]
+    fn without_cargo_the_readers_crate_graph_resolves_the_projects_own_calls() {
+        let nothing = common::tmp_root().join("no_tools");
+        let _ = std::fs::remove_dir_all(&nothing);
+        std::fs::create_dir_all(&nothing).unwrap();
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--ignored",
+                "--exact",
+                "sem::origin::tests::worker_without_cargo",
+                "--nocapture",
+            ])
+            .env_clear()
+            .env("RS_WORKER", "1")
+            .env("PATH", &nothing)
+            .env("HOME", &nothing)
+            .env("USERPROFILE", &nothing);
+        // a Windows process needs its system folder to start
+        for key in ["SystemRoot", "TMP", "TEMP"] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
+        let out = command.output().unwrap();
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            out.status.success() && text.contains("1 passed"),
+            "the worker failed:\n{text}"
+        );
+    }
+
+    #[test]
+    #[ignore = "run by without_cargo_the_readers_crate_graph_resolves_the_projects_own_calls"]
+    fn worker_without_cargo() {
+        if std::env::var_os("RS_WORKER").is_none() {
+            return;
+        }
+        let copy = common::copy_of_fixture("rung3", "origin_rung3");
+        let root = crate::paths::absolute(&copy).unwrap();
+        let file = root.join("app/src/lib.rs");
+
+        // the public view: no cargo is a warning and not a failure, and the project's files include the module outside `src/`
+        let opened = Project::open(&root, &file, &LoadOptions::default())
+            .expect("a load with no cargo is a load");
+        assert_eq!(opened.warnings(), [Warning::NoToolchain]);
+        assert_eq!(opened.manifest(), "app/Cargo.toml");
+        assert!(
+            opened.files().iter().any(|f| f == "shop/extra/more.rs"),
+            "a #[path] module outside src/ is loaded: {:?}",
+            opened.files()
+        );
+        assert_eq!(opened.skipped(), []);
+
+        // the engine's view: the calls of §6's row resolve, across the two crates too, with no `std`
+        let loaded = load(
+            &root,
+            Some(&root.join("app/Cargo.toml")),
+            &file,
+            &LoadOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(loaded.rung(), Rung::Reader);
+        assert!(loaded.no_toolchain());
+        let shop = "shop/src/lib.rs";
+        assert_eq!(
+            call_owners(&loaded, "app/src/lib.rs"),
+            [
+                ("shop_core::helper".to_owned(), project(shop)),
+                // the outer call comes first in the walk: `.submit()` of `Order::new().submit()`
+                ("submit".to_owned(), project(shop)),
+                ("shop_core::Order::new".to_owned(), project(shop)),
+            ]
+        );
+        assert_eq!(
+            call_owners(&loaded, shop),
+            [
+                // `Self::new()` and `self.validate()`
+                ("Self::new".to_owned(), project(shop)),
+                ("validate".to_owned(), project(shop)),
+                // the one `#[cfg(...)]` function of this machine: the host's cfgs are set although no `rustc` could say them
+                ("helper".to_owned(), project(shop)),
+                ("more::more_fn".to_owned(), project("shop/extra/more.rs")),
+            ]
         );
     }
 }

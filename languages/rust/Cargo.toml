@@ -21,6 +21,10 @@ ra_ap_project_model = "=0.0.358"
 ra_ap_vfs           = "=0.0.358"
 ra_ap_ide           = "=0.0.358"
 
+# not engine crates (rule 4 does not apply): the Cargo.toml reader of the ladder's rung 3 (RS3 §6), and the JSON it hands the engine
+toml       = "1"
+serde_json = "1"
+
 rust-syntax   = { path = "crates/rust-syntax" }
 rust-analysis = { path = "crates/rust-analysis" }
 

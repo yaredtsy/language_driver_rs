@@ -11,6 +11,8 @@ workspace = true
 [dependencies]
 analyzer-core = { workspace = true }
 rust-syntax = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
 
 ra_ap_hir           = { workspace = true }
 ra_ap_ide_db        = { workspace = true }

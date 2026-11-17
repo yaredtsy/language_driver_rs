@@ -1,0 +1,11 @@
+[package]
+name = "cargo_fails"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# valid TOML that cargo refuses ("specified without providing a local path, Git repository, version"): the reader reads it, and counts it
+foo = {}
+
+[workspace]

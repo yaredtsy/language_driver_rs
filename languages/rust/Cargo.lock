@@ -1370,6 +1370,8 @@ dependencies = [
  "ra_ap_syntax",
  "ra_ap_vfs",
  "rust-syntax",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]

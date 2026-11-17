@@ -1,0 +1,9 @@
+[package]
+name = "shop"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[lib]
+# the name in code is shop_core, not shop: a dependent calls it by this
+name = "shop_core"

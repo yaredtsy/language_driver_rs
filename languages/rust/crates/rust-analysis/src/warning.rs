@@ -124,15 +124,34 @@ pub(crate) struct Facts {
     pub(crate) build_error: Option<String>,
     /// `ToolchainSubstituted` or `OldToolchain`: the load did not use the project's toolchain as it was.
     pub(crate) toolchain: Option<Warning>,
+    /// No `cargo` at all: the crate graph is our reader's, and there is no `std`.
+    pub(crate) no_toolchain: bool,
+    /// No `Cargo.toml` up to the root.
+    pub(crate) no_manifest: bool,
+    /// Cargo and our reader both failed on a `Cargo.toml`: why.
+    pub(crate) manifest_unreadable: Option<String>,
 }
 
 /// The warnings of a load, from its facts: sorted by code (then by content), each once.
 pub(crate) fn collect(facts: Facts) -> Vec<Warning> {
     let mut warnings = Vec::new();
-    if let Some(toolchain) = facts.no_std_source {
+    // `NoToolchain` says what `NoStdSource` and `DependenciesMissing` would, and more (RS3 §6): with no cargo it stands for them
+    let (no_std_source, dependencies_error) = if facts.no_toolchain {
+        warnings.push(Warning::NoToolchain);
+        (None, None)
+    } else {
+        (facts.no_std_source, facts.dependencies_error)
+    };
+    if facts.no_manifest {
+        warnings.push(Warning::NoManifest);
+    }
+    if let Some(message) = facts.manifest_unreadable {
+        warnings.push(Warning::ManifestUnreadable { message });
+    }
+    if let Some(toolchain) = no_std_source {
         warnings.push(Warning::NoStdSource { toolchain });
     }
-    if let Some(message) = facts.dependencies_error {
+    if let Some(message) = dependencies_error {
         warnings.push(Warning::DependenciesMissing { message });
     }
     if facts.wrote_lockfile {
@@ -218,6 +237,9 @@ mod tests {
             wrote_lockfile: true,
             build_error: Some("b".into()),
             toolchain: None,
+            no_toolchain: false,
+            no_manifest: false,
+            manifest_unreadable: None,
         });
         let codes: Vec<_> = got.iter().map(Warning::code).collect();
         assert_eq!(
