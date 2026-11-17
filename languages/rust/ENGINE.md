@@ -385,6 +385,12 @@ Where the sets differ: the oracle never reports `f()` inside `println!(…)` (ou
 It also drops a call it cannot turn into a navigation target (no target, no entry). So the subset check is the right oracle test, and "the oracle finds
 everything" is not.
 
+**Targets, on the whole policy workspace (RS4 step 9 spike, 2026-11-17).** 133 ranges: 120 the same target as ours, 3 inside nested items
+(§3 allows it), and the rest different in three classes, each by design: a tuple variant (`E::V(1)`: the oracle names the variant, we the
+enum); a macro-made function or a built-in derive's method (the oracle's target is in the project, ours is `External`); a trait-qualified
+path on a concrete type (`Writer::write(&json)`, `<Json as Make>::make()`: the oracle takes the callable type, which names the trait's
+declaration, while name resolution, which we ask first, answers the impl). The oracle test states these three as exceptions (RS4 §8).
+
 ### Cancellation (RS5 depends on this)
 
 A query running in another thread is cancelled by unwinding with a `salsa::Cancelled` payload. `ra_ap_ide_db::base_db::salsa::Cancelled` is public; its
@@ -462,6 +468,26 @@ The three checks of RS3 §5, with `CARGO_RESOLVER_LOCKFILE_PATH=<temp>/Cargo.loc
   `resolve_method_call`, `resolve_method_call_fallback`, `resolve_path`, `resolve_path_with_subst`, `resolve_variant(RecordExpr) -> Option<Variant>`, `type_of_expr`,
   `expand_macro_call`, `original_range`, `original_range_opt`; `hir::CallableKind::{Function, TupleStruct, TupleEnumVariant, Closure, FnPtr, FnImpl}` (note `TupleEnumVariant`
   holds an `EnumVariant`); `AnalysisHost::with_database`, `Analysis::outgoing_calls(&CallHierarchyConfig, FilePosition)`. **`resolve_record_literal` does not exist.**
+
+## RS4: `core/` as a real project (step 9, b41610b, measured 2026-11-17)
+
+`cargo test -p rust-analysis --lib realproject -- --nocapture`, rung 1, every def of `core/` an entry (13 files, 455 entries), each
+site counted once from its own def's body:
+
+| Category | Sites |
+|---|---|
+| calls into the project | 1450 |
+| constructions of the project's types | 245 |
+| passed (D22) | 7 |
+| external | 1544: 1277 into dependencies (`std` included), 100 to a built-in derive's method, 167 constructions (`Some`, `Ok`, …) |
+| external handed over (`external_passed`) | 8 |
+| `Unresolved(function_typed_value)` (D16) | 79 |
+| **all sites** | **3333** |
+
+No `unknown_callee`, `unknown_method`, `def_not_in_outline`, `open_other`, `macro_not_expanded` or `constructor_passed`. **The first real
+`open_*` numbers**: `closure` 70, `impl_trait` 8, `fn_pointer` 7, `projection` 6, `type_param` 3, `fn_param` 2, `opaque` 2, `dyn` 1.
+So on this code what layer 2 would open is mostly closures (RC2), and generics and `dyn` are rare (RC1, RC3–RC5). These are one small
+project's numbers, not a sample; they change with `core/`, so the test pins only the zeros and the sum.
 
 ## RS3: loading a workspace
 

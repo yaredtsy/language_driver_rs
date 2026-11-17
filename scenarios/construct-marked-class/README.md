@@ -13,3 +13,7 @@ is drawn from the graph with no engine to ask, so the graph must hold a context 
 range). A language that leaves it out gets `<class>` in place of `Report` and `Plain`.
 
 Both levels give the same tree, so there is one `expected.tree`.
+
+**Rust** (`rust/`, RS4 step 9) has no constructor function: `Report {}` runs no code of the program's, so `Report` is a leaf like
+`Plain`, and `prepare` is not in the program. Rust's own tree is `expected.rust.tree` (D30). Both structs are still identified by
+their marker, which is what this scenario pins.
