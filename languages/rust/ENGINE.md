@@ -131,7 +131,9 @@ load has warnings `dependencies_missing, no_std_source` and **0 edges, 2 unresol
 Rule: every tool we start is found by the engine's **`Tool::prefer_proxy()`**, the rule of every load that has `std`, so our probe, our
 sysroot and the engine's `cargo` are the same toolchain. Without rustup's proxies it falls back to the variable and `PATH`, as `path()`
 does. Left: a load without a sysroot, where the engine uses `path()` and a set `CARGO` wins; `std` is already lost there and the warning
-says so.
+says so. Built in 4727dda; the `toolchains.rs` workers keep `CARGO` and `RUSTC`. Re-measured: the `1.50.0` crate with `CARGO` set now
+gives `toolchain_substituted` and **2 external, 0 unresolved**, like the run without it; `core/` gives 22 call, 11 construct, 108 external,
+0 unresolved with the full `PATH`, with `PATH=/usr/bin:/bin`, and with `CARGO` set.
 
 ## S-RS1: does it build as a dependency?
 
@@ -552,7 +554,10 @@ never touched; below 1.97 a project with none gets one, said by `LockfileWritten
   `rustc` we start sets `RUSTUP_AUTO_INSTALL=0` (`toolchain::command`). Any new `rustup` call needs the same. **Not built** (found in the
   tool-path fix review, 2026-11-17): `installed` starts `rustup toolchain list` with the process's own folder and no variable. `rust-cli
   calls . src/lib.rs` started inside a crate pinned to `1.50.0` began downloading 1.50.0 again (stopped, uninstalled). The tests never
-  saw it: a test's folder is the package's, whose pin is installed. Fix asked.
+  saw it: a test's folder is the package's, whose pin is installed. Built in 1e0f6bf (`toolchain_list_command`: `std::env::temp_dir()`
+  and the variable; a unit test reads the command, runs none). End to end, with `RUSTUP_DIST_SERVER` and `RUSTUP_UPDATE_ROOT` pointed at
+  `127.0.0.1:9` so that a wrong fix fails instead of downloading: the same call in the `1.50.0` crate installs nothing and gives
+  `toolchain_substituted` (the default, `stable` = 1.94.1 here; below 1.97, so also `lockfile_written`, D38 A).
 - A default that is also the active toolchain is printed `(active, default)`, not `(default)`: read the words inside the parentheses.
 - A pinned toolchain that is not installed makes `cargo --version` fail with `error: toolchain '<name>' is not installed` on stderr;
   `toolchain::probe` reads the name from that text (English, rustup's wording: a change makes the probe `Unreadable`, and the load then
