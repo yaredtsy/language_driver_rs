@@ -58,7 +58,7 @@ and holds five workspaces (`core/`, one per language). So, as TypeScript finds t
 | Case | Answer |
 |---|---|
 | a file in `src/bin/`, `examples/`, `tests/`, `benches/` | the package's manifest; each is a crate of its own in the engine, all loaded |
-| a file no crate of the workspace includes (not reachable by `mod`) | `open` succeeds; `call_graph` on a def of that file is `None` (the engine has no body for it). **`Project::files` lists only files in some crate's module tree**, on every rung (decided 2026-11-17, RS3 step 7 review): the engine loads whole folders, so "loaded" would list a stray `.rs` file that no crate has, and a lone file's whole folder |
+| a file no crate of the workspace includes (not reachable by `mod`) | `open` succeeds; `call_graph` on a def of that file is `None` (the engine has no body for it). **`Project::files` lists only files in some crate's module tree**, on every rung (decided 2026-11-17, RS3 step 7 review; built in f1a35de with `Semantics::file_to_module_def`): the engine loads whole folders, so "loaded" would list a stray `.rs` file that no crate has, and a lone file's whole folder. This is what the driver needs: `files()` says which edits mean "reload" (as TypeScript's program files do), and an edit to a file no crate has changes no graph. Two consequences, accepted: a file under a `#[cfg(…)]` module that is off on this machine is not listed (it changes nothing here; turning the cfg on edits a listed file or a manifest, which are watched); and the first `files()` call costs seconds (2 to 3 s on `core/`), because the engine builds the crates' module maps, the same work the first call graph needs, so it moves the cost earlier and adds none |
 | a `Cargo.toml` with `[workspace]` and no `[package]` (a virtual manifest) | fine: that is `core/` here |
 | a path dependency outside the workspace but under `root` | loaded by the engine as a local crate; **project code** (§4) |
 
@@ -385,7 +385,7 @@ These are the only errors `rust-analysis` has. Everything after `open` returns `
 | **the old-toolchain measurement**, once, by hand: a small project (a project method reached through `Option::unwrap` and through `Vec::iter`) loaded with each installed toolchain (1.74.1, 1.94.1, 1.98.0, 1.99.1): loads?, `std` found?, both calls resolved?; and the same project loaded with 1.74 substituted by 1.99. The table goes in `ENGINE.md`; it sets the minimum. Afterwards the old toolchains are uninstalled (about 4 GB) | the minimum of §6, and that a substitution loses nothing in-project |
 | the minimum check: a table test of the version comparison (`1.81.0` → warn, `1.82.0` → none, a version cargo prints with a suffix, an unreadable one) | pure code; needs no old Rust |
 | one test per row of §6's table that CI can make (no `rust-src` with a `RUSTUP_TOOLCHAIN` that lacks it; a toolchain that is not installed; offline with a missing dependency) | the warning and its `code()`; `Stats.language` holds `warning_<code>` |
-| load twice, drop, in a loop of 20: memory is flat **[measure]** | ordinary ownership should make this trivially true; it is one cheap test that says so |
+| load twice, drop, in a loop of 20: memory is flat **[measure]** | ordinary ownership should make this trivially true; it is one cheap test that says so. **Measured** (fd06501, `tests/memory.rs`, `#[ignore]`, about 80 s, Unix): open `core/`, `files()`, drop, twenty times; RSS after drop 351 MB at run 2, 357 MB at run 20, 311 to 378 MB over all runs with no trend |
 
 Loading is slow (seconds). The tests of this crate share loads: one `#[test]` per fixture workspace, many checks inside it.
 
@@ -404,5 +404,7 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 | 6 | `ENGINE.md`: what `sem::load` calls, the `attach_db` rule, the measured load times | reviewed. **Done** by the reviewer as the steps went ("The engine items we call", S-RS2's rules, "RS3: loading a workspace"; 95b2d12 … this commit) |
 
 Q-RS3 (`sem` as a folder) is answered before step 1: this is the phase where `sem` gets its second kind of work.
+
+**RS3 is complete (2026-11-17, last code commits f4cedf4 `CargoFailed`, f1a35de `files()` = the module tree, fd06501 the memory test), except the proof that needs CI: the `windows-latest` job has not run** (path comparison, drive-letter fold, the no-tools worker's `SystemRoot`/`TMP`/`TEMP`).
 
 Next: [`05-rs4-calls.md`](05-rs4-calls.md)
