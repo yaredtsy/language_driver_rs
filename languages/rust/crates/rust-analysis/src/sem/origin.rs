@@ -9,7 +9,7 @@
 
 use analyzer_core::text::Span;
 use ra_ap_hir::{
-    Adt, AsAssocItem, AssocItemContainer, Const, Crate, Function, HasSource, InFile, Module,
+    Adt, AsAssocItem, AssocItemContainer, Const, Crate, Function, HasSource, InFile, Macro, Module,
     Semantics, Static, Variant,
 };
 use ra_ap_ide_db::RootDatabase;
@@ -178,6 +178,21 @@ impl Loaded {
         variant: Variant,
     ) -> Owner {
         self.owner_of(sema, Item::of_variant(self.db(), variant))
+    }
+
+    /// Whether a macro is the project's own (RS3 §4): written in a file under the root, in a crate of the project. `println!` and `vec!` are not; a
+    /// `macro_rules!` of the project is, whichever crate of the project uses it.
+    pub(super) fn is_project_macro(&self, sema: &Semantics<'_, RootDatabase>, mac: Macro) -> bool {
+        let db = self.db();
+        let module = mac.module(db);
+        let written = mac
+            .source(db)
+            .map(|source| self.source_of(sema, module, source).written);
+        cause_of(
+            module.krate(db).origin(db).is_local(),
+            written.unwrap_or(Written::Nowhere),
+        )
+        .is_none()
     }
 
     /// Where the def is written. `file_id()` is `None` for a macro file: the def is not in the text. A def with no source at all (a derived impl's

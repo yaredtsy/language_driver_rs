@@ -3,6 +3,7 @@
 mod bridge;
 mod load;
 mod origin;
+mod sites;
 
 #[expect(
     unused_imports,
@@ -18,3 +19,6 @@ pub(crate) use origin::{Cause, Item, Owner};
 #[cfg(test)]
 #[path = "../../tests/common/mod.rs"]
 mod common;
+
+#[cfg(test)]
+mod testing;

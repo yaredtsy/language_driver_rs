@@ -1,0 +1,22 @@
+f
+g
+emit
+std_arguments
+  Call 44..45 "f"
+  Call 68..69 "g"
+  Call 86..87 "f"
+project_body
+  MacroBody 28..31 "log"
+project_wrapping_external
+  Call 172..173 "f"
+macro_in_macro
+  MacroBody 143..149 "nested"
+argument_twice
+  Call 36..37 "f"
+statements_in_a_body
+  MacroBody 36..46 "statements"
+  MacroBody 36..46 "statements"
+  Call 55..56 "f"
+not_expanded
+  Call 53..54 "g"
+  macro_not_expanded 1

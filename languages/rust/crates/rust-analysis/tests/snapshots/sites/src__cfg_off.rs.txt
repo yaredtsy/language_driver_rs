@@ -1,0 +1,16 @@
+f
+statement
+  Call 52..53 "f"
+block
+  Call 64..65 "f"
+let_statement
+match_arm
+macro_statement
+  Call 74..75 "f"
+method_statement
+  MethodCall 88..91 "len"
+closure_statement
+on_statement
+  Call 51..52 "f"
+struct_expression
+  Record 104..122 "crate::shapes::Rec"

@@ -1,0 +1,22 @@
+Writer::write
+Writer::twice
+  MethodCall 37..42 "write"
+  MethodCall 52..57 "write"
+Make::KIND
+Make::make
+Json
+<Json as Writer>::write
+<Json as Make>::KIND
+<Json as Make>::make
+plain
+  Call 27..33 "helper"
+helper
+with_inner
+  Call 147..152 "inner"
+with_inner::{fn}::inner
+marked
+twin_a
+twin_b
+tests::a_test
+calls_generated
+  Call 31..40 "generated"

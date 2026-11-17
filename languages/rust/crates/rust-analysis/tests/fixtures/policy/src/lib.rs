@@ -1,8 +1,11 @@
-//! The policy workspace (RS4 §8). Step 1 only needs its defs: every kind of def the outline lists, in more than one file, with the shapes the join
-//! test treats as exceptions.
+//! The policy workspace (RS4 §8): every kind of def the outline lists, in more than one file, with the shapes the join test treats as exceptions
+//! (step 1), and `calls`, `macros` and `cfg_off`, whose site lists are the snapshots of step 2.
 #![allow(dead_code, unused)]
 
 mod bom;
+mod calls;
+mod cfg_off;
+mod macros;
 mod shapes;
 pub mod nested;
 

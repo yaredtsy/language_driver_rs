@@ -1,0 +1,20 @@
+Unit
+Pair
+Rec
+Bits
+E
+LIMIT
+  Call 22..27 "limit"
+limit
+NAME
+Rec::K
+Rec::mk
+  Record 30..34 "Self"
+Rec::get
+Rec::get#1
+Derived
+derived
+  Call 46..62 "Derived::default"
+  Record 66..73 "Derived"
+  MethodCall 83..88 "clone"
+foreign

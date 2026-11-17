@@ -18,13 +18,14 @@ use analyzer_core::edit::MarkerStyle;
 use analyzer_core::graph::{DefInfo, StableDef};
 use analyzer_core::outline::{DefKind, Outline};
 use analyzer_core::text::Span;
-use ra_ap_hir::{Semantics, attach_db};
+use ra_ap_hir::{Macro, Semantics, attach_db};
 use ra_ap_ide_db::RootDatabase;
 use ra_ap_syntax::{AstNode, NodeOrToken, SyntaxNode, TextRange, ast};
 use rust_syntax::Edition;
 
 use super::load::Loaded;
 use super::origin::{Cause, Item, Owner};
+use super::sites::Sites;
 
 /// A def of one file's outline (`rust_syntax::outline`, the rule RS1 froze) and the engine's def at the same place. It is `Copy`, `Eq` and `Hash` for
 /// core's solver, and is valid for the `Sem`'s life and no longer (`'p`): the engine's ids mean something only while the database lives.
@@ -94,6 +95,8 @@ pub(crate) struct Sem<'p> {
     sema: Semantics<'p, RootDatabase>,
     style: MarkerStyle<'static>,
     files: RefCell<Files>,
+    /// `sites` of each function asked about, made once per request.
+    sites: RefCell<HashMap<Func<'p>, Rc<Sites>>>,
 }
 
 /// One `attach_db` for the whole request, with the `Sem` built inside it (§2): every engine call and the solver run inside `f`. `style` is how the
@@ -113,6 +116,7 @@ impl<'p> Sem<'p> {
             sema: Semantics::new(loaded.db()),
             style,
             files: RefCell::new(Files::default()),
+            sites: RefCell::new(HashMap::new()),
         }
     }
 
@@ -250,11 +254,8 @@ impl<'p> Sem<'p> {
     /// The engine's def whose name is at `name` in the file, of the kind the outline says (`Semantics::to_def`). `None` where the engine has no def: in
     /// code a `cfg` turns off.
     fn item_named(&self, tree: &ast::SourceFile, name: Span, kind: &DefKind) -> Option<Item> {
-        let range = TextRange::new(name.start.into(), name.end.into());
-        let node = match tree.syntax().covering_element(range) {
-            NodeOrToken::Node(node) => node,
-            NodeOrToken::Token(token) => token.parent()?,
-        };
+        let range = text_range(name);
+        let node = node_at(tree, range)?;
         match kind {
             DefKind::Function | DefKind::Method => self
                 .sema
@@ -274,6 +275,77 @@ impl<'p> Sem<'p> {
                 .map(Item::Static),
             _ => None,
         }
+    }
+
+    // What `sites.rs` asks of the engine. They are here because they use what the `Sem` keeps, and `Sem` keeps it private.
+
+    pub(super) fn sites_cache(&self) -> &RefCell<HashMap<Func<'p>, Rc<Sites>>> {
+        &self.sites
+    }
+
+    /// The whole def, in the engine's bytes of its file.
+    pub(super) fn def_range(&self, func: Func<'p>) -> Span {
+        let (defs, _) = self.opened(func.file);
+        defs.outline.defs[func.def].range
+    }
+
+    /// The def's body: a function's block, a const's or static's initializer. `None` for a def with none (a trait method without a default, a foreign
+    /// function) and for a struct or enum.
+    pub(super) fn body_of(&self, func: Func<'p>) -> Option<SyntaxNode> {
+        let (defs, tree) = self.opened(func.file);
+        let range = text_range(defs.outline.defs[func.def].name_range);
+        let node = node_at(&tree, range)?;
+        match func.item() {
+            Item::Function(_) => named::<ast::Fn>(&node, range)?
+                .body()
+                .map(|body| body.syntax().clone()),
+            Item::Const(_) => named::<ast::Const>(&node, range)?
+                .body()
+                .map(|body| body.syntax().clone()),
+            Item::Static(_) => named::<ast::Static>(&node, range)?
+                .body()
+                .map(|body| body.syntax().clone()),
+            Item::Adt(_) => None,
+        }
+    }
+
+    /// The expansion of a macro call, `None` when the engine cannot expand it.
+    pub(super) fn expand(&self, call: &ast::MacroCall) -> Option<SyntaxNode> {
+        self.sema
+            .expand_macro_call(call)
+            .map(|expanded| expanded.value)
+    }
+
+    /// Where a node of an expansion is written in the file, when it is written there (an argument of the macro call) and not made by the macro's body.
+    pub(super) fn original_range(&self, node: &SyntaxNode) -> Option<Span> {
+        let range = self.sema.original_range_opt(node)?.range;
+        Some(Span::new(range.start().into(), range.end().into()))
+    }
+
+    pub(super) fn macro_of(&self, call: &ast::MacroCall) -> Option<Macro> {
+        self.sema.resolve_macro_call(call)
+    }
+
+    pub(super) fn is_project_macro(&self, mac: Macro) -> bool {
+        self.loaded.is_project_macro(&self.sema, mac)
+    }
+
+    /// Whether the engine has an expression for this one in a body it lowered: it has none for what a `cfg` turns off, inside an active body. A lowered
+    /// expression has a type, even an unknown one.
+    pub(super) fn lowered(&self, expr: &ast::Expr) -> bool {
+        self.sema.type_of_expr(expr).is_some()
+    }
+}
+
+fn text_range(span: Span) -> TextRange {
+    TextRange::new(span.start.into(), span.end.into())
+}
+
+/// The node that holds the bytes at `range`.
+fn node_at(tree: &ast::SourceFile, range: TextRange) -> Option<SyntaxNode> {
+    match tree.syntax().covering_element(range) {
+        NodeOrToken::Node(node) => Some(node),
+        NodeOrToken::Token(token) => token.parent(),
     }
 }
 
@@ -324,34 +396,11 @@ fn edition_of(edition: ra_ap_syntax::Edition) -> Edition {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use analyzer_core::outline::DefKind;
     use ra_ap_hir::Adt;
 
     use super::*;
-    use crate::LoadOptions;
-    use crate::sem::{common, load};
-
-    const STYLE: MarkerStyle<'static> = MarkerStyle {
-        label: "ID",
-        placement: analyzer_core::edit::Placement::Docstring,
-    };
-
-    /// A fresh copy of `fixtures/policy/` under `target/`, loaded as cargo's workspace of one package. Its root is the copy.
-    fn policy(name: &str) -> (Loaded, std::path::PathBuf) {
-        let copy = crate::paths::absolute(&common::copy_of_fixture("policy", name)).unwrap();
-        let manifest = copy.join("Cargo.toml");
-        let loaded = load(&copy, Some(&manifest), &manifest, &LoadOptions::default())
-            .expect("the policy fixture loads");
-        (loaded, copy)
-    }
-
-    /// `rust-syntax`'s outline of a file's text on disk, in the edition of the fixture: the plan's "the outline lists".
-    fn disk_outline(root: &Path, file: &str) -> Outline {
-        let text = std::fs::read_to_string(root.join(file)).unwrap();
-        rust_syntax::outline(&text, Edition::E2024, STYLE)
-    }
+    use crate::sem::testing::{STYLE, disk_outline, policy};
 
     /// RS4 §8, "the join": every def the outline lists in the fixture is found by `entry`, `describe` of it gives the same (file, qualname, occurrence,
     /// kind, range) back, and the way back (`bridge` of the engine's def) is the same `Func`. The exceptions are stated, each with its reason.
@@ -363,7 +412,10 @@ mod tests {
             files,
             [
                 "src/bom.rs",
+                "src/calls.rs",
+                "src/cfg_off.rs",
                 "src/lib.rs",
+                "src/macros.rs",
                 "src/nested/deep.rs",
                 "src/nested/mod.rs",
                 "src/shapes.rs"
@@ -444,16 +496,22 @@ mod tests {
         assert_eq!(
             names,
             [
+                "src/calls.rs:Declared",
                 "src/lib.rs:Writer",
                 "src/lib.rs:Make",
                 "src/lib.rs:tests",
                 "src/lib.rs:make_fn!",
+                "src/macros.rs:log!",
+                "src/macros.rs:both!",
+                "src/macros.rs:nested!",
+                "src/macros.rs:statements!",
                 "src/shapes.rs:Alias",
             ],
-            "the two traits, the inline module, the macro, the type alias"
+            "the three traits, the inline module, the five macros, the type alias"
         );
-        // every other def of the four files: 17 in lib.rs, 15 in shapes.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a byte-order mark
-        assert_eq!(joined, 39);
+        // every other def: 17 in lib.rs, 15 in shapes.rs, 25 in calls.rs, 10 each in macros.rs and cfg_off.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
+        // byte-order mark
+        assert_eq!(joined, 84);
     }
 
     /// What `entry` answers `None` to, besides a def a `cfg` turns off (the join test): no file, a file no module reaches, a kind that cannot start a
