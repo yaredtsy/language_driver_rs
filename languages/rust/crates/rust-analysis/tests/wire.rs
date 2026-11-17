@@ -128,14 +128,8 @@ fn the_wire_counts_lines_and_columns_in_the_text_the_graph_counts_bytes_in() {
     // lines: `\r\n` ends a line, once, and the mark is on line 1
     assert_eq!((first.start.0, second.start.0), (1, 2));
     assert_eq!((first.end.0, second.end.0), (1, 2));
-    // columns count characters, 1-based. Line 2, `pub fn second() { target();`: 18 characters before `target`, so column 19, which is right. Line 1,
-    // `pub fn first() { target();`: 17 characters before it, so an editor says 18; the byte-order mark is a character of the text before it, and core's
-    // `Positions::at` counts it, so the wire says 19. One too many on line 1 of a file that has a mark, and nowhere else.
-    assert_eq!(second.start.1, 19);
-    assert_eq!(second.end.1, 25);
-    assert_eq!(
-        first.start.1, 19,
-        "the mark is counted: an editor's column is 18"
-    );
-    assert_eq!(first.end.1, 25);
+    // columns count characters, 1-based, and a leading byte-order mark is no column (core's `Positions::at` skips it, and the offsets stay bytes). `target` is
+    // after 17 characters on line 1, `pub fn first() { `, so column 18, where an editor puts it; and after 18 on line 2, `pub fn second() { `, so column 19.
+    assert_eq!((first.start.1, first.end.1), (18, 24));
+    assert_eq!((second.start.1, second.end.1), (19, 25));
 }

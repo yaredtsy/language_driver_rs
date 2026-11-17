@@ -135,7 +135,15 @@ impl<'s> Positions<'s> {
         let (text, index) = entry.as_ref()?;
         let line = index.line_of(offset)?;
         let start = index.line_start(line)?;
-        let column = text.get(start as usize..offset as usize)?.chars().count() as u32;
+        // A leading byte-order mark is bytes of the text, so offsets count it, and not a column of line 1: no editor shows it. The offset stays a byte
+        // offset; only the count of characters before it skips the mark.
+        let mark = if line == 0 && text.starts_with('\u{feff}') {
+            '\u{feff}'.len_utf8() as u32
+        } else {
+            0
+        };
+        let from = (start + mark).min(offset);
+        let column = text.get(from as usize..offset as usize)?.chars().count() as u32;
         Some((line + 1, column + 1))
     }
 }
@@ -419,6 +427,73 @@ mod tests {
                 end: (3, 11)
             }
         );
+    }
+
+    /// A byte-order mark is bytes of line 1 and no column of it: a site on line 1 is where an editor shows it, a site after it is the same, and the offsets of the
+    /// graph stay byte offsets (the mark's three bytes are in them).
+    #[test]
+    fn a_leading_byte_order_mark_is_not_a_column_of_line_one() {
+        let text = "\u{feff}def f(): g()\r\n    g()\r\n";
+        let first = text.find("g()").unwrap() as u32;
+        let second = text.rfind("g()").unwrap() as u32;
+        // the mark's three bytes are in the offset
+        assert_eq!(first, 3 + "def f(): ".len() as u32);
+        let graph = Graph::new(
+            vec![Root::Context(ContextId::of(marked("f")))],
+            vec![
+                row(marked("f"), "m.f", DefKind::Function, 0, text.len() as u32),
+                row(marked("g"), "m.g", DefKind::Function, 0, 0),
+            ],
+            vec![
+                Context::new(ContextId::of(marked("f"))),
+                Context::new(ContextId::of(marked("g"))),
+            ],
+            vec![
+                call("f", 0, "g"),
+                call("f", first, "g"),
+                call("f", second, "g"),
+            ],
+            Stats::default(),
+        );
+        let frame = wire(
+            &graph,
+            &Root::Context(ContextId::of(marked("f"))),
+            &files(text),
+            &opts(false),
+        );
+        let sites: Vec<_> = frame
+            .children
+            .iter()
+            .map(|c| c.call_site.unwrap())
+            .collect();
+        // a site at the very start (the mark's own place) is column 1; `g` is the tenth character of line 1 as an editor shows it; line 2 is untouched
+        assert_eq!(sites[0].start, (1, 1));
+        assert_eq!(sites[1].start, (1, 10));
+        assert_eq!(sites[1].end, (1, 13));
+        assert_eq!(sites[2].start, (2, 5));
+        // a text without a mark is counted as before: the same code at the same place has the same column
+        let plain = "def f(): g()\r\n";
+        let at = plain.find("g()").unwrap() as u32;
+        let graph = Graph::new(
+            vec![Root::Context(ContextId::of(marked("f")))],
+            vec![
+                row(marked("f"), "m.f", DefKind::Function, 0, plain.len() as u32),
+                row(marked("g"), "m.g", DefKind::Function, 0, 0),
+            ],
+            vec![
+                Context::new(ContextId::of(marked("f"))),
+                Context::new(ContextId::of(marked("g"))),
+            ],
+            vec![call("f", at, "g")],
+            Stats::default(),
+        );
+        let frame = wire(
+            &graph,
+            &Root::Context(ContextId::of(marked("f"))),
+            &files(plain),
+            &opts(false),
+        );
+        assert_eq!(frame.children[0].call_site.unwrap().start, (1, 10));
     }
 
     #[test]
