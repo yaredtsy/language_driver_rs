@@ -11,6 +11,7 @@ Rec::K
 Rec::mk
   Record 30..34 "Self"
 Rec::get
+Rec::value
 Rec::get#1
 Derived
 derived

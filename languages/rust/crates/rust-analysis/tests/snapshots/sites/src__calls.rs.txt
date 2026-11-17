@@ -13,9 +13,9 @@ path_calls
   Call 26..48 "crate::shapes::Rec::mk"
   Call 56..68 "self::helper"
 method_chain
-  MethodCall 43..46 "get"
-  MethodCall 49..60 "checked_add"
-  MethodCall 64..73 "unwrap_or"
+  MethodCall 43..48 "value"
+  MethodCall 51..62 "checked_add"
+  MethodCall 66..75 "unwrap_or"
 constructions
   Call 29..33 "Pair"
   Call 45..49 "E::V"
@@ -61,5 +61,5 @@ operators
   Call 217..221 "Some"
 order
   Call 34..39 "twice"
-  MethodCall 42..45 "get"
-  Call 51..57 "helper"
+  MethodCall 42..47 "value"
+  Call 53..59 "helper"

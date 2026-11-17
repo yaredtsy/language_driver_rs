@@ -1,0 +1,2 @@
+up
+  Call "deep::down" -> Def src/nested/deep.rs:down

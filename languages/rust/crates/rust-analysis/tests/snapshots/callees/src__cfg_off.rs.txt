@@ -1,0 +1,12 @@
+statement
+  Call "f" -> Def src/cfg_off.rs:f
+block
+  Call "f" -> Def src/cfg_off.rs:f
+macro_statement
+  Call "f" -> Def src/cfg_off.rs:f
+method_statement
+  MethodCall "len" -> External alloc vec::Vec::len
+on_statement
+  Call "f" -> Def src/cfg_off.rs:f
+struct_expression
+  Record "crate::shapes::Rec" -> Construct src/shapes.rs:Rec

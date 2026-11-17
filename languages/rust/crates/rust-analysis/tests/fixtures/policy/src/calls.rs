@@ -33,7 +33,7 @@ pub fn path_calls() {
 }
 
 pub fn method_chain(r: &Rec) -> u8 {
-    r.get().checked_add(1).unwrap_or(0)
+    r.value().checked_add(1).unwrap_or(0)
 }
 
 pub fn constructions() {
@@ -108,5 +108,5 @@ pub fn operators(a: u8, o: Option<u8>) -> Option<u8> {
 }
 
 pub fn order(r: &Rec) -> u8 {
-    twice(r.get()) + helper()
+    twice(r.value()) + helper()
 }

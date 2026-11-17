@@ -3,9 +3,12 @@
 //!
 //! A site is taken from the code the engine **lowered into the body**, never from the file's text: a `#[cfg(any())]` statement, block or match arm
 //! inside an active body is text the engine has no expression for, and name resolution still answers there (ENGINE.md, "RS4: the bridge").
-#![expect(
-    dead_code,
-    reason = "RS4's walk (steps 3 and 4) reads the sites and their nodes; step 2 proves the lists in the snapshot tests below"
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "RS4's walk (step 4) reads the sites; steps 2 and 3 prove them in the snapshot tests"
+    )
 )]
 
 use std::collections::HashSet;
@@ -33,7 +36,7 @@ pub(crate) enum SiteKind {
 
 /// What the engine's syntax holds at a site, for step B to ask about. Private to `sem`: no engine type leaves it.
 #[derive(Clone)]
-enum Node {
+pub(super) enum Node {
     Call(ast::CallExpr),
     Method(ast::MethodCallExpr),
     Record(ast::RecordExpr),
@@ -61,6 +64,11 @@ impl RawSite {
 
     pub(crate) fn closure(&self) -> Option<u32> {
         self.closure
+    }
+
+    /// What the engine's syntax holds at this site: step B asks about it.
+    pub(super) fn node(&self) -> &Node {
+        &self.node
     }
 }
 
@@ -444,8 +452,8 @@ mod tests {
             assert_eq!(calls("operators"), ["Some"]);
             // a callee that is not a path is still a site, at the whole callee expression
             assert_eq!(calls("callee_expressions"), ["(h.cb)", "f", "(helper)"]);
-            // source order is where the site is: `twice` before `get` before `helper`, not the nesting of the calls
-            assert_eq!(calls("order"), ["twice", "get", "helper"]);
+            // source order is where the site is: `twice` before `value` before `helper`, not the nesting of the calls
+            assert_eq!(calls("order"), ["twice", "value", "helper"]);
             // a nested item is a def of its own: not the outer function's sites, and a site in each of them
             assert_eq!(calls("nested_items"), ["inner"]);
             assert_eq!(calls("nested_items::{fn}::inner"), ["helper"]);

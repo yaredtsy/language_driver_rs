@@ -1,0 +1,10 @@
+std_calls
+  Call 37..48 "String::new"
+  MethodCall 58..62 "push"
+  MethodCall 75..78 "len"
+  Call 104..112 "Vec::new"
+  Call 120..124 "Some"
+  Call 133..145 "Ok::<u8, ()>"
+  Record 154..169 "std::ops::Range"
+  Call 209..225 "Default::default"
+  Call 233..255 "crate::shapes::derived"

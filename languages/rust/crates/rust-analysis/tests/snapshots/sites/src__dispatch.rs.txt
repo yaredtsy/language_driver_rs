@@ -1,0 +1,55 @@
+Step::step
+Step::twice
+  MethodCall 37..41 "step"
+  MethodCall 51..55 "step"
+Step::fresh
+Step::pair
+  Call 72..83 "Self::fresh"
+  Call 87..98 "Self::fresh"
+make_writer
+make_generic
+  Call 60..70 "W::default"
+concrete
+  MethodCall 39..44 "write"
+  MethodCall 57..62 "twice"
+generic_by_reference
+  MethodCall 54..59 "write"
+generic_by_value
+  MethodCall 49..54 "write"
+dyn_reference
+  MethodCall 45..50 "write"
+boxed_dyn
+  MethodCall 45..50 "write"
+impl_argument
+  MethodCall 45..50 "write"
+impl_return
+  Call 125..136 "make_writer"
+  MethodCall 139..144 "write"
+impl_return_of_a_parameter
+  Call 63..80 "make_generic::<W>"
+  MethodCall 83..88 "write"
+static_through_a_parameter
+  Call 51..58 "W::make"
+qualified_concrete
+  Call 34..54 "<Json as Make>::make"
+qualified_through_a_parameter
+  Call 54..71 "<W as Make>::make"
+closure_value
+  Call 52..53 "f"
+fn_pointer
+  Call 41..42 "f"
+fn_pointer_field
+  Call 42..48 "(h.cb)"
+fn_bound
+  Call 45..46 "f"
+dyn_fn
+  Call 42..43 "f"
+unknown_callee
+  Call 30..37 "missing"
+  Call 30..39 "missing()"
+unknown_method
+  MethodCall 44..51 "nothing"
+projection_receiver
+  MethodCall 184..188 "next"
+  MethodCall 191..197 "unwrap"
+  MethodCall 200..205 "write"

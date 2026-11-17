@@ -27,6 +27,9 @@ impl Rec {
     pub fn get(&self) -> u8 {
         self.a
     }
+    pub fn value(&self) -> u8 {
+        self.a
+    }
 }
 
 // a second block of the same type: its `get` is the second `Rec::get` of this file (D15, D18)

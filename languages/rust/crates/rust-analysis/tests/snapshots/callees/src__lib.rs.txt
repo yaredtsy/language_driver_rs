@@ -1,0 +1,9 @@
+Writer::twice
+  MethodCall "write" -> Def src/lib.rs:Writer::write open=self_in_trait
+  MethodCall "write" -> Def src/lib.rs:Writer::write open=self_in_trait
+plain
+  Call "helper" -> Def src/lib.rs:helper
+with_inner
+  Call "inner" -> Def src/lib.rs:with_inner::{fn}::inner
+calls_generated
+  Call "generated" -> External policy generated (MacroFile)

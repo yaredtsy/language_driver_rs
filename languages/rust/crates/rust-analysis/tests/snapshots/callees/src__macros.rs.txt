@@ -1,0 +1,18 @@
+std_arguments
+  Call "f" -> Def src/macros.rs:f
+  Call "g" -> Def src/macros.rs:g
+  Call "f" -> Def src/macros.rs:f
+project_body
+  MacroBody "log" -> Def src/macros.rs:emit
+project_wrapping_external
+  Call "f" -> Def src/macros.rs:f
+macro_in_macro
+  MacroBody "nested" -> Def src/macros.rs:emit
+argument_twice
+  Call "f" -> Def src/macros.rs:f
+statements_in_a_body
+  MacroBody "statements" -> Def src/macros.rs:emit
+  MacroBody "statements" -> Def src/macros.rs:emit
+  Call "f" -> Def src/macros.rs:f
+not_expanded
+  Call "g" -> Def src/macros.rs:g

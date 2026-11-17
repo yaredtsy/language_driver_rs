@@ -1,0 +1,58 @@
+macro_from_another_module
+  MacroBody "from_elsewhere" -> Def src/shared.rs:elsewhere
+  Call "helper" -> Def src/calls.rs:helper
+plain_calls
+  Call "twice" -> Def src/calls.rs:twice
+  Call "helper" -> Def src/calls.rs:helper
+path_calls
+  Call "crate::shapes::Rec::mk" -> Def src/shapes.rs:Rec::mk
+  Call "self::helper" -> Def src/calls.rs:helper
+method_chain
+  MethodCall "value" -> Def src/shapes.rs:Rec::value
+  MethodCall "checked_add" -> External core num::checked_add
+  MethodCall "unwrap_or" -> External core option::Option::unwrap_or
+constructions
+  Call "Pair" -> Construct src/shapes.rs:Pair
+  Call "E::V" -> Construct src/shapes.rs:E
+  Record "Rec" -> Construct src/shapes.rs:Rec
+  Record "E::R" -> Construct src/shapes.rs:E
+Wrapper::make
+  Call "Self" -> Construct src/calls.rs:Wrapper
+Wrapper::from_record
+  Record "Rec" -> Construct src/shapes.rs:Rec
+  Call "helper" -> Def src/calls.rs:helper
+callee_expressions
+  Call "(h.cb)" -> Unknown function_typed_value open=fn_pointer
+  Call "f" -> Unknown function_typed_value open=fn_param
+  Call "(helper)" -> Def src/calls.rs:helper
+closures
+  Call "helper" -> Def src/calls.rs:helper
+  Call "twice" -> Def src/calls.rs:twice
+  Call "(|| helper())" -> Unknown function_typed_value open=closure
+  Call "helper" -> Def src/calls.rs:helper
+  Call "a" -> Unknown function_typed_value open=closure
+  Call "b" -> Unknown function_typed_value open=closure
+asynchronous
+  Call "helper" -> Def src/calls.rs:helper
+  Call "helper" -> Def src/calls.rs:helper
+nested_items
+  Call "inner" -> Def src/calls.rs:nested_items::{fn}::inner
+nested_items::{fn}::inner
+  Call "helper" -> Def src/calls.rs:helper
+nested_items::{fn}::N
+  Call "helper_const" -> Def src/calls.rs:helper_const
+nested_items::{fn}::Local::method
+  Call "helper" -> Def src/calls.rs:helper
+FROM_CONST
+  Call "helper_const" -> Def src/calls.rs:helper_const
+FROM_STATIC
+  Call "helper_const" -> Def src/calls.rs:helper_const
+Declared::defaulted
+  MethodCall "declared" -> Def src/calls.rs:Declared::declared open=self_in_trait
+  Call "helper" -> Def src/calls.rs:helper
+operators
+  Call "Some" -> External construct core option::Option
+order
+  Call "twice" -> Def src/calls.rs:twice
+  MethodCall "value" -> Def src/shapes.rs:Rec::value
+  Call "helper" -> Def src/calls.rs:helper

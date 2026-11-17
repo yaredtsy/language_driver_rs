@@ -282,6 +282,14 @@ impl<'p> Sem<'p> {
         }
     }
 
+    pub(super) fn sema(&self) -> &Semantics<'p, RootDatabase> {
+        &self.sema
+    }
+
+    pub(super) fn loaded(&self) -> &'p Loaded {
+        self.loaded
+    }
+
     // What `sites.rs` asks of the engine. They are here because they use what the `Sem` keeps, and `Sem` keeps it private.
 
     pub(super) fn sites_cache(&self) -> &RefCell<HashMap<Func<'p>, Rc<Sites>>> {
@@ -432,6 +440,8 @@ mod tests {
                 "src/bom.rs",
                 "src/calls.rs",
                 "src/cfg_off.rs",
+                "src/dispatch.rs",
+                "src/external.rs",
                 "src/lib.rs",
                 "src/macros.rs",
                 "src/nested/deep.rs",
@@ -516,6 +526,7 @@ mod tests {
             names,
             [
                 "src/calls.rs:Declared",
+                "src/dispatch.rs:Step",
                 "src/lib.rs:Writer",
                 "src/lib.rs:Make",
                 "src/lib.rs:tests",
@@ -527,11 +538,11 @@ mod tests {
                 "src/shapes.rs:Alias",
                 "src/shared.rs:from_elsewhere!",
             ],
-            "the three traits, the inline module, the six macros, the type alias"
+            "the four traits, the inline module, the six macros, the type alias"
         );
-        // every other def: 17 in lib.rs, 15 in shapes.rs, 26 in calls.rs, 10 each in macros.rs and cfg_off.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
+        // every other def: 17 in lib.rs, 16 in shapes.rs, 26 in calls.rs, 25 in dispatch.rs, 10 each in macros.rs and cfg_off.rs, 1 each in external.rs and shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
         // byte-order mark
-        assert_eq!(joined, 86);
+        assert_eq!(joined, 113);
     }
 
     /// What `entry` answers `None` to, besides a def a `cfg` turns off (the join test): no file, a file no module reaches, a kind that cannot start a
