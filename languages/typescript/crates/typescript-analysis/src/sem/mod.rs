@@ -28,7 +28,7 @@ use tsrs_core::{
 use tsrs_tsoptions::{ParseConfigHost, ParsedCommandLine};
 use tsrs_vfs::{FS, bundled, cachedvfs, osvfs};
 
-use typescript_syntax::{Def, Dialect, MarkerStyle, Outline, Placement, Span};
+use typescript_syntax::{Def, DefKind, Dialect, MarkerStyle, Outline, Placement, Span};
 
 use crate::OpenError;
 
@@ -168,13 +168,51 @@ fn nodes_by_span(file: P<SourceFile>, wanted: &HashSet<Span>) -> HashMap<Span, V
     found
 }
 
-/// A def of one file's outline (`typescript_syntax::outline`, the rule TS1 froze): a `File` and the index of the def in that file's outline. It holds no
-/// tsrs pointer of its own, only the `File`, so it is valid for the `Sem`'s life and no longer, stays on one thread, and is not shared, exactly as `File`
-/// is. `proof` pins all three for `Func` too.
+/// A def of one file's outline (`typescript_syntax::outline`, the rule TS1 froze), or the file's own code (the module, D32): a `File` and which of the two. It
+/// holds no tsrs pointer of its own, only the `File`, so it is valid for the `Sem`'s life and no longer, stays on one thread, and is not shared, exactly as
+/// `File` is. `proof` pins all three for `Func` too.
+///
+/// The module has no row in the outline (rule 10: the outline does not change), so there is no index to give it. `at` is private and its type is an enum,
+/// so a place that needs the outline's row must say what it does for the module: it asks `outline_index`, which is an `Option`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Func<'p> {
     file: File<'p>,
-    def: usize,
+    at: At,
+}
+
+/// What a `Func` is in its file.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum At {
+    /// The file's own code: its top-level statements, down to the next def.
+    Module,
+    /// The def at this index of the file's outline.
+    Def(usize),
+}
+
+impl<'p> Func<'p> {
+    /// The def at `index` of the outline of `file`.
+    pub(crate) fn def(file: File<'p>, index: usize) -> Self {
+        Func {
+            file,
+            at: At::Def(index),
+        }
+    }
+
+    /// The file's own code.
+    pub(crate) fn module(file: File<'p>) -> Self {
+        Func {
+            file,
+            at: At::Module,
+        }
+    }
+
+    /// The index in the file's outline; `None` for the module, which has no row there.
+    pub(crate) fn outline_index(self) -> Option<usize> {
+        match self.at {
+            At::Def(index) => Some(index),
+            At::Module => None,
+        }
+    }
 }
 
 pub struct Sem {
@@ -331,11 +369,20 @@ impl Sem {
                         | typescript_syntax::DefKind::Class
                 ) && defs.nodes[index].is_some()
                 {
-                    found.push(Func { file, def: index });
+                    found.push(Func::def(file, index));
                 }
             }
         }
         found
+    }
+
+    /// The file's own code (the module, D32) of every project file, in the program's file order: what a measurement that also enters each file starts from.
+    #[cfg(test)]
+    pub(crate) fn project_modules(&self) -> Vec<Func<'_>> {
+        self.files()
+            .filter(|&file| self.is_project_code(file))
+            .map(Func::module)
+            .collect()
     }
 
     /// The file at `relative` (to the root, with `/`; `./` and `..` are folded), if the program holds it.
@@ -440,7 +487,7 @@ impl Sem {
             .file_defs(func.file, style)
             .expect("a Func has an outline");
         let mut nodes = defs.nodes.clone();
-        nodes[func.def] = None;
+        nodes[func.outline_index().expect("a def, not the module")] = None;
         let def_of = nodes
             .iter()
             .enumerate()
@@ -486,7 +533,14 @@ impl Sem {
             .enumerate()
             .filter(|(_, def)| def.qualname == qualname)
             .nth(usize::from(occurrence))?;
-        Some(Func { file, def })
+        Some(Func::def(file, def))
+    }
+
+    /// The file's own code at `file` (relative to the root), as an entry (D32). Like `entry`, only project code has one: a file outside the root, in
+    /// `node_modules`, a declaration file or a file that is not code answers `None` (D33).
+    pub fn file_entry(&self, file: &str) -> Option<Func<'_>> {
+        let file = self.file(file)?;
+        self.is_project_code(file).then(|| Func::module(file))
     }
 
     /// The plain calls in the body of `func`: the callee expression of each, as an absolute byte span in the file, in source order (by where the
@@ -501,7 +555,7 @@ impl Sem {
     /// defs the walk stopped at, and the references by name. One pass, made once per def.
     fn body(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Arc<Body>> {
         let defs = self.file_defs(func.file, style)?;
-        let node = defs.nodes[func.def]?;
+        let node = self.node_of(func, style)?;
         if let Some(found) = self.bodies.borrow().get(&node) {
             return Some(Arc::clone(found));
         }
@@ -534,6 +588,7 @@ impl Sem {
         style: MarkerStyle<'_>,
     ) -> Option<Func<'p>> {
         let defs = self.file_defs(class.file, style)?;
+        let class_index = class.outline_index()?;
         // Overloads are one def each (two signatures and the implementation): the one that runs is the one with a body, and a signature has nothing to
         // walk, so choosing the first would lose every call of the constructor.
         let mut candidates = defs
@@ -541,27 +596,50 @@ impl Sem {
             .defs
             .iter()
             .enumerate()
-            .filter(|(_, def)| def.parent == Some(class.def) && def.name == "constructor")
+            .filter(|(_, def)| def.parent == Some(class_index) && def.name == "constructor")
             .map(|(index, _)| index);
         let first = candidates.next()?;
         let index = std::iter::once(first)
             .chain(candidates)
             .find(|&index| defs.nodes[index].is_some_and(|node| node.body().is_some()))
             .unwrap_or(first);
-        Some(Func {
-            file: class.file,
-            def: index,
-        })
+        Some(Func::def(class.file, index))
     }
 
-    /// What the outline says the def is (qualname, kind, range, marker).
-    pub(crate) fn def(&self, func: Func<'_>, style: MarkerStyle<'_>) -> DefRef {
+    /// What the outline says the def is (qualname, kind, range, marker). `None` for the module, which has no row in the outline: ask `kind_of` and
+    /// `range_of`, which answer for both.
+    pub(crate) fn def(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<DefRef> {
+        let index = func.outline_index()?;
         let defs = self
             .file_defs(func.file, style)
             .expect("a Func is made from an outline, so its file has one");
-        DefRef {
-            defs,
-            index: func.def,
+        Some(DefRef { defs, index })
+    }
+
+    /// What the def is: its kind in the outline, or `Module` for the file's own code.
+    pub(crate) fn kind_of(&self, func: Func<'_>, style: MarkerStyle<'_>) -> DefKind {
+        self.def(func, style)
+            .map_or(DefKind::Module, |def| def.kind.clone())
+    }
+
+    /// Where the def is in its file, in bytes: its range in the outline, or the whole file for the module, so that a site's offset in the body is its
+    /// position in the file.
+    pub(crate) fn range_of(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Span {
+        match self.def(func, style) {
+            Some(def) => def.range,
+            None => {
+                let end = func.file.node.text().len();
+                Span::new(0, u32::try_from(end).unwrap_or(u32::MAX))
+            }
+        }
+    }
+
+    /// The node the def's body is read from: the def's node in the program's tree (`None` when the two parses disagreed, `FileDefs::nodes`), or the
+    /// source file itself for the module. The one place that knows the module has no node in `FileDefs`.
+    pub(crate) fn node_of(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<P<Node>> {
+        match func.outline_index() {
+            Some(index) => self.file_defs(func.file, style)?.nodes[index],
+            None => Some(func.file.node.as_node()),
         }
     }
 

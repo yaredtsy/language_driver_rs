@@ -21,7 +21,7 @@ the checker answers, and where it differs) is in `ENGINE.md`.
 |---|---|---|---|
 | `def` | what is a def | TS1 §2 | `../../typescript-syntax/tests/fixtures` |
 | `site` | what is a call site | §3 above | `policy` `src/sites.ts` `sites` |
-| `anonymous` | anonymous functions | their calls belong to the enclosing def, at their source position | `policy` `src/callbacks.ts` `callbacks` |
+| `anonymous` | anonymous functions | their calls belong to the enclosing def, at their source position; at the top of a file the enclosing def is the file's own code, the module (`Entry::File`, D32; fixture `file-entry`, tests in `tests/file_entry.rs`) | `policy` `src/callbacks.ts` `callbacks` |
 | `nested` | named nested functions | their own def; appear where they are **called**, not where they are declared | `policy` `src/nested_calls.ts` `nested` `declaredNotCalled` |
 | `branches` | `if`, `switch`, `?:`, `&&`, loops, `try` | every call expression in the body is a site, whatever branch it is in. No condition is evaluated | `policy` `src/branches.ts` `branches` |
 | `class-instance` | a call on a **class** instance (`w: JsonWriter`) | that class's method (or the inherited one, where it is declared) | `policy` `src/method_on_class.ts` `onClass` |

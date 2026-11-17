@@ -1518,18 +1518,3 @@ fn a_declaration_file_outside_the_root_is_named_from_the_root() {
         "{edges:#?}"
     );
 }
-
-#[test]
-fn the_files_own_code_is_not_an_entry_yet() {
-    // `Entry::File` is answered in M step 2
-    let root = fixture("three-files");
-    let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
-    let graph = call_graph(
-        &project,
-        "src/main.ts",
-        &Entry::File,
-        &Options::new(STYLE),
-        &Cancel::new(),
-    );
-    assert!(graph.is_none());
-}

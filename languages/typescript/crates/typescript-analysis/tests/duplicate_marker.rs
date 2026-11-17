@@ -215,7 +215,7 @@ fn a_graph_with_no_duplicate_has_no_counter_and_no_line() {
 /// The known limit of rule 1: it reads one file. The same marker in a second file is one node, and core counts the def it dropped (D2).
 #[test]
 fn the_same_marker_in_a_second_file_is_one_node_and_is_counted() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/limits/duplicate-marker-across");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/duplicate-marker-across");
     let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
     let entry = Entry::Def {
         qualname: "main",

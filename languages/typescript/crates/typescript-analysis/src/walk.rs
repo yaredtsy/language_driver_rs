@@ -57,7 +57,7 @@ pub(crate) fn body<'p>(
     // What the body hands over is a site too (D22): the def's context, at the name, marked passed. It is walked like a call, so what it calls is in the
     // graph, and the edge says it is not one. Placed among the calls by where the name is.
     let hand_overs = lang.sem.handed_over(f, lang.style);
-    let start = lang.sem.def(f, lang.style).range.start;
+    let start = lang.sem.range_of(f, lang.style).start;
     for held in &hand_overs.handed {
         if let Some(at) = held.at {
             found.push(SiteCalls::passed(
@@ -111,7 +111,7 @@ fn target<'p>(lang: &TypeScript<'p>, resolved: Resolved<'p>, jsx: bool) -> Targe
         // A class reached by `new` (or by `super(x)`, which names the base class) has nothing to walk as a body: it is a construction, and its `init` is
         // the constructor that runs, its own or the one it inherits. A function reached by `new` is a function: its body is the constructor, so it is a
         // call.
-        Resolved::Def(def) if lang.sem.def(def, lang.style).kind == DefKind::Class => {
+        Resolved::Def(def) if lang.sem.kind_of(def, lang.style) == DefKind::Class => {
             let (class, init) = construction(lang, def, jsx);
             Target::Construct { class, init }
         }
@@ -169,7 +169,7 @@ pub(crate) fn construction<'p>(
 /// on the graph and counts it (`def_without_node`) instead of reporting a body with no calls.
 fn sites(sem: &Sem, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Vec<Site>> {
     let spans = sem.call_sites(func, style)?;
-    let start = sem.def(func, style).range.start;
+    let start = sem.range_of(func, style).start;
     Some(
         spans
             .into_iter()
@@ -202,7 +202,7 @@ mod tests {
         let sem = Sem::open(&root, Path::new("src/sites.ts")).unwrap();
         let text = std::fs::read_to_string(root.join("src/sites.ts")).unwrap();
         let plain = sem.entry("src/sites.ts", "plain", 0, STYLE).unwrap();
-        let start = sem.def(plain, STYLE).range.start;
+        let start = sem.range_of(plain, STYLE).start;
         let found = sites(&sem, plain, STYLE).unwrap();
         // adding the def's start gives the callee back in the file
         let callees: Vec<&str> = found

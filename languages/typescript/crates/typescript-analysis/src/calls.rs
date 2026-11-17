@@ -138,8 +138,8 @@ pub(crate) fn graph_within(
             qualname,
             occurrence,
         } => sem.entry(file, qualname, occurrence, opts.marker)?,
-        // the file's own code has no def yet (D32, M step 2)
-        Entry::File => return None,
+        // the file's own code (D32): the module, a def of its own
+        Entry::File => sem.file_entry(file)?,
         _ => return None,
     };
     let lang = TypeScript::new(sem, opts.marker);
@@ -153,7 +153,7 @@ pub(crate) fn graph_within(
 /// Where a request for `func` starts. A class is a construction, as at a `new C()` site (D25): its tree is its constructor's calls, not the class def's body,
 /// and what the construction counts is counted here, so the entry and the site agree.
 pub(crate) fn start_of<'p>(lang: &TypeScript<'p>, func: Func<'p>) -> Start<TypeScript<'p>> {
-    if lang.sem.def(func, lang.style).kind == DefKind::Class {
+    if lang.sem.kind_of(func, lang.style) == DefKind::Class {
         let (class, init) = walk::construction(lang, func, false);
         Start::Construct { class, init }
     } else {

@@ -428,7 +428,7 @@ impl Sem {
             implementation_of(checker, declaration).unwrap_or(declaration)
         };
         match defs.def_of.get(&node).copied() {
-            Some(def) => Resolved::Def(Func { file, def }),
+            Some(def) => Resolved::Def(Func::def(file, def)),
             // A property that holds an arrow and is not a def by D21's rule (a `let`, a default export, an argument's literal): a holder of a
             // function, declared in the project, as a callback property is. The outline says it is not a def on purpose, so this is not the bug below.
             None if is_property_function_value(node) => Resolved::Unknown(Why::FunctionTypedValue),
@@ -471,10 +471,7 @@ impl Sem {
             if let Some(constructor) = self.constructor_of(class, style) {
                 return Init::Enter(constructor);
             }
-            let Some(defs) = self.file_defs(class.file, style) else {
-                return Init::Unknown;
-            };
-            let Some(node) = defs.nodes[class.def] else {
+            let Some(node) = self.node_of(class, style) else {
                 return Init::Unknown;
             };
             let Some(heritage) = ast::get_class_extends_heritage_element(node) else {
@@ -503,7 +500,7 @@ impl Sem {
             }
             match resolved.as_slice() {
                 [Resolved::Def(base_class)]
-                    if self.def(*base_class, style).kind == DefKind::Class =>
+                    if self.kind_of(*base_class, style) == DefKind::Class =>
                 {
                     // a class that extends itself is an error in the program, not a loop here
                     if seen.contains(base_class) {
@@ -530,29 +527,49 @@ impl Sem {
         func: Func<'_>,
         style: MarkerStyle<'_>,
     ) -> bool {
+        let Some(index) = func.outline_index() else {
+            return false;
+        };
         let defs = self
             .file_defs(func.file, style)
             .expect("a Func is made from an outline, so its file has one");
-        defs.outline.defs[func.def].marker.is_some() && !defs.owns_marker[func.def]
+        defs.outline.defs[index].marker.is_some() && !defs.owns_marker[index]
     }
 
     /// What the def is, in the core's terms: `Marked` by its marker when it has one, else named by where it is (the file relative to the root,
     /// its qualname, and which of the same-named defs of the file it is, in source order).
     pub(crate) fn describe(&self, func: Func<'_>, style: MarkerStyle<'_>) -> DefInfo {
-        let defs = self
-            .file_defs(func.file, style)
-            .expect("a Func is made from an outline, so its file has one");
-        let def = &defs.outline.defs[func.def];
         let file = self.relative_path(func.file).expect(
             "a Func is made from project code, which is under the root (`is_project_code`)",
         );
-        let occurrence = defs.outline.defs[..func.def]
+        // The file's own code has no row in the outline: it is named by its path, with no qualname and no marker (D32). The id is a path id with an empty
+        // qname, so no def's marker text can collide with it and the wire's `target_id` is empty.
+        let Some(index) = func.outline_index() else {
+            return DefInfo::new(
+                StableDef::Path {
+                    module: file.clone(),
+                    qname: String::new(),
+                    nth: 0,
+                },
+                file.clone(),
+                String::new(),
+                0,
+                DefKind::Module,
+                file,
+                self.range_of(func, style),
+            );
+        };
+        let defs = self
+            .file_defs(func.file, style)
+            .expect("a Func is made from an outline, so its file has one");
+        let def = &defs.outline.defs[index];
+        let occurrence = defs.outline.defs[..index]
             .iter()
             .filter(|earlier| earlier.qualname == def.qualname)
             .count() as u16;
         // a marker another def of the file owns is not this def's id (D34): it is named by where it is, as a def with no marker is
         let id = match &def.marker {
-            Some(marker) if defs.owns_marker[func.def] => StableDef::Marked(marker.clone()),
+            Some(marker) if defs.owns_marker[index] => StableDef::Marked(marker.clone()),
             _ => StableDef::Path {
                 module: file.clone(),
                 qname: def.qualname.clone(),

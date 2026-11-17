@@ -68,8 +68,12 @@ impl Sem {
         let Some(defs) = self.file_defs(class.file, style) else {
             return Vec::new();
         };
-        let def = &defs.outline.defs[class.def];
-        let Some(node) = defs.nodes[class.def] else {
+        // a class is a def of the outline; the module is not one
+        let Some(index) = class.outline_index() else {
+            return Vec::new();
+        };
+        let def = &defs.outline.defs[index];
+        let Some(node) = defs.nodes[index] else {
             return Vec::new();
         };
         if def.kind != DefKind::Class || def.parent.is_some() {
@@ -97,8 +101,12 @@ impl Sem {
         else {
             return Vec::new();
         };
-        let def = &defs.outline.defs[class.def];
-        let Some(node) = defs.nodes[class.def] else {
+        // a class is a def of the outline; the module is not one
+        let Some(index) = class.outline_index() else {
+            return Vec::new();
+        };
+        let def = &defs.outline.defs[index];
+        let Some(node) = defs.nodes[index] else {
             return Vec::new();
         };
         if def.kind != DefKind::Class || def.parent.is_some() {
@@ -135,11 +143,7 @@ impl Sem {
     /// The sites of `class`'s own body that are in the initializers of its **instance** fields, as the span of each (`x = make()`): what a construction runs and does not
     /// draw. An arrow or a function expression held by a field is a def, so its calls are not in the class's body and not counted.
     pub(crate) fn initializer_sites(&self, class: Func<'_>, style: MarkerStyle<'_>) -> Vec<Span> {
-        let (Some(body), Some(defs)) = (self.body(class, style), self.file_defs(class.file, style))
-        else {
-            return Vec::new();
-        };
-        let Some(node) = defs.nodes[class.def] else {
+        let (Some(body), Some(node)) = (self.body(class, style), self.node_of(class, style)) else {
             return Vec::new();
         };
         let initializers = instance_initializers(class.file.node.text(), node);
@@ -153,10 +157,7 @@ impl Sem {
     /// Whether `class` has a `render` that is a project function with a body, its own or inherited from a class of the project: what a framework calls on
     /// a class component.
     pub(crate) fn has_render(&self, class: Func<'_>, style: MarkerStyle<'_>) -> bool {
-        let Some(node) = self
-            .file_defs(class.file, style)
-            .and_then(|defs| defs.nodes[class.def])
-        else {
+        let Some(node) = self.node_of(class, style) else {
             return false;
         };
         let _scope = self._region.enter();

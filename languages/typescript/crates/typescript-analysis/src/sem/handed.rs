@@ -141,10 +141,7 @@ impl Sem {
         // a named function expression handed over where it is written (`xs.map(function step() {})`): at its name
         if let Some(defs) = self.file_defs(func.file, style) {
             for &(def, handed) in &body.nested {
-                let held = Func {
-                    file: func.file,
-                    def,
-                };
+                let held = Func::def(func.file, def);
                 if handed && self.is_function_with_body(held, style) {
                     found.push(Handed {
                         func: held,
@@ -173,10 +170,7 @@ impl Sem {
         if let Some(defs) = self.file_defs(func.file, style) {
             for &(def, _) in &body.nested {
                 if defs.outline.defs[def].kind == DefKind::Class {
-                    let class = Func {
-                        file: func.file,
-                        def,
-                    };
+                    let class = Func::def(func.file, def);
                     uncovered.extend(std::iter::repeat_n(
                         Uncovered::LocalClassDecoratorSite,
                         self.decorator_sites(class, style).len(),
@@ -496,7 +490,7 @@ impl Sem {
             let Some(&def) = defs.def_of.get(&target) else {
                 continue;
             };
-            let held = Func { file, def };
+            let held = Func::def(file, def);
             if self.is_function_with_body(held, style) {
                 functions.push(held);
             } else if defs.outline.defs[def].kind == DefKind::Class {
@@ -522,7 +516,7 @@ impl Sem {
             match member.kind() {
                 Kind::MethodDeclaration => {
                     if let (Some(&def), Some(key)) = (defs.def_of.get(&member), key) {
-                        out.push((Func { file, def }, key));
+                        out.push((Func::def(file, def), key));
                     }
                 }
                 Kind::PropertyAssignment => {
@@ -532,7 +526,7 @@ impl Sem {
                     if value.kind() == Kind::ObjectLiteralExpression {
                         self.functions_of_literal(file, defs, value, out);
                     } else if let (Some(&def), Some(key)) = (defs.def_of.get(&value), key) {
-                        out.push((Func { file, def }, key));
+                        out.push((Func::def(file, def), key));
                     }
                 }
                 _ => {}
@@ -543,10 +537,7 @@ impl Sem {
     /// A def that is a function written with a body: a function declaration, a function expression, an arrow, a method. Not a class, an accessor,
     /// a constructor, or a signature (an interface's method, an ambient `declare function`: nothing to walk).
     fn is_function_with_body(&self, func: Func<'_>, style: MarkerStyle<'_>) -> bool {
-        let Some(defs) = self.file_defs(func.file, style) else {
-            return false;
-        };
-        defs.nodes[func.def].is_some_and(|node| {
+        self.node_of(func, style).is_some_and(|node| {
             matches!(
                 node.kind(),
                 Kind::FunctionDeclaration

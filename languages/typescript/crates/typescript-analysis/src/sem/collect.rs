@@ -449,6 +449,12 @@ impl<'a> Collector<'a> {
                     }
                 }
             }
+            // the file's own code: its top-level statements, down to the next def (D32)
+            Kind::SourceFile => {
+                for &statement in node.statements() {
+                    self.collect(Some(statement));
+                }
+            }
             // an interface, a method signature, an enum, a type alias: nothing to walk
             _ => {}
         }

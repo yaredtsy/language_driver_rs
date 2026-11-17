@@ -361,6 +361,29 @@ named `b` and not `a`. The rule reads the file, not the request, so a def has on
 holds in `Stats.language["duplicate_marker"]` (only when above 0; `Breakdown.duplicate_marker`). Known: a copy above the original owns the marker. Across
 files nothing is renamed (D2, `core/`).
 
+### The file's own code as an entry (D32, M step 2)
+
+`Entry::File` is a request for the **module**: a `Func` whose `at` is `At::Module`, not an index of the outline (rule 10: the outline has no row for it).
+`Func` is `{ file, at: At }` with `enum At { Module, Def(usize) }`, both private, so no place can index `outline.defs` without saying what it does for the
+module: `Func::outline_index()` is an `Option`. The lookups that are the same for both go through `Sem::node_of` (the def's node, or the source file's),
+`kind_of` (`DefKind::Module` for the module) and `range_of` (the whole file); `Sem::def` is `None` for the module. `Sem::file_entry(file)` answers the
+module, and only for project code (D33): a file outside the root, in `node_modules`, a `.d.ts` or not code has no file entry.
+
+Its row (`describe`): kind `Module`, `qname` the file's path, `qualname` empty, occurrence 0, range the whole file (so a site's offset is its position in the
+file), id `StableDef::Path { module: file, qname: "", nth: 0 }`. The wire root is `target_kind` `Module` with empty `target_qualname` and `target_id`; no
+change in core.
+
+Its body is the source file's statements, walked by the same `Collector` down to the next def (`body_of`, `Kind::SourceFile`): top-level calls, the calls in
+anonymous functions at the top, and hand-overs. A side effect, as in a function that declares a class: the **computed member names** of a class at the top
+are read by the module's walk, so they are drawn under the module (`top-class.ts`: one site moved from counted to drawn). The counters of a class's
+definition code are untouched (M step 4 retires them): a file entry that declares a class also counts its decorators as
+`uncovered_local_class_decorator_sites`, as any body that declares a class does.
+
+The coverage test enters every project file with `Entry::File` too (`Sem::project_modules`); `top-level` and `top-level-anonymous` left `KNOWN_GAPS`, and
+the per-file numbers of the table above moved from missed to drawn (`top-level.ts` 5, `iife.ts` 9, `jsx.tsx` 3, `tagged.ts` 4). A new outcome,
+`Counted("merged_defs")`, is a site whose def lost its row to another def with the same id (D34 across files): `tests/fixtures/duplicate-marker-across`.
+The sweep read 595 nodes in 42 programs before (with the new `file-entry` fixture, the test not yet entering files) and 599 in 43 after.
+
 ### The proof that a `File<'p>` cannot outlive its `Sem`
 
 `File<'p>` is `P<SourceFile>` plus `PhantomData<&'p Sem>`; `Sem::drop`'s `unsafe` rests on no `File` outliving it. The proof is a `compile_fail` doctest

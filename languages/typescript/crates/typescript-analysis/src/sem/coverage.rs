@@ -47,16 +47,6 @@ const OTHER: &str = "other";
 /// a category here that no fixture hits (`the_list_has_no_stale_entry`): a stale entry hides nothing, but it lies, and is removed when its gap is fixed.
 const KNOWN_GAPS: &[(&str, &str, &str)] = &[
     (
-        TOP_LEVEL,
-        "a call at the top of a file (`const x = f();`, `f();`, `export default g();`): no def is around it, and nothing walks a module's own body",
-        "TS5 row 3c: expected by the row; the owner decides whether a file's top level is something a request can start from",
-    ),
-    (
-        TOP_LEVEL_ANONYMOUS,
-        "a call inside a callback or an IIFE at the top of a file: a call in an anonymous function belongs to the def around it (phase 1), and there is none",
-        "TS5 row 3c: the same decision as `top-level`",
-    ),
-    (
         ENUM_MEMBER,
         "`enum E { A = f() }`: `body_of` says an enum has nothing to walk, and no counter is for it",
         "TS5 row 3c: found by the test; the owner decides",
@@ -424,7 +414,11 @@ impl Sem {
     /// The sites the four counters report for `defs`, as the walk notes them: for a class taken as a construction, the instance initializers of each class
     /// the construction goes through, and the definition sites and the computed names of the class (`walk::construction`); for every other def, the decorators
     /// of the classes its body declares (`handed_over`). By file and span, with the counter's name.
-    fn counted_sites(&self, defs: &[Func<'_>]) -> HashMap<(String, Span), &'static str> {
+    fn counted_sites(
+        &self,
+        defs: &[Func<'_>],
+        graph: &Graph,
+    ) -> HashMap<(String, Span), &'static str> {
         let mut found = HashMap::new();
         let mut put = |class: Func<'_>, spans: Vec<Span>, counter: &'static str| {
             let file = self.describe(class, STYLE).file;
@@ -433,7 +427,23 @@ impl Sem {
             }
         };
         for &func in defs {
-            if self.def(func, STYLE).kind == DefKind::Class {
+            // a def that lost its row to another def with the same id (`Graph::new` counted it: D34 across files) was never walked: its sites are
+            // counted, per def, as `merged_defs`
+            let info = self.describe(func, STYLE);
+            let lost = graph
+                .def(&info.id)
+                .is_some_and(|row| (&row.file, row.range.start) != (&info.file, info.range.start));
+            if lost {
+                if let Some(body) = self.body(func, STYLE) {
+                    put(
+                        func,
+                        body.sites.iter().map(|site| site.span).collect(),
+                        "merged_defs",
+                    );
+                }
+                continue;
+            }
+            if self.kind_of(func, STYLE) == DefKind::Class {
                 let (_, chain) = self.init_chain(func, STYLE);
                 for class in chain {
                     put(class, self.initializer_sites(class, STYLE), "initializer");
@@ -446,10 +456,7 @@ impl Sem {
                 };
                 for &(def, _) in &body.nested {
                     if defs.outline.defs[def].kind == DefKind::Class {
-                        let class = Func {
-                            file: func.file,
-                            def,
-                        };
+                        let class = Func::def(func.file, def);
                         put(class, self.decorator_sites(class, STYLE), "decorator");
                     }
                 }
@@ -493,13 +500,15 @@ struct Analysis {
 
 /// Scan every project file of `sem`, and compare it with the graph of every def of the project taken as an entry.
 fn analyze(sem: &Sem) -> Analysis {
-    let defs = sem.project_defs(STYLE);
+    // every def, and the file's own code (`Entry::File`) of every file: a call at the top of a file is the module's
+    let mut defs = sem.project_defs(STYLE);
+    defs.extend(sem.project_modules());
     let lang = TypeScript::new(sem, STYLE);
     let entries: Vec<_> = defs.iter().map(|&func| start_of(&lang, func)).collect();
     let mut solver = Solver::new(lang, Limits::new(u32::MAX, None));
     let graph = solver.graph_within(&entries, &Budget::default(), &Cancel::new());
     let drawn = drawn(&graph);
-    let counted = sem.counted_sites(&defs);
+    let counted = sem.counted_sites(&defs, &graph);
     let accessors = sem.accessor_sites_of(&defs);
 
     let mut found = Vec::new();
@@ -626,17 +635,17 @@ const EXPECTED: &[Expect] = &[
     },
     Expect {
         file: "src/iife.ts",
-        drawn: 5,
+        drawn: 9,
         counted: 0,
         excluded: 0,
-        missed: &[(TOP_LEVEL, 2), (TOP_LEVEL_ANONYMOUS, 2)],
+        missed: &[],
     },
     Expect {
         file: "src/jsx.tsx",
-        drawn: 2,
+        drawn: 3,
         counted: 0,
         excluded: 3,
-        missed: &[(TOP_LEVEL, 1)],
+        missed: &[],
     },
     Expect {
         file: "src/namespace-class.ts",
@@ -658,24 +667,25 @@ const EXPECTED: &[Expect] = &[
     },
     Expect {
         file: "src/tagged.ts",
-        drawn: 2,
+        drawn: 4,
         counted: 0,
         excluded: 0,
-        missed: &[(TOP_LEVEL, 2)],
+        missed: &[],
     },
     Expect {
+        // `[key()] = 1` moved from counted to drawn: the module's walk draws the computed names of the classes it declares, as a function's does (M step 2)
         file: "src/top-class.ts",
-        drawn: 4,
-        counted: 8,
+        drawn: 5,
+        counted: 7,
         excluded: 0,
         missed: &[],
     },
     Expect {
         file: "src/top-level.ts",
-        drawn: 0,
+        drawn: 5,
         counted: 0,
         excluded: 0,
-        missed: &[(TOP_LEVEL, 5)],
+        missed: &[],
     },
 ];
 
@@ -950,7 +960,7 @@ fn the_counters_say_what_the_spans_say() {
             &Cancel::new(),
         )
         .unwrap();
-        if sem.def(func, STYLE).kind == DefKind::Class {
+        if sem.kind_of(func, STYLE) == DefKind::Class {
             let (_, chain) = sem.init_chain(func, STYLE);
             let initializers: usize = chain
                 .iter()
@@ -977,16 +987,7 @@ fn the_counters_say_what_the_spans_say() {
                 .nested
                 .iter()
                 .filter(|(def, _)| defs.outline.defs[*def].kind == DefKind::Class)
-                .map(|&(def, _)| {
-                    sem.decorator_sites(
-                        Func {
-                            file: func.file,
-                            def,
-                        },
-                        STYLE,
-                    )
-                    .len()
-                })
+                .map(|&(def, _)| sem.decorator_sites(Func::def(func.file, def), STYLE).len())
                 .sum();
             // a function that constructs a local class counts its decorators once, as a construction counts the class's other sites
             assert_eq!(

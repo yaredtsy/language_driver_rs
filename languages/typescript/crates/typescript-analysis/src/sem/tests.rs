@@ -195,7 +195,7 @@ fn entries() -> Sem {
 /// (qualname, start of the def in bytes) of the def `entry` finds.
 fn found(sem: &Sem, qualname: &str, occurrence: u16) -> Option<(String, u32)> {
     let func = sem.entry("src/main.ts", qualname, occurrence, STYLE)?;
-    let def = sem.def(func, STYLE);
+    let def = sem.def(func, STYLE).expect("a def of the outline");
     Some((def.qualname.clone(), def.range.start))
 }
 
@@ -336,7 +336,7 @@ fn sites_by_def(sem: &Sem) -> std::collections::BTreeMap<String, Vec<String>> {
     let defs = sem.file_defs(file, STYLE).unwrap();
     let mut by_def = std::collections::BTreeMap::new();
     for (index, def) in defs.outline.defs.iter().enumerate() {
-        let func = Func { file, def: index };
+        let func = Func::def(file, index);
         let sites = sem
             .call_sites(func, STYLE)
             .expect("every def of this file has a node");
@@ -490,10 +490,10 @@ fn a_files_defs_are_made_once_per_marker_style() {
 fn a_def_is_read_in_place_not_copied() {
     let sem = entries();
     let func = sem.entry("src/main.ts", "Box.open", 0, STYLE).unwrap();
-    let def = sem.def(func, STYLE);
+    let def = sem.def(func, STYLE).expect("a def of the outline");
     assert_eq!(def.qualname, "Box.open");
     // two reads share the one outline
-    let again = sem.def(func, STYLE);
+    let again = sem.def(func, STYLE).expect("a def of the outline");
     assert!(std::ptr::eq(&*def, &*again));
 }
 
@@ -714,7 +714,7 @@ fn describe_names_a_def_by_its_marker_or_by_where_it_is() {
     assert_eq!(info.id, StableDef::Marked("PLAIN-0001".into()));
     assert_eq!(info.qname, "plain");
     assert_eq!(info.file, "src/lib.ts");
-    assert_eq!(info.range, resolve.def(plain, STYLE).range);
+    assert_eq!(info.range, resolve.range_of(plain, STYLE));
     // one without is named by its file, qualname and which of the same-named defs it is
     let bump = resolve
         .entry("src/lib.ts", "Counter.bump", 0, STYLE)
