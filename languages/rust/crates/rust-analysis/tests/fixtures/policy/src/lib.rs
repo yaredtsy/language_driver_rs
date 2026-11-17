@@ -3,6 +3,8 @@
 #![allow(dead_code, unused)]
 
 mod bom;
+#[macro_use]
+mod shared;
 mod calls;
 mod cfg_off;
 mod macros;

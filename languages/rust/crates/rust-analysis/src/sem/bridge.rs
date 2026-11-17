@@ -45,6 +45,11 @@ impl Func<'_> {
     pub(super) fn item(self) -> Item {
         self.item
     }
+
+    /// The file's number (`Sem::open`).
+    pub(super) fn file(self) -> u32 {
+        self.file
+    }
 }
 
 /// What an engine def is, in the graph's terms.
@@ -316,10 +321,23 @@ impl<'p> Sem<'p> {
             .map(|expanded| expanded.value)
     }
 
-    /// Where a node of an expansion is written in the file, when it is written there (an argument of the macro call) and not made by the macro's body.
-    pub(super) fn original_range(&self, node: &SyntaxNode) -> Option<Span> {
-        let range = self.sema.original_range_opt(node)?.range;
-        Some(Span::new(range.start().into(), range.end().into()))
+    /// Where a node of an expansion is written in `file`, when it is written there (an argument of the macro call) and not made by the macro's body. The
+    /// engine's range names a file of its own, and a range in another file (a project macro defined in another module) is no place in this body: it is
+    /// compared with the def's file, never taken by its offsets alone.
+    pub(super) fn original_range(&self, node: &SyntaxNode, file: u32) -> Option<Span> {
+        let found = self.sema.original_range_opt(node)?;
+        let db = self.loaded.db();
+        let path = self
+            .loaded
+            .root_relative(self.loaded.vfs().file_path(found.file_id.file_id(db)))?;
+        let (defs, _) = self.opened(file);
+        if path != defs.path {
+            return None;
+        }
+        Some(Span::new(
+            found.range.start().into(),
+            found.range.end().into(),
+        ))
     }
 
     pub(super) fn macro_of(&self, call: &ast::MacroCall) -> Option<Macro> {
@@ -418,7 +436,8 @@ mod tests {
                 "src/macros.rs",
                 "src/nested/deep.rs",
                 "src/nested/mod.rs",
-                "src/shapes.rs"
+                "src/shapes.rs",
+                "src/shared.rs"
             ],
             "src/stray.rs is on disk and in no module's tree"
         );
@@ -506,12 +525,13 @@ mod tests {
                 "src/macros.rs:nested!",
                 "src/macros.rs:statements!",
                 "src/shapes.rs:Alias",
+                "src/shared.rs:from_elsewhere!",
             ],
-            "the three traits, the inline module, the five macros, the type alias"
+            "the three traits, the inline module, the six macros, the type alias"
         );
-        // every other def: 17 in lib.rs, 15 in shapes.rs, 25 in calls.rs, 10 each in macros.rs and cfg_off.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
+        // every other def: 17 in lib.rs, 15 in shapes.rs, 26 in calls.rs, 10 each in macros.rs and cfg_off.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
         // byte-order mark
-        assert_eq!(joined, 84);
+        assert_eq!(joined, 86);
     }
 
     /// What `entry` answers `None` to, besides a def a `cfg` turns off (the join test): no file, a file no module reaches, a kind that cannot start a

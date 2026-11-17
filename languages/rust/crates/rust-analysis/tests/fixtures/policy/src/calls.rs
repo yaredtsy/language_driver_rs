@@ -1,5 +1,10 @@
 use crate::shapes::{E, Pair, Rec, Unit};
 
+/// A project macro defined in another module: its body's call is a `MacroBody` site at the macro call, and the argument is a call at its place.
+pub fn macro_from_another_module() {
+    from_elsewhere!(helper());
+}
+
 fn helper() -> u8 {
     1
 }

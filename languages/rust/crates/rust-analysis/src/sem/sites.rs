@@ -91,6 +91,8 @@ struct Walk<'a, 'p> {
     sem: &'a Sem<'p>,
     /// The def's `range.start` and `range.end`, in the file's bytes.
     def: Span,
+    /// The def's file, as `Sem::open` numbers it: a range of the engine counts only in this one.
+    file: u32,
     list: Vec<RawSite>,
     macro_not_expanded: u32,
     /// Closures and `async` blocks met so far, in source order.
@@ -115,6 +117,7 @@ impl<'p> Sem<'p> {
         let mut walk = Walk {
             sem: self,
             def: self.def_range(func),
+            file: func.file(),
             list: Vec::new(),
             macro_not_expanded: 0,
             closures: 0,
@@ -204,7 +207,7 @@ impl Walk<'_, '_> {
             (Some(path), None) => self.relative(span_of(path.text_range())),
             (Some(path), Some(outer)) => self
                 .sem
-                .original_range(path)
+                .original_range(path, self.file)
                 .and_then(|range| self.within_def(range))
                 .map_or(outer.at, |range| self.relative(range)),
             (None, Some(outer)) => outer.at,
@@ -257,7 +260,7 @@ impl Walk<'_, '_> {
             None => (kind, self.relative(span_of(written.text_range()))),
             Some(expansion) => match self
                 .sem
-                .original_range(&written)
+                .original_range(&written, self.file)
                 .and_then(|range| self.within_def(range))
             {
                 // written in the file: an argument of the macro call
@@ -509,6 +512,13 @@ mod tests {
                 kinds("statements_in_a_body"),
                 [SiteKind::MacroBody, SiteKind::MacroBody, SiteKind::Call]
             );
+            // a project macro defined in another module: the call of its body is at the macro call, and its argument is a call where it is written
+            let file = "src/calls.rs";
+            let (written, _) = site_texts(sem, &root, file, "macro_from_another_module");
+            assert_eq!(written, ["from_elsewhere", "helper"]);
+            let func = sem.entry(file, "macro_from_another_module", 0).unwrap();
+            let kinds: Vec<_> = sem.sites(func).list.iter().map(RawSite::kind).collect();
+            assert_eq!(kinds, [SiteKind::MacroBody, SiteKind::Call]);
             // what the engine cannot expand is counted, and what was in its arguments is lost
             assert_eq!(texts("not_expanded"), (vec!["g".to_owned()], 1));
         });

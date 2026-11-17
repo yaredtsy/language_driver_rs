@@ -1,3 +1,6 @@
+macro_from_another_module
+  MacroBody 186..200 "from_elsewhere"
+  Call 202..208 "helper"
 helper
 twice
 helper_const
