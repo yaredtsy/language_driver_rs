@@ -1077,3 +1077,36 @@ Examples: V-NOC `top-level` `button.tsx:7 cva(…)`, `useVersioningStore.ts:110 
 - (code removed at M step 4) `walk::construction` stops noting `definition_sites`: `the_counters_say_what_the_spans_say` (`uncovered_class_definition_sites` of `Top` 0, not 6), which is why that test exists: the spans are read from `Sem`, so without it the walker could stop counting what the spans say is counted.
 
 **Time:** the four tests together 1.4 s (dev profile, optimized), the sweep being almost all of it; `measure_coverage` on V-NOC 0.8 s in the test, 285 ms of it the scan and the graph.
+
+## TS5 step H: the hardening batch (H1–H10, 2026-11-17)
+
+One commit each (`506f945` .. `dc1bc9a`, `10-review-fixes.md` §6). None changes an edge; H10 changes a reason.
+
+- **H1, one checker handle at a time.** `Sem::checker()` is the only place that calls `get_type_checker`, and it returns a guard
+  (`HeldChecker`, `Deref` to the `Checker`). The guard sets `Sem::checker_held` and clears it on drop. A second handle while one is held is a
+  `debug_assert!` with a message, where it used to wait for ever: the checker is behind a mutex that one thread cannot lock twice. A
+  `#[should_panic]` test takes two (debug builds only), and its twin takes one, drops it and takes another.
+- **H2.** The two memory tests share one `static Mutex<()>`, so they take turns (the file went from about 7 s to 9.6 s).
+- **H3.** `handed_not_called` sorts with `found.sort()`, by `StableDef`'s own order, not by its `Debug` string.
+- **H4.** `Sem::_region` is `region` (it is used). The header of `tests/threads.rs` said `Sync`; it says `Send` and not `Sync`, as pinned since TS4
+  ("Thread safety of the handles").
+- **H5.** `matches_a_glob` reads `ENVIRONMENT_GLOBS` instead of repeating its names; a unit test checks that each glob matches a name written from it.
+- **H6.** A request with `occurrence` above 0: `Box.value` occurrence 0 is the getter, 1 the setter, 2 is no def (D15).
+- **H8.** `under_root` takes the root's trailing `/` off first, so a drive root (`C:/`, `/`) has files under it; a path equal to the root is `None`.
+- **H10.** The call of a function expression written in place (`(() => {})()`, `(function () {})()`, `(async () => {})()`, `!function () {}()`, under
+  parentheses and assertions) is `Unresolved(anonymous_function_called)`, not `no_declaration`: the same edges, a truer reason. No snapshot
+  held such an edge. postcss (a) `Processor.process` keeps its one `no_declaration`, which is not an IIFE. **Found, H11:** a *named* function
+  expression called in place gets the same reason, and its calls are in no tree but its own (`10-review-fixes.md` §6, H11).
+- **H9.** `DefMatch.owns_marker` (additive; the struct is `#[non_exhaustive]`). `typescript-cli calls … --entry b --id SAME` exits 1 with
+  "no def `b` owns ID: SAME" and "`a` at 2:1 owns it, and `b` is named by where it is"; `--entry a --id SAME` works; an id that no def carries
+  keeps its message. The owner is found from the outline (`owns_marker`), with no new library function.
+- **H7, the stack.** `tests/stack.rs` writes a 10 000-term `+` chain and a 10 000-call method chain when it runs, and runs `outline` and a
+  call graph of each on a thread of `DRIVER_STACK` = 32 MiB. **[measure]** (release, three runs agree): the `+` chain passes at 4 MiB and
+  aborts at 3.5; the method chain passes at 8 MiB and aborts at 7; at 2 MiB all four abort. 32 MiB is four times the larger, and is the number
+  the driver is told (07-ts5 row 9). What matters is the caller's own thread: `outline` alone overflows at 2 MiB on it, though tsrs gives its own
+  worker threads 512 MiB each.
+
+**Checked by the reviewer after the batch** (2026-11-17, dev profile): TypeScript 302 pass, 5 ignored, fmt, clippy, static. V-NOC
+`TaskDetailPanel`: 141 call, 2 construct, 235 external, 86 unresolved (all `function_typed_value`), 18 passed, 90 contexts, unchanged. The
+golden files of the five entries, regenerated with the CLI: trees, wires, merged wires and breakdowns byte-identical (22 files), and the
+`.graph` dumps byte-identical less the `frontier: 0` and `merged_defs: 0` lines (5 files).

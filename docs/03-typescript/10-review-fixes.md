@@ -249,20 +249,26 @@ Either costs a program rebuild, which is what `set_text` already costs in step 6
 
 ## 6. Step H: the hardening batch
 
-Small, each with its test, one commit each or one for all as the coding session finds natural. None changes an answer.
+**Built** (2026-11-17, one commit each, in the order H1–H6, H8, H10, H9, H7; reviewed, accepted). TypeScript 302 pass; V-NOC `TaskDetailPanel`
+unchanged; the golden trees, wires, merged wires and breakdowns of the five entries byte-identical (`.graph` less the `frontier` and
+`merged_defs` lines). What was built and measured: `ENGINE.md`, "TS5 step H". H11 was found while building H10 and is not built.
+
+Small, each with its test, one commit each or one for all as the coding session finds natural. None changes an answer (H10 changes a reason
+only).
 
 | # | What | Proof |
 |---|---|---|
-| H1 | one checker handle at a time, checked: `Sem` holds a `Cell<bool>` that a small guard sets when a handle is taken and clears on drop; taking a second is a `debug_assert!` | a `#[should_panic]` unit test that takes two (debug builds only) |
-| H2 | the two memory tests do not run at once: one `static Mutex<()>` both lock | read; the numbers in the file's header still hold |
-| H3 | `handed_not_called`: `found.sort()` | golden unchanged |
-| H4 | `Sem::_region` → `region` (it is used; the underscore says it is not); the header of `tests/threads.rs` says `Send` and not `Sync` | builds |
-| H5 | `matches_a_glob` is derived from `ENVIRONMENT_GLOBS` instead of repeating its names | the four `environment_inputs` tests unchanged |
-| H6 | a request test with `occurrence` above 0 (D15: a getter and its setter, by `Entry { occurrence: 1 }`) | the test |
-| H7 | the deep-nesting test of §7 | the test |
-| H8 | a root that is a drive root (`D:\` on Windows, `/`) ends in `/` in the engine's spelling, so `under_root` (`project.rs`) finds nothing under it, and since R3 every file is `OutsideRoot`. Older than R (TS3's `relative_path` had it); found at R3's review, not run. Take the root's trailing `/` off before the compare | a unit test on strings (`under_root("C:/", "C:/a.ts")` is `Some("a.ts")`, `under_root("/", "/a.ts")` too) |
-| H10 | **an IIFE's own call is `Unresolved(no_declaration)`** (found at M step 5's review, run): `(() => { h(); })()` draws `h` in the enclosing def, as the phase-1 rule says, and adds one `Unresolved` edge for the call of the arrow itself, though nothing about it is unknown. Older than M (a function's IIFE does the same); it inflates `unresolved` on any file with IIFEs. Give the call of a function expression written in place its own reason (`anonymous_function_called`), still `Unresolved` and counted, so the number says what it is | the `iife.ts` fixtures: the reason is the new one; `no_declaration` is 0 there |
-| H9 | **the warning of D34, where a person sees it.** `DefMatch` gains `owns_marker: bool` (additive: it is `#[non_exhaustive]`, `lib.rs:373`, checked), so a driver can say "this def carries `ID: SAME`, but `a` at line N owns it" without parsing the file again. `typescript-cli calls … --id X` picks the def that **owns** `X` (its id is `X`); a carrier that does not own it is not picked by `--id`, and the CLI prints which def owns it. The tree does not change | `tests/duplicate_marker.rs`: `defs_named` reports `owns_marker` for both; a CLI test of `--entry b --id SAME` (the message names `a` and its line) |
+| H1 | **built, `506f945`.** one checker handle at a time, checked: `Sem` holds a `Cell<bool>` that a small guard sets when a handle is taken and clears on drop; taking a second is a `debug_assert!` | a `#[should_panic]` unit test that takes two (debug builds only) |
+| H2 | **built, `23eb02c`.** the two memory tests do not run at once: one `static Mutex<()>` both lock | read; the numbers in the file's header still hold |
+| H3 | **built, `7f6cfb4`.** `handed_not_called`: `found.sort()` | golden unchanged |
+| H4 | **built, `4d7be1e`.** `Sem::_region` → `region` (it is used; the underscore says it is not); the header of `tests/threads.rs` says `Send` and not `Sync` | builds |
+| H5 | **built, `bbee118`.** `matches_a_glob` is derived from `ENVIRONMENT_GLOBS` instead of repeating its names | the four `environment_inputs` tests unchanged |
+| H6 | **built, `e61afcc`.** a request test with `occurrence` above 0 (D15: a getter and its setter, by `Entry { occurrence: 1 }`) | the test |
+| H7 | **built, `dc1bc9a`.** the deep-nesting test of §7 | the test |
+| H8 | **built, `f4d00af`.** a root that is a drive root (`D:\` on Windows, `/`) ends in `/` in the engine's spelling, so `under_root` (`project.rs`) finds nothing under it, and since R3 every file is `OutsideRoot`. Older than R (TS3's `relative_path` had it); found at R3's review, not run. Take the root's trailing `/` off before the compare | a unit test on strings (`under_root("C:/", "C:/a.ts")` is `Some("a.ts")`, `under_root("/", "/a.ts")` too) |
+| H10 | **built, `2dbc5c8`.** **an IIFE's own call is `Unresolved(no_declaration)`** (found at M step 5's review, run): `(() => { h(); })()` draws `h` in the enclosing def, as the phase-1 rule says, and adds one `Unresolved` edge for the call of the arrow itself, though nothing about it is unknown. Older than M (a function's IIFE does the same); it inflates `unresolved` on any file with IIFEs. Give the call of a function expression written in place its own reason (`anonymous_function_called`), still `Unresolved` and counted, so the number says what it is | the `iife.ts` fixtures: the reason is the new one; `no_declaration` is 0 there |
+| H9 | **built, `d727c8e`.** **the warning of D34, where a person sees it.** `DefMatch` gains `owns_marker: bool` (additive: it is `#[non_exhaustive]`, `lib.rs:373`, checked), so a driver can say "this def carries `ID: SAME`, but `a` at line N owns it" without parsing the file again. `typescript-cli calls … --id X` picks the def that **owns** `X` (its id is `X`); a carrier that does not own it is not picked by `--id`, and the CLI prints which def owns it. The tree does not change | `tests/duplicate_marker.rs`: `defs_named` reports `owns_marker` for both; a CLI test of `--entry b --id SAME` (the message names `a` and its line) |
+| H11 | **(found at H10, 2026-11-17, not built) a named function expression called in place is not entered.** `(function named() { h(); })()`: the outline makes `named` a def (the engine's rule: a function expression with a name), so the enclosing body stops at it, and the call is `Unresolved` (since H10 `anonymous_function_called`, a reason that is wrong for it: the function has a name and a def). So `h` is drawn in no tree but `named`'s own, which only a request for `named` reaches; the coverage sweep cannot see it because it enters every def. The engine gives no answer either: its call hierarchy takes the callee, a `ParenthesizedExpression`, which is no declaration and has no symbol, and drops the call (`tsrs_ls/src/callhierarchy.rs:936`). **Recommended:** when the callee, under parentheses, assertions and `!`/`void`, is a function expression that `def_of` holds, the edge is `Call` to that def: the callee is the def's own node, so it is not a guess (rule 8), and it is what the row `nested` says for a named function (it appears where it is called). An anonymous one stays `anonymous_function_called`. Where it is common: UMD and bundler wrappers (`(function webpackUniversalModuleDefinition(root, factory) {…})(this, …)`) | `file-entry/src/iife-forms.ts`: the named case is a `Call` to `named` and the module's tree shows `named ▸ h`; the four anonymous ones unchanged; V-NOC and postcss goldens unchanged unless they hold a named IIFE (say which) |
 
 **Rust note (H1).** A `std::sync::Mutex` locked twice by one thread does not return: the documentation leaves it at "will not return
 (it might panic or deadlock)". There is no error to catch, and `Cancel` is never checked, because the thread is waiting inside `lock`.
@@ -282,7 +288,12 @@ used, until the stack grows).
 | Where | What |
 |---|---|
 | `vnoc`, the driver | every thread that calls an analyzer function is made with `std::thread::Builder::new().stack_size(…)`. Row 9 of 07 §7 says so |
-| here, H7 | a fixture with a 10 000-term `+` chain and a 10 000-call method chain; `outline` and a call graph of each, **on a thread of the size the driver is told to use**, and `[measure]` the smallest size that passes in a release build, written in `ENGINE.md` with the number the driver is given (a margin above it) |
+| here, H7 (**built, `dc1bc9a`**) | a fixture with a 10 000-term `+` chain and a 10 000-call method chain; `outline` and a call graph of each, **on a thread of the size the driver is told to use**, and `[measure]` the smallest size that passes in a release build, written in `ENGINE.md` with the number the driver is given (a margin above it) |
+
+**Measured (H7, release build, three runs agree):** at 10 000 levels a `+` chain passes at 4 MiB and aborts at 3.5 MiB (outline and call graph);
+a method chain passes at 8 MiB and aborts at 7 MiB. **The driver gives each analyzer thread 32 MiB** (four times the larger): reserved
+address space, not memory used until the stack grows. The test `tests/stack.rs` runs all four on a 32 MiB thread (`DRIVER_STACK`), and
+`TS_STACK_KB=<n>` reruns them at another size; at 2 MiB all four abort, so the test can fail. If the stack grows linearly with the depth (not measured), 32 MiB holds about 40 000 levels of a method chain; tsrs gives its own threads 512 MiB, so a larger reservation costs nothing either.
 
 ## 8. Not scheduled
 
