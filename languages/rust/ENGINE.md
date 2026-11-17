@@ -77,6 +77,9 @@ new call into the engine adds its row in the same commit (the reviewer writes it
 | `Semantics::original_range_opt(&SyntaxNode) -> Option<FileRange>` | `bridge.rs` | `Some`: the node is written in a file (a macro argument), `None`: a macro's own body (S-RS2). The `FileRange`'s file must be the def's (RS4 §3) |
 | `Semantics::type_of_expr(&Expr).is_some()` | `bridge.rs` | "the engine lowered it into the body": `None` for an expression a `cfg` turns off inside an active body; never asked of a macro call |
 | `Semantics::resolve_macro_call`, `Macro::{module, source}` | `bridge.rs`, `origin.rs` | which macro a call is, and whether it is a project macro (`cause_of`, as a def) |
+| `Semantics::{resolve_path_with_subst, resolve_expr_as_callable, resolve_variant, resolve_method_call_fallback, resolve_path, resolve_type}`, `PathResolution::{Def(ModuleDef::{Function, Adt, EnumVariant, TypeAlias, BuiltinType}), TypeParam, SelfType}`, `CallableKind::*` | `resolve.rs` (RS4 step 3, a7af483) | §4's table: path first, then the callable type; a record by `resolve_variant`; the substitution is dropped (RS4 §4 rule 2), except to read `Self` for classifying (the step-3 review) |
+| `Semantics::type_of_expr(..).original()`, `Type::{autoderef, as_type_param, as_dyn_trait, as_impl_traits, as_associated_type_parent_trait, is_unknown}`, `TypeParam::{parent, name, is_implicit}`, `Function::as_assoc_item` → `AssocItemContainer::Trait` | `resolve.rs` | `Open` of a trait's own item. **`Self` in a trait is an implicit type parameter** (`is_implicit` is true for it as for an argument-position `impl Trait`), so it is told apart by its parent and name first |
+| `ast::Path::{qualifier, segment}`, `PathSegment::type_anchor`, `TypeAnchor::ty` | `resolve.rs` | the qualifier of `W::make()` and the type of `<W as Make>::make()` |
 | `ast::{MacroCall, CallExpr, MethodCallExpr, RecordExpr, ClosureExpr, BlockExpr::async_token, Item, Attr::simple_name}`, `SyntaxNode::preorder`, `Preorder::skip_subtree` | `sites.rs` | the walk of a body and of an expansion: nested items skipped, closures and `async` blocks numbered, `#[cfg]` read by the tree |
 | test only: `Semantics::{new, attach_first_edition_opt, parse, resolve_expr_as_callable, resolve_method_call_fallback}`, `CallableKind::Function`, `Either::left`; `ra_ap_syntax::{ast::CallExpr, ast::MethodCallExpr, AstNode}` | `origin.rs` tests | the fixture's call walk, the part of RS4's site walk RS3 needs |
 
@@ -91,6 +94,9 @@ Found while building it, on the policy fixture (`crates/rust-analysis/tests/fixt
 - **Name resolution answers inside `#[cfg]`-disabled code.** `helper()` in a `#[cfg(any())] fn disabled` resolves by path, though the engine
   has no def for `disabled` (`to_def` is `None`) and the callable type does not resolve. So a site list must come from code the engine
   lowered, never from the file's text (RS4 §3).
+- **`original_range_opt` is `None` for every call written in a macro's own body** (step 2's file fix, 41bf33f): plain, `$crate::` and
+  method-chain callees alike, also for a macro defined in another module. So the check that a range's file is the def's is a guard; the
+  `from_elsewhere!` fixture is its regression test.
 - **A file with a byte-order mark joins**: the outline is built from the engine's text of the file, whose offsets are the ones `HasSource`
   reports.
 

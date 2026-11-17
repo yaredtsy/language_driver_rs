@@ -207,6 +207,24 @@ signature. On rung 1 the path first lifts `core/`'s in-project edges from 826 to
 in-project edges path first and 22% callable first. It is also the more specific answer: `<JsonWriter as Make>::make()` is the impl's
 `make` by path and the trait's by type. The callable type is the fallback for what has no path (`(h.cb)(1)`) or whose path names a value.
 
+**As built (RS4 step 3, a7af483, reviewed 2026-11-17).** `sem/resolve.rs`, `Sem::callee(f, site) -> Callee { found, open }`; `Found` is
+`Def`, `Construct`, `External { package, name, cause, construct }` or `Unknown(Reason)`. A path that names a function, a struct or a variant
+is final; `Self(1)`, a local, a function-typed value go on to the callable type. `open` is asked only when the answer is a **trait's own
+item**: of the receiver's type through `Type::autoderef` (the first step that is a parameter, a `dyn`, an opaque type or unknown decides),
+or of the path's qualifier. `Self` in a trait is the engine's implicit type parameter too, so it is asked before `is_implicit` (else it
+reads `impl_trait`). Snapshots: `tests/snapshots/callees/`, one per policy module.
+
+Two changes, decided in the review:
+
+- **A projection is `Open::Projection`** (`open_projection`), not `Other`: `items.next().unwrap().write()` with `I::Item: Writer` is
+  answered by types, as `TypeParam` is (RC1 substitutes the key, then the projection normalizes). `Other` stays for what nothing names
+  (an unknown type), so its number keeps meaning "the list is missing a case".
+- **A trait-qualified path is asked of its `Self`**: `Writer::write(w)`, `Iterator::next(&mut it)`, `let x: W = Default::default()`. The
+  qualifier is a trait, which says nothing about the type, so today these read `open_other`. The type is the substitution's `Self`:
+  `resolve_path_with_subst` returns it (`GenericSubstitution::types`, the entry named `Self`; **[check]** that it is listed for a trait's
+  item), and `dispatch_of` reads it as a receiver. Using the substitution to classify is not using it to resolve: rule 2 below still holds.
+  Fixture rows: those three, through a type parameter (`type_param`) and on a concrete type (no `open`).
+
 Three rules about this table:
 
 1. **`open` with a trait item whose cause we did not classify is `Open::Other`**, counted `open_other`. It must be near zero on real
@@ -216,8 +234,8 @@ Three rules about this table:
 3. **The engine's answer is used as it is.** A method on a concrete type goes to the impl's method because `lookup_impl_method` found it,
    not because we looked. Where the engine's list has an order we do not control, `sem` sorts by (file, offset) (rule 9).
 
-`Why` (the reason of an `Unresolved` edge, and its counter): `function_typed_value` (D16), `unknown_callee`, `unknown_method`,
-`def_without_node`, `def_not_in_outline` (§5). The `open_*` counters and `macro_not_expanded`, `external_passed`,
+`Reason` (the reason of an `Unresolved` edge, and its counter; named so as not to clash with `warning::Why`): `function_typed_value` (D16),
+`unknown_callee`, `unknown_method`, `def_not_in_outline` (§5; a project def with no name lands here too, so there is no `def_without_node`). The `open_*` counters and `macro_not_expanded`, `external_passed`,
 `constructor_passed`, `macro_generated_target`, `outside_root`, `duplicate_marker` are **notes**: counted in `Stats.language`, printed by
 `Breakdown`, never an edge's reason.
 
@@ -251,7 +269,20 @@ session's choice, crate-private):
 | in a file of its own crate, outside the root | a path dependency or workspace member above or beside the root (RS3 §2, as D33) | `External { package: <its crate> }` | `outside_root`, as TypeScript's |
 
 **The external name** (provisional in RS3 §4, settled here): `package` is the crate's display name, and `name` is the path **from the
-crate's root, without the crate's own name**: `External { package: "alloc", name: "string::String::len" }`. Today `origin.rs` puts the
+crate's root, without the crate's own name**: `External { package: "alloc", name: "string::String::len" }`. The segment before the function's
+name (amended in the RS4 step 3 review: without it, impls on a builtin type and the several trait impls of one type share a name, and the
+merged wire counts them as one target):
+
+| The function is | Its segment | Example |
+|---|---|---|
+| a trait's own item | the trait | `iter::traits::iterator::Iterator::next` |
+| in an inherent impl of a struct, enum or union | the type's name, no generic arguments (as before) | `string::String::len`, `vec::Vec::new` |
+| in an inherent impl of any other type | the self type as the engine displays it | `num::u8::checked_add`, `slice::[T]::len` |
+| in a trait impl | `<self type as trait>`, both as the engine displays them, generic arguments included | `default::<u8 as Default>::default`, `string::<String as From<&str>>::from`, a built-in derive's `shapes::<Derived as Default>::default` |
+| free | none | `mem::swap` |
+
+The engine's display (`HirDisplay`), not RS1's printer: an external name is never stored, so its spelling only has to be unique and the
+same on every run (rule 9). Today `origin.rs` puts the
 crate in both (`name: "alloc::string::String::len"`), and core's `render` draws an external as `"{package}.{name}"`, so the tree and the
 wire would show `alloc.alloc::string::String::len`. Without the repeat it is `alloc.string::String::len`, the same split as Python
 (`package` the module, `name` the qualname) and TypeScript (`react` · `useState`). The crate is the **defining** one, as the engine says
@@ -359,7 +390,7 @@ the whole crate.
 |---|---|---|
 | 1 ✅ | **done** (e9e03ed, reviewed 2026-11-17). The bridge: `origin.rs` extended (const, static, ADT, variant; the name range; the three `External` causes of §5; the name without the crate), `bridge.rs` (`sem::entry`, `describe` with D34, the outline cache), one `attach_db` per request | the join test; `origin.rs`'s owner tests updated to the new name |
 | 2 ✅ | **done** (7edd537, reviewed 2026-11-17; macros built here too, as far as §3 "As built" says). Step A for plain calls, method calls, records; nested items skipped; closures tagged | a snapshot of the **site list** per policy module (no targets yet) |
-| 3 | step B for those, path first (§4); `Callee`, `Open`, `Why`; `walk.rs`, `env.rs`, `key.rs` in final form | `sem`-level snapshots: site → `Found` + `open` |
+| 3 ✅ | **done** (a7af483 + the step-2 file fix 41bf33f, reviewed 2026-11-17; two changes asked, §4 "As built", and the external-name table of §5). Step B for those, path first (§4); `Callee`, `Open`, `Reason`; `walk.rs`, `env.rs`, `key.rs` in final form | `sem`-level snapshots: site → `Found` + `open` |
 | 4 | `calls.rs`: `impl Lang`, `call_graph` over `graph_within` (`Entry::File` → `None`), `Project::defs_named`, `finish` (the `Stats.language` table of §2, `skipped()` and `warning_*` included), `Breakdown`; `rust-cli calls` | the first trees; invariants; determinism; a graph of a load with a warning has its `warning_<code>` |
 | 5 | constructions and `describe` for types; a struct as an entry (`Start::Construct`); an external variant named with the variant (§5) | the construction fixtures, with a marked struct, tuple struct and enum shown by name |
 | 6 | passed sites (D22) | fixtures: named, as a method path, a constructor (counted, no edge), a local (no site) |

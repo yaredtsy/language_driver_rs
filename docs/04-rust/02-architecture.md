@@ -145,6 +145,7 @@ pub(crate) enum Open {
     ImplTrait,      // a parameter written `impl Writer`
     Opaque,         // the value of a `-> impl Writer` function
     Dyn,            // a trait object
+    Projection,     // an associated type of a parameter (`I::Item`): answered by types, as TypeParam (added in RS4 step 3)
     FnPointer,      // a `fn(..)` value
     FnParam,        // a parameter bounded by `Fn` / `FnMut` / `FnOnce`
     Closure,        // a closure value called where it is written or held in a local
@@ -172,7 +173,7 @@ Even a closed site needs it in layer 2: `emit(&Json)` always calls `emit`, and t
 `Target::Call(func, key)` in `walk.rs` is built as `Target::Call(func, callee_key(..))` from the first day, never as
 `Target::Call(func, ())`.
 
-The first four values are answered by **types** (RC1, RC2 and the return half of RC4); the last four by **values** (RC2 for `FnParam`,
+The first four values and `Projection` are answered by **types** (RC1, RC2 and the return half of RC4); the last four by **values** (RC2 for `FnParam`,
 RC3–RC6 for the rest). That split is the plan of layer 2 in one line.
 
 ## 7. What layer 1 does because of layer 2
