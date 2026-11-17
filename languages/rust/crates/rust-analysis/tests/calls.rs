@@ -41,7 +41,7 @@ fn policy(name: &str) -> (PathBuf, Project) {
 
 /// Every entry of the first-trees snapshot: a function, a method, a const's initializer, a struct and an enum (a construction with nothing to enter),
 /// recursion, a project macro defined elsewhere, an `impl Trait` the engine sees through, one it does not, a built-in derive, a std call, a duplicate marker.
-const ENTRIES: [(&str, &str, u16); 27] = [
+const ENTRIES: [(&str, &str, u16); 34] = [
     ("src/calls.rs", "plain_calls", 0),
     ("src/calls.rs", "method_chain", 0),
     ("src/calls.rs", "constructions", 0),
@@ -70,6 +70,14 @@ const ENTRIES: [(&str, &str, u16); 27] = [
     ("src/constructions.rs", "build_variants", 0),
     ("src/constructions.rs", "build_external", 0),
     ("src/constructions.rs", "build_generated", 0),
+    // hand-overs (step 6): named, a method path, called and passed, constructors, an external, a local, through a parameter
+    ("src/passed.rs", "named", 0),
+    ("src/passed.rs", "Parser::run", 0),
+    ("src/passed.rs", "called_and_passed", 0),
+    ("src/passed.rs", "constructors", 0),
+    ("src/passed.rs", "externals", 0),
+    ("src/passed.rs", "locals", 0),
+    ("src/passed.rs", "through_a_parameter", 0),
 ];
 
 fn text(graph: &Graph) -> String {
@@ -347,6 +355,79 @@ fn constructing_what_a_macro_made_is_not_a_body_left_unwalked() {
     // a call to a function a macro made is one
     let called = graph_of(&project, "src/lib.rs", "calls_generated");
     assert_eq!(called.stats.language["macro_generated_target"], 1);
+}
+
+/// D22 through the graph: a def of the project that is handed over has an edge marked passed, at the hand-over, and its calls are in the tree; the rest of
+/// what is handed over has no edge and is counted. A def both called and passed has both edges, at their own sites.
+#[test]
+fn what_is_handed_over_is_a_passed_edge_or_a_count() {
+    let (_copy, project) = policy("calls_passed");
+    let file = "src/passed.rs";
+    let edges = |graph: &Graph| -> Vec<(u32, bool)> {
+        graph
+            .edges
+            .iter()
+            .map(|edge| (edge.site.start, edge.passed))
+            .collect()
+    };
+
+    // called and handed over: two edges to `worker`, one a call and one passed, and `spawn`'s own call through its parameter
+    let graph = graph_of(&project, file, "called_and_passed");
+    check_invariants(&graph);
+    let to_worker: Vec<bool> = graph
+        .edges
+        .iter()
+        .filter(|edge| {
+            matches!(&edge.to, EdgeTo::Context(id, _)
+                if graph.defs.iter().any(|d| d.id == id.func && d.qualname == "worker"))
+        })
+        .map(|edge| edge.passed)
+        .collect();
+    assert_eq!(to_worker.iter().filter(|passed| **passed).count(), 1);
+    assert_eq!(to_worker.len(), 2);
+    assert_eq!(breakdown(&graph).passed, 1);
+    let shown = text(&graph);
+    assert!(shown.contains("worker [Passed]"), "{shown}");
+    assert!(shown.contains("\n  worker\n"), "{shown}");
+
+    // named, and by a method path: a passed edge each, walked
+    for qualname in ["named", "Parser::run"] {
+        let graph = graph_of(&project, file, qualname);
+        assert!(graph.edges.iter().any(|edge| edge.passed), "{qualname}");
+    }
+
+    // constructors: no edge, counted; a unit struct and a unit variant are no site at all (three: `Some`, `E::P`, `Wrapper`)
+    let graph = graph_of(&project, file, "constructors");
+    assert_eq!(graph.stats.language["constructor_passed"], 3);
+    assert!(edges(&graph).iter().all(|(_, passed)| !passed));
+    assert_eq!(breakdown(&graph).constructs, 0);
+    // `Self` handed over, in `impl Wrapper`
+    assert_eq!(
+        graph_of(&project, file, "Wrapper::all").stats.language["constructor_passed"],
+        1
+    );
+
+    // a function of another crate: no edge, counted, and not an `external` edge either
+    let graph = graph_of(&project, file, "externals");
+    assert_eq!(graph.stats.language["external_passed"], 1);
+    let summary = breakdown(&graph);
+    assert_eq!(summary.passed, 0);
+    assert_eq!(summary.external_passed, 1);
+    assert!(
+        summary
+            .to_string()
+            .contains("handed over and not called (no edge)")
+    );
+
+    // a local is no site: only the two calls through a value of function type
+    let graph = graph_of(&project, file, "locals");
+    assert!(!graph.stats.language.contains_key("external_passed"));
+    assert_eq!(breakdown(&graph).reasons["function_typed_value"], 2);
+
+    // through a type parameter: a passed edge to the trait's declaration, and its answer is open
+    let graph = graph_of(&project, file, "through_a_parameter");
+    assert!(graph.edges.iter().any(|edge| edge.passed));
+    assert_eq!(graph.stats.language["open_type_param"], 1);
 }
 
 /// A graph of a complete load has no `warning_*` and no `*_skipped`: the keys are absent when 0.

@@ -14,3 +14,5 @@ on_statement
   Call 51..52 "f"
 struct_expression
   Record 104..122 "crate::shapes::Rec"
+handed_statement
+  Passed 146..147 "f"

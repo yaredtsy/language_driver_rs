@@ -3,8 +3,8 @@
 //! (RC1 keeps it), so layer 1's edges are by construction layer 2's under an empty key.
 
 use ra_ap_hir::{
-    AsAssocItem, AssocItemContainer, CallableKind, Function, GenericDef, GenericSubstitution,
-    ModuleDef, PathResolution, Type, TypeParam, Variant,
+    Adt, AsAssocItem, AssocItemContainer, CallableKind, Function, GenericDef, GenericSubstitution,
+    ModuleDef, PathResolution, StructKind, Type, TypeParam, Variant,
 };
 use ra_ap_syntax::ast;
 
@@ -123,6 +123,50 @@ impl<'p> Sem<'p> {
             Node::Method(call) => self.method_callee(call),
             Node::Call(call) => self.call_callee(call),
             Node::Record(record) => self.record_callee(record),
+            Node::Path(path) => self.path_value_callee(path),
+        }
+    }
+
+    /// Whether the path, in a value position, names something that can be handed over: a function, or a tuple struct or variant (a constructor that is a
+    /// function). Name resolution alone answers (§3): a local, a const, a static, a unit struct or variant is a value read and no site.
+    pub(super) fn hands_over(&self, path: &ast::Path) -> bool {
+        let db = self.loaded().db();
+        match self.sema().resolve_path(path) {
+            Some(PathResolution::Def(ModuleDef::Function(_))) => true,
+            Some(PathResolution::Def(ModuleDef::Adt(Adt::Struct(s)))) => {
+                s.kind(db) == StructKind::Tuple
+            }
+            Some(PathResolution::Def(ModuleDef::EnumVariant(v))) => v.kind(db) == StructKind::Tuple,
+            // `.map(Self)` in `impl Wrapper`: the tuple struct itself
+            Some(PathResolution::SelfType(imp)) => matches!(
+                imp.self_ty(db).as_adt(),
+                Some(Adt::Struct(s)) if s.kind(db) == StructKind::Tuple
+            ),
+            _ => false,
+        }
+    }
+
+    /// What a path in a value position names: asked as a call's path is, since the answer is the same def. The walk then hands a `Def` over and counts the
+    /// rest (`external_passed`, `constructor_passed`).
+    fn path_value_callee(&self, expr: &ast::PathExpr) -> Callee<'p> {
+        let Some(path) = expr.path() else {
+            return unknown(Reason::UnknownCallee);
+        };
+        match self.sema().resolve_path_with_subst(&path) {
+            Some((PathResolution::Def(ModuleDef::Function(function)), subst)) => {
+                self.path_function(function, &path, subst.as_ref())
+            }
+            Some((PathResolution::Def(ModuleDef::Adt(adt)), _)) => self.constructed(Item::Adt(adt)),
+            Some((PathResolution::Def(ModuleDef::EnumVariant(variant)), _)) => {
+                self.constructed_variant(Variant::EnumVariant(variant))
+            }
+            Some((PathResolution::SelfType(imp), _)) => {
+                match imp.self_ty(self.loaded().db()).as_adt() {
+                    Some(adt) => self.constructed(Item::Adt(adt)),
+                    None => unknown(Reason::UnknownCallee),
+                }
+            }
+            _ => unknown(Reason::UnknownCallee),
         }
     }
 

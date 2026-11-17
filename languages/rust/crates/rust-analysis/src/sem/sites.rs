@@ -14,7 +14,7 @@ use ra_ap_syntax::{AstNode, SyntaxNode, TextRange, WalkEvent, ast};
 
 use super::bridge::{Func, Sem};
 
-/// What kind of site (§3's table). `Passed` is step 6's.
+/// What kind of site (§3's table).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum SiteKind {
     /// `f(a)`, `path::f(a)`, `(expr)(a)`, and `S(a)`, `Enum::V(a)`, `Self(a)`, which the resolver finds are constructions.
@@ -23,6 +23,9 @@ pub(crate) enum SiteKind {
     MethodCall,
     /// `S { a }`, `Enum::V { a }`, `Self { .. }`.
     Record,
+    /// A function, or a tuple struct or variant, named in a value position and not called: `map(parse)`, `spawn(worker)`, `let f = Self::helper;`,
+    /// `.map(Some)`. Handed over, not called (D22).
+    Passed,
     /// A call that comes from the body of a **project** macro: at the macro call's path, and several of them share it (D30).
     MacroBody,
 }
@@ -33,6 +36,8 @@ pub(super) enum Node {
     Call(ast::CallExpr),
     Method(ast::MethodCallExpr),
     Record(ast::RecordExpr),
+    /// A path in a value position that names a function or a tuple constructor.
+    Path(ast::PathExpr),
 }
 
 /// One site of a body. `span` is relative to the def's `range.start` (core's `Site`).
@@ -71,6 +76,11 @@ impl RawSite {
 
     pub(crate) fn closure(&self) -> Option<u32> {
         self.closure
+    }
+
+    /// Whether the site hands a def over and does not call it (`Node::Path`): a `MacroBody` site can be one too, a path in a project macro's body.
+    pub(crate) fn is_passed(&self) -> bool {
+        matches!(self.node, Node::Path(_))
     }
 
     /// What the engine's syntax holds at this site: step B asks about it.
@@ -262,6 +272,26 @@ impl Walk<'_, '_> {
             (
                 Node::Record(record),
                 (SiteKind::Record, path.syntax().clone()),
+            )
+        } else if let Some(path_expr) = ast::PathExpr::cast(node.clone()) {
+            // the callee of a call is the call's own site, not a hand-over: `f(1)`, and `(f)(1)` with its parentheses looked through
+            let mut outermost = node.clone();
+            while let Some(paren) = outermost.parent().and_then(ast::ParenExpr::cast) {
+                outermost = paren.syntax().clone();
+            }
+            let is_callee = outermost
+                .parent()
+                .and_then(ast::CallExpr::cast)
+                .and_then(|call| call.expr())
+                .is_some_and(|callee| *callee.syntax() == outermost);
+            let Some(path) = path_expr.path() else { return };
+            // a function or a tuple constructor only: a local, a const, a static, a unit struct or variant is a value read and no site (§3)
+            if is_callee || !self.sem.hands_over(&path) {
+                return;
+            }
+            (
+                Node::Path(path_expr),
+                (SiteKind::Passed, path.syntax().clone()),
             )
         } else {
             return;
@@ -545,6 +575,54 @@ mod tests {
         attached(&loaded, STYLE, |sem| {
             let func = sem.entry("src/calls.rs", "plain_calls", 0).unwrap();
             assert!(Rc::ptr_eq(&sem.sites(func), &sem.sites(func)));
+        });
+    }
+
+    /// §3's `Passed` row, row by row: a function (or a tuple constructor) in a value position is a site at the path; a callee, a local, a const, a unit
+    /// struct and a unit variant are not; and a hand-over in a statement a `cfg` turns off is none either.
+    #[test]
+    fn what_is_handed_over() {
+        let (loaded, root) = policy("sites_passed");
+        attached(&loaded, STYLE, |sem| {
+            let passed = |file: &str, qualname: &str| -> Vec<String> {
+                let (texts, _) = site_texts(sem, &root, file, qualname);
+                let func = sem.entry(file, qualname, 0).unwrap();
+                sem.sites(func)
+                    .list
+                    .iter()
+                    .zip(texts)
+                    .filter(|(site, _)| site.kind() == SiteKind::Passed)
+                    .map(|(_, text)| text)
+                    .collect()
+            };
+            let p = |qualname: &str| passed("src/passed.rs", qualname);
+            // named; as a method path, by `Self` and by the type's name; handed to a function
+            assert_eq!(p("named"), ["parse"]);
+            assert_eq!(p("Parser::run"), ["Self::helper", "Parser::helper"]);
+            assert_eq!(p("Parser::as_value"), ["Self::helper"]);
+            assert_eq!(p("handed_to_a_function"), ["worker"]);
+            // a def both called and passed: the call is a site of its own and the hand-over another
+            assert_eq!(p("called_and_passed"), ["worker"]);
+            assert_eq!(
+                site_texts(sem, &root, "src/passed.rs", "called_and_passed").0,
+                ["worker", "spawn", "worker"]
+            );
+            // constructors: a tuple struct, a tuple variant, `Some`, `Self`; not a unit struct or a unit variant named as values
+            assert_eq!(p("constructors"), ["Some", "E::P", "Wrapper"]);
+            assert_eq!(p("Wrapper::all"), ["Self"]);
+            assert_eq!(p("externals"), ["String::from"]);
+            // through a type parameter: a hand-over, its answer open (step B)
+            assert_eq!(p("through_a_parameter"), ["W::build"]);
+            // a local that holds a function is a variable read
+            assert_eq!(p("locals"), Vec::<String>::new());
+            // the callee of a call is the call, with or without parentheses
+            assert_eq!(
+                passed("src/calls.rs", "callee_expressions"),
+                Vec::<String>::new()
+            );
+            assert_eq!(passed("src/calls.rs", "plain_calls"), Vec::<String>::new());
+            // a hand-over in a statement a `cfg` turns off is no site: only the active one is
+            assert_eq!(passed("src/cfg_off.rs", "handed_statement"), ["f"]);
         });
     }
 }

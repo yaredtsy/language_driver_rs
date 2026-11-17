@@ -22,6 +22,10 @@ pub(crate) const MACRO_NOT_EXPANDED: &str = "macro_not_expanded";
 pub(crate) const MACRO_GENERATED_TARGET: &str = "macro_generated_target";
 pub(crate) const OUTSIDE_ROOT: &str = "outside_root";
 pub(crate) const DUPLICATE_MARKER: &str = "duplicate_marker";
+/// A function of another crate handed over and not called: no edge (only a call into project code can be passed, D22), counted.
+pub(crate) const EXTERNAL_PASSED: &str = "external_passed";
+/// A tuple struct or variant handed over (`.map(Some)`, `let f = E::P;`): a constructor has no body, so no edge, counted.
+pub(crate) const CONSTRUCTOR_PASSED: &str = "constructor_passed";
 
 /// How to build a graph. The marker style is how a def's marker is read (`/// ID: …` in its doc comment).
 #[derive(Clone, Debug)]
@@ -209,6 +213,10 @@ pub struct Breakdown {
     pub open: BTreeMap<String, u64>,
     /// Macro calls the engine could not expand: what was in their arguments is lost.
     pub macro_not_expanded: u64,
+    /// Functions of other crates handed over and not called (`.map(String::from)`): no edge, counted.
+    pub external_passed: u64,
+    /// Tuple structs and variants handed over (`.map(Some)`): no edge, counted.
+    pub constructor_passed: u64,
     /// Calls to a function a macro or a built-in derive made: `External`, named, not entered (a body that was there and was not walked).
     pub macro_generated_target: u64,
     /// Calls into a local crate's file outside the root (D33's rule): `External`, a body that was there to walk and was not.
@@ -240,6 +248,8 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
             .map(|(cut, count)| (format!("{cut:?}"), *count))
             .collect(),
         macro_not_expanded: count(MACRO_NOT_EXPANDED),
+        external_passed: count(EXTERNAL_PASSED),
+        constructor_passed: count(CONSTRUCTOR_PASSED),
         macro_generated_target: count(MACRO_GENERATED_TARGET),
         outside_root: count(OUTSIDE_ROOT),
         duplicate_marker: count(DUPLICATE_MARKER),
@@ -321,6 +331,14 @@ impl fmt::Display for Breakdown {
             (
                 "macro calls not expanded (their arguments are lost)",
                 self.macro_not_expanded,
+            ),
+            (
+                "functions of other crates handed over and not called (no edge)",
+                self.external_passed,
+            ),
+            (
+                "tuple structs and variants handed over and not called (no edge)",
+                self.constructor_passed,
             ),
             (
                 "calls to a def a macro or a derive made, not entered",

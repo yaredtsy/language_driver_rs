@@ -1,0 +1,64 @@
+parse
+  MethodCall 32..35 "len"
+worker
+spawn
+  Call 24..25 "f"
+Build::build
+Wrapper
+E
+Parser
+Parser::helper
+Parser::run
+  MethodCall 117..121 "iter"
+  MethodCall 124..130 "copied"
+  MethodCall 133..136 "map"
+  Passed 137..149 "Self::helper"
+  MethodCall 151..156 "count"
+  MethodCall 164..173 "into_iter"
+  MethodCall 176..179 "map"
+  Passed 180..194 "Parser::helper"
+  MethodCall 196..201 "count"
+Parser::as_value
+  Passed 36..48 "Self::helper"
+  Call 58..59 "f"
+named
+  MethodCall 78..87 "into_iter"
+  MethodCall 90..93 "map"
+  Passed 94..99 "parse"
+  MethodCall 101..106 "count"
+handed_to_a_function
+  Call 36..41 "spawn"
+  Passed 42..48 "worker"
+called_and_passed
+  Call 114..120 "worker"
+  Call 128..133 "spawn"
+  Passed 134..140 "worker"
+constructors
+  MethodCall 153..157 "iter"
+  MethodCall 160..166 "copied"
+  MethodCall 169..172 "map"
+  Passed 173..177 "Some"
+  MethodCall 179..184 "count"
+  Passed 201..205 "E::P"
+  MethodCall 214..223 "into_iter"
+  MethodCall 226..229 "map"
+  Passed 230..237 "Wrapper"
+  MethodCall 239..244 "count"
+Wrapper::all
+  MethodCall 46..55 "into_iter"
+  MethodCall 58..61 "map"
+  Passed 62..66 "Self"
+  MethodCall 68..73 "count"
+externals
+  MethodCall 113..122 "into_iter"
+  MethodCall 125..128 "map"
+  Passed 129..141 "String::from"
+  MethodCall 143..148 "count"
+locals
+  Call 201..202 "c"
+  Call 210..211 "g"
+through_a_parameter
+  MethodCall 141..150 "into_iter"
+  MethodCall 153..156 "map"
+  Passed 157..165 "W::build"
+  MethodCall 167..172 "count"

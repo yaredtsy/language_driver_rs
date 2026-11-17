@@ -72,30 +72,63 @@ pub(crate) fn body<'a, 'p>(
     );
     let mut found = Vec::with_capacity(read.sites.len());
     for resolved in &read.sites {
+        let passed = resolved.raw.is_passed();
         let mut targets = Vec::with_capacity(resolved.callees.len());
         for callee in &resolved.callees {
             if let Some(open) = callee.open {
                 lang.note(open.counter(), 1);
             }
-            // a call to a def a macro made, or one beside the root, is a body that was there and was not walked (rule 8). A construction has no body: a struct
-            // has none and Rust has no constructor function, so there was nothing to walk
-            if let Found::External {
-                cause,
-                construct: false,
-                ..
-            } = &callee.found
-            {
-                match cause {
+            match (&callee.found, passed) {
+                // a def of the project handed over: an edge, walked like a call, that says it is not one (D22)
+                (Found::Def(_), _) => {}
+                // only a call into project code can be passed: a function of another crate handed over, and a constructor, have no edge and are counted
+                (
+                    Found::External {
+                        construct: false, ..
+                    },
+                    true,
+                ) => {
+                    lang.note(calls::EXTERNAL_PASSED, 1);
+                    continue;
+                }
+                (
+                    Found::Construct(_)
+                    | Found::External {
+                        construct: true, ..
+                    },
+                    true,
+                ) => {
+                    lang.note(calls::CONSTRUCTOR_PASSED, 1);
+                    continue;
+                }
+                // a call to a def a macro made, or one beside the root, is a body that was there and was not walked (rule 8). A construction has no body: a
+                // struct has none and Rust has no constructor function, so there was nothing to walk. A hand-over is counted above, not here
+                (
+                    Found::External {
+                        cause,
+                        construct: false,
+                        ..
+                    },
+                    false,
+                ) => match cause {
                     Cause::MacroFile | Cause::OtherCrate => {
-                        lang.note(calls::MACRO_GENERATED_TARGET, 1);
+                        lang.note(calls::MACRO_GENERATED_TARGET, 1)
                     }
                     Cause::OutsideRoot => lang.note(calls::OUTSIDE_ROOT, 1),
                     Cause::Dependency => {}
-                }
+                },
+                _ => {}
             }
             targets.push(target(lang, callee, resolved, env));
         }
-        found.push(SiteCalls::new(resolved.site(), targets));
+        // what is handed over has no edge unless it is a def of the project; a site with nothing to say is not drawn. (A def the outline could not name
+        // is the one `Unresolved` a hand-over can have, and it is an ordinary edge: only a call into project code can be marked passed.)
+        let handed = passed && targets.iter().any(|t| matches!(t, Target::Call(..)));
+        if handed {
+            found.push(SiteCalls::passed(resolved.site(), targets));
+        } else if !targets.is_empty() {
+            found.push(SiteCalls::new(resolved.site(), targets));
+        }
     }
     if read.cut {
         Summary::cut(found)

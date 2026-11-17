@@ -1,0 +1,58 @@
+parse
+  MethodCall "len" -> External core str::str::len
+spawn
+  Call "f" -> Unknown function_typed_value open=fn_pointer
+Parser::run
+  MethodCall "iter" -> External core slice::[T]::iter
+  MethodCall "copied" -> External core iter::traits::iterator::Iterator::copied
+  MethodCall "map" -> External core iter::traits::iterator::Iterator::map
+  Passed "Self::helper" -> Def src/passed.rs:Parser::helper
+  MethodCall "count" -> External core iter::traits::iterator::Iterator::count
+  MethodCall "into_iter" -> External alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+  MethodCall "map" -> External core iter::traits::iterator::Iterator::map
+  Passed "Parser::helper" -> Def src/passed.rs:Parser::helper
+  MethodCall "count" -> External core iter::traits::iterator::Iterator::count
+Parser::as_value
+  Passed "Self::helper" -> Def src/passed.rs:Parser::helper
+  Call "f" -> Def src/passed.rs:Parser::helper
+named
+  MethodCall "into_iter" -> External alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+  MethodCall "map" -> External core iter::traits::iterator::Iterator::map
+  Passed "parse" -> Def src/passed.rs:parse
+  MethodCall "count" -> External core iter::traits::iterator::Iterator::count
+handed_to_a_function
+  Call "spawn" -> Def src/passed.rs:spawn
+  Passed "worker" -> Def src/passed.rs:worker
+called_and_passed
+  Call "worker" -> Def src/passed.rs:worker
+  Call "spawn" -> Def src/passed.rs:spawn
+  Passed "worker" -> Def src/passed.rs:worker
+constructors
+  MethodCall "iter" -> External core slice::[T]::iter
+  MethodCall "copied" -> External core iter::traits::iterator::Iterator::copied
+  MethodCall "map" -> External core iter::traits::iterator::Iterator::map
+  Passed "Some" -> External construct core option::Option::Some
+  MethodCall "count" -> External core iter::traits::iterator::Iterator::count
+  Passed "E::P" -> Construct src/passed.rs:E
+  MethodCall "into_iter" -> External alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+  MethodCall "map" -> External core iter::traits::iterator::Iterator::map
+  Passed "Wrapper" -> Construct src/passed.rs:Wrapper
+  MethodCall "count" -> External core iter::traits::iterator::Iterator::count
+Wrapper::all
+  MethodCall "into_iter" -> External alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+  MethodCall "map" -> External core iter::traits::iterator::Iterator::map
+  Passed "Self" -> Construct src/passed.rs:Wrapper
+  MethodCall "count" -> External core iter::traits::iterator::Iterator::count
+externals
+  MethodCall "into_iter" -> External alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+  MethodCall "map" -> External core iter::traits::iterator::Iterator::map
+  Passed "String::from" -> External alloc string::<String as From<&str>>::from
+  MethodCall "count" -> External core iter::traits::iterator::Iterator::count
+locals
+  Call "c" -> Unknown function_typed_value open=closure
+  Call "g" -> Unknown function_typed_value open=fn_pointer
+through_a_parameter
+  MethodCall "into_iter" -> External alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+  MethodCall "map" -> External core iter::traits::iterator::Iterator::map
+  Passed "W::build" -> Def src/passed.rs:Build::build open=type_param
+  MethodCall "count" -> External core iter::traits::iterator::Iterator::count

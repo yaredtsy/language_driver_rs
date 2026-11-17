@@ -10,3 +10,5 @@ on_statement
   Call "f" -> Def src/cfg_off.rs:f
 struct_expression
   Record "crate::shapes::Rec" -> Construct src/shapes.rs:Rec
+handed_statement
+  Passed "f" -> Def src/cfg_off.rs:f

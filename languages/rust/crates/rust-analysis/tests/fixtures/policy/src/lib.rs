@@ -11,6 +11,7 @@ mod constructions;
 mod dispatch;
 mod external;
 mod macros;
+mod passed;
 mod shapes;
 pub mod nested;
 

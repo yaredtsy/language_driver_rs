@@ -267,3 +267,79 @@ breakdown:
   contexts 1, bodies walked 1, summaries reused 0
   cuts: none
 
+=== src/passed.rs named
+named
+  parse [Passed]
+
+breakdown:
+  edges: 0 call, 0 construct, 4 external, 0 unresolved, 1 passed
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/passed.rs Parser::run
+Parser::run
+  Parser::helper [Passed]
+  Parser::helper [Passed]
+
+breakdown:
+  edges: 0 call, 0 construct, 7 external, 0 unresolved, 2 passed
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/passed.rs called_and_passed
+called_and_passed
+  worker
+  spawn
+  worker [Passed]
+
+breakdown:
+  edges: 2 call, 0 construct, 0 external, 1 unresolved, 1 passed
+  unresolved by reason:
+    function_typed_value: 1
+  open (the answer is a family of defs), by why:
+    fn_pointer: 1
+  contexts 3, bodies walked 3, summaries reused 0
+  cuts: none
+
+=== src/passed.rs constructors
+constructors
+
+breakdown:
+  edges: 0 call, 0 construct, 7 external, 0 unresolved
+  tuple structs and variants handed over and not called (no edge): 3
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+
+=== src/passed.rs externals
+externals
+
+breakdown:
+  edges: 0 call, 0 construct, 3 external, 0 unresolved
+  functions of other crates handed over and not called (no edge): 1
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+
+=== src/passed.rs locals
+locals
+
+breakdown:
+  edges: 0 call, 0 construct, 0 external, 2 unresolved
+  unresolved by reason:
+    function_typed_value: 2
+  open (the answer is a family of defs), by why:
+    closure: 1
+    fn_pointer: 1
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+
+=== src/passed.rs through_a_parameter
+through_a_parameter
+  Build::build [Passed]
+
+breakdown:
+  edges: 0 call, 0 construct, 3 external, 0 unresolved, 1 passed
+  open (the answer is a family of defs), by why:
+    type_param: 1
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+

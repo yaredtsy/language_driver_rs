@@ -57,3 +57,10 @@ pub fn struct_expression() {
     let _r = crate::shapes::Rec { a: f() };
     let _s = crate::shapes::Rec { a: 1 };
 }
+
+/// A hand-over in a statement a `cfg` turns off is no site either.
+pub fn handed_statement() {
+    #[cfg(any())]
+    let _off = f;
+    let _on = f;
+}
