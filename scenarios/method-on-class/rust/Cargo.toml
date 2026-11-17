@@ -1,0 +1,5 @@
+[package]
+name = "scenario_method_on_class"
+version = "0.0.0"
+edition = "2024"
+publish = false

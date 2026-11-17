@@ -1,0 +1,5 @@
+[package]
+name = "scenario_straight_line"
+version = "0.0.0"
+edition = "2024"
+publish = false

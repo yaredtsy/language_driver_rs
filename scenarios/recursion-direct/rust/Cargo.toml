@@ -1,0 +1,5 @@
+[package]
+name = "scenario_recursion_direct"
+version = "0.0.0"
+edition = "2024"
+publish = false
