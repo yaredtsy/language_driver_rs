@@ -223,7 +223,7 @@ the sysroot's own `cargo metadata`, so `std`'s crates lose their links too. **So
   (`LockfileWritten`, step 5). The version rule only avoids a useless variable.
 - **The temporary folder** is a small `TempDir` (no `tempfile` crate) whose `Drop` deletes it when `load` returns, on every path. A folder
   that cannot be made falls back to A.
-- Tested on 1.99.1 only: a no-lock fixture and a lock made stale at run time are byte-identical after `open`, and no temporary folder is
+- Tested on 1.99.1 (and, since step 5a, A on 1.94.1: the lock is written and `LockfileWritten` said, §6): a no-lock fixture and a lock made stale at run time are byte-identical after `open`, and no temporary folder is
   left. The stale case passes either way, because the engine's own copy already protects a project that has a lock. The A path
   (`wrote_lockfile`) needs a toolchain below 1.97 and is not run here; it is covered by the version rule's table test, and by §7's
   old-toolchain measurement in step 5.
@@ -249,6 +249,7 @@ pub enum Warning {
     LockfileWritten,                                                // cargo wrote a Cargo.lock into the project (§5, Q-RS6)
     NoToolchain,                                                    // no cargo: the crate graph was read from Cargo.toml by us (the ladder, rung 3)
     ManifestUnreadable { message: String },                         // cargo and our reader both failed on a Cargo.toml (rung 4)
+    BuildScriptsFailed { message: String },                         // a switch asked for the build run and it failed (§3; added in RS3 step 5a review)
     NoManifest,                                                     // no Cargo.toml up to the root: the file alone (rung 4)
 }
 
@@ -302,7 +303,28 @@ and passes it as `RustLibSource::Path` (built in step 1: the engine then looks f
 `sysroot.error()` and `ProjectWorkspaceKind::Cargo { error }` before `load_workspace`. The installed toolchains for a substitution come from
 `rustup toolchain list` (**[check]** the form without `rustup`: then no substitution, and `OldToolchain`, or rung 3 of the ladder when there is no `cargo`).
 
-These are the only errors `rust-analysis` has. Everything after `open` returns `Option` (rule 8).
+These are the only errors `rust-analysis` has. Everything after `open` returns `Option` (rule 8). `OpenError` has `Display` and
+`std::error::Error`, as Python's and TypeScript's do.
+
+**As built (RS3 step 5a, b9e48bf, reviewed 2026-11-17).**
+
+- `OpenError::NotUnderRoot` for a file that is not there, not a file, outside the root, or a root that cannot be used. `Load(String)` stays
+  for what 5b and 7 replace: no `Cargo.toml` up to the root (rung 4), and a load the engine refuses (no `cargo`, a toolchain that is not
+  installed, a manifest nobody can read).
+- Filled in: `NoStdSource` (the engine's `sysroot.error()`, with the toolchain folder's name), `DependenciesMissing` (the engine's
+  `--no-deps` retry, `ProjectWorkspaceKind::Cargo { error }`, cargo's message kept), `LockfileWritten`. The others are types until 5b and 7.
+- **`BuildScriptsFailed { message }`**, code `build_scripts_failed`: "the build scripts failed, so code they generate and derives are not
+  shown: {message}". Proposed by the coding session, accepted in review: a switch the caller turned on that did not work is a thing the
+  user must be told, and §3's counters alone do not say why.
+- **A sysroot nobody can find is `NoStdSource` too** (`toolchain: "unknown"`) when the load still succeeds: `rustc --print sysroot`
+  failing must not give a load without `std` and no warning (rule 8). 5b and 7 then give the case its precise warning.
+- Tests: `fixtures/offline/` (`[net] offline = true` in its `.cargo/config.toml`, a dependency in no cache) loads with
+  `DependenciesMissing`, `std` resolves and the call into the sibling member does not (ENGINE.md, "In-project edges by load mode").
+  `NoStdSource` is asserted against what the disk has. Two `#[ignore]` tests run a worker process with the toolchain in its environment
+  (`cargo test` sets `RUSTUP_TOOLCHAIN` itself): a toolchain without `rust-src` (a copy of 1.99.1 without `lib/rustlib/src`) gives
+  `NoStdSource`, and **1.94.1 writes the lock and gives `LockfileWritten`** (run by the reviewer too). That is §5 option A's first run.
+- **CI needs `rust-src`.** `rust-toolchain.toml` installs `rustfmt` and `clippy` only, so on CI every test that needs `std` (step 3's
+  `String` rows, the offline test, all of RS4) would see no standard library. `rust-src` goes into its `components`.
 
 ## 7. Tests
 
@@ -331,7 +353,8 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 | 2 | finding the manifest from a file; the root limit | the five-workspaces test. **Done** (0364d27; UTF-8 fix 98cf4d3): `open(root, file)` without `opts` until step 4; errors are `OpenError::Load` until steps 5 and 7; pure path functions in `paths.rs` |
 | 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI. **Done but Windows** (457a16a; test scope 193402f; as built in §4): the Windows job has not run, nothing is pushed |
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures. **Done** (888c228; as built in §3), with two fixes asked in review: a failed build run must not fail the load, and `build_scripts_skipped` counts local packages |
-| 5 | `OpenError` and `Warning` (§6, D37), from S-RS3's texts; the old-toolchain measurement and the minimum; the substitution | §7's error and warning tests; the table in `ENGINE.md` |
+| 5a | `OpenError` and `Warning` (§6, D37), from S-RS3's texts; the warnings CI can make | §7's error and warning tests. **Done** (b9e48bf; as built in §6), with fixes asked in review: `BuildScriptsFailed`, `NoStdSource` for a sysroot nobody can find, `OpenError`'s `Display`, `rust-src` in `rust-toolchain.toml` |
+| 5b | the old-toolchain measurement and the minimum; the substitution (`ToolchainSubstituted`, `OldToolchain`); then the old toolchains are uninstalled | §7's measurement table in `ENGINE.md`; the substitution test |
 | 7 | the ladder's rungs 3 and 4 (§6): our own `Cargo.toml` reader into `ProjectJson`, the one-file crate; its checks first | a fixture workspace loaded with no `cargo` and no `rustc` on `PATH` and an empty `HOME`: the in-project calls of §6's row resolve, `NoToolchain` is set; a lone `.rs` file; §5's table with rung 3 |
 | 6 | `ENGINE.md`: what `sem::load` calls, the `attach_db` rule, the measured load times | reviewed |
 
