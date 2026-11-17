@@ -24,6 +24,9 @@ pub(crate) const INHERITED_UNKNOWN: &str = "inherited_constructor_unknown";
 /// The key of the counter, in `Stats.language`, for a call into a source file outside the root (D33): an `External` edge for a body that was there to walk.
 pub(crate) const OUTSIDE_ROOT: &str = "outside_root";
 
+/// The key of the counter, in `Stats.language`, for a def of the graph whose marker another def of its file owns (D34): named by where it is, counted once.
+pub(crate) const DUPLICATE_MARKER: &str = "duplicate_marker";
+
 /// The keys of the counters, in `Stats.language`, for the defs of a walked body that are handed over (written inside an expression, or named) and that no
 /// edge of the graph reaches. Counted by `call_graph` once the edges are known; a count and nothing else: no edge and no node is added for them.
 pub(crate) const WRITTEN_NOT_CALLED: &str = "def_written_not_called";

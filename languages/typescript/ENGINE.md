@@ -352,6 +352,15 @@ of the config's `include`, so the root prefix matches by construction and `relat
 engine reaches by its **real path through a symlink** (a package linked into `node_modules`, a symlinked folder under the root) is spelled by the engine
 as it resolved it, which may not start with the root: that is left to the monorepo work.
 
+### Two defs of one file with one marker (D34, step D1)
+
+`FileDefs::owns_marker` says, once per file and marker style, which defs own their marker: the first def in source order (by where it starts) with each
+text. `Sem::describe` gives `StableDef::Marked` to an owner and the `Path` id (file, qualname, occurrence) to a later def with the same text, so `b` is
+named `b` and not `a`. The rule reads the file, not the request, so a def has one id whatever else the request reaches (`tests/duplicate_marker.rs`,
+`b` asked for alone). The outline is unchanged: both report the marker. `TypeScript::describe` notes each such def's id, and `finish` counts the ones the graph
+holds in `Stats.language["duplicate_marker"]` (only when above 0; `Breakdown.duplicate_marker`). Known: a copy above the original owns the marker. Across
+files nothing is renamed (D2, `core/`).
+
 ### The proof that a `File<'p>` cannot outlive its `Sem`
 
 `File<'p>` is `P<SourceFile>` plus `PhantomData<&'p Sem>`; `Sem::drop`'s `unsafe` rests on no `File` outliving it. The proof is a `compile_fail` doctest

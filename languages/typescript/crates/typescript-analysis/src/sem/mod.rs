@@ -95,6 +95,10 @@ pub(crate) struct FileDefs {
     pub(crate) nodes: Vec<Option<P<Node>>>,
     /// The def a node is, for the nodes in `nodes`: the way back, and how the walk knows a nested node is a def of its own.
     pub(crate) def_of: HashMap<P<Node>, usize>,
+    /// For each def of `outline.defs`: whether its id is its marker. The first def of the file, in source order, with a marker text owns it; a later def with
+    /// the same text is named by where it is (D34), so a def's id is the same in every request, whatever else the request reaches. `false` for a def with no
+    /// marker.
+    pub(crate) owns_marker: Vec<bool>,
 }
 
 /// The defs of one file made so far, one per marker style (a marker is read by its label, so another label is another outline). A file is read in
@@ -376,10 +380,12 @@ impl Sem {
             .enumerate()
             .filter_map(|(index, node)| Some((((*node)?), index)))
             .collect();
+        let owns_marker = marker_owners(&outline);
         let made = Arc::new(FileDefs {
             outline,
             nodes,
             def_of,
+            owns_marker,
         });
         self.file_defs
             .borrow_mut()
@@ -444,6 +450,7 @@ impl Sem {
             outline: defs.outline.clone(),
             nodes,
             def_of,
+            owns_marker: defs.owns_marker.clone(),
         });
         for cached in self
             .file_defs
@@ -665,6 +672,20 @@ fn package_in_node_modules(path: &str) -> Option<String> {
         });
     }
     Some(format!("{first}/{name}"))
+}
+
+/// Which defs own their marker (`FileDefs::owns_marker`): the first in source order (by where the def starts, not by the order of the outline) of each text.
+fn marker_owners(outline: &Outline) -> Vec<bool> {
+    let mut order: Vec<usize> = (0..outline.defs.len()).collect();
+    order.sort_by_key(|&index| (outline.defs[index].range.start, index));
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut owns = vec![false; outline.defs.len()];
+    for index in order {
+        if let Some(marker) = outline.defs[index].marker.as_deref() {
+            owns[index] = seen.insert(marker);
+        }
+    }
+    owns
 }
 
 /// The node's own bytes: from its first token to its end. tsrs's `pos` includes the trivia before the node, so the start is moved past it. This is how

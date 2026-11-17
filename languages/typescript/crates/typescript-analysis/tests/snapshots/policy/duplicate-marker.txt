@@ -1,0 +1,60 @@
+== main
+main
+  a
+    x
+  b
+    y
+edges:
+a | x | call x
+b | y | call y
+main | a | call a
+main | b | call b
+== twice
+twice
+  a
+    x
+  b
+    y
+  b
+    y
+edges:
+a | x | call x
+b | y | call y
+twice | a | call a
+twice | b | call b
+twice | b | call b
+== three
+three
+  p
+    x
+  q
+    x
+  r
+    x
+edges:
+p | x | call x
+q | x | call x
+r | x | call x
+three | p | call p
+three | q | call q
+three | r | call r
+== mixed
+mixed
+  K
+  f
+    x
+edges:
+f | x | call x
+mixed | K | construct K no init
+mixed | f | call f
+== above
+above
+  original
+    y
+  copy
+    x
+edges:
+above | original | call original
+above | copy | call copy
+copy | x | call x
+original | y | call y

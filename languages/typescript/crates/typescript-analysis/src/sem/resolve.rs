@@ -524,6 +524,18 @@ impl Sem {
         }
     }
 
+    /// Whether the def has a marker that another def of its file owns, so `describe` names it by where it is (D34).
+    pub(crate) fn has_a_marker_it_does_not_own(
+        &self,
+        func: Func<'_>,
+        style: MarkerStyle<'_>,
+    ) -> bool {
+        let defs = self
+            .file_defs(func.file, style)
+            .expect("a Func is made from an outline, so its file has one");
+        defs.outline.defs[func.def].marker.is_some() && !defs.owns_marker[func.def]
+    }
+
     /// What the def is, in the core's terms: `Marked` by its marker when it has one, else named by where it is (the file relative to the root,
     /// its qualname, and which of the same-named defs of the file it is, in source order).
     pub(crate) fn describe(&self, func: Func<'_>, style: MarkerStyle<'_>) -> DefInfo {
@@ -538,9 +550,10 @@ impl Sem {
             .iter()
             .filter(|earlier| earlier.qualname == def.qualname)
             .count() as u16;
+        // a marker another def of the file owns is not this def's id (D34): it is named by where it is, as a def with no marker is
         let id = match &def.marker {
-            Some(marker) => StableDef::Marked(marker.clone()),
-            None => StableDef::Path {
+            Some(marker) if defs.owns_marker[func.def] => StableDef::Marked(marker.clone()),
+            _ => StableDef::Path {
                 module: file.clone(),
                 qname: def.qualname.clone(),
                 nth: occurrence,
