@@ -3,8 +3,9 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-/// A copy of the policy fixture of `rust-analysis` under this crate's scratch folder: a load may write into a project, and the repo is not written.
-fn policy_copy() -> PathBuf {
+/// A copy of the policy fixture of `rust-analysis` under this crate's scratch folder, one per test (they run in parallel): a load may write into a project, and
+/// the repo is not written.
+fn policy_copy(name: &str) -> PathBuf {
     fn copy(from: &Path, to: &Path) {
         std::fs::create_dir_all(to).unwrap();
         for entry in std::fs::read_dir(from).unwrap() {
@@ -18,7 +19,7 @@ fn policy_copy() -> PathBuf {
         }
     }
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("../rust-analysis/tests/fixtures/policy");
-    let to = Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli_policy");
+    let to = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("cli_policy_{name}"));
     let _ = std::fs::remove_dir_all(&to);
     copy(&from, &to);
     to
@@ -37,7 +38,7 @@ fn text(bytes: &[u8]) -> String {
 
 #[test]
 fn the_tree_then_the_breakdown() {
-    let dir = policy_copy();
+    let dir = policy_copy("the_tree_then_the_breakdown");
     let out = cli(&[
         "calls",
         dir.to_str().unwrap(),
@@ -60,7 +61,7 @@ fn the_tree_then_the_breakdown() {
 /// D15: two defs, one qualname: both are listed on stderr, the exit code is 2, and the first is not picked. `--occurrence` and `--id` pick one.
 #[test]
 fn a_qualname_of_several_defs_is_listed_and_none_is_picked() {
-    let dir = policy_copy();
+    let dir = policy_copy("a_qualname_of_several_defs_is_listed_and_none_is_picked");
     let dir = dir.to_str().unwrap();
     let out = cli(&["calls", dir, "src/shapes.rs", "--entry", "Rec::get"]);
     assert_eq!(out.status.code(), Some(2));
@@ -93,7 +94,7 @@ fn a_qualname_of_several_defs_is_listed_and_none_is_picked() {
 
 #[test]
 fn what_cannot_start_a_graph_and_bad_usage_are_said() {
-    let dir = policy_copy();
+    let dir = policy_copy("what_cannot_start_a_graph_and_bad_usage_are_said");
     let dir = dir.to_str().unwrap();
     // a trait cannot be an entry: exit 1 with the reason
     let out = cli(&["calls", dir, "src/lib.rs", "--entry", "Writer"]);
@@ -127,7 +128,7 @@ fn what_cannot_start_a_graph_and_bad_usage_are_said() {
 /// `--wire`: JSON alone on stdout, the breakdown on stderr; `--merged` joins siblings with one target; the prefixes are the caller's.
 #[test]
 fn the_wire_is_json_alone_on_stdout() {
-    let dir = policy_copy();
+    let dir = policy_copy("the_wire_is_json_alone_on_stdout");
     let dir = dir.to_str().unwrap();
     let wire = |extra: &[&str]| {
         let mut args = vec![
@@ -169,7 +170,7 @@ fn the_wire_is_json_alone_on_stdout() {
 /// The flag rules are TypeScript's: two outputs, or `--merged` and a prefix without `--wire`, are usage errors (exit 2, and nothing on stdout).
 #[test]
 fn the_wire_flags_are_checked() {
-    let dir = policy_copy();
+    let dir = policy_copy("the_wire_flags_are_checked");
     let dir = dir.to_str().unwrap();
     let base = ["calls", dir, "src/calls.rs", "--entry", "plain_calls"];
     for extra in [
