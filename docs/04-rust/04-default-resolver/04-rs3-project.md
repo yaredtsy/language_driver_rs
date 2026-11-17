@@ -89,6 +89,9 @@ and holds five workspaces (`core/`, one per language). So, as TypeScript finds t
   writes inside the user's tree, and only when the caller asks for a switch; the default load writes nothing. Rule 2 is about the source
   tree and the results; a build cache under cargo's target folder is what any cargo command makes. Rejected: a temporary folder (a full
   rebuild on every load).
+- **Code that exists only at build time is its own plan, later (D39, owner 2026-11-17).** Generated code (a `build.rs`'s `OUT_DIR`, proc-macro
+  output) is in no file of the user's tree, so no marker, doc or edit reaches it: it is treated like an external library (`External`, counted).
+  The switches stay as built, off by default; where their build run writes is decided in that plan, not now.
 - **A counter is listed only when it cut something** (absent when 0, as `Stats.language` counters are elsewhere, D28). `build_scripts_skipped`
   counts the **local** packages (`CrateOrigin::Local`: members and path dependencies, the project code of §4) that have a build script.
   `proc_macros_skipped` is 1 when the graph has any proc-macro crate and none could expand.
