@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::manifest::{self, CrateSpec, DiskFs, Layout};
+use crate::toolchain::Tool;
 use crate::warning::Warning;
 use crate::{LoadOptions, paths, toolchain};
 
@@ -563,7 +564,7 @@ fn outside_of(root: &Path, files: Vec<PathBuf>) -> Vec<String> {
 /// The folder of the workspace's root manifest, where cargo keeps `Cargo.lock`: `cargo locate-project --workspace` says (a member's folder is
 /// not it). Falls back to `dir`, the manifest's folder, when cargo cannot say.
 fn workspace_dir(dir: &Path, manifest: &Path, toolchain: Option<&str>) -> PathBuf {
-    let located = toolchain::command("cargo", dir, toolchain)
+    let located = toolchain::command(Tool::Cargo, dir, toolchain)
         .args([
             "locate-project",
             "--workspace",
@@ -644,7 +645,7 @@ fn no_std_toolchain(sysroot: Option<&Path>, source_missing: bool) -> Option<Stri
 /// The toolchain's sysroot as `rustc --print sysroot` says in `dir` (so a `rust-toolchain.toml` there counts). `RUSTUP_AUTO_INSTALL=0`: a
 /// toolchain that is named and not installed must fail here, not be downloaded.
 fn sysroot_dir(dir: &Path, toolchain: Option<&str>) -> Option<AbsPathBuf> {
-    let out = toolchain::command("rustc", dir, toolchain)
+    let out = toolchain::command(Tool::Rustc, dir, toolchain)
         .args(["--print", "sysroot"])
         .output()
         .ok()?;

@@ -19,12 +19,16 @@ mod common;
 use common::copy_of_fixture;
 
 /// Runs the worker `name` of this program with `RUSTUP_TOOLCHAIN=toolchain` (or with none: `cargo test` sets it, and it beats a
-/// `rust-toolchain.toml`), and fails with its output when it fails.
+/// `rust-toolchain.toml`), and fails with its output when it fails. `CARGO` and `RUSTC` go too: `cargo test` sets them to the toolchain's own binaries,
+/// the engine's rule (`Tool::path`, which this crate follows) takes them before `PATH`, and a binary named like that is not rustup's proxy, so it
+/// would read no `rust-toolchain.toml` either.
 fn run_worker(name: &str, toolchain: Option<&str>) {
     let mut command = Command::new(std::env::current_exe().unwrap());
     command
         .args(["--ignored", "--exact", name, "--nocapture"])
-        .env("RS_WORKER", "1");
+        .env("RS_WORKER", "1")
+        .env_remove("CARGO")
+        .env_remove("RUSTC");
     match toolchain {
         Some(toolchain) => command.env("RUSTUP_TOOLCHAIN", toolchain),
         None => command.env_remove("RUSTUP_TOOLCHAIN"),

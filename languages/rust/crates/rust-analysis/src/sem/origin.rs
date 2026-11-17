@@ -627,6 +627,78 @@ mod tests {
         );
     }
 
+    /// Every tool is found the way the engine finds it (RS3 §6, ENGINE.md "Finding a tool"): with `PATH` set to an empty folder and `HOME`, `CARGO_HOME` and
+    /// `RUSTUP_HOME` kept, a driver started the way a macOS GUI app starts one loads at rung 1 **with `std`**, and says nothing. A `rustc` found by `PATH`
+    /// alone is not there, the sysroot is unknown, and the load has no `std` and a warning that tells the user to install `rust-src`. In a worker, for the
+    /// reason of the test below.
+    #[test]
+    fn with_cargo_off_the_path_the_engines_rule_finds_it_and_std_resolves() {
+        let nothing = common::tmp_root().join("empty_path");
+        let _ = std::fs::remove_dir_all(&nothing);
+        std::fs::create_dir_all(&nothing).unwrap();
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--ignored",
+                "--exact",
+                "sem::origin::tests::worker_empty_path",
+                "--nocapture",
+            ])
+            .env_clear()
+            .env("RS_WORKER", "1")
+            .env("PATH", &nothing);
+        // where the toolchain lives stays; only `PATH` goes
+        for key in [
+            "HOME",
+            "CARGO_HOME",
+            "RUSTUP_HOME",
+            "USERPROFILE",
+            "SystemRoot",
+            "TMP",
+            "TEMP",
+        ] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
+        let out = command.output().unwrap();
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            out.status.success() && text.contains("1 passed"),
+            "the worker failed:\n{text}"
+        );
+    }
+
+    #[test]
+    #[ignore = "run by with_cargo_off_the_path_the_engines_rule_finds_it_and_std_resolves"]
+    fn worker_empty_path() {
+        if std::env::var_os("RS_WORKER").is_none() {
+            return;
+        }
+        let copy = common::copy_of_fixture("owner", "origin_empty_path");
+        let root = crate::paths::absolute(&copy).unwrap();
+        let file = root.join("ws/app/src/lib.rs");
+        let opened = Project::open(&root, &file, &LoadOptions::default()).unwrap();
+        assert_eq!(opened.warnings(), [], "no warning: the toolchain was found");
+        assert_eq!(opened.loaded().rung(), Rung::Cargo);
+        let manifest = root.join("ws/app/Cargo.toml");
+        let loaded = load(&root, Some(&manifest), &manifest, &LoadOptions::default()).unwrap();
+        assert!(
+            loaded.no_std_source().is_none(),
+            "std was found: {:?}",
+            loaded.no_std_source()
+        );
+        // `String::len` resolves, to `alloc`: there is a `std`
+        assert!(
+            call_owners(&loaded, "ws/app/src/lib.rs")
+                .contains(&("len".to_owned(), external("alloc", "string::String::len")))
+        );
+    }
+
     /// Rung 3 with no cargo and no rustc on `PATH` and an empty `HOME` (RS3 §6, S-RS3: the engine otherwise finds `~/.cargo/bin/cargo`), in a worker:
     /// `cargo test` itself puts the toolchain on the path of its children, and this crate may not call `set_var`.
     #[test]

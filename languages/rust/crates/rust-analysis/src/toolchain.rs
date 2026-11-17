@@ -1,9 +1,10 @@
 //! The toolchain a project's folder selects, as `cargo --version` says. No engine type here: only what a process prints.
 
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::sem;
 use crate::warning::{Warning, Why};
 
 /// A cargo version. `release` is false for a pre-release (`1.98.0-nightly`, `1.97.0-beta.1`), which is older than the release it leads up to,
@@ -77,10 +78,26 @@ pub(crate) enum Probe {
     Unreadable,
 }
 
+/// A tool of the toolchain this crate starts. It is found the way the engine finds it (`sem::tool_path`), never by the bare name: a `PATH` that lacks
+/// `~/.cargo/bin` must not give a load with the engine's `cargo` and no `std`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Tool {
+    Cargo,
+    Rustc,
+    Rustup,
+}
+
+impl Tool {
+    /// The program to start.
+    pub(crate) fn path(self) -> PathBuf {
+        sem::tool_path(self)
+    }
+}
+
 /// A `Command` for a tool of the toolchain, in `dir`. `RUSTUP_AUTO_INSTALL=0`: a toolchain that is named and not installed must fail, not be
 /// downloaded. `toolchain` is the one this crate chose in place of the project's (`decide`): `RUSTUP_TOOLCHAIN` beats every file and override.
-pub(crate) fn command(program: &str, dir: &Path, toolchain: Option<&str>) -> Command {
-    let mut command = Command::new(program);
+pub(crate) fn command(tool: Tool, dir: &Path, toolchain: Option<&str>) -> Command {
+    let mut command = Command::new(tool.path());
     command.current_dir(dir).env("RUSTUP_AUTO_INSTALL", "0");
     if let Some(toolchain) = toolchain {
         command.env("RUSTUP_TOOLCHAIN", toolchain);
@@ -90,7 +107,10 @@ pub(crate) fn command(program: &str, dir: &Path, toolchain: Option<&str>) -> Com
 
 /// `cargo --version` in `dir` (so a `rust-toolchain.toml` there counts), with the toolchain this crate chose, if it chose one.
 pub(crate) fn probe(dir: &Path, toolchain: Option<&str>) -> Probe {
-    let Ok(out) = command("cargo", dir, toolchain).arg("--version").output() else {
+    let Ok(out) = command(Tool::Cargo, dir, toolchain)
+        .arg("--version")
+        .output()
+    else {
         return Probe::Unreadable;
     };
     if out.status.success() {
@@ -105,7 +125,7 @@ pub(crate) fn probe(dir: &Path, toolchain: Option<&str>) -> Probe {
 
 /// Can `cargo` be started at all in `dir`? Not whether it works: a `cargo` that fails on a manifest is present.
 pub(crate) fn cargo_present(dir: &Path, toolchain: Option<&str>) -> bool {
-    command("cargo", dir, toolchain)
+    command(Tool::Cargo, dir, toolchain)
         .arg("--version")
         .output()
         .is_ok()
@@ -176,7 +196,7 @@ fn parse_toolchain_list(text: &str) -> Vec<Listed> {
 /// The toolchains `rustup toolchain list` knows, each with its version; `None` when there is no `rustup` (nothing can then be substituted, and
 /// this crate never installs anything). The version is read with that toolchain's own `cargo`.
 pub(crate) fn installed(dir: &Path) -> Option<Vec<Candidate>> {
-    let out = Command::new("rustup")
+    let out = Command::new(Tool::Rustup.path())
         .args(["toolchain", "list"])
         .output()
         .ok()?;
