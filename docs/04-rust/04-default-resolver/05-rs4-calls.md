@@ -259,7 +259,10 @@ DefInfo { id: StableDef (the marker, or the path form; D34), qualname, occurrenc
 ```
 
 **A def of a local crate can still be `External`, three ways**, and each is counted, because each is a body we could have walked and did
-not (rule 8). `Owner` today folds them into `External`; RS4 gives the bridge a way to tell them apart (a field or a variant: the coding
+not (rule 8). **A construction is never counted** (decided in the step 5 review, 2026-11-17): a struct, union or enum has no body,
+and Rust has no constructor function, so building one that a macro made (`Made(1)`) or one outside the root loses nothing. It is
+`External`, named, `construct: true`, and only a **call** adds to `macro_generated_target` or `outside_root`. TypeScript counts `new C()` of
+a class outside the root because a class has a constructor body (`is_outside_root_source`): the same rule, a body that was there. `Owner` today folds them into `External`; RS4 gives the bridge a way to tell them apart (a field or a variant: the coding
 session's choice, crate-private):
 
 | The def's source | Example | Edge | Counted |
@@ -289,8 +292,9 @@ wire would show `alloc.alloc::string::String::len`. Without the repeat it is `al
 (`alloc`, not `std`, for `String`: D7). The name is not stored in users' files, so it may still change; the joiner `.` is core's and is
 not changed for one language. **An external variant keeps its name** (`core` · `option::Option::Some`, `result::Result::Err`): a project
 variant is built as its enum because the outline has no variant def, but an external has no outline row, and naming `Ok(x)` and
-`Err(e)` both `result::Result` would make the merged wire count them as one. Built with the constructions (step 5); `owner_of_variant`
-names the enum today.
+`Err(e)` both `result::Result` would make the merged wire count them as one. Built in step 5 (b4aed14): `owner_of_variant` names an
+external variant `<the enum's name>::<variant>`, and every construction of a variant (a path, a tuple variant, a record) goes through
+`Sem::bridge_variant`.
 
 `Lang::describe(f)` is this, memoized. It answers for functions **and** for structs, unions and enums: the solver calls it for the `class`
 of every construction and writes the row of `Graph::defs` (D13). For `Enum::Variant(a)` the class is the **enum** (a variant is not a def).
@@ -392,7 +396,7 @@ the whole crate.
 | 2 ✅ | **done** (7edd537, reviewed 2026-11-17; macros built here too, as far as §3 "As built" says). Step A for plain calls, method calls, records; nested items skipped; closures tagged | a snapshot of the **site list** per policy module (no targets yet) |
 | 3 ✅ | **done** (a7af483 + the step-2 file fix 41bf33f, reviewed 2026-11-17; two changes asked, §4 "As built", and the external-name table of §5). Step B for those, path first (§4); `Callee`, `Open`, `Reason`; `walk.rs`, `env.rs`, `key.rs` in final form | `sem`-level snapshots: site → `Found` + `open` |
 | 4 ✅ | **done** (f5bd90c step-3 changes, 9dc4a52, reviewed 2026-11-17: 21 entries in `tests/snapshots/trees/policy.txt`; probed on `core/`. Core's default render hides externals, unresolved and open answers: the `Breakdown` carries them, as in TypeScript. `rust-cli calls <dir> <file> --entry <qualname> [--id | --occurrence] [--graph] [--timing]`, `--entry` required, several matches listed and none picked, exit 2; warnings on stderr first). `calls.rs`: `impl Lang`, `call_graph` over `graph_within` (`Entry::File` → `None`), `Project::defs_named`, `finish` (the `Stats.language` table of §2, `skipped()` and `warning_*` included), `Breakdown`; `rust-cli calls` | the first trees; invariants; determinism; a graph of a load with a warning has its `warning_<code>` |
-| 5 | constructions and `describe` for types; a struct as an entry (`Start::Construct`); an external variant named with the variant (§5) | the construction fixtures, with a marked struct, tuple struct and enum shown by name |
+| 5 ✅ | **done** (b4aed14, reviewed 2026-11-17: `tests/fixtures/policy/src/constructions.rs`, six trees in `tests/snapshots/trees/policy.txt`; probed: a union, a type alias of a struct and of an enum, `..base`, `..Default::default()`, a glob-imported variant, `Option::<u8>::Some`, and `core/`'s `RenderOptions` / `Mark` as entries; `core/`'s edge counts unchanged, 22 / 11 / 108 / 0). A struct, union or enum entry is `Root::Construct` with no `init`, a childless tree; a construction is not counted as an unwalked body (§5) | the construction fixtures, with a marked struct, tuple struct and enum shown by name |
 | 6 | passed sites (D22) | fixtures: named, as a method path, a constructor (counted, no edge), a local (no site) |
 | 7 | macros: what step 2 left (§3 "As built": a project macro's own call written as an external macro's argument, `upmap_once`), generated targets, built-in derives; the policy rows and counters for what step 2 built | fixtures; the counters; the two [check]s of §3 and §5 |
 | 8 | the wire and `rust-cli calls --wire [--merged]` | the wire snapshot |
