@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn a_load_without_std_names_its_toolchain_or_says_unknown() {
-        let dir = Path::new("/home/u/.rustup/toolchains/1.99.1-x86_64-unknown-linux-gnu");
+        let dir = Path::new("/opt/rustup/toolchains/1.99.1-x86_64-unknown-linux-gnu");
         // a sysroot whose source is there: nothing to say
         assert_eq!(no_std_toolchain(Some(dir), false), None);
         // its source is missing: the folder's name is the toolchain
