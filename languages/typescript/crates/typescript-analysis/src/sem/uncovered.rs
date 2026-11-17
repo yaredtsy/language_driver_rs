@@ -28,6 +28,39 @@ pub(crate) enum Uncovered {
 }
 
 impl Uncovered {
+    /// Every kind, in the order a breakdown says them. `label` and `counter` are exhaustive matches, so a new kind does not compile without both; a kind
+    /// missing from this list is caught by the test `all_lists_every_kind_once_in_order`.
+    pub(crate) const ALL: [Uncovered; 11] = [
+        Uncovered::ElementAccess,
+        Uncovered::Bind,
+        Uncovered::CallApply,
+        Uncovered::Class,
+        Uncovered::DestructuredAccessor,
+        Uncovered::RestElement,
+        Uncovered::AssignmentDestructuring,
+        Uncovered::ConstructInitializerSite,
+        Uncovered::ClassComponentRender,
+        Uncovered::GetterResultCall,
+        Uncovered::ForOfDestructuring,
+    ];
+
+    /// What a breakdown calls the kind, in the line "not covered by an edge".
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Uncovered::ElementAccess => "element access",
+            Uncovered::Bind => "bind",
+            Uncovered::CallApply => "call/apply",
+            Uncovered::Class => "class",
+            Uncovered::DestructuredAccessor => "destructured accessor",
+            Uncovered::RestElement => "rest element",
+            Uncovered::AssignmentDestructuring => "assignment destructuring",
+            Uncovered::ConstructInitializerSite => "construction initializer sites",
+            Uncovered::ClassComponentRender => "class component render",
+            Uncovered::GetterResultCall => "getter result calls",
+            Uncovered::ForOfDestructuring => "for-of destructuring",
+        }
+    }
+
     /// The key in `Stats.language`.
     pub(crate) fn counter(self) -> &'static str {
         match self {
@@ -105,4 +138,69 @@ fn is_within(outer: &[Span], inner: Span) -> bool {
     outer
         .iter()
         .any(|span| span.start <= inner.start && inner.end <= span.end)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The position of `kind` in `Uncovered::ALL`. The match has no wildcard: a new variant does not compile here until it is placed, and then
+    /// `all_lists_every_kind_once_in_order` holds the list to it.
+    fn position(kind: Uncovered) -> usize {
+        match kind {
+            Uncovered::ElementAccess => 0,
+            Uncovered::Bind => 1,
+            Uncovered::CallApply => 2,
+            Uncovered::Class => 3,
+            Uncovered::DestructuredAccessor => 4,
+            Uncovered::RestElement => 5,
+            Uncovered::AssignmentDestructuring => 6,
+            Uncovered::ConstructInitializerSite => 7,
+            Uncovered::ClassComponentRender => 8,
+            Uncovered::GetterResultCall => 9,
+            Uncovered::ForOfDestructuring => 10,
+        }
+    }
+
+    #[test]
+    fn all_lists_every_kind_once_in_order() {
+        for (at, kind) in Uncovered::ALL.iter().enumerate() {
+            assert_eq!(position(*kind), at, "{kind:?}");
+        }
+        assert_eq!(
+            Uncovered::ALL.len(),
+            position(Uncovered::ForOfDestructuring) + 1
+        );
+    }
+
+    /// The words a breakdown has always said for each kind, written out so that moving them next to `counter()` changes none.
+    #[test]
+    fn the_labels_are_what_a_breakdown_has_always_said() {
+        let said: Vec<(&str, &str)> = Uncovered::ALL
+            .iter()
+            .map(|kind| (kind.counter(), kind.label()))
+            .collect();
+        assert_eq!(
+            said,
+            [
+                ("uncovered_element_access", "element access"),
+                ("uncovered_bind", "bind"),
+                ("uncovered_call_apply", "call/apply"),
+                ("uncovered_class", "class"),
+                ("uncovered_destructured_accessor", "destructured accessor"),
+                ("uncovered_rest_element", "rest element"),
+                (
+                    "uncovered_assignment_destructuring",
+                    "assignment destructuring"
+                ),
+                (
+                    "uncovered_construct_initializer_sites",
+                    "construction initializer sites"
+                ),
+                ("uncovered_class_component_render", "class component render"),
+                ("uncovered_getter_result_calls", "getter result calls"),
+                ("uncovered_for_of_destructuring", "for-of destructuring"),
+            ]
+        );
+    }
 }

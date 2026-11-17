@@ -357,25 +357,13 @@ impl fmt::Display for Breakdown {
             }
         }
         if !self.uncovered.is_empty() {
-            let labels = [
-                ("element_access", "element access"),
-                ("bind", "bind"),
-                ("call_apply", "call/apply"),
-                ("class", "class"),
-                ("destructured_accessor", "destructured accessor"),
-                ("rest_element", "rest element"),
-                ("assignment_destructuring", "assignment destructuring"),
-                (
-                    "construct_initializer_sites",
-                    "construction initializer sites",
-                ),
-                ("class_component_render", "class component render"),
-                ("getter_result_calls", "getter result calls"),
-                ("for_of_destructuring", "for-of destructuring"),
-            ];
-            let parts: Vec<String> = labels
+            // the keys are the counters' names less the prefix `breakdown` took off; `ALL` is every kind, so none is left out
+            let parts: Vec<String> = Uncovered::ALL
                 .iter()
-                .filter_map(|(key, label)| Some(format!("{label} {}", self.uncovered.get(*key)?)))
+                .filter_map(|kind| {
+                    let key = kind.counter().strip_prefix("uncovered_")?;
+                    Some(format!("{} {}", kind.label(), self.uncovered.get(key)?))
+                })
                 .collect();
             writeln!(
                 f,
@@ -568,6 +556,43 @@ mod tests {
         // and this is a bug in a rule.
         assert_eq!(graph.defs[0].kind, DefKind::Function);
         assert_eq!(graph.contexts[0].status, Status::Finished);
+    }
+
+    /// Every kind of `Uncovered` reaches the line of a breakdown, in the order of `Uncovered::ALL`: a key that the line did not know used to be left out
+    /// without a word.
+    #[test]
+    fn the_breakdown_line_says_every_uncovered_kind() {
+        // the line of `Display` that counts what no edge covers, and nothing else of the breakdown
+        let line = |uncovered: BTreeMap<String, u64>| {
+            Breakdown {
+                uncovered,
+                ..Breakdown::default()
+            }
+            .to_string()
+            .lines()
+            .find(|line| line.contains("not covered by an edge"))
+            .expect("the line is there")
+            .to_owned()
+        };
+        let key = |kind: Uncovered| {
+            kind.counter()
+                .strip_prefix("uncovered_")
+                .unwrap()
+                .to_owned()
+        };
+        assert_eq!(
+            line(Uncovered::ALL.iter().map(|&kind| (key(kind), 1)).collect()),
+            "  not covered by an edge (counted, not drawn): element access 1, bind 1, call/apply 1, class 1, destructured accessor 1, rest element 1, assignment destructuring 1, construction initializer sites 1, class component render 1, getter result calls 1, for-of destructuring 1"
+        );
+        for kind in Uncovered::ALL {
+            assert_eq!(
+                line([(key(kind), 2)].into_iter().collect()),
+                format!(
+                    "  not covered by an edge (counted, not drawn): {} 2",
+                    kind.label()
+                )
+            );
+        }
     }
 
     /// How each decorator site of a class resolves. No request draws a class body any more (a class is a construction, and its decorators are drawn where it is declared), so this walks
