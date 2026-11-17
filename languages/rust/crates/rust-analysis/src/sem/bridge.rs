@@ -640,6 +640,54 @@ mod tests {
         assert_eq!(joined, 162);
     }
 
+    /// The join (RS4 §8) over the context workspace, which has no `#[cfg]`-disabled def and no exception but the kinds that cannot be an entry: every def the
+    /// outline lists is found by `entry`, `describe` of it gives the same (file, qualname, occurrence, kind, range) back, and the way back is the same `Func`.
+    #[test]
+    fn every_def_of_the_context_workspace_is_found_and_named_the_same() {
+        let (loaded, root) = crate::sem::testing::workspace("context", "join_context");
+        let mut joined = 0;
+        attached(&loaded, STYLE, |sem| {
+            for file in loaded.files() {
+                let outline = disk_outline(&root, &file);
+                for (def, occurrence) in outline.defs.iter().zip(rust_syntax::occurrences(&outline))
+                {
+                    let found = sem.entry(&file, &def.qualname, occurrence);
+                    if !can_be_entry(&def.kind) {
+                        assert!(found.is_none(), "{file}:{} is no entry", def.qualname);
+                        continue;
+                    }
+                    let func =
+                        found.unwrap_or_else(|| panic!("{file}:{} is an entry", def.qualname));
+                    let info = sem.describe(func);
+                    assert_eq!(
+                        (
+                            info.file.as_str(),
+                            info.qualname.as_str(),
+                            info.occurrence,
+                            &info.kind,
+                            info.range
+                        ),
+                        (
+                            file.as_str(),
+                            def.qualname.as_str(),
+                            occurrence,
+                            &def.kind,
+                            def.range
+                        )
+                    );
+                    match sem.bridge(func.item()) {
+                        Bridged::Func(back) => assert!(back == func, "{file}:{}", def.qualname),
+                        _ => panic!("{file}:{} did not come back a Func", def.qualname),
+                    }
+                    joined += 1;
+                }
+            }
+        });
+        // 5 in lib.rs (the trait's `write`, `Json`, `Csv` and the two impls' `write`), 4 in generic.rs, 4 in callback.rs, 1 in dyn_local.rs, 2 in dyn_param.rs, 4 in
+        // factory.rs, 4 in holder.rs and 2 in recursive.rs
+        assert_eq!(joined, 26);
+    }
+
     /// What `entry` answers `None` to, besides a def a `cfg` turns off (the join test): no file, a file no module reaches, a kind that cannot start a
     /// graph, a def that is not there.
     #[test]

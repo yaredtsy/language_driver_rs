@@ -18,10 +18,15 @@ pub(crate) const STYLE: MarkerStyle<'static> = MarkerStyle {
 
 /// A fresh copy of `fixtures/policy/` under `target/`, loaded as cargo's workspace of one package. Its root is the copy.
 pub(crate) fn policy(name: &str) -> (Loaded, PathBuf) {
-    let copy = crate::paths::absolute(&common::copy_of_fixture("policy", name)).unwrap();
+    workspace("policy", name)
+}
+
+/// A fresh copy of `fixtures/<fixture>/` under `target/` (`policy`, `context`), loaded as cargo's workspace of one package. Its root is the copy.
+pub(crate) fn workspace(fixture: &str, name: &str) -> (Loaded, PathBuf) {
+    let copy = crate::paths::absolute(&common::copy_of_fixture(fixture, name)).unwrap();
     let manifest = copy.join("Cargo.toml");
     let loaded = load(&copy, Some(&manifest), &manifest, &LoadOptions::default())
-        .expect("the policy fixture loads");
+        .unwrap_or_else(|e| panic!("the {fixture} fixture loads: {e}"));
     (loaded, copy)
 }
 

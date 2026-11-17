@@ -219,3 +219,22 @@ fn the_engines_call_hierarchy_agrees_with_our_sites_on_the_policy_workspace() {
     );
     assert!(tally.same > 100, "{tally:?}");
 }
+
+/// The context workspace: generics, callbacks and trait objects. The oracle takes the callable type, which for a method through a type parameter or a `dyn`
+/// is the trait's declaration, as ours is: no difference of any class but the same target.
+#[test]
+fn the_engines_call_hierarchy_agrees_with_our_sites_on_the_context_workspace() {
+    let (loaded, root) = super::testing::workspace("context", "oracle_context");
+    let tally = compare(&loaded, &root);
+    assert_eq!(
+        (
+            tally.nested_item,
+            tally.tuple_variant,
+            tally.generated_target,
+            tally.trait_method
+        ),
+        (0, 0, 0, 0),
+        "none of the four classes: {tally:?}"
+    );
+    assert!(tally.same >= 20, "{tally:?}");
+}
