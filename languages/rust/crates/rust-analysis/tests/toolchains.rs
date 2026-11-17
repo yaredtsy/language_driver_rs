@@ -107,10 +107,13 @@ fn worker_lockfile_written() {
     );
 }
 
-/// `rustup toolchain list`, or `None` without rustup.
+/// `rustup toolchain list`, or `None` without rustup. From a neutral folder and with `RUSTUP_AUTO_INSTALL=0`, as the crate runs it: this is the test that
+/// says "nothing was installed", and it must not install anything itself.
 fn rustup_list() -> Option<String> {
     let out = Command::new("rustup")
         .args(["toolchain", "list"])
+        .current_dir(std::env::temp_dir())
+        .env("RUSTUP_AUTO_INSTALL", "0")
         .output()
         .ok()?;
     out.status

@@ -194,13 +194,22 @@ fn parse_toolchain_list(text: &str) -> Vec<Listed> {
         .collect()
 }
 
+/// `rustup toolchain list`, ready to run. It runs in a **neutral folder** and with `RUSTUP_AUTO_INSTALL=0`, never in the process's own folder: rustup
+/// 1.28+ resolves a directory override first, so in a folder whose `rust-toolchain.toml` names a toolchain that is not installed this very command
+/// downloads it (ENGINE.md, "rustup facts"). It asks for the list, which does not depend on a folder; the variable is the second guard.
+fn toolchain_list_command() -> Command {
+    let mut command = Command::new(Tool::Rustup.path());
+    command
+        .args(["toolchain", "list"])
+        .current_dir(std::env::temp_dir())
+        .env("RUSTUP_AUTO_INSTALL", "0");
+    command
+}
+
 /// The toolchains `rustup toolchain list` knows, each with its version; `None` when there is no `rustup` (nothing can then be substituted, and
 /// this crate never installs anything). The version is read with that toolchain's own `cargo`.
 pub(crate) fn installed(dir: &Path) -> Option<Vec<Candidate>> {
-    let out = Command::new(Tool::Rustup.path())
-        .args(["toolchain", "list"])
-        .output()
-        .ok()?;
+    let out = toolchain_list_command().output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -534,5 +543,40 @@ mod tests {
                 .to_string(),
             "1.98.0-pre"
         );
+    }
+
+    /// Every command this crate builds for a tool of the toolchain carries `RUSTUP_AUTO_INSTALL=0`, and `rustup toolchain list` also runs from a neutral
+    /// folder: a pinned toolchain that is missing must make a command fail, never download. Only the commands are built here, none is run: a failure of
+    /// this test must not be a download.
+    #[test]
+    fn no_rustup_command_can_install_a_toolchain() {
+        let auto_install = |command: &Command| {
+            command
+                .get_envs()
+                .find(|(key, _)| *key == "RUSTUP_AUTO_INSTALL")
+                .and_then(|(_, value)| value.map(|v| v.to_owned()))
+        };
+        let list = toolchain_list_command();
+        assert_eq!(list.get_current_dir(), Some(std::env::temp_dir().as_path()));
+        assert_eq!(
+            auto_install(&list).as_deref(),
+            Some(std::ffi::OsStr::new("0"))
+        );
+        assert_eq!(
+            list.get_args().collect::<Vec<_>>(),
+            ["toolchain", "list"],
+            "it lists, and does nothing else"
+        );
+        // the tools: in the folder they were asked about (a pin there is what is being read), and never installing
+        let dir = Path::new("some/project");
+        for tool in [Tool::Cargo, Tool::Rustc, Tool::Rustup] {
+            let command = command(tool, dir, Some("1.99.1"));
+            assert_eq!(command.get_current_dir(), Some(dir), "{tool:?}");
+            assert_eq!(
+                auto_install(&command).as_deref(),
+                Some(std::ffi::OsStr::new("0")),
+                "{tool:?}"
+            );
+        }
     }
 }
