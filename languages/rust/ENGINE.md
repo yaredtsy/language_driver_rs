@@ -48,7 +48,7 @@ new call into the engine adds its row in the same commit (the reviewer writes it
 | `SyntaxKind`: `WHITESPACE`, `COMMENT`, `SHEBANG`, `DOC_COMMENT`, `OUTER_DOC_COMMENT`, `INNER_DOC_COMMENT`, `ATTR` | the tree shapes of S-RS4: a doc line is a `DOC_COMMENT` node around an `OUTER_`/`INNER_DOC_COMMENT` token; a plain comment is a `COMMENT` token and can open an item's node, so an item's range starts at its first `DOC_COMMENT` or `ATTR` child, else its first child that is not `COMMENT` or `WHITESPACE` |
 | `SyntaxKind`: `LIFETIME`, `LIFETIME_ARG`, `FOR_BINDER`, `GENERIC_ARG_LIST`, `PARENTHESIZED_ARG_LIST`, `TUPLE_TYPE`, `PARAM_LIST`, `TYPE_BOUND_LIST`, `ABI`, `STRING`, `COLON2`, `COMMA`, `PLUS`, `EQ`, `THIN_ARROW`, `COLON`, `SEMICOLON`, `R_PAREN`, `R_BRACK`, `R_ANGLE`, `R_CURLY`, `AS_KW`, `DYN_KW`, `IMPL_KW`, `MUT_KW`, `CONST_KW`, `UNSAFE_KW`, `EXTERN_KW` | the type-text printer (`docs/qualnames.md` P1–P8). A renamed or split kind changes stored qualnames: the `the_printing_rule` test and the snapshots catch it |
 
-**`rust-analysis`** (`crates/rust-analysis/src/sem/`, D35; as of RS3 step 5a, b9e48bf; the test-only calls are marked):
+**`rust-analysis`** (`crates/rust-analysis/src/sem/`, D35; as of RS3 step 7, 5fb73d8; the test-only calls are marked):
 
 | Item | Where | What we rely on |
 |---|---|---|
@@ -66,6 +66,7 @@ new call into the engine adds its row in the same commit (the reviewer writes it
 | `LoadCargoConfig { load_out_dirs_from_check, with_proc_macro_server: ProcMacroServerChoice::Sysroot, proc_macro_processes }` | `load.rs` | `OUT_DIR` code after a build run; the toolchain's own proc-macro server, a pool of one; the client may be dropped after the load (each macro the database knows holds the pool) |
 | `ProjectWorkspaceKind::Cargo { cargo, .. }`, `CargoWorkspace::{packages, manifest_path}`, `PackageData::{targets, is_member, is_local, manifest}`, `TargetData::kind`, `TargetKind::{BuildScript, Lib { is_proc_macro }}` | `load.rs` | what `skipped()` counts and which manifests `environment_inputs()` names |
 | `ProjectWorkspace::sysroot.error()`, `ProjectWorkspaceKind::Cargo { error, .. }` | `load.rs` | read right after `ProjectWorkspace::load`: a missing `rust-src` (`NoStdSource`) and the `--no-deps` retry's cargo message (`DependenciesMissing`); the load itself says neither (RS3 §6, step 5a) |
+| `ra_ap_project_model::project_json::{ProjectJsonData, ProjectJson::new}`, `ProjectWorkspace::load_inline(ProjectJson, &CargoConfig, progress)` | `load.rs` | rungs 3 and 4 (RS3 §6): our reader's crates as JSON (`display_name`, `root_module`, `edition`, `deps`, `is_workspace_member`, `cfg`, `is_proc_macro`, `source.include_dirs` / `exclude_dirs`), sysroot `None`; with no `rustc` the engine falls back to no cfgs and keeps the data-layout error ("Rung 3") |
 | test only: `Semantics::{new, attach_first_edition_opt, parse, resolve_expr_as_callable, resolve_method_call_fallback}`, `CallableKind::Function`, `Either::left`; `ra_ap_syntax::{ast::CallExpr, ast::MethodCallExpr, AstNode}` | `origin.rs` tests | the fixture's call walk, the part of RS4's site walk RS3 needs |
 
 ## S-RS1: does it build as a dependency?

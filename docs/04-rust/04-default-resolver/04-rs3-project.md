@@ -58,7 +58,7 @@ and holds five workspaces (`core/`, one per language). So, as TypeScript finds t
 | Case | Answer |
 |---|---|
 | a file in `src/bin/`, `examples/`, `tests/`, `benches/` | the package's manifest; each is a crate of its own in the engine, all loaded |
-| a file no crate of the workspace includes (not reachable by `mod`) | `open` succeeds; `call_graph` on a def of that file is `None` (the engine has no body for it). `Project::files` lists only files the engine loaded |
+| a file no crate of the workspace includes (not reachable by `mod`) | `open` succeeds; `call_graph` on a def of that file is `None` (the engine has no body for it). **`Project::files` lists only files in some crate's module tree**, on every rung (decided 2026-11-17, RS3 step 7 review): the engine loads whole folders, so "loaded" would list a stray `.rs` file that no crate has, and a lone file's whole folder |
 | a `Cargo.toml` with `[workspace]` and no `[package]` (a virtual manifest) | fine: that is `core/` here |
 | a path dependency outside the workspace but under `root` | loaded by the engine as a local crate; **project code** (§4) |
 
@@ -250,6 +250,7 @@ pub enum Warning {
     NoToolchain,                                                    // no cargo: the crate graph was read from Cargo.toml by us (the ladder, rung 3)
     ManifestUnreadable { message: String },                         // cargo and our reader both failed on a Cargo.toml (rung 4)
     BuildScriptsFailed { message: String },                         // a switch asked for the build run and it failed (§3; added in RS3 step 5a review)
+    CargoFailed { message: String },                                // cargo is there and failed; our reader built the graph (rung 3; added in RS3 step 7 review)
     NoManifest,                                                     // no Cargo.toml up to the root: the file alone (rung 4)
 }
 
@@ -309,6 +310,30 @@ policy), all of them receivers typed through `std`. **So rung 3 is built**, and 
 | source | absolute `root_module`; `source.include_dirs` = the whole package folder, `exclude_dirs` = its `target/` (a `#[path]` module outside `src/` is otherwise not loaded) |
 | cfg | `test` comes from `set_test`. The **host cfgs**, from the analyzer's own build (`std::env::consts::{OS, ARCH, FAMILY}`, `target_pointer_width`, `target_endian`, `unix` or `windows`), and `debug_assertions`: with no `rustc` the engine has none, and `#[cfg(unix)]` code would be inactive. An approximation (the project is assumed to build for this machine), covered by `NoToolchain`'s sentence. The default features as `feature = "…"` |
 | skipped and counted (`layout_skipped`) | `[patch]`, a registry or git dependency (no source to load), a `build.rs`'s generated module, a target layout the reader does not know. Never invented |
+
+**As built (RS3 step 7, 5fb73d8, reviewed 2026-11-17).** `manifest.rs` (the reader; no engine type, `toml` crate) follows the table above.
+It also reads `workspace = true` dependencies, optional ones the default features turn on, members globs and `exclude`; an unknown
+edition skips its package. **A dependency without `package =` is named in code by its lib name, not by its key** (found while writing the
+fixture). Counted as `layout_skipped`: `[patch]`, `[replace]`, registry and git dependencies, target-specific dependency tables,
+`build.rs`, examples and benches, a `**` member pattern, a target whose file is missing, a package it cannot read. `sem/load.rs` asks cargo
+first; on a failure the reader's crates go to `load_inline` (rung 3, sysroot `None`); if the reader fails too, the file alone (rung 4,
+edition 2024 as `rust-syntax`'s fallback, the file's folder as its source). `OpenError::Load` is left only for what no rung gets past: a
+path the engine cannot be given (not UTF-8), and the engine's own `load_workspace` failing on a description it accepted. With no manifest,
+`Project::manifest()` is `""`.
+
+- **`CargoFailed { message }`**, code `cargo_failed`: "cargo could not read the project, so it was read from Cargo.toml; the standard
+  library and dependencies are not shown". Proposed by the coding session, accepted in review: cargo present and failing is not
+  `NoToolchain` ("Rust is not installed" would be wrong), and `NoStdSource`'s advice (install `rust-src`) does not help. Without it the
+  load would be silent about having no `std` (rule 8).
+- **Known cost of rung 4**: the engine loads the lone file's whole folder, recursively, so a lone file at the top of a large tree with no
+  `Cargo.toml` anywhere loads every `.rs` file under it. `files()` lists only the module tree (§2); the load time is not limited. Rare;
+  revisit if a user meets it.
+- **Later**: at rung 3 with `rustc` and `rust-src` present (cargo failed for another reason), a sysroot could be given in the
+  `ProjectJson`, and `std` would resolve. Not built: `CargoFailed` says what is missing.
+- Tests: ten reader table tests on an in-memory tree; `tests/ladder.rs` (a lone file with a `mod` child, a `Cargo.toml` that is not TOML,
+  one only cargo refuses); a worker with no `cargo` and no `rustc` on `PATH` and an empty `HOME` that resolves §6's calls across two crates
+  (one called by its `[lib] name`), the host's `#[cfg(unix)]` or `#[cfg(windows)]` call and a `#[path]` module outside `src/`, with
+  `NoToolchain`; it keeps `SystemRoot`, `TMP`, `TEMP` for Windows. Not run on Windows yet.
 
 **How each condition is found** (S-RS3, `ENGINE.md`): `sem::load` never uses `RustLibSource::Discover` (it runs `rustup component add
 rust-src` by itself). It reads the version with `cargo --version` in the manifest's folder, finds the sysroot with `rustc --print sysroot`
@@ -375,8 +400,8 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures. **Done** (888c228; as built in §3), with two fixes asked in review: a failed build run must not fail the load, and `build_scripts_skipped` counts local packages |
 | 5a | `OpenError` and `Warning` (§6, D37), from S-RS3's texts; the warnings CI can make | §7's error and warning tests. **Done** (b9e48bf; as built in §6), with fixes asked in review: `BuildScriptsFailed`, `NoStdSource` for a sysroot nobody can find, `OpenError`'s `Display`, `rust-src` in `rust-toolchain.toml` |
 | 5b | the old-toolchain measurement and the minimum; the substitution (`ToolchainSubstituted`, `OldToolchain`); then the old toolchains are uninstalled | §7's measurement table in `ENGINE.md`; the substitution test. **Done** (21f38e6, fixes fa4b54c 6cb8dce 42b3087 59eede1 8e9d313; table and rustup facts in `ENGINE.md`). **Minimum 1.82**, set from the measurement: no call is lost down to 1.74.1, so the line is the lockfile's. One fix asked in review: a rewritten existing lock is `LockfileWritten` too |
-| 7 | the ladder's rungs 3 and 4 (§6): our own `Cargo.toml` reader into `ProjectJson`, the one-file crate; its checks first | a fixture workspace loaded with no `cargo` and no `rustc` on `PATH` and an empty `HOME`: the in-project calls of §6's row resolve, `NoToolchain` is set; a lone `.rs` file; §5's table with rung 3 |
-| 6 | `ENGINE.md`: what `sem::load` calls, the `attach_db` rule, the measured load times | reviewed |
+| 7 | the ladder's rungs 3 and 4 (§6): our own `Cargo.toml` reader into `ProjectJson`, the one-file crate; its checks first | a fixture workspace loaded with no `cargo` and no `rustc` on `PATH` and an empty `HOME`: the in-project calls of §6's row resolve, `NoToolchain` is set; a lone `.rs` file; §5's table with rung 3. **Done** (checks b658059, code 5fb73d8; as built in §6), with two changes asked in review: `CargoFailed`, and `files()` = the module tree (§2) |
+| 6 | `ENGINE.md`: what `sem::load` calls, the `attach_db` rule, the measured load times | reviewed. **Done** by the reviewer as the steps went ("The engine items we call", S-RS2's rules, "RS3: loading a workspace"; 95b2d12 … this commit) |
 
 Q-RS3 (`sem` as a folder) is answered before step 1: this is the phase where `sem` gets its second kind of work.
 
