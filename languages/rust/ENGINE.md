@@ -491,3 +491,37 @@ never touched; below 1.97 a project with none gets one, said by `LockfileWritten
   fails as `OpenError::Load` until step 7).
 - `RUSTUP_TOOLCHAIN` in `CargoConfig::extra_env` is left alone by the engine (`Sysroot::tool`), so one variable moves every tool, ours and
   the engine's, to the chosen toolchain.
+
+### Rung 3: `load_inline` with no toolchain (step 7 checks, 2026-11-17)
+
+A throwaway probe (`languages/rust/spikes/rung3/`, deleted after this was written down) turned each `Cargo.toml` into a `ProjectJson` and
+loaded it with `ProjectWorkspace::load_inline`, sysroot `None`.
+
+1. **No `rustc`, no `cargo`, an empty `HOME`: the engine falls back, it does not fail.** Run with `env -i PATH=/usr/bin:/bin HOME=<empty>`:
+   loaded in 4 ms, no panic. In `load_inline` (`workspace.rs` ~489) `version::get(..).ok().flatten()` gives no toolchain,
+   `rustc_cfg::get` logs and returns `vec![]` when `rustc --print cfg` fails (`toolchain_info/rustc_cfg.rs`), and `target_data::get` keeps
+   its error in `workspace.target` (a `Result`: "unable to fetch target-data-layout"). **The cost is the empty cfg list**: `#[cfg(unix)]`
+   and `debug_assertions` code is inactive, so a call inside a `#[cfg(unix)]` function did not resolve. Giving each crate the host cfgs in
+   the JSON (`"cfg": ["unix", "debug_assertions", "target_os=\"macos\"", …]`) made it resolve. `cfg(test)` works without that:
+   `set_test` applies to JSON crates too. With `rustc` on `PATH` (still no sysroot) the engine reads the cfgs itself (65 atoms), in 366 ms.
+2. **Without `std`, project types are enough.** On two hand-built crates, 14 of 14 sites resolved: `self.validate()`, `Self::new()`,
+   `Order::new().submit()`, `let o: Order = …; o.submit()`, a function by path, and `shop::Order::new().submit()`, `shop::helper()` across
+   the crates, in code that uses no `Option`, `String` or `Vec`.
+3. **In-project edges, rung 3 against rung 1** (an edge is a call site resolved to project code under the root):
+
+| Project | Resolution | Rung 1 | Rung 3 | Lost |
+|---|---|---|---|---|
+| `core/` | callable only (step 1's probe) | 826 | 720 | 106 (13%) |
+| `core/` | path first (RS4's policy) | 881 | 763 | 118 (13%) |
+| `languages/rust/` | callable only | 437 | 342 | 95 (22%) |
+| `languages/rust/` | path first | 437 | 416 | 21 (5%) |
+
+   Rung 3 never gained an edge, and its callable-only numbers on `core/` (686 same-crate, 34 cross-package) equal step 1's "no `std`"
+   column exactly. What it loses is receivers typed through `std`: `line.slice(text)?`, `all.iter().map(|c| c.as_str())`,
+   `loaded.no_std_source().map(str::to_owned)`, `for x in …`, `let Some(..) = … else`, a call inside a `Vec::push(…)` argument. Loads took
+   18 to 76 ms on the real workspaces against about 900 ms for rung 1.
+   **Step 1's table undercounts**: its probe resolved a call by path only through `resolve_expr_as_callable`, which fails when the
+   function's signature names `Option` or `String`; `resolve_path` first (RS4's policy) lifts rung 1 on `core/` from 826 to 881. D38 does
+   not change: under `no_deps` every cross-package edge was lost whatever the method.
+4. **A JSON crate sees only its root module's folder** by default (`src/`): a `#[path = "../../tests/common/mod.rs"]` module was not
+   loaded, and six edges were lost, until each crate's `source.include_dirs` was set to its whole package folder (without `target/`).

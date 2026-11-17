@@ -296,6 +296,20 @@ so rule 4 does not apply).
 without `std`). **[measure]** in-project edges at rung 3 against rung 1 on the three projects: a fourth column of §5's table. S-RS3's only
 number so far (no `std`, on `core/`, all calls): 634 of 978 calls and 74 of 914 method calls resolved.
 
+**The checks, answered (RS3 step 7, 2026-11-17, `ENGINE.md` "Rung 3").** `load_inline` with no `rustc`, no `cargo` and an empty `HOME`
+loads (the engine falls back to an empty cfg list and keeps the data-layout error); without `std` every call on a project type resolves,
+across crates too; rung 3 loses 13% of `core/`'s in-project edges and 5% of `languages/rust/`'s against rung 1 (path first, RS4's
+policy), all of them receivers typed through `std`. **So rung 3 is built**, and the reader writes, for each package:
+
+| What | Rule |
+|---|---|
+| crates | one per target: the lib (`src/lib.rs` or `[lib] path`), `src/main.rs`, `src/bin/*.rs`, `[[bin]] path`, `tests/*.rs`. The lib's crate name is `[lib] name` if given, else the package name with `-` → `_` (read, not skipped: a wrong name breaks every path call into it). Bin and test crates may share names; that is fine |
+| dependencies | the path dependencies between the project's packages, by their `package =` rename or key; a lib also gets its **dev**-dependencies (its own `#[cfg(test)]` code uses them); a `tests/*.rs` crate gets the package's lib and its dev-dependencies |
+| edition | `edition`, or the workspace's with `edition.workspace = true`; 2015 when absent, as Cargo |
+| source | absolute `root_module`; `source.include_dirs` = the whole package folder, `exclude_dirs` = its `target/` (a `#[path]` module outside `src/` is otherwise not loaded) |
+| cfg | `test` comes from `set_test`. The **host cfgs**, from the analyzer's own build (`std::env::consts::{OS, ARCH, FAMILY}`, `target_pointer_width`, `target_endian`, `unix` or `windows`), and `debug_assertions`: with no `rustc` the engine has none, and `#[cfg(unix)]` code would be inactive. An approximation (the project is assumed to build for this machine), covered by `NoToolchain`'s sentence. The default features as `feature = "…"` |
+| skipped and counted (`layout_skipped`) | `[patch]`, a registry or git dependency (no source to load), a `build.rs`'s generated module, a target layout the reader does not know. Never invented |
+
 **How each condition is found** (S-RS3, `ENGINE.md`): `sem::load` never uses `RustLibSource::Discover` (it runs `rustup component add
 rust-src` by itself). It reads the version with `cargo --version` in the manifest's folder, finds the sysroot with `rustc --print sysroot`
 and passes it as `RustLibSource::Path` (built in step 1: the engine then looks for `lib/rustlib/src/rust/library` itself, without
