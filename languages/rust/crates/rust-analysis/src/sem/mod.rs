@@ -34,3 +34,6 @@ mod nostd;
 
 #[cfg(test)]
 mod realproject;
+
+#[cfg(test)]
+mod oracle;

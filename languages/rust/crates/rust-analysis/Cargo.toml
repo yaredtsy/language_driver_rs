@@ -24,3 +24,4 @@ ra_ap_vfs           = { workspace = true }
 
 [dev-dependencies]
 analyzer-testkit = { workspace = true }
+ra_ap_ide        = { workspace = true }

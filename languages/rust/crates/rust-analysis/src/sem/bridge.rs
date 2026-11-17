@@ -342,6 +342,24 @@ impl<'p> Sem<'p> {
         self.loaded
     }
 
+    /// The file (relative to the root) and the name's range of a `Func`, in the engine's bytes: the oracle test compares a target by it.
+    #[cfg(test)]
+    pub(super) fn name_of(&self, func: Func<'p>) -> (String, Span) {
+        let (defs, _) = self.opened(func.file);
+        (defs.path.clone(), defs.outline.defs[func.def].name_range)
+    }
+
+    /// The engine's function whose name is at `name` in the project file `file`, for the oracle test, which meets targets as the engine names them.
+    #[cfg(test)]
+    pub(super) fn function_at(&self, file: &str, name: Span) -> Option<ra_ap_hir::Function> {
+        let file = self.open(file)?;
+        let (_, tree) = self.opened(file);
+        match self.item_named(&tree, name, &DefKind::Function)? {
+            Item::Function(function) => Some(function),
+            _ => None,
+        }
+    }
+
     // What `sites.rs` asks of the engine. They are here because they use what the `Sem` keeps, and `Sem` keeps it private.
 
     pub(super) fn sites_cache(&self) -> &RefCell<HashMap<Func<'p>, Rc<Sites>>> {

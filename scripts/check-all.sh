@@ -62,6 +62,12 @@ if [ -d languages/rust ]; then
   tree=$(cd languages/rust && cargo tree --locked -p rust-syntax 2>&1) || bad "cargo tree -p rust-syntax failed: $tree"
   if grep -E 'salsa|ra_ap_hir|ra_ap_ide' <<<"$tree"; then bad "rust-syntax depends on a slow engine crate"; fi
   grep -q 'ra_ap_syntax' <<<"$tree" || bad "rust-syntax does not depend on ra_ap_syntax (is the tree check reading the right crate?)"
+  # the oracle's engine crate is a dev-dependency (RS4 §8): the normal tree of what ships has `ra_ap_ide_db`, which it needs, and no `ra_ap_ide`
+  for crate in rust-analysis rust-cli; do
+    tree=$(cd languages/rust && cargo tree --locked -p "$crate" -e normal 2>&1) || bad "cargo tree -p $crate failed: $tree"
+    if grep -E 'ra_ap_ide v' <<<"$tree"; then bad "$crate depends on ra_ap_ide outside its dev-dependencies"; fi
+    grep -q 'ra_ap_ide_db' <<<"$tree" || bad "$crate does not depend on ra_ap_ide_db (is the tree check reading the right crate?)"
+  done
 fi
 
 # relative links in docs and the top-level markdown files resolve (anchors are not checked)
