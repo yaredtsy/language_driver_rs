@@ -1,9 +1,9 @@
 //! Loading a Cargo workspace into the engine's database. The only file that names `ra_ap_load_cargo`, `ra_ap_project_model` and `ra_ap_vfs`.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use crate::warning::Warning;
 use crate::{LoadOptions, paths, toolchain};
 
 use ra_ap_ide_db::RootDatabase;
@@ -24,6 +24,8 @@ pub(crate) struct Loaded {
     no_std_source: Option<String>,
     /// Cargo's message when `cargo metadata` failed and the engine went on with `--no-deps` (offline, a dependency that cannot be fetched).
     dependencies_error: Option<String>,
+    /// `ToolchainSubstituted` or `OldToolchain`, when the project's toolchain was not used as it was (`toolchain::decide`).
+    toolchain_warning: Option<Warning>,
     /// The caller's root (absolute, clean): `files()` lists what is under it and nothing else, wherever the workspace's own root manifest is.
     root: PathBuf,
     /// Why the build scripts did not run (or ran with an error), when they were asked for: the message of the engine's `cargo check`.
@@ -70,6 +72,10 @@ impl Loaded {
         self.dependencies_error.as_deref()
     }
 
+    pub(crate) fn toolchain_warning(&self) -> Option<&Warning> {
+        self.toolchain_warning.as_ref()
+    }
+
     pub(crate) fn build_error(&self) -> Option<&str> {
         self.build_error.as_deref()
     }
@@ -109,7 +115,14 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
     let manifest_path = manifest;
     let manifest = ProjectManifest::from_manifest_file(abs).map_err(|e| format!("{e:#}"))?;
 
-    let sysroot = sysroot_dir(dir);
+    // The toolchain of the project may be unusable as it is (not installed) or too old (RS3 §6): the choice is made once, and what it picks is put in
+    // `RUSTUP_TOOLCHAIN` for every tool below, ours and the engine's. Nothing is ever installed.
+    let decision = toolchain::decide(toolchain::probe(dir, None), toolchain::MINIMUM, || {
+        toolchain::installed(dir)
+    });
+    let chosen = decision.toolchain.as_deref();
+
+    let sysroot = sysroot_dir(dir, chosen);
     let mut config = CargoConfig {
         // `RustLibSource::Discover` would run `rustup component add rust-src` when the source is missing (S-RS3); `Path` only looks.
         sysroot: sysroot.clone().map(RustLibSource::Path),
@@ -117,15 +130,22 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
         set_test: true,
         ..CargoConfig::default()
     };
+    if let Some(toolchain) = chosen {
+        // the engine leaves a `RUSTUP_TOOLCHAIN` of `extra_env` alone (`Sysroot::tool`)
+        config
+            .extra_env
+            .insert("RUSTUP_TOOLCHAIN".to_owned(), Some(toolchain.to_owned()));
+    }
 
-    let lock = workspace_dir(dir, manifest_path).join("Cargo.lock");
+    let lock = workspace_dir(dir, manifest_path, chosen).join("Cargo.lock");
     let had_lock = lock.exists();
     // `redirect` is dropped (its folder deleted) when this function returns, after the last cargo has run, on every path out of it
-    let redirect = if !had_lock && toolchain::honours_lockfile_path(toolchain::cargo_version(dir)) {
-        TempDir::new()
-    } else {
-        None
-    };
+    let redirect =
+        if !had_lock && toolchain::honours_lockfile_path(toolchain::cargo_version(dir, chosen)) {
+            TempDir::new()
+        } else {
+            None
+        };
     // a temporary folder whose path is not UTF-8 cannot be written into the (String) environment: go on as A, the folder is deleted at the end
     if let Some(path) = redirect.as_ref().and_then(|dir| lock_in(&dir.0)) {
         config
@@ -195,6 +215,7 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
         wrote_lockfile: !had_lock && lock.exists(),
         no_std_source,
         dependencies_error,
+        toolchain_warning: decision.warning,
         root: root.to_path_buf(),
         build_error,
         skipped,
@@ -267,8 +288,8 @@ fn outside_inputs(workspace: &ProjectWorkspace, root: &Path) -> Vec<String> {
 
 /// The folder of the workspace's root manifest, where cargo keeps `Cargo.lock`: `cargo locate-project --workspace` says (a member's folder is
 /// not it). Falls back to `dir`, the manifest's folder, when cargo cannot say.
-fn workspace_dir(dir: &Path, manifest: &Path) -> PathBuf {
-    let located = Command::new("cargo")
+fn workspace_dir(dir: &Path, manifest: &Path, toolchain: Option<&str>) -> PathBuf {
+    let located = toolchain::command("cargo", dir, toolchain)
         .args([
             "locate-project",
             "--workspace",
@@ -277,8 +298,6 @@ fn workspace_dir(dir: &Path, manifest: &Path) -> PathBuf {
             "--manifest-path",
         ])
         .arg(manifest)
-        .current_dir(dir)
-        .env("RUSTUP_AUTO_INSTALL", "0")
         .output()
         .ok()
         .filter(|out| out.status.success())
@@ -339,11 +358,9 @@ fn no_std_toolchain(sysroot: Option<&Path>, source_missing: bool) -> Option<Stri
 
 /// The toolchain's sysroot as `rustc --print sysroot` says in `dir` (so a `rust-toolchain.toml` there counts). `RUSTUP_AUTO_INSTALL=0`: a
 /// toolchain that is named and not installed must fail here, not be downloaded.
-fn sysroot_dir(dir: &Path) -> Option<AbsPathBuf> {
-    let out = Command::new("rustc")
+fn sysroot_dir(dir: &Path, toolchain: Option<&str>) -> Option<AbsPathBuf> {
+    let out = toolchain::command("rustc", dir, toolchain)
         .args(["--print", "sysroot"])
-        .current_dir(dir)
-        .env("RUSTUP_AUTO_INSTALL", "0")
         .output()
         .ok()?;
     if !out.status.success() {

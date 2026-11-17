@@ -122,6 +122,8 @@ pub(crate) struct Facts {
     pub(crate) wrote_lockfile: bool,
     /// The message of a build run that failed, when build scripts were asked for.
     pub(crate) build_error: Option<String>,
+    /// `ToolchainSubstituted` or `OldToolchain`: the load did not use the project's toolchain as it was.
+    pub(crate) toolchain: Option<Warning>,
 }
 
 /// The warnings of a load, from its facts: sorted by code (then by content), each once.
@@ -139,6 +141,7 @@ pub(crate) fn collect(facts: Facts) -> Vec<Warning> {
     if let Some(message) = facts.build_error {
         warnings.push(Warning::BuildScriptsFailed { message });
     }
+    warnings.extend(facts.toolchain);
     warnings.sort_by(|a, b| a.code().cmp(b.code()).then_with(|| a.cmp(b)));
     warnings.dedup();
     warnings
@@ -214,6 +217,7 @@ mod tests {
             dependencies_error: Some("m".into()),
             wrote_lockfile: true,
             build_error: Some("b".into()),
+            toolchain: None,
         });
         let codes: Vec<_> = got.iter().map(Warning::code).collect();
         assert_eq!(

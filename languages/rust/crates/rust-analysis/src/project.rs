@@ -93,6 +93,7 @@ impl Project {
             dependencies_error: loaded.dependencies_error().map(str::to_owned),
             wrote_lockfile: loaded.wrote_lockfile(),
             build_error: loaded.build_error().map(str::to_owned),
+            toolchain: loaded.toolchain_warning().cloned(),
         });
         Ok(Project {
             loaded,

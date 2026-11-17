@@ -323,4 +323,52 @@ mod tests {
             "member::in_member is not listed: it did not resolve"
         );
     }
+
+    /// The old-toolchain measurement (RS3 §7), by hand: `fixtures/measure/` has a project method reached through `Option::unwrap` and through
+    /// `Vec::iter`. Started by a shell loop with `RS_WORKER=1 RUSTUP_TOOLCHAIN=<toolchain>`, it prints one line: did the load work, was `std` found, did
+    /// both project calls resolve, and how long the load took. It asserts nothing: a toolchain that cannot load is a result.
+    #[test]
+    #[ignore = "by hand: RS_WORKER=1 RUSTUP_TOOLCHAIN=<toolchain> cargo test ... worker_measure -- --ignored --nocapture"]
+    fn worker_measure() {
+        if std::env::var_os("RS_WORKER").is_none() {
+            return;
+        }
+        let copy = common::copy_of_fixture("measure", "measure");
+        let root = crate::paths::absolute(&copy).unwrap();
+        let manifest = root.join("Cargo.toml");
+        let started = std::time::Instant::now();
+        let loaded = match load(&root, &manifest, &LoadOptions::default()) {
+            Ok(loaded) => loaded,
+            Err(error) => {
+                println!(
+                    "MEASURE loaded=no error={:?}",
+                    error.lines().next().unwrap_or("")
+                );
+                return;
+            }
+        };
+        let load_ms = started.elapsed().as_millis();
+        let owners = call_owners(&loaded, "src/lib.rs");
+        let project_calls = owners
+            .iter()
+            .filter(|(text, owner)| text == "run" && matches!(owner, Owner::Project { .. }))
+            .count();
+        let std_calls = owners
+            .iter()
+            .filter(|(text, owner)| {
+                (text == "unwrap" || text == "iter") && matches!(owner, Owner::External { .. })
+            })
+            .count();
+        println!(
+            "MEASURE loaded=yes load_ms={load_ms} std_source={} std_calls={std_calls}/2 project_calls={project_calls}/2 no_std_source={:?} dependencies_error={} toolchain_warning={:?}",
+            if loaded.no_std_source().is_none() {
+                "found"
+            } else {
+                "missing"
+            },
+            loaded.no_std_source(),
+            loaded.dependencies_error().is_some(),
+            loaded.toolchain_warning(),
+        );
+    }
 }
