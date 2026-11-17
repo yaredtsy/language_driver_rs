@@ -1,5 +1,3 @@
-use tsrs_compiler::Context;
-
 use super::*;
 
 /// What a body hands over or calls in a way **no edge covers**, counted per occurrence (D22 step 5): a function handed over by an element access with a
@@ -101,7 +99,7 @@ impl Sem {
             return false;
         };
         let _scope = self._region.enter();
-        let mut checker = self.program.get_type_checker(&Context::default());
+        let mut checker = self.checker();
         let Some(symbol) = checker.get_symbol_of_declaration_exported(node) else {
             return false;
         };

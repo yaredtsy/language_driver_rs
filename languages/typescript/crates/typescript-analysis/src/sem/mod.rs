@@ -16,11 +16,13 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tsrs_ast::{self as ast, Kind, Node, NodeFlags, SourceFile};
-use tsrs_compiler::{Program, ProgramOptions, ProgramRegions};
+use tsrs_checker::Checker;
+use tsrs_compiler::{CheckerHandle, Context, Program, ProgramOptions, ProgramRegions};
 use tsrs_core::arena::Region;
 use tsrs_core::{
     CompilerOptions, JsxEmit, ModuleKind, ModuleResolutionKind, P, ScriptTarget, Tristate, tspath,
@@ -227,6 +229,8 @@ pub struct Sem {
     /// `Cell` is `Send` but not `Sync`, so neither is a `Sem` shared by reference: one checker answers one question at a time, and nothing
     /// here makes concurrent questions safe (`proof` pins this). Moving a `Sem` to another thread stays allowed.
     _not_shared: PhantomData<Cell<()>>,
+    /// Whether a checker handle is out (`Sem::checker`).
+    checker_held: Cell<bool>,
     /// One outline per (file, marker label), made on first use. A `Sem` is not `Sync`, so a `RefCell` is enough.
     file_defs: RefCell<FileDefsCache>,
     /// What the walk of each def's body found, made on first use, by the def's node: its sites, the defs it stops at, the references by name.
@@ -319,6 +323,7 @@ impl Sem {
             config_files,
             config_file,
             _not_shared: PhantomData,
+            checker_held: Cell::new(false),
             file_defs: RefCell::new(HashMap::new()),
             bodies: RefCell::new(HashMap::new()),
             _loaders: loaders,
@@ -715,6 +720,49 @@ impl Sem {
             return Some(BUNDLED_LIBS.into());
         }
         package_in_node_modules(file.node.file_name())
+    }
+}
+
+/// The program's one checker, held. The checker is behind a mutex that one thread cannot lock twice, and a second `get_type_checker` while a handle is out
+/// does not fail: it waits for ever (H1). `Sem::checker` is the only way here to take a handle, and it says so at the line that takes a second one.
+pub(super) struct HeldChecker<'s> {
+    handle: CheckerHandle,
+    held: &'s Cell<bool>,
+}
+
+impl Deref for HeldChecker<'_> {
+    type Target = Checker;
+    fn deref(&self) -> &Checker {
+        &self.handle
+    }
+}
+
+impl DerefMut for HeldChecker<'_> {
+    fn deref_mut(&mut self) -> &mut Checker {
+        &mut self.handle
+    }
+}
+
+impl Drop for HeldChecker<'_> {
+    fn drop(&mut self) {
+        self.held.set(false);
+    }
+}
+
+impl Sem {
+    /// The checker, for one question at a time: drop the result before asking for it again. A second handle while one is held is a `debug_assert!`
+    /// failure, where it would otherwise wait for ever.
+    pub(super) fn checker(&self) -> HeldChecker<'_> {
+        debug_assert!(
+            !self.checker_held.get(),
+            "one checker handle at a time: a second would wait for the first for ever"
+        );
+        let handle = self.program.get_type_checker(&Context::default());
+        self.checker_held.set(true);
+        HeldChecker {
+            handle,
+            held: &self.checker_held,
+        }
     }
 }
 

@@ -12,6 +12,24 @@ fn the_program_has_one_checker() {
     assert_eq!(sem.program.options().checkers, Some(1));
 }
 
+/// H1: a second handle taken while one is held would wait for the first for ever (the checker is behind a mutex that one thread cannot lock twice). The
+/// guard turns that into a message at the line that takes it. Debug builds only: it is a `debug_assert!`.
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "one checker handle at a time")]
+fn taking_a_second_checker_handle_is_a_panic_and_not_a_wait() {
+    let sem = Sem::open(&three_files(), Path::new("src/main.ts")).unwrap();
+    let _first = sem.checker();
+    let _second = sem.checker();
+}
+
+#[test]
+fn a_checker_handle_can_be_taken_again_once_it_is_dropped() {
+    let sem = Sem::open(&three_files(), Path::new("src/main.ts")).unwrap();
+    drop(sem.checker());
+    drop(sem.checker());
+}
+
 #[test]
 fn the_program_lists_its_files_in_the_same_order_every_time() {
     // Files are parsed on several threads, so the order the program ends with must not depend on which finished first.

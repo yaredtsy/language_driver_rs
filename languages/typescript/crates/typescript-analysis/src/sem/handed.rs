@@ -1,7 +1,6 @@
 use analyzer_core::outline::DefKind;
 use tsrs_ast::{Symbol, SymbolFlags};
 use tsrs_checker::{Checker, Type};
-use tsrs_compiler::Context;
 
 use super::collect::unwrap_expression;
 use super::hierarchy::{callable_declarations, is_variable_like};
@@ -167,7 +166,7 @@ impl Sem {
             }
         }
         let _scope = self._region.enter();
-        let mut checker = self.program.get_type_checker(&Context::default());
+        let mut checker = self.checker();
         // the variables an object pattern on the left of `=` assigns a def, or a rest object that holds one, to (`({ load, ...others } = api)`)
         let mut assigned = Assigned::default();
         let mut patterns: Vec<Span> = Vec::new();

@@ -2,7 +2,6 @@ use analyzer_core::graph::{DefInfo, StableDef};
 use analyzer_core::outline::DefKind;
 use tsrs_ast::SymbolFlags;
 use tsrs_checker::{Checker, TypeFlags};
-use tsrs_compiler::Context;
 
 use super::collect::{Access, AccessCandidate, CallNode, SiteKind, unwrap_expression};
 use super::hierarchy::{
@@ -141,7 +140,7 @@ impl Sem {
         facts.jsx = call.kind == SiteKind::Jsx;
         let _scope = self._region.enter();
         // one checker, so one handle at a time: it is dropped before this returns
-        let mut checker = self.program.get_type_checker(&Context::default());
+        let mut checker = self.checker();
         let callee = call.expr;
         if let SiteKind::Accessor(access) = call.kind {
             return (
@@ -214,7 +213,7 @@ impl Sem {
         if candidates.is_empty() {
             return Vec::new();
         }
-        let mut checker = self.program.get_type_checker(&Context::default());
+        let mut checker = self.checker();
         candidates
             .iter()
             .filter(|candidate| {
@@ -481,7 +480,7 @@ impl Sem {
                 return Init::Unknown;
             };
             let _scope = self._region.enter();
-            let mut checker = self.program.get_type_checker(&Context::default());
+            let mut checker = self.checker();
             let mut resolved: Vec<Resolved<'_>> = Vec::new();
             let mut declarations = declarations_of(&mut checker, base);
             if declarations.is_empty() {
