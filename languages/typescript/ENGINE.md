@@ -317,10 +317,14 @@ Not checked: that the options above change a resolved call target compared with 
 
 ### Which files are the project's, and what package a file belongs to
 
-`Sem::is_project_code` is false for: a path in `node_modules` (or a file the program found by searching it: `is_source_file_from_external_library`), a
-declaration file (`tspath::is_declaration_file_name`: `.d.ts`, `.d.mts`, `.d.cts`; this includes the project's own `src/types.d.ts`, as the plan said), and a
-bundled library (`is_source_file_default_library`; these live outside the root, and there are 91 of them in a one-file program). `Project::files()` lists
-project code only, relative to the root.
+`Sem::is_project_code` is true for source code **under the root** (D33, step R2): a TypeScript or JavaScript file (`Dialect::from_path`) that is not in
+`node_modules` (or a file the program found by searching it: `is_source_file_from_external_library`), not a declaration file
+(`tspath::is_declaration_file_name`: `.d.ts`, `.d.mts`, `.d.cts`; this includes the project's own `src/types.d.ts`, as the plan said), not a bundled library
+(`is_source_file_default_library`; these live outside the root, and there are 91 of them in a one-file program), and whose path `relative_path` finds under
+the root. The first four are `is_source_code`; a source file that fails only the last is `is_outside_root_source`: the program pulled it in by a relative
+import (`../../shared/lib`), it is not walked, and a call into it is an `External` named by `place_of` (`../shared/lib.ts`) and counted in
+`Stats.language["outside_root"]`. A `.d.ts` out there is `External` too and is not counted: it has no body. `Project::files()` lists project code only,
+relative to the root. Fixture `outside-root`, `tests/outside_root.rs`.
 
 `Sem::package_of` names the package for an `External` edge: the first segment after the **last** `node_modules/` (pnpm nests them), `@scope/pkg` with
 its scope, **`@types/x` as `x` and `@types/scope__x` as `@scope/x`** (the package a types package describes: a policy, not an engine fact), and
@@ -335,9 +339,12 @@ is rooted; both are absolute here, so it cannot. A file on another Windows drive
 absolute path (`D:/shared/lib.ts`); `place_between` keeps that, and a unit test pins it on strings (not run on Windows). Names are compared as spelled,
 with `use_case_sensitive_file_names: true`, as `relative_path` compares them.
 
-**`[check]` letter case in `relative_path` (D33, 10-review-fixes §3.3):** the root is `canonicalize`d and the engine's file names come from the file
-system, so both carry the disk's own case. Run on macOS (case-insensitive disk): every existing fixture still finds its files under the root, so it does not
-fail there. Not run on Linux or Windows: CI's three systems are the check, as the design says.
+**`[check]` letter case in `relative_path` (D33, 10-review-fixes §3.3):** the engine's file names do not come from asking the disk for their case. A file
+under the root is named by the root string `sem` passes as the engine's cwd (`to_engine_path` of the `canonicalize`d root) plus the text of the import or
+of the config's `include`, so the root prefix matches by construction and `relative_path` cannot fail on letter case for such a file. Run on macOS
+(case-insensitive disk): every existing fixture finds its files under the root. Not run on Linux or Windows: CI's three systems are the check. A file the
+engine reaches by its **real path through a symlink** (a package linked into `node_modules`, a symlinked folder under the root) is spelled by the engine
+as it resolved it, which may not start with the root: that is left to the monorepo work.
 
 ### The proof that a `File<'p>` cannot outlive its `Sem`
 

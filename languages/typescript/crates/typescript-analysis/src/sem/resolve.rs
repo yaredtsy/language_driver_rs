@@ -17,7 +17,12 @@ pub(crate) enum Resolved<'p> {
     /// A def of project code: a function, method, accessor or constructor, or a class. The solver walks it.
     Def(Func<'p>),
     /// Outside project code: the package (`pkg`, `typescript:lib`, or the path from the root of a `.d.ts` of the repo's, or of a file outside the root) and the declaration's own name.
-    External { package: String, name: String },
+    /// `outside_root` is true for a source file outside the root (D33): a body that was there to walk and is not, which `SiteFacts` counts.
+    External {
+        package: String,
+        name: String,
+        outside_root: bool,
+    },
     /// The engine gives no declaration to enter.
     Unknown(Why),
 }
@@ -29,6 +34,8 @@ pub(crate) struct SiteFacts {
     pub(crate) jsx: bool,
     /// The callee is a getter (`b.fn()`): the edge is to the getter, and the call of what it returns has no edge.
     pub(crate) getter_result: bool,
+    /// How many targets of the site are source files outside the root (`Resolved::External::outside_root`), once per target.
+    pub(crate) outside_root: u64,
 }
 
 /// What runs when a class is constructed: the first constructor up its chain of base classes, since a class with none uses its base's.
@@ -96,6 +103,28 @@ impl Sem {
 
     /// `callee`, and what else is known about the site while the declarations are at hand (`SiteFacts`).
     pub(crate) fn callee_with_facts(
+        &self,
+        func: Func<'_>,
+        site_index: usize,
+        style: MarkerStyle<'_>,
+    ) -> (Vec<Resolved<'_>>, SiteFacts) {
+        let (found, mut facts) = self.callee_found(func, site_index, style);
+        facts.outside_root = found
+            .iter()
+            .filter(|resolved| {
+                matches!(
+                    resolved,
+                    Resolved::External {
+                        outside_root: true,
+                        ..
+                    }
+                )
+            })
+            .count() as u64;
+        (found, facts)
+    }
+
+    fn callee_found(
         &self,
         func: Func<'_>,
         site_index: usize,
@@ -381,7 +410,11 @@ impl Sem {
                 })
                 .unwrap_or_default();
             let name = qualified_name(declaration, own);
-            return Resolved::External { package, name };
+            return Resolved::External {
+                package,
+                name,
+                outside_root: self.is_outside_root_source(file),
+            };
         }
         let Some(defs) = self.file_defs(file, style) else {
             return Resolved::Unknown(Why::NotInOutline);
@@ -498,9 +531,9 @@ impl Sem {
             .file_defs(func.file, style)
             .expect("a Func is made from an outline, so its file has one");
         let def = &defs.outline.defs[func.def];
-        let file = self
-            .relative_path(func.file)
-            .unwrap_or_else(|| func.file.node.file_name().to_owned());
+        let file = self.relative_path(func.file).expect(
+            "a Func is made from project code, which is under the root (`is_project_code`)",
+        );
         let occurrence = defs.outline.defs[..func.def]
             .iter()
             .filter(|earlier| earlier.qualname == def.qualname)

@@ -520,7 +520,7 @@ fn resolved_sites(sem: &Sem, file: &str, qualname: &str) -> Vec<(String, Vec<Str
                             _ => format!("{} {}", info.file, info.qname),
                         }
                     }
-                    Resolved::External { package, name } => {
+                    Resolved::External { package, name, .. } => {
                         format!("external {package} {name}")
                     }
                     Resolved::Unknown(why) => format!("unknown {}", why.counter()),

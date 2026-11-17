@@ -21,6 +21,9 @@ const DEF_WITHOUT_NODE: &str = "def_without_node";
 pub(crate) const INHERITED_EXTERNAL: &str = "inherited_constructor_external";
 pub(crate) const INHERITED_UNKNOWN: &str = "inherited_constructor_unknown";
 
+/// The key of the counter, in `Stats.language`, for a call into a source file outside the root (D33): an `External` edge for a body that was there to walk.
+pub(crate) const OUTSIDE_ROOT: &str = "outside_root";
+
 /// The keys of the counters, in `Stats.language`, for the defs of a walked body that are handed over (written inside an expression, or named) and that no
 /// edge of the graph reaches. Counted by `call_graph` once the edges are known; a count and nothing else: no edge and no node is added for them.
 pub(crate) const WRITTEN_NOT_CALLED: &str = "def_written_not_called";
@@ -79,6 +82,9 @@ fn resolve<'p>(
         if facts.getter_result {
             lang.note_uncovered(&[Uncovered::GetterResultCall]);
         }
+        for _ in 0..facts.outside_root {
+            lang.note(OUTSIDE_ROOT);
+        }
         found
             .into_iter()
             .map(|resolved| target(lang, resolved, facts.jsx))
@@ -107,7 +113,7 @@ fn target<'p>(lang: &TypeScript<'p>, resolved: Resolved<'p>, jsx: bool) -> Targe
             Target::Construct { class, init }
         }
         Resolved::Def(def) => Target::Call(def, ()),
-        Resolved::External { package, name } => Target::External(External { package, name }),
+        Resolved::External { package, name, .. } => Target::External(External { package, name }),
         Resolved::Unknown(why) => Target::Unresolved(Reason::new(why.counter())),
     }
 }

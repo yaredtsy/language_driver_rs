@@ -563,9 +563,9 @@ impl Sem {
             .unwrap_or_else(|| place_between(&to_engine_path(&self.root), file.node.file_name()))
     }
 
-    /// Code of the project itself: a TypeScript or JavaScript file (`Dialect::from_path`: an imported `.json` is in the program but is not code),
-    /// not in `node_modules`, not a declaration file (`.d.ts`, `.d.mts`, `.d.cts`), not a bundled library.
-    pub(crate) fn is_project_code(&self, file: File<'_>) -> bool {
+    /// Source code of any project: a TypeScript or JavaScript file (`Dialect::from_path`: an imported `.json` is in the program but is not code), not in
+    /// `node_modules`, not a declaration file (`.d.ts`, `.d.mts`, `.d.cts`), not a bundled library. Where it lives is not asked: see `is_project_code`.
+    fn is_source_code(&self, file: File<'_>) -> bool {
         let name = file.node.file_name();
         Dialect::from_path(name).is_some()
             && !self
@@ -574,6 +574,18 @@ impl Sem {
             && !tspath::is_declaration_file_name(name)
             && package_in_node_modules(name).is_none()
             && !self.program.is_source_file_from_external_library(file.node)
+    }
+
+    /// Code of the project itself: source code (`is_source_code`) **under the root** (D33). A file the program pulled in from outside the root is
+    /// not walked: a call into it is an `External` named from the root (`place_of`), and `is_outside_root_source` says it is one to count.
+    pub(crate) fn is_project_code(&self, file: File<'_>) -> bool {
+        self.is_source_code(file) && self.relative_path(file).is_some()
+    }
+
+    /// Source code the program holds that is outside the root: it has a body that is not walked (D33), which `outside_root` counts. A declaration file
+    /// out there has none, so it is not this.
+    pub(crate) fn is_outside_root_source(&self, file: File<'_>) -> bool {
+        self.is_source_code(file) && self.relative_path(file).is_none()
     }
 
     /// The config whose program this is, relative to the root; `None` for an inferred project.

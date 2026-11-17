@@ -222,6 +222,9 @@ pub struct Breakdown {
     /// is not in the tree, because nothing calls it.
     pub handed_written: u64,
     pub handed_named: u64,
+    /// Calls into a **source** file outside the root (D33): an `External` edge named by its path from the root (`../shared/lib.ts`), once per target of a
+    /// site. A body was there to walk and was not. A declaration file out there is `External` too and is not counted: it has no body.
+    pub outside_root: u64,
     /// What a body hands over or calls that **no edge covers**, per occurrence, by kind (D22 step 5): `element_access` (a function handed over by `a["k"]`),
     /// `bind` (handed over bound: `f.bind(…)`, `obj.m.bind(obj)`), `call_apply` (called through `call` or `apply`), `class` (a class named where a value is handed
     /// over). Only the kinds above 0. A count, not an edge: the def is known and is not in the tree.
@@ -267,6 +270,7 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
     let language = |key: &str| graph.stats.language.get(key).copied().unwrap_or(0);
     summary.handed_written = language(walk::WRITTEN_NOT_CALLED);
     summary.handed_named = language(walk::NAMED_NOT_CALLED);
+    summary.outside_root = language(walk::OUTSIDE_ROOT);
     summary.uncovered = graph
         .stats
         .language
@@ -338,6 +342,14 @@ impl fmt::Display for Breakdown {
                 f,
                 "  not covered by an edge (counted, not drawn): {}",
                 parts.join(", ")
+            )?;
+        }
+        // said only when there is one, so every other breakdown is what it was
+        if self.outside_root > 0 {
+            writeln!(
+                f,
+                "  calls into source outside the root, not walked: {}",
+                self.outside_root
             )?;
         }
         if self.handed_written + self.handed_named > 0 {

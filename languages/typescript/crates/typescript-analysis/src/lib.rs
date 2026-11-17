@@ -71,8 +71,8 @@ impl Project {
         })
     }
 
-    /// The project's own code that lives under the root, relative to it with `/`, sorted. Left out: `node_modules`, declaration files
-    /// (`.d.ts`), the bundled libraries, and project code outside the root.
+    /// The project's own code, relative to the root with `/`, sorted: source code under the root (D33). Left out: `node_modules`, declaration files
+    /// (`.d.ts`), the bundled libraries, and any file outside the root, which is `External` to the analysis.
     pub fn files(&self) -> Vec<String> {
         let mut files: Vec<String> = self
             .sem
