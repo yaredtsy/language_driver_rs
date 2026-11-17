@@ -955,6 +955,32 @@ The maximum listing is **not** the first def of its file (the first-of-file maxi
 
 **Swept**: every project under `tests/fixtures` and the shared scenarios in TypeScript (`scenarios/*/typescript`, six of them): 543 nodes in 37 programs (a file is scanned in the first program that holds it); 3 files no program holds are skipped (`broken-config/a.ts`, `broken-reference/elsewhere/x.ts`, `excluded-file/b.ts`). Misses: top-level 14, nested-class-definition 7, enum-member 3, namespace-level 2, top-level-anonymous 2, namespace-class-computed-name 1; the ones outside `coverage/` are `references/packages/app/src/main.ts:3`, `site-kinds/src/jsx.tsx:29`, `solution/src/main.ts:3`, `type-errors/a.ts:2` (top-level), `class-entry/src/main.ts:107` and `uncovered/src/classes.tsx:145` (nested-class-definition: the `newLocal` fixtures), `sites/src/sites.ts:109` (namespace-level). Every one is in a listed category.
 
+**Since row M** (2026-11-17; the table above is row 3c as built). The coverage test also enters every project file (`Entry::File`, M step 2,
+`7e4a870`) and every namespace (M step 3, `8a997dc`), and counts a merged def's sites as `Counted("merged_defs")` (D34 across files). The
+fixtures today:
+
+| file | drawn | counted | excluded | missed |
+|---|---|---|---|---|
+| `top-level.ts` | 5 | 0 | 0 | none |
+| `enum.ts` | 0 | 0 | 0 | enum-member 3 |
+| `nested-class.ts` | 5 | 4 | 0 | nested-class-definition 3 |
+| `namespace-class.ts` | 4 | 2 | 0 | nested-class-definition 1 (the static field) |
+| `namespace-dotted.ts` | 1 | 0 | 0 | none (`namespace A.B`: `A.B` is its own def and owns the statement) |
+| `top-class.ts` | 5 | 7 | 0 | none (`[key()]` is drawn under the module since M step 2) |
+| `defaults.ts` | 5 | 0 | 0 | none |
+| `iife.ts` | 9 | 0 | 0 | none |
+| `jsx.tsx` | 3 | 0 | 3 | none |
+| `tagged.ts` | 4 | 0 | 0 | none |
+| `excluded.ts` | 1 | 0 | 3 | none |
+| `ambient.d.ts` | 0 | 0 | 1 | none |
+
+`KNOWN_GAPS` holds `enum-member` and `nested-class-definition` only, both M step 4's; `top-level`, `top-level-anonymous`, `namespace-level`
+and `namespace-class-computed-name` are bug categories now. Sweep: 602 nodes in 43 programs, missed 9 (`enum-member` 3, `nested-class-definition`
+6: the four in `coverage` plus `class-entry/src/main.ts:107` and `uncovered/src/classes.tsx:145`).
+
+`typescript-cli calls <dir> <file>` with no `--entry` is the file's own code (M step 5, `5dc6ba8`): tree, `--graph`, `--wire` (root `target_kind`
+`Module`, empty `target_qualname` and `target_id`), `--merged`; `--id` without `--entry` is a usage error.
+
 **[measure] real projects** (`measure_coverage`, release, scan and graph for every def as an entry; asserts nothing):
 
 | | V-NOC frontend | postcss (a) js only | postcss (b) with .d.ts |

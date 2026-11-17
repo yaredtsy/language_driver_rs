@@ -175,8 +175,8 @@ it" is wrong. Real projects read 0 in both categories, so no measured number mov
 - it gets the definition code of what it declares (§3.3): today a class in a namespace has its computed names drawn and its decorators
   counted there, but its static initializers, static blocks and `extends` are in no tree and no counter (`nested-class-definition`);
 - an ambient namespace (`declare namespace`, `declare module "x"`) has no body: an empty tree, as today;
-- **[check]** a dotted namespace `namespace A.B { … }`: the body of `A` is the declaration `B`, not a module block, so `A` walks nothing;
-  say whether `A.B` is the outline's def that owns the statements (a fixture in the coverage set).
+- **[check] answered (M step 3, 2026-11-17): no gap.** A dotted namespace `namespace A.B { f(); }` is two outline defs, `A` and `A.B`; `A`
+  walks nothing, `A.B` owns the statements and draws `f`. Fixture `coverage/src/namespace-dotted.ts`.
 
 ### 3.6 Static block owner
 
@@ -225,15 +225,41 @@ The other proofs:
    whose def lost its row to another def with the same id (D34 across files; `Graph::new` counted it). That is rule 8's "counted", per
    def, so the site is accounted for, and `in-named-function` stays a bug category with nothing listed in it. Then
    `tests/limits/duplicate-marker-across/` moves back under `tests/fixtures/`, where the sweep sees it, and `tests/limits/` goes.
-3. **(next, with step 5)** **The coverage test enters every namespace** (§3.5, a test fix: namespaces are already entries): `project_defs` keeps
+3. **Built** (2026-11-17, `8a997dc`; reviewed, accepted). `project_defs` keeps `Namespace`; `namespace-level` and
+   `namespace-class-computed-name` left `KNOWN_GAPS` and are bug categories now; a namespace class's decorator is counted under
+   `uncovered_local_class_decorator_sites` (checked by entering `N`). Sweep 599 → 600 nodes, misses 13 → 9: what is left is
+   `enum-member` 3 and `nested-class-definition` 6, both step 4's. No analyzer change.
+   **The coverage test enters every namespace** (§3.5, a test fix: namespaces are already entries): `project_defs` keeps
    `DefKind::Namespace` too; `namespace-level` and `namespace-class-computed-name` leave the list; `nested-class-definition`'s text loses
    "a decorator of a class declared in a namespace" (it is counted); the dotted-namespace fixture. No analyzer change. Can run before step 1.
-4. **Definition code in the declaring body** (§3.3, accepted 2026-11-17): the counters retire, `enum-member` and `nested-class-definition`
+4. **(next) Definition code in the declaring body** (§3.3, accepted 2026-11-17). How it is built (reviewer, from the code, 2026-11-17):
+   - **Where.** `Collector::collect` stops at a nested def (`def_of`) and, for a class, already collects its computed member names
+     (`collect.rs`, "as in tsrs"). At that stop it also collects the class's **definition code**: its modifiers (decorators), its
+     members' decorators, its constructor's and methods' parameter decorators, the `extends` expression, the **static** property
+     initializers and the static blocks. That is what `body_of`'s `ClassDeclaration` arm collects, **minus instance property
+     initializers**, which run at construction and stay `uncovered_construct_initializer_sites` (D25). Write it once (one function both
+     use), not as a second copy of the class arm.
+   - **An enum is an outline def too** (`Enum E` in `typescript-cli outline coverage/src/enum.ts`), so the walk stops at it the same way;
+     at that stop it collects each member's initializer.
+   - **One rule for every declaring body**: the module for a top-level class or enum, the function for one in a function, the namespace
+     for one in a namespace. The sites are drawn at their source position among the body's other sites.
+   - **The counters retire**: `uncovered_class_definition_sites` and `uncovered_computed_member_name_sites` (noted by a construction,
+     `walk::construction`) and `uncovered_local_class_decorator_sites` (`handed.rs`). Their variants go from `Uncovered`, and the
+     coverage test's counted spans for them go with them. So a class entry (its construction, D25) no longer counts definition code: it
+     is drawn where the class is declared. `uncovered_construct_initializer_sites` stays.
+   - **The coverage test's acceptance**: `enum-member` and `nested-class-definition` leave `KNOWN_GAPS`, which is then **empty**, and
+     both become bug categories. The per-file table moves from counted and missed to drawn: predict each row before the run.
+   - **Snapshots that change**: only trees of a body that declares a class or an enum with definition code, by nodes added at those
+     sites; every other snapshot byte-identical. Real projects read 0 for this code (§1), so their function-entry goldens should not move.
+    the counters retire, `enum-member` and `nested-class-definition`
    leave the list. **This replaces row 3b**, which counted what this draws. If §3.3 is not accepted, row 3b
    stays as written and runs here. **Also here** (review, 2026-11-16): the label table in `Breakdown`'s `Display` is a second list of the
    `Uncovered` kinds, and a key it does not know is silently not printed. This step edits it anyway: each `Uncovered` gives its label
    next to its `counter()`, and the table goes.
-5. **(next, with step 3)** The CLI: `calls <dir> <file>` with no `--entry` is the file's own code (today it is an error). `typescript-cli outline` is unchanged.
+5. **Built** (2026-11-17, `5dc6ba8`; reviewed, accepted): with no `--entry` the tree, `--graph`, `--wire` (root `target_kind` `Module`),
+   `--merged` and the prefixes work as for a def entry; `--id` alone is a usage error (exit 2); a file with no file entry prints the
+   not-project-code message (exit 1). Fixture `file-entry/src/twice.ts` (two calls of `h`) shows the merge; sweep 602 nodes.
+   The CLI: `calls <dir> <file>` with no `--entry` is the file's own code (today it is an error). `typescript-cli outline` is unchanged.
 
 ## 6. For the owner
 
