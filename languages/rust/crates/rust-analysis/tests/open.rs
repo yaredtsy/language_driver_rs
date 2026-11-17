@@ -164,6 +164,6 @@ fn a_file_that_is_not_there_or_not_under_the_root_is_an_error() {
         let error = Project::open(&core, Path::new(file), &LoadOptions::default())
             .err()
             .unwrap_or_else(|| panic!("{file} opened"));
-        assert!(matches!(error, OpenError::Load(_)), "{file}: {error:?}");
+        assert_eq!(error, OpenError::NotUnderRoot, "{file}");
     }
 }

@@ -1,0 +1,3 @@
+# cargo here never reaches the network: a dependency that is not in the cache cannot be fetched, whatever machine runs the test
+[net]
+offline = true

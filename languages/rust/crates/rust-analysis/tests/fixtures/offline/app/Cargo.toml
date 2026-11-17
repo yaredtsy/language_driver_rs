@@ -1,0 +1,10 @@
+[package]
+name = "app"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+member = { path = "../member" }
+# a crate that does not exist: it is in no cache, so `cargo metadata` fails and the engine goes on with `--no-deps`
+rs3-no-such-crate = "1"

@@ -2,6 +2,7 @@ use std::path::Path;
 
 use crate::paths;
 use crate::sem::{self, Loaded};
+use crate::warning::{self, Warning};
 
 /// Config, manifest and lock files whose change means "load again". Each is relative to the root, so it starts with `**/`.
 const ENVIRONMENT_GLOBS: [&str; 5] = [
@@ -19,6 +20,7 @@ const BUILD_SCRIPT_GLOB: &str = "**/build.rs";
 pub struct Project {
     loaded: Loaded,
     manifest: String,
+    warnings: Vec<Warning>,
     /// Build scripts ran (they were asked for, or proc macros were: those are built by the same run).
     build_scripts_ran: bool,
 }
@@ -41,9 +43,11 @@ pub struct LoadOptions {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum OpenError {
-    /// The file is not there or not inside the root, no `Cargo.toml` lies between it and the root, or the engine could not load the workspace;
-    /// the message says which. (Temporary: RS3 steps 5 and 7 turn most of these into a warning on a load that still succeeds, and keep one
-    /// variant for a file that is not there, `docs/04-rust/04-default-resolver/04-rs3-project.md` §6.)
+    /// The file does not exist, cannot be read, or is not inside `root` (or `root` cannot be used): there is nothing to load.
+    NotUnderRoot,
+    /// No `Cargo.toml` lies between the file and the root, or the engine could not load the workspace (no `cargo`, a toolchain that is not
+    /// installed, a manifest nobody can read); the message says which. (Temporary: RS3 steps 5b and 7 turn these into a warning on a load that still
+    /// succeeds, `docs/04-rust/04-default-resolver/04-rs3-project.md` §6.)
     Load(String),
 }
 
@@ -52,18 +56,10 @@ impl Project {
     /// nearest one from the file's folder upward. Cargo itself finds the workspace root, which may be above `root`: it is loaded, and it is not
     /// project code, so `files` lists only what is under `root`.
     pub fn open(root: &Path, file: &Path, opts: &LoadOptions) -> Result<Project, OpenError> {
-        let root = paths::absolute(root)
-            .map_err(|e| OpenError::Load(format!("{}: {e}", root.display())))?;
+        let root = paths::absolute(root).map_err(|_| OpenError::NotUnderRoot)?;
         let file = paths::absolute_in(&root, file);
-        if !file.is_file() {
-            return Err(OpenError::Load(format!("{}: not a file", file.display())));
-        }
-        if paths::relative(&root, &file).is_none() {
-            return Err(OpenError::Load(format!(
-                "{}: not inside the root {}",
-                file.display(),
-                root.display()
-            )));
+        if !file.is_file() || paths::relative(&root, &file).is_none() {
+            return Err(OpenError::NotUnderRoot);
         }
         let manifest = paths::find_manifest(&root, &file).ok_or_else(|| {
             OpenError::Load(format!(
@@ -75,9 +71,15 @@ impl Project {
         let name = paths::relative(&root, &manifest)
             .ok_or_else(|| OpenError::Load(format!("{}: not UTF-8", manifest.display())))?;
         let loaded = sem::load(&root, &manifest, opts).map_err(OpenError::Load)?;
+        let warnings = warning::collect(
+            loaded.no_std_source().map(str::to_owned),
+            loaded.dependencies_error().map(str::to_owned),
+            loaded.wrote_lockfile(),
+        );
         Ok(Project {
             loaded,
             manifest: name,
+            warnings,
             build_scripts_ran: opts.build_scripts || opts.proc_macros,
         })
     }
@@ -111,5 +113,11 @@ impl Project {
     /// is on, or that cuts nothing here, is not listed. Copied into every graph's `Stats.language` from RS4 on, so a tree that lacks a call says why.
     pub fn skipped(&self) -> &[(&'static str, u64)] {
         self.loaded.skipped()
+    }
+
+    /// What this load could not do as asked, for the driver to show the user (§6, D37): sorted by code, each once. Empty for a complete,
+    /// recent toolchain. Each is also meant for `Stats.language` as `warning_<code>: 1` (RS4).
+    pub fn warnings(&self) -> &[Warning] {
+        &self.warnings
     }
 }

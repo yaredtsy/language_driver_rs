@@ -4,5 +4,7 @@ mod paths;
 mod project;
 mod sem;
 mod toolchain;
+mod warning;
 
 pub use project::{LoadOptions, OpenError, Project};
+pub use warning::{Warning, Why};

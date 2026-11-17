@@ -298,4 +298,29 @@ mod tests {
             [("hello".to_owned(), external("app", "app::Thing::hello"))]
         );
     }
+
+    /// ENGINE.md, S-RS3: a load that went on with `--no-deps` keeps `std` and loses every call between the workspace's own crates.
+    #[test]
+    fn without_dependencies_std_resolves_and_a_call_into_a_sibling_member_does_not() {
+        let copy = common::copy_of_fixture("offline", "offline_effect");
+        let loaded = open(&copy, &copy.join("app/Cargo.toml"));
+        assert!(
+            loaded.dependencies_error().is_some(),
+            "the fixture must make cargo metadata fail"
+        );
+        assert_eq!(
+            call_owners(&loaded, "app/src/lib.rs"),
+            [
+                (
+                    "String::new".to_owned(),
+                    external("alloc", "alloc::string::String::new")
+                ),
+                (
+                    "len".to_owned(),
+                    external("alloc", "alloc::string::String::len")
+                ),
+            ],
+            "member::in_member is not listed: it did not resolve"
+        );
+    }
 }

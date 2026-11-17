@@ -19,11 +19,11 @@ pub(crate) struct Loaded {
     db: RootDatabase,
     vfs: Vfs,
     /// The project had no `Cargo.lock` and has one now: cargo wrote it into the user's folder (the toolchain does not honour the redirect, §5 option A).
-    #[expect(
-        dead_code,
-        reason = "becomes the LockfileWritten warning in RS3 step 5"
-    )]
     wrote_lockfile: bool,
+    /// The toolchain (the name of its folder) whose standard library source is not installed: the load went on without `std` (S-RS3).
+    no_std_source: Option<String>,
+    /// Cargo's message when `cargo metadata` failed and the engine went on with `--no-deps` (offline, a dependency that cannot be fetched).
+    dependencies_error: Option<String>,
     /// The caller's root (absolute, clean): `files()` lists what is under it and nothing else, wherever the workspace's own root manifest is.
     root: PathBuf,
     /// Why the build scripts did not run (or ran with an error), when they were asked for: the message of the engine's `cargo check`.
@@ -57,6 +57,18 @@ impl Loaded {
     /// (a virtual path), not under the root, or not UTF-8. Compared as engine text (`paths::relative`), never with `Path::starts_with`.
     pub(super) fn root_relative(&self, path: &VfsPath) -> Option<String> {
         paths::relative(&self.root, path.as_path()?.as_ref())
+    }
+
+    pub(crate) fn wrote_lockfile(&self) -> bool {
+        self.wrote_lockfile
+    }
+
+    pub(crate) fn no_std_source(&self) -> Option<&str> {
+        self.no_std_source.as_deref()
+    }
+
+    pub(crate) fn dependencies_error(&self) -> Option<&str> {
+        self.dependencies_error.as_deref()
     }
 
     pub(crate) fn skipped(&self) -> &[(&'static str, u64)] {
@@ -94,9 +106,10 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
     let manifest_path = manifest;
     let manifest = ProjectManifest::from_manifest_file(abs).map_err(|e| format!("{e:#}"))?;
 
+    let sysroot = sysroot_dir(dir);
     let mut config = CargoConfig {
         // `RustLibSource::Discover` would run `rustup component add rust-src` when the source is missing (S-RS3); `Path` only looks.
-        sysroot: sysroot_dir(dir).map(RustLibSource::Path),
+        sysroot: sysroot.clone().map(RustLibSource::Path),
         // without it `#[cfg(test)]` code is inactive and no call inside it resolves (S-RS2)
         set_test: true,
         ..CargoConfig::default()
@@ -119,6 +132,19 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
 
     let mut workspace =
         ProjectWorkspace::load(manifest, &config, &|_| {}).map_err(|e| format!("{e:#}"))?;
+
+    // What the engine knows and does not say: the standard library source missing (`load_workspace_at` hides it) and a `cargo metadata` that failed
+    // and was retried without dependencies (S-RS3). Both are read before the load goes on.
+    let no_std_source = match (&sysroot, workspace.sysroot.error()) {
+        (Some(dir), Some(_)) => Some(dir.file_name().unwrap_or("unknown").to_owned()),
+        _ => None,
+    };
+    let dependencies_error = match &workspace.kind {
+        ProjectWorkspaceKind::Cargo {
+            error: Some(error), ..
+        } => Some(format!("{error:#}")),
+        _ => None,
+    };
 
     // A proc macro is a dylib that the build step (`cargo check`) builds, so asking for proc macros runs it too. It runs inside the lock
     // redirect above, and into `target/rust-analyzer`, not into the user's own `target/` build.
@@ -164,6 +190,8 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
         db,
         vfs,
         wrote_lockfile: !had_lock && lock.exists(),
+        no_std_source,
+        dependencies_error,
         root: root.to_path_buf(),
         build_error,
         skipped,
