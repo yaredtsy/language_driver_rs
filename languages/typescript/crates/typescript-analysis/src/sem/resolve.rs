@@ -160,6 +160,12 @@ impl Sem {
                 facts,
             );
         }
+        // a named function expression called where it is written is a def of the outline, and the engine has no answer for it: the call is a Call to that def
+        // (H11). An anonymous one is no def: its calls are the enclosing body's, and its own call is `anonymous_function_called` (H10, `why_unknown`).
+        if let Some(function) = self.named_function_expression_called_in_place(func, callee, style)
+        {
+            return (vec![self.classify(&mut checker, function, style)], facts);
+        }
         let mut declarations = self.prefer_project_bodies(declarations_of(&mut checker, callee));
         let mut unresolved_members = false;
         if declarations.is_empty()
@@ -203,6 +209,20 @@ impl Sem {
             found.push(Resolved::Unknown(Why::UnionReceiver));
         }
         (found, facts)
+    }
+
+    /// The node of a **named** function expression that `callee` is, written where it is called (H11), when the outline holds it as a def (`def_of`). `None` for
+    /// an anonymous one, which is no def, and for anything else.
+    fn named_function_expression_called_in_place(
+        &self,
+        func: Func<'_>,
+        callee: P<Node>,
+        style: MarkerStyle<'_>,
+    ) -> Option<P<Node>> {
+        let function =
+            function_called_in_place(callee).filter(|f| f.kind() == Kind::FunctionExpression)?;
+        let defs = self.file_defs(func.file, style)?;
+        defs.def_of.contains_key(&function).then_some(function)
     }
 
     /// The property accesses of a body that run an accessor, as sites: for each candidate the checker's symbol of the property is asked, and it is a site when
@@ -666,15 +686,23 @@ fn accessor_declarations(
 }
 
 /// Why the engine has no declaration for this callee: syntax first (a computed name), then the type the checker gives it.
+/// The function written where it is called: the arrow or function expression under the parentheses and assertions of the callee (`(() => {})()`,
+/// `(function () {})()`, `(<any>function () {})()`, `(function () {} as T)()`, `(function () {})!()`). `!` and `void` before the call are outside the call
+/// (`!function () {}()` is `!(…())`), and one inside the parentheses (`(!function () {})()`) makes a boolean, which is not this function. H10 and H11 both start here.
+fn function_called_in_place(callee: P<Node>) -> Option<P<Node>> {
+    let function = unwrap_expression(callee);
+    matches!(
+        function.kind(),
+        Kind::ArrowFunction | Kind::FunctionExpression
+    )
+    .then_some(function)
+}
+
 fn why_unknown(checker: &mut Checker, callee: P<Node>) -> Why {
     if ast::is_element_access_expression(callee) {
         return Why::ComputedName;
     }
-    // under the parentheses and assertions of `(() => {})()`, `(function () {})()`, `(<any>function () {})()`
-    if matches!(
-        unwrap_expression(callee).kind(),
-        Kind::ArrowFunction | Kind::FunctionExpression
-    ) {
+    if function_called_in_place(callee).is_some() {
         return Why::AnonymousFunctionCalled;
     }
     if checker

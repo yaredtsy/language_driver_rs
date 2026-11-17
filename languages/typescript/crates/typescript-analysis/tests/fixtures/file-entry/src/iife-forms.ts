@@ -13,7 +13,22 @@ function h() {}
 !(function () {
   h();
 })();
-// a named function expression is a def, and its call is still unresolved (see file_entry.rs)
+// a named function expression is a def, and its call where it is written is a Call to that def (H11)
 (function named() {
+  h();
+})();
+export function inside() {
+  (function n1() {
+    h();
+  })();
+}
+// under a type assertion, `as`, and `void`: the same def
+(<any>function n2() {
+  h();
+})();
+(function n3() {
+  h();
+} as () => void)();
+void (function n5() {
   h();
 })();

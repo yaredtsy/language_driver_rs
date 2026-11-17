@@ -98,19 +98,50 @@ fn an_iifes_own_call_has_its_own_reason() {
 }
 
 #[test]
-fn every_shape_of_an_iife_has_the_same_reason() {
+fn an_anonymous_iife_is_unresolved_and_a_named_one_is_a_call_to_its_def() {
     let graph = file_graph("src/iife-forms.ts").unwrap();
     check_invariants(&graph);
     let summary = breakdown(&graph);
-    // the arrow, the function, the async arrow, `!function(){}()`, and the named function expression: five calls of a function expression written in place.
-    // (The named one is a def of its own that this call does not enter: unresolved today, as before H10; only the reason is the new one.)
+    // the arrow, the function, the async arrow and `!(function(){})()`: four calls of a function with no name to enter, and their calls are the module's
     assert_eq!(
         summary.reasons.into_iter().collect::<Vec<_>>(),
-        [("anonymous_function_called".to_owned(), 5)]
+        [("anonymous_function_called".to_owned(), 4)]
     );
-    assert_eq!(summary.unresolved, 5);
-    // the four anonymous bodies draw `h` in the module
+    assert_eq!(summary.unresolved, 4);
+    // the named ones (H11): the tree shows each with `h` under it, in source order, after the four anonymous bodies' `h`
+    assert_eq!(
+        tree_of("src/iife-forms.ts"),
+        "src/iife-forms.ts
+  h
+  h
+  h
+  h
+  named
+    h
+  n2
+    h
+  n3
+    h
+  n5
+    h
+"
+    );
+    // exactly one edge at each callee, a Call; the hand-over rule (D22) adds no Passed edge for the same name
     let edges = edges_as_text(&graph, &root());
+    for name in ["named", "n2", "n3", "n5"] {
+        let to_it: Vec<&String> = edges
+            .iter()
+            .filter(|edge| {
+                edge.starts_with("src/iife-forms.ts |") && edge.ends_with(&format!("| call {name}"))
+            })
+            .collect();
+        assert_eq!(to_it.len(), 1, "{name}: {edges:#?}");
+    }
+    assert!(
+        !edges.iter().any(|edge| edge.contains("| pass ")),
+        "{edges:#?}"
+    );
+    // the module has one edge for each of the 4 anonymous bodies' `h`, and none for the named bodies' (they are the named defs')
     assert_eq!(
         edges
             .iter()
@@ -118,6 +149,33 @@ fn every_shape_of_an_iife_has_the_same_reason() {
             .count(),
         4
     );
+}
+
+#[test]
+fn a_named_iife_in_a_function_is_a_call_to_its_def() {
+    let project = project();
+    let entry = Entry::Def {
+        qualname: "inside",
+        occurrence: 0,
+    };
+    let graph = call_graph(
+        &project,
+        "src/iife-forms.ts",
+        &entry,
+        &Options::new(STYLE),
+        &Cancel::new(),
+    )
+    .unwrap();
+    check_invariants(&graph);
+    assert_eq!(
+        to_text(&render(
+            &graph,
+            &graph.entries[0],
+            &RenderOptions::default()
+        )),
+        "inside\n  inside.<locals>.n1\n    h\n"
+    );
+    assert_eq!(breakdown(&graph).unresolved, 0);
 }
 
 #[test]
