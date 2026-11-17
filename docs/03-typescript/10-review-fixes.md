@@ -145,7 +145,14 @@ One commit each, tests first and seen red for the stated reason, stop after each
 |---|---|---|---|
 | R1 | `place_of`, used for an external's name | **unit**, on strings: a sibling folder (`../shared/lib.ts`), two levels up, a folder whose name starts with the root's (`/a/root`, `/a/rootx/f.ts` → `../rootx/f.ts`), another Windows drive (kept absolute, with `/`). **`tests/calls.rs`**: `main`'s edge for `typed()` is `External { package: "../shared/api.d.ts", name: "typed" }` (**red today: the absolute path**) | `ENGINE.md` "Which files are the project's": how a file with no package is named |
 | R2 | `is_project_code` asks for the root; `outside_root`; the `Breakdown` line | on `outside-root`, entry `main`, `build`, `hands`: (a) no row of `defs` has a file that is absolute or starts with `..`, and no `StableDef::Path.module` either (**red today**); (b) `helper()` is `External { "../shared/lib.ts", "helper" }` and `inner` is nowhere in the graph; (c) `new Tool()` and `.run()` are externals `Tool` and `Tool.run`; (d) `new Mine()` is a `Construct` with no `init`, and `inherited_constructor_external` is 1; (e) `hands` has no passed edge for `helper`; (f) `outside_root` is 3 for `main` (`helper`, `Tool`, `Tool.run`; `typed` is not counted) and the breakdown says so; a graph with none has no such line; (g) **the proof of the point**: the fixture copied to a second folder (`std::env::temp_dir()`, a folder of the test's own, removed at the start and the end; a test may write files, rule 2 is about the library) gives a wire that is **byte-identical** to the first folder's; (h) `files()` is `src/local.ts`, `src/main.ts` | `policy.md`: the `project-code` row says "under the root" and names the fixture; `ENGINE.md` the same paragraph; the doc comment of `Project::files` (there is no "project code outside the root" any more) |
-| R3 | `Sem::entry` and `Sem::open` | `call_graph(&project, "../shared/lib.ts", helper)` is `None` (**red today: a graph**); an entry in a file of `with-node-modules/node_modules` is `None`; `Project::open(app, "../shared/lib.ts")` is `Err(OpenError::OutsideRoot)` (**red today: an inferred project**); an absolute path **under** the root still opens (`an_absolute_file_path_is_accepted` unchanged) | the doc comments of `Project::open` and `OpenError`; D33 is already in `docs/07-decisions-and-questions.md` |
+| R3 | `Sem::entry` and `Sem::open` | `call_graph(&project, "../shared/lib.ts", helper)` is `None` (**red since R2: a panic**, the `expect` in `describe`; before R2 it was a graph of absolute paths. Found at R2's review, 2026-11-17: `typescript-cli calls outside-root/app ../shared/lib.ts --entry helper` panics at `b9a0dee`); an entry in a file of `with-node-modules/node_modules` is `None`; `Project::open(app, "../shared/lib.ts")` is `Err(OpenError::OutsideRoot)` (**red today: an inferred project**); an absolute path **under** the root still opens (`an_absolute_file_path_is_accepted` unchanged) | the doc comments of `Project::open` and `OpenError`; D33 is already in `docs/07-decisions-and-questions.md`. **For M step 2** (`Entry::File`): a file entry goes through the same check, so a file outside the root or in `node_modules` has no file entry either; written into `09-module-def.md` step 2 |
+
+**Built** (2026-11-17): R1 `65fb828`, R2 `b9a0dee`, R3 `09ad1cd`. One rule for "under the root", `project::under_root`, serves
+`relative_path`, `relative_to` and `Sem::open`. **R4, found at R3's review:** `Project::defs_named` still lists the defs of a file that is
+not project code (in `node_modules`, a `.d.ts`), so `typescript-cli calls node-modules-source node_modules/lib/index.ts --entry inside`
+says ``no def `inside` `` though the def is there, and a driver's ambiguity list would offer defs that have no entry. R4: `defs_named`
+answers `None` unless the file is project code, as `entry` does, and the CLI's message for `None` names the reason (not project code: in
+`node_modules`, a declaration file, outside the root, or not code). A test in `tests/outside_root.rs` and one in the CLI's.
 
 **Proof, after each step.** `cargo test` in `languages/typescript`; `cargo clippy -p typescript-analysis --all-targets -- -D warnings`;
 every existing snapshot unchanged. After R2, by hand: the real-project goldens (V-NOC and both postcss inputs) are **byte-identical**,
@@ -204,6 +211,13 @@ it is, until a person removes the copied marker.
 | D1 | rule 1. `FileDefs` learns, once per file, which defs own their marker; `describe` reads it | `typescript-analysis` (`sem`) | a fixture `duplicate-marker` and a `policy.md` row: (a) the tree of `main` is `a{x}`, `b{y}` (**red today: `a{x,y}` twice**); (b) merged: two nodes, every `call_count` 0; (c) `a`'s `target_id` is the prefix and `SAME`, `b`'s is empty and its `target_qualname` is `b`; (d) the counter is 1 with `b` called twice; (e) three carriers: 2; (f) a class and a function with one marker; (g) **`b` asked for as the entry has the id it has under `main`**; (h) the copy above the original: the copy owns it (pinned as known); (i) `typescript-cli calls --id SAME` with two defs of one qualname carrying it lists both and exits 2 (`[check]`: it takes the first today); (j) the outline snapshot of the fixture shows the marker on both |
 | D2 | rule 2. `Graph::new` counts the dropped rows that are another def; `Stats` gains the field | `core/` | hand-written graphs, as the existing tests: two rows with one id in two files → 1; in one file at two starts → 1; **the same row given twice → 0**; none → 0. TypeScript: the marker of `duplicate-marker` in a second file → one node (as today, pinned as the known limit) and the count is 1. Python's tests pass (rule 5); a `{:#?}` dump of `Stats` gains one line, as it did for `frontier` |
 
+**Built** (2026-11-17): D1 `c30e969` (`FileDefs::owns_marker`, the first by start position owns a text; the count is taken once the graph is
+built, from the ids `Lang::describe` saw demoted, and every row of `graph.defs` comes through it, `solve.rs:450`). **(i) answered:** with two
+defs of one qualname carrying `SAME`, `typescript-cli calls … --id SAME` takes the first and exits 0; that is the owner only when the owner
+has that qualname, so `--entry b --id SAME` opens `b`, whose id is not `SAME`. Not a wrong tree, a person not told: H9.
+
+**D2 built** (2026-11-17, `cf0eb8b`): `Stats.merged_defs`; a row given twice and a def given twice count once; `Breakdown` prints it only above 0. Its TypeScript fixture sits in `tests/limits/duplicate-marker-across/`, because the coverage sweep (row 3c) lists the merged def's calls as a miss in `in-named-function`, a category the test declares a bug that no known-gap entry may name. M step 2 brings it back (09 §5 step 2).
+
 Python gets D2's number for free. Rule 1 for Python is a row of Python's plan, after `python-v0.3.0`.
 
 ## 5. Step 6 gains: a file changed on disk
@@ -246,6 +260,8 @@ Small, each with its test, one commit each or one for all as the coding session 
 | H5 | `matches_a_glob` is derived from `ENVIRONMENT_GLOBS` instead of repeating its names | the four `environment_inputs` tests unchanged |
 | H6 | a request test with `occurrence` above 0 (D15: a getter and its setter, by `Entry { occurrence: 1 }`) | the test |
 | H7 | the deep-nesting test of §7 | the test |
+| H8 | a root that is a drive root (`D:\` on Windows, `/`) ends in `/` in the engine's spelling, so `under_root` (`project.rs`) finds nothing under it, and since R3 every file is `OutsideRoot`. Older than R (TS3's `relative_path` had it); found at R3's review, not run. Take the root's trailing `/` off before the compare | a unit test on strings (`under_root("C:/", "C:/a.ts")` is `Some("a.ts")`, `under_root("/", "/a.ts")` too) |
+| H9 | **the warning of D34, where a person sees it.** `DefMatch` gains `owns_marker: bool` (additive: it is `#[non_exhaustive]`, `lib.rs:373`, checked), so a driver can say "this def carries `ID: SAME`, but `a` at line N owns it" without parsing the file again. `typescript-cli calls … --id X` picks the def that **owns** `X` (its id is `X`); a carrier that does not own it is not picked by `--id`, and the CLI prints which def owns it. The tree does not change | `tests/duplicate_marker.rs`: `defs_named` reports `owns_marker` for both; a CLI test of `--entry b --id SAME` (the message names `a` and its line) |
 
 **Rust note (H1).** A `std::sync::Mutex` locked twice by one thread does not return: the documentation leaves it at "will not return
 (it might panic or deadlock)". There is no error to catch, and `Cancel` is never checked, because the thread is waiting inside `lock`.
@@ -268,6 +284,10 @@ used, until the stack grows).
 | here, H7 | a fixture with a 10 000-term `+` chain and a 10 000-call method chain; `outline` and a call graph of each, **on a thread of the size the driver is told to use**, and `[measure]` the smallest size that passes in a release build, written in `ENGINE.md` with the number the driver is given (a margin above it) |
 
 ## 8. Not scheduled
+
+- **A marker over a statement with two declarators** (found at D1's review, run): `/** ID: PAIR */ export const p = () => …, q = () => …;`
+  gives `p` and `q` no marker at all, so the `ID:` line is in the file and on no def. A question for the marker rule (TS2, `markers.md`),
+  not a bug of D1: whether the outline should say so (a marker that names nothing), and whether `plan_marker` can ever write one there.
 
 - **`MarkerStyle<'static>` in `Options`** (finding 7). Both languages have it. A driver that uses one label for its whole life leaks
   one string once. Change both or neither.

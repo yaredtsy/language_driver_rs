@@ -210,13 +210,18 @@ The other proofs:
 
 ## 5. Steps (one commit each, stop after each for review)
 
-1. **core**: `Entry` becomes the enum of §3.1; TypeScript's and Python's call sites and both CLIs become `Entry::Def`; Python answers `None` for `File`. Python green, Python's snapshots unchanged.
+1. **Built** (2026-11-17, `133c6c2`; D2 `cf0eb8b`). **core**: `Entry` becomes the enum of §3.1; TypeScript's and Python's call sites and both CLIs become `Entry::Def`; Python answers `None` for `File`; TypeScript answers `None` for `File` too until step 2. Python green, Python's snapshots unchanged. **D2 of [`10-review-fixes.md`](10-review-fixes.md) §4 goes with it, as its own commit** (both change `core/`, one run of Python's tests).
 2. **TypeScript, the file entry**: `Entry::File` in `Sem::entry` and in the coverage test's "every def", the `DefInfo` of §3.1, the body of the file's statements;
    fixtures; the coverage test drops `top-level` and `top-level-anonymous`; golden unchanged plus the new module entries.
+   A file outside the root or in `node_modules` has no file entry (`None`), as R3 makes it for a def entry (D33); a test for each.
+   **Also here** (reviewer, 2026-11-17, at D2's review): the coverage sweep gets one more outcome, `Counted("merged_defs")`, for a site
+   whose def lost its row to another def with the same id (D34 across files; `Graph::new` counted it). That is rule 8's "counted", per
+   def, so the site is accounted for, and `in-named-function` stays a bug category with nothing listed in it. Then
+   `tests/limits/duplicate-marker-across/` moves back under `tests/fixtures/`, where the sweep sees it, and `tests/limits/` goes.
 3. **The coverage test enters every namespace** (§3.5, a test fix: namespaces are already entries): `project_defs` keeps
    `DefKind::Namespace` too; `namespace-level` and `namespace-class-computed-name` leave the list; `nested-class-definition`'s text loses
    "a decorator of a class declared in a namespace" (it is counted); the dotted-namespace fixture. No analyzer change. Can run before step 1.
-4. **Definition code in the declaring body** (§3.3, if accepted): the counters retire, `enum-member` and `nested-class-definition`
+4. **Definition code in the declaring body** (§3.3, accepted 2026-11-17): the counters retire, `enum-member` and `nested-class-definition`
    leave the list. **This replaces row 3b**, which counted what this draws. If §3.3 is not accepted, row 3b
    stays as written and runs here. **Also here** (review, 2026-11-16): the label table in `Breakdown`'s `Display` is a second list of the
    `Uncovered` kinds, and a key it does not know is silently not printed. This step edits it anyway: each `Uncovered` gives its label
@@ -226,8 +231,8 @@ The other proofs:
 ## 6. For the owner
 
 1. ~~§3.1~~ **decided**: core's `Entry` is an enum with `File`, for every language; no `<module>`, no `module_prefix`.
-2. §3.2: no wire change and no version bump.
-3. §3.3: definition code in the declaring body, which retires three counters and **replaces row 3b**.
-4. §3.4: flat now; grouping is the next decision, cross-language.
+2. ~~§3.2~~ **decided (owner, 2026-11-17)**: no wire change and no version bump.
+3. ~~§3.3~~ **decided (owner, 2026-11-17)**: definition code in the declaring body, which retires three counters and **replaces row 3b**.
+4. ~~§3.4~~ **decided (owner, 2026-11-17)**: flat now; grouping is the next decision, cross-language.
 5. ~~§3.5~~ **a fact, not a choice**: a namespace is already an entry; only the coverage test missed it (step 3).
-6. §3.6: a static block is not a def; its calls are drawn with its class's definition code.
+6. ~~§3.6~~ **decided (owner, 2026-11-17)**: a static block is not a def; its calls are drawn with its class's definition code.
