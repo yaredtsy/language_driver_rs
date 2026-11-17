@@ -1130,3 +1130,22 @@ One commit each (`506f945` .. `dc1bc9a`, `10-review-fixes.md` §6). None changes
 `TaskDetailPanel`: 141 call, 2 construct, 235 external, 86 unresolved (all `function_typed_value`), 18 passed, 90 contexts, unchanged. The
 golden files of the five entries, regenerated with the CLI: trees, wires, merged wires and breakdowns byte-identical (22 files), and the
 `.graph` dumps byte-identical less the `frontier: 0` and `merged_defs: 0` lines (5 files).
+
+## TS5 step 6 design: what the engine gives for following the disk (2026-11-17)
+
+**[ran]** with a throwaway probe in a scratch worktree (deleted), on the pin `13a31a4`. The design is
+`docs/03-typescript/11-step6-text-and-disk.md`.
+
+- **The program keeps no failed lookups.** `Program::missing_files` holds root and referenced files it could not open, behind a "testing
+  only" accessor (`tsrs_compiler/src/program.rs:3134`); `get_unresolved_imports` gives module specifiers, not paths.
+- **The file system wrapper does.** `tsrs_vfs::trackingvfs::FS` records the path of every `file_exists`, `read_file`, `directory_exists`,
+  `get_accessible_entries`, `stat` and `realpath`, missing paths included. The engine's watch mode builds each program on a fresh `cachedvfs`
+  inside a `trackingvfs` and watches the seen paths (`tsrs_execute/src/watcher.rs:778`).
+- **On V-NOC** (`TaskDetailPanel`'s program, dev profile): 9143 paths seen after open (2616 files, 852 directories, 5675 missing), the same
+  9143 after a body is walked; 8057 under `node_modules`. A `stat` of all of them takes 14 to 18 ms, and of the 1086 outside `node_modules`
+  1.5 ms. `Sem::open` took 241 ms.
+- The config host reads through the same file system, so the `include` folders are tracked; the bundled libraries are not (`bundled::wrap_fs`
+  is outside the tracker).
+- **No overlay fits:** `wrapvfs::wrap` takes a `&'static dyn FS`, and `tsrs_project`'s `snapshotfs` belongs to the language server. Step 6
+  writes a small `FS` of its own in `sem`.
+

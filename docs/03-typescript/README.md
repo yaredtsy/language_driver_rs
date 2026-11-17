@@ -10,7 +10,8 @@ typescript
 ├── TS4  call graph ─────────────── 06-ts4-calls.md          → tag typescript-v0.2.0 → V-NOC tier 3, whole tree
 ├── TS5  what the driver needs ──── 07-ts5-driver-needs.md   → tag typescript-v0.3.0 → V-NOC tier 3, lazy
 │     ├── row M: the module def ── 09-module-def.md
-│     └── rows R, D, H: the fixes from the 2026-11-16 review ── 10-review-fixes.md
+│     ├── rows R, D, H: the fixes from the 2026-11-16 review ── 10-review-fixes.md
+│     └── step 6: unsaved text, reload, the disk ── 11-step6-text-and-disk.md
 └── later: context-sensitive ────── 08-later-context-sensitive.md
 ```
 

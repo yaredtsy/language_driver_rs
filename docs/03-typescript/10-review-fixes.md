@@ -248,7 +248,11 @@ Two ways, for that design to choose from:
 Either costs a program rebuild, which is what `set_text` already costs in step 6.
 
 **Decided (owner, 2026-11-17, D41): way 1**, the session checks for itself before each request. **`[check]` answered (reviewer,
-2026-11-17): no.** tsrs keeps no failed lookups of module resolution. `Program::missing_files` holds only root and referenced files it could not
+2026-11-17), corrected the same day:** the **program** keeps no failed lookups, but the engine's **file system** wrapper
+`tsrs_vfs::trackingvfs` records every path asked, missing ones too, and the engine's watch mode uses it (`tsrs_execute/src/watcher.rs:778`).
+Step 6 uses it the same way: [`11-step6-text-and-disk.md`](11-step6-text-and-disk.md) §2, which also has the numbers (9143 paths on V-NOC,
+1.5 ms to stamp the 1086 outside `node_modules`). What follows was the first answer, kept for the record, and its known limit does not hold:
+tsrs keeps no failed lookups of module resolution. `Program::missing_files` holds only root and referenced files it could not
 open, behind a "Testing only" accessor (`tsrs_compiler/src/program.rs:3134`), and `get_unresolved_imports` gives module specifiers, not paths.
 So the stamp covers the program's files and the config's file list, re-run each time: a source file created or deleted under the root
 changes that list. A file created outside it and only imported is not seen; that is a known limit, with its test pinning it. Python can
