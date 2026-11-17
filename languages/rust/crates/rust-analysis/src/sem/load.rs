@@ -34,6 +34,8 @@ pub(crate) struct Loaded {
     rung: Rung,
     /// No `cargo` at all (rungs 3 and 4).
     no_toolchain: bool,
+    /// Cargo is there and could not load the project, and our reader did (rung 3): why, in one line.
+    cargo_failed: Option<String>,
     /// No `Cargo.toml` up to the root (rung 4).
     no_manifest: bool,
     /// The reason a `Cargo.toml` could not be read by cargo or by the reader (rung 4).
@@ -71,6 +73,7 @@ impl Loaded {
             toolchain_warning: None,
             rung,
             no_toolchain: false,
+            cargo_failed: None,
             no_manifest: false,
             manifest_unreadable: None,
             root: root.to_path_buf(),
@@ -86,6 +89,10 @@ impl Loaded {
 
     pub(crate) fn no_toolchain(&self) -> bool {
         self.no_toolchain
+    }
+
+    pub(crate) fn cargo_failed(&self) -> Option<&str> {
+        self.cargo_failed.as_deref()
     }
 
     pub(crate) fn no_manifest(&self) -> bool {
@@ -160,6 +167,8 @@ impl Loaded {
 enum Failed {
     /// Cargo could not load the workspace: it is not there, or it cannot read the manifest. The ladder goes on (RS3 §6).
     Cargo {
+        /// Cargo's reason, in one line (`cargo_reason`).
+        reason: String,
         cargo_present: bool,
         chosen: Option<String>,
     },
@@ -205,6 +214,7 @@ pub(crate) fn load(
         Ok(loaded) => Ok(loaded),
         Err(Failed::Cannot(message)) => Err(message),
         Err(Failed::Cargo {
+            reason,
             cargo_present,
             chosen,
         }) => {
@@ -212,9 +222,9 @@ pub(crate) fn load(
             match manifest::read(&DiskFs, manifest) {
                 Ok(layout) => {
                     let mut loaded = load_layout(root, layout, chosen)?;
-                    // With cargo present and failing there is no warning named for it yet (RS3 §6): the load is the reader's, and `layout_skipped` is all
-                    // it says.
+                    // no cargo is `NoToolchain`; a cargo that is there and failed is `CargoFailed`: the load is the reader's either way
                     loaded.no_toolchain = !cargo_present;
+                    loaded.cargo_failed = cargo_present.then_some(reason);
                     Ok(loaded)
                 }
                 Err(reason) => {
@@ -226,6 +236,19 @@ pub(crate) fn load(
             }
         }
     }
+}
+
+/// The engine's error for a workspace cargo could not load, as the one line a warning can carry: what cargo itself said (after "`cargo metadata` exited
+/// with an error:"), first non-empty line; or, when cargo never ran, the engine's own first line.
+fn cargo_reason(error: &str) -> String {
+    let said = error
+        .split_once("exited with an error:")
+        .map_or(error, |(_, said)| said);
+    said.lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("cargo failed")
+        .to_owned()
 }
 
 /// Rung 3: the crate graph our reader made, handed to the engine as a project description. No sysroot: the engine asks `rustc` for the target's cfg
@@ -387,9 +410,9 @@ fn load_cargo(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<Loaded
     let mut workspace = match ProjectWorkspace::load(manifest, &config, &|_| {}) {
         Ok(workspace) => workspace,
         // cargo could not be asked, or cannot read the manifest, and the `--no-deps` retry failed too: the next rung may still load it
-        // (cargo's own message is long and about cargo: what a warning needs is why our reader could not read it either)
-        Err(_cargo_error) => {
+        Err(error) => {
             return Err(Failed::Cargo {
+                reason: cargo_reason(&format!("{error:#}")),
                 cargo_present: toolchain::cargo_present(dir, chosen),
                 chosen: chosen.map(str::to_owned),
             });
@@ -626,6 +649,23 @@ fn sysroot_dir(dir: &Path, toolchain: Option<&str>) -> Option<AbsPathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cargos_reason_is_one_line() {
+        let ran = "Failed to load the project at /w/Cargo.toml: Failed to read Cargo metadata from Cargo.toml file /w/Cargo.toml, None: Failed to run `cd \"/w\" && \"cargo\" \"metadata\"`: `cargo metadata` exited with an error: error: failed to parse manifest at `/w/Cargo.toml`\n\nCaused by:\n  dependency (foo) specified without providing a local path\n";
+        assert_eq!(
+            cargo_reason(ran),
+            "error: failed to parse manifest at `/w/Cargo.toml`"
+        );
+        // cargo never ran: the engine's first line
+        let never = "Failed to load the project at /w/Cargo.toml: Failed to run `cargo`: No such file or directory (os error 2)";
+        assert!(cargo_reason(never).starts_with("Failed to load the project"));
+        assert_eq!(cargo_reason(""), "cargo failed");
+        assert_eq!(
+            cargo_reason("exited with an error:\n\n  \n"),
+            "cargo failed"
+        );
+    }
 
     #[test]
     fn a_lock_that_appeared_or_changed_is_a_write() {

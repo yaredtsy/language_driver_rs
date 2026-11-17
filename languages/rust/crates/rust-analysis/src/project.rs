@@ -94,6 +94,7 @@ impl Project {
             build_error: loaded.build_error().map(str::to_owned),
             toolchain: loaded.toolchain_warning().cloned(),
             no_toolchain: loaded.no_toolchain(),
+            cargo_failed: loaded.cargo_failed().map(str::to_owned),
             no_manifest: loaded.no_manifest(),
             manifest_unreadable: loaded.manifest_unreadable().map(str::to_owned),
         });

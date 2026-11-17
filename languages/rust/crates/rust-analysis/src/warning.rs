@@ -35,6 +35,9 @@ pub enum Warning {
     BuildScriptsFailed { message: String },
     /// No `cargo`: the crate graph was read from `Cargo.toml` by this crate (the ladder, rung 3).
     NoToolchain,
+    /// Cargo is there and could not load the project, and this crate's own reader did (rung 3): no `std`, no dependencies. `message` is cargo's
+    /// reason, one line.
+    CargoFailed { message: String },
     /// Cargo and this crate's reader both failed on a `Cargo.toml` (rung 4).
     ManifestUnreadable { message: String },
     /// No `Cargo.toml` up to the root: the file alone (rung 4).
@@ -52,6 +55,7 @@ impl Warning {
             Warning::LockfileWritten => "lockfile_written",
             Warning::BuildScriptsFailed { .. } => "build_scripts_failed",
             Warning::NoToolchain => "no_toolchain",
+            Warning::CargoFailed { .. } => "cargo_failed",
             Warning::ManifestUnreadable { .. } => "manifest_unreadable",
             Warning::NoManifest => "no_manifest",
         }
@@ -99,6 +103,10 @@ impl fmt::Display for Warning {
                 f,
                 "Rust is not installed: only calls that do not go through the standard library are shown"
             ),
+            Warning::CargoFailed { message } => write!(
+                f,
+                "cargo could not read the project, so it was read from Cargo.toml; the standard library and dependencies are not shown: {message}"
+            ),
             Warning::ManifestUnreadable { message } => write!(
                 f,
                 "a Cargo.toml could not be read ({message}): calls into other files of the package are not shown"
@@ -126,6 +134,8 @@ pub(crate) struct Facts {
     pub(crate) toolchain: Option<Warning>,
     /// No `cargo` at all: the crate graph is our reader's, and there is no `std`.
     pub(crate) no_toolchain: bool,
+    /// Cargo is there, failed, and our reader loaded the project: cargo's reason.
+    pub(crate) cargo_failed: Option<String>,
     /// No `Cargo.toml` up to the root.
     pub(crate) no_manifest: bool,
     /// Cargo and our reader both failed on a `Cargo.toml`: why.
@@ -142,6 +152,9 @@ pub(crate) fn collect(facts: Facts) -> Vec<Warning> {
     } else {
         (facts.no_std_source, facts.dependencies_error)
     };
+    if let Some(message) = facts.cargo_failed {
+        warnings.push(Warning::CargoFailed { message });
+    }
     if facts.no_manifest {
         warnings.push(Warning::NoManifest);
     }
@@ -198,6 +211,9 @@ mod tests {
                 message: "boom".into(),
             },
             Warning::NoToolchain,
+            Warning::CargoFailed {
+                message: "c".into(),
+            },
             Warning::ManifestUnreadable {
                 message: "bad".into(),
             },
@@ -205,8 +221,8 @@ mod tests {
         ];
         let mut codes: Vec<_> = all.iter().map(Warning::code).collect();
         codes.dedup();
-        // the two substitutions share a code: nine codes for ten warnings
-        assert_eq!(codes.len(), 9);
+        // the two substitutions share a code: ten codes for eleven warnings
+        assert_eq!(codes.len(), 10);
         assert!(all.iter().all(|w| !w.to_string().is_empty()));
         assert_eq!(
             all[2].to_string(),
@@ -219,6 +235,13 @@ mod tests {
         assert_eq!(
             Warning::LockfileWritten.to_string(),
             "a Cargo.lock was created in your project"
+        );
+        assert_eq!(
+            Warning::CargoFailed {
+                message: "boom".into()
+            }
+            .to_string(),
+            "cargo could not read the project, so it was read from Cargo.toml; the standard library and dependencies are not shown: boom"
         );
         assert_eq!(
             Warning::BuildScriptsFailed {
@@ -238,6 +261,7 @@ mod tests {
             build_error: Some("b".into()),
             toolchain: None,
             no_toolchain: false,
+            cargo_failed: Some("c".into()),
             no_manifest: false,
             manifest_unreadable: None,
         });
@@ -246,6 +270,7 @@ mod tests {
             codes,
             [
                 "build_scripts_failed",
+                "cargo_failed",
                 "dependencies_missing",
                 "lockfile_written",
                 "no_std_source"

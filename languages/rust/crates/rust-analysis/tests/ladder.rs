@@ -55,18 +55,22 @@ fn a_manifest_nobody_can_read_leaves_the_file_alone_with_the_reason() {
 }
 
 /// Rung 3 with cargo present: a manifest that is valid TOML and that cargo refuses (a dependency with no source). Our reader reads it; the dependency has
-/// no source to load, so it is counted. §6 names no warning for this case (a proposal is with the report), so none is given: the load says
-/// `layout_skipped` and nothing else.
+/// no source to load, so it is counted, and the load says that cargo failed and why.
 #[test]
-fn a_manifest_only_cargo_refuses_is_read_by_the_reader_and_counted() {
+fn a_manifest_only_cargo_refuses_is_read_by_the_reader_and_said() {
     let copy = copy_of_fixture("cargo_fails", "ladder_cargo_fails");
     let project = open(&copy, "src/lib.rs");
 
     assert_eq!(project.manifest(), "Cargo.toml");
     assert_eq!(project.files(), ["src/lib.rs"]);
     assert_eq!(project.skipped(), [("layout_skipped", 1)]);
-    // cargo is there, so this is not `NoToolchain`; and the reader's load has no `std` by design, so it is not `NoStdSource` either
-    assert_eq!(project.warnings(), []);
+    // cargo is there, so this is not `NoToolchain`; the reader's load has no `std` by design, so it is not `NoStdSource` either
+    let [Warning::CargoFailed { message }] = project.warnings() else {
+        panic!("{:?}", project.warnings());
+    };
+    assert!(message.contains("manifest"), "cargo's own words: {message}");
+    assert!(!message.contains('\n'), "a warning is one line: {message}");
+    assert_eq!(project.warnings()[0].code(), "cargo_failed");
     // the manifest that was read is watched, as always
     assert!(
         project
