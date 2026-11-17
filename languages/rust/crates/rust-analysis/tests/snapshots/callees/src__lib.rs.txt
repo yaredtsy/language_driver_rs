@@ -5,5 +5,8 @@ plain
   Call "helper" -> Def src/lib.rs:helper
 with_inner
   Call "inner" -> Def src/lib.rs:with_inner::{fn}::inner
+uses_the_twins
+  Call "twin_a" -> Def src/lib.rs:twin_a
+  Call "twin_b" -> Def src/lib.rs:twin_b
 calls_generated
   Call "generated" -> External policy generated (MacroFile)

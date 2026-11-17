@@ -110,3 +110,12 @@ pub fn operators(a: u8, o: Option<u8>) -> Option<u8> {
 pub fn order(r: &Rec) -> u8 {
     twice(r.value()) + helper()
 }
+
+/// Recursion is shown, not entered again.
+pub fn recurse_a() {
+    recurse_b();
+}
+
+pub fn recurse_b() {
+    recurse_a();
+}

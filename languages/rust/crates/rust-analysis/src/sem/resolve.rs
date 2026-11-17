@@ -2,14 +2,6 @@
 //! callable type second, and says what it was answered in the terms of the graph. The substitution the engine returns with a function is dropped here
 //! (RC1 keeps it), so layer 1's edges are by construction layer 2's under an empty key.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "RS4 step 4's calls.rs reads the counters and the fields of Found; step 3 proves the answers in the snapshot tests below"
-    )
-)]
-
 use ra_ap_hir::{
     AsAssocItem, AssocItemContainer, CallableKind, Function, GenericDef, GenericSubstitution,
     ModuleDef, PathResolution, Type, TypeParam, Variant,
@@ -101,7 +93,11 @@ pub(crate) enum Found<'p> {
         package: String,
         name: String,
         cause: Cause,
-        /// A construction and not a call: `Some(x)`, `Range { .. }`.
+        /// A construction and not a call: `Some(x)`, `Range { .. }`. Step 5 names an external variant by it; today the snapshots show it.
+        #[cfg_attr(
+            not(test),
+            expect(dead_code, reason = "RS4 step 5 reads it, to name an external variant")
+        )]
         construct: bool,
     },
     Unknown(Reason),

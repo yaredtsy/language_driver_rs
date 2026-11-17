@@ -1,11 +1,4 @@
 //! Who owns a def: project code, or external (RS3 §4, RS4 §5). Owned data comes out; no engine type does.
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "RS4's call sites ask this; RS3 step 3 and RS4 step 1 prove it in the tests"
-    )
-)]
 
 use analyzer_core::text::Span;
 use ra_ap_hir::{
@@ -164,7 +157,8 @@ impl Loaded {
         self.owner(module, source, path)
     }
 
-    /// The owner of a function: `owner_of` for the most common def.
+    /// The owner of a function: `owner_of` for the most common def. The tests of this file ask it.
+    #[cfg(test)]
     pub(super) fn owner_of_function(
         &self,
         sema: &Semantics<'_, RootDatabase>,
@@ -173,7 +167,8 @@ impl Loaded {
         self.owner_of(sema, Item::Function(function))
     }
 
-    /// The owner of a variant is its enum's (a struct or union is its own).
+    /// The owner of a variant is its enum's (a struct or union is its own). The tests ask it; the graph asks `Item::of_variant`.
+    #[cfg(test)]
     pub(super) fn owner_of_variant(
         &self,
         sema: &Semantics<'_, RootDatabase>,

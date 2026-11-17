@@ -1,13 +1,6 @@
 //! The bridge between the engine's defs and the outline's (RS4 §5, D20). Every def that becomes a `Func` goes through here, so the graph names a def
 //! the way the outline does: the engine says *which* def a call reaches, `origin.rs` says *where it is written*, and the outline of that file says
 //! *what it is called*. All of it is inside one `attach_db` per request (`attached`), and no engine type leaves this module.
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "RS4's walk and calls (steps 3 and 4) use the bridge; step 1 proves it in the join test below"
-    )
-)]
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -42,7 +35,7 @@ pub(crate) struct Func<'p> {
 }
 
 impl Func<'_> {
-    pub(super) fn item(self) -> Item {
+    pub(crate) fn item(self) -> Item {
         self.item
     }
 
@@ -50,6 +43,14 @@ impl Func<'_> {
     pub(super) fn file(self) -> u32 {
         self.file
     }
+}
+
+/// A def found by qualname (`Sem::defs_named`), as owned data.
+pub(crate) struct DefFound {
+    pub(crate) occurrence: u16,
+    pub(crate) kind: DefKind,
+    pub(crate) range: Span,
+    pub(crate) marker: Option<String>,
 }
 
 /// What an engine def is, in the graph's terms.
@@ -98,7 +99,7 @@ struct Opened {
 pub(crate) struct Sem<'p> {
     loaded: &'p Loaded,
     sema: Semantics<'p, RootDatabase>,
-    style: MarkerStyle<'static>,
+    style: MarkerStyle<'p>,
     files: RefCell<Files>,
     /// `sites` of each function asked about, made once per request.
     sites: RefCell<HashMap<Func<'p>, Rc<Sites>>>,
@@ -106,16 +107,16 @@ pub(crate) struct Sem<'p> {
 
 /// One `attach_db` for the whole request, with the `Sem` built inside it (§2): every engine call and the solver run inside `f`. `style` is how the
 /// request reads markers (`Options::marker`, RS4 step 4).
-pub(crate) fn attached<R>(
-    loaded: &Loaded,
-    style: MarkerStyle<'static>,
-    f: impl FnOnce(&Sem<'_>) -> R,
+pub(crate) fn attached<'p, R>(
+    loaded: &'p Loaded,
+    style: MarkerStyle<'p>,
+    f: impl FnOnce(&Sem<'p>) -> R,
 ) -> R {
     attach_db(loaded.db(), || f(&Sem::new(loaded, style)))
 }
 
 impl<'p> Sem<'p> {
-    fn new(loaded: &'p Loaded, style: MarkerStyle<'static>) -> Sem<'p> {
+    fn new(loaded: &'p Loaded, style: MarkerStyle<'p>) -> Sem<'p> {
         Sem {
             loaded,
             sema: Semantics::new(loaded.db()),
@@ -145,6 +146,28 @@ impl<'p> Sem<'p> {
             item,
             request: PhantomData,
         })
+    }
+
+    /// The defs of `file` that the outline names `qualname`, in source order: which of them is which (`occurrence`), what each is, where, and its marker
+    /// (D15: a qualname is not unique in a file). `None` for a file that is not in `Project::files()` (D33's rule: project code only). Every def the
+    /// outline lists is offered, whether or not it can be an entry: a person chooses among them, and `call_graph` says which cannot start a graph.
+    pub(crate) fn defs_named(&self, file: &str, qualname: &str) -> Option<Vec<DefFound>> {
+        let file = self.open(file)?;
+        let (defs, _) = self.opened(file);
+        Some(
+            defs.outline
+                .defs
+                .iter()
+                .zip(&defs.occurrences)
+                .filter(|(def, _)| def.qualname == qualname)
+                .map(|(def, &occurrence)| DefFound {
+                    occurrence,
+                    kind: def.kind.clone(),
+                    range: def.range,
+                    marker: def.marker.clone(),
+                })
+                .collect(),
+        )
     }
 
     /// What the engine's def is in the graph: its outline def when it is project code, else where it comes from. A variant is passed as the enum
@@ -540,9 +563,9 @@ mod tests {
             ],
             "the four traits, the inline module, the six macros, the type alias"
         );
-        // every other def: 17 in lib.rs, 16 in shapes.rs, 26 in calls.rs, 30 in dispatch.rs, 10 each in macros.rs and cfg_off.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
+        // every other def: 18 in lib.rs, 16 in shapes.rs, 28 in calls.rs, 30 in dispatch.rs, 10 each in macros.rs and cfg_off.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
         // byte-order mark
-        assert_eq!(joined, 119);
+        assert_eq!(joined, 122);
     }
 
     /// What `entry` answers `None` to, besides a def a `cfg` turns off (the join test): no file, a file no module reaches, a kind that cannot start a
@@ -757,18 +780,27 @@ mod tests {
                 .into_iter()
                 .map(|(text, item)| (text, matches!(sem.bridge(item), Bridged::Func(_))))
                 .collect();
-            // `helper()` in `plain`, the call in `twice` and `with_inner`'s `inner()` are project code; `generated()` is not. The second `helper` is the
+            // `helper()` in `plain`, the call in `twice`, `with_inner`'s `inner()` and the two twins are project code; `generated()` is not. The second `helper` is the
             // call inside `disabled`, which is `#[cfg(any())]`: name resolution answers for it (path first), although the engine has no def of that body.
             // A walk from a def's body never reaches it: this helper reads the whole file's text.
             assert_eq!(
                 lib.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(),
-                ["write", "write", "helper", "inner", "helper", "generated"]
+                [
+                    "write",
+                    "write",
+                    "helper",
+                    "inner",
+                    "twin_a",
+                    "twin_b",
+                    "helper",
+                    "generated"
+                ]
             );
             assert_eq!(
                 lib.iter().map(|(_, project)| *project).collect::<Vec<_>>(),
-                [true, true, true, true, true, false]
+                [true, true, true, true, true, true, true, false]
             );
-            let generated = &calls_in(sem, "src/lib.rs")[5];
+            let generated = &calls_in(sem, "src/lib.rs")[7];
             assert_eq!(
                 external(generated.1),
                 (

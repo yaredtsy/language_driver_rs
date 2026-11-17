@@ -8,18 +8,28 @@
 //!   read again, and the marker read back is printed. This tool is the only place a file is written (rule 2) and the only place that is given
 //!   the marker text: it never makes one up. Exit 0 for a marker planned (and written), 1 for a file that cannot be read, written or read back,
 //!   2 for bad usage (a qualname of several defs is listed and none is picked, D15), 3 for a plan that is a skip, with its reason.
+//! - `calls <dir> <file> --entry <qualname> [--id <marker> | --occurrence <n>] [--graph] [--timing] [--label <label>]`: the call tree under a def of
+//!   `file` (relative to `dir`), then the breakdown of the graph (the load's warnings first, edges by kind, unresolved edges by reason, what is open). A
+//!   qualname is not unique in a file (D15): when it matches several defs they are listed and the exit code is 2, never the first one picked. `--entry` is
+//!   required: nothing runs at the top of a Rust file, so there is no file entry. The load's warnings go to stderr before the tree.
 
+use std::path::Path;
 use std::process::ExitCode;
 
 use analyzer_core::edit::apply;
 use analyzer_core::text::{Encoding, LineIndex};
+use rust_analysis::{
+    Cancel, Entry, LoadOptions, Options, Project, RenderOptions, breakdown, call_graph, render,
+    to_text,
+};
 use rust_syntax::{
     Edition, MarkerStyle, header_marker, marker, occurrences, outline, plan_header_marker,
     plan_marker,
 };
 
 const USAGE: &str = "usage: rust-cli outline <file> [--label <label>] [--edition <2015|2018|2021|2024>]
-       rust-cli marker <file> (--def <qualname> [--occurrence <n>] | --header) --text <text> [--write] [--label <label>] [--edition <2015|2018|2021|2024>]";
+       rust-cli marker <file> (--def <qualname> [--occurrence <n>] | --header) --text <text> [--write] [--label <label>] [--edition <2015|2018|2021|2024>]
+       rust-cli calls <dir> <file> --entry <qualname> [--id <marker> | --occurrence <n>] [--graph] [--timing] [--label <label>]";
 
 /// Remove `--name value` from `args` and return the value.
 fn take_value(args: &mut Vec<String>, name: &str) -> Option<String> {
@@ -53,6 +63,12 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let label = take_value(&mut args, "--label").unwrap_or_else(|| "ID".to_owned());
     let written_edition = take_value(&mut args, "--edition");
+    let entry = take_value(&mut args, "--entry");
+    let id = take_value(&mut args, "--id");
+    let (graph, timing) = (
+        take_flag(&mut args, "--graph"),
+        take_flag(&mut args, "--timing"),
+    );
     let (def, occurrence, text) = (
         take_value(&mut args, "--def"),
         take_value(&mut args, "--occurrence"),
@@ -77,6 +93,28 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["outline", path] => print_outline(path, &label, edition),
+        ["calls", dir, file] => match (entry.as_deref(), occurrence.as_deref().map(str::parse)) {
+            (Some(_), Some(Err(_))) | (None, _) => {
+                eprintln!("calls needs --entry <qualname>; --occurrence is a number\n{USAGE}");
+                ExitCode::from(2)
+            }
+            (Some(_), Some(Ok(_))) if id.is_some() => {
+                eprintln!("--id and --occurrence both pick a def: give one\n{USAGE}");
+                ExitCode::from(2)
+            }
+            (Some(qualname), picked) => print_calls(
+                Path::new(dir),
+                file,
+                &Calls {
+                    qualname,
+                    occurrence: picked.and_then(Result::ok),
+                    id: id.as_deref(),
+                    label,
+                    graph,
+                    timing,
+                },
+            ),
+        },
         ["marker", path] => {
             let target = match (def.as_deref(), header, occurrence.as_deref()) {
                 (Some(qualname), false, occurrence) => match occurrence.map(str::parse) {
@@ -310,4 +348,139 @@ impl Marker<'_> {
         }
         ExitCode::from(2)
     }
+}
+
+/// What `calls` was asked.
+struct Calls<'a> {
+    qualname: &'a str,
+    /// Which of the defs of that name, when the person says (`--occurrence`).
+    occurrence: Option<u16>,
+    /// The marker that picks one (`--id`).
+    id: Option<&'a str>,
+    label: String,
+    graph: bool,
+    timing: bool,
+}
+
+fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
+    let started = std::time::Instant::now();
+    let project = match Project::open(dir, Path::new(file), &LoadOptions::default()) {
+        Ok(project) => project,
+        Err(e) => {
+            eprintln!("{file}: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let opened = started.elapsed();
+    // The label lives for the whole run of a one-shot program, which is what `Options` asks of a marker style.
+    let label: &'static str = Box::leak(ask.label.clone().into_boxed_str());
+    let style = MarkerStyle::docstring(label);
+    let occurrence = match choose_def(&project, dir, file, ask, style) {
+        Ok(occurrence) => occurrence,
+        Err(code) => return code,
+    };
+    for warning in project.warnings() {
+        eprintln!("warning: {warning}");
+    }
+    let solving = std::time::Instant::now();
+    let entry = Entry::Def {
+        qualname: ask.qualname,
+        occurrence,
+    };
+    let Some(graph) = call_graph(&project, file, &entry, &Options::new(style), &Cancel::new())
+    else {
+        eprintln!(
+            "{file}: `{}` cannot start a graph: it is a trait, a module, a type alias or a macro, or the code is turned off by a `cfg`",
+            ask.qualname
+        );
+        return ExitCode::from(1);
+    };
+    if ask.timing {
+        eprintln!(
+            "open {} ms, graph {} ms",
+            opened.as_millis(),
+            solving.elapsed().as_millis()
+        );
+    }
+    let summary = breakdown(&graph);
+    if ask.graph {
+        // the graph on stdout and nothing else, so it can be read as it is; the breakdown goes to stderr
+        println!("{graph:#?}");
+        eprint!("{summary}");
+    } else {
+        print!(
+            "{}",
+            to_text(&render(
+                &graph,
+                &graph.entries[0],
+                &RenderOptions::default()
+            ))
+        );
+        println!();
+        print!("{summary}");
+    }
+    ExitCode::SUCCESS
+}
+
+/// The occurrence of the def `qualname` names in `file`: the one `--occurrence` or `--id` picks, or the only one. A message and the exit code when there is
+/// none, or several (D15): the first is never picked.
+fn choose_def(
+    project: &Project,
+    dir: &Path,
+    file: &str,
+    ask: &Calls<'_>,
+    style: MarkerStyle<'static>,
+) -> Result<u16, ExitCode> {
+    let qualname = ask.qualname;
+    let Some(matches) = project.defs_named(file, qualname, style) else {
+        eprintln!(
+            "{file}: not a file of the project (see which files a load holds: a `.rs` that some crate reaches by `mod`)"
+        );
+        return Err(ExitCode::from(1));
+    };
+    let chosen = match (ask.occurrence, ask.id, matches.as_slice()) {
+        (_, _, []) => {
+            eprintln!("{file}: no def named `{qualname}`");
+            return Err(ExitCode::from(1));
+        }
+        (Some(n), _, _) => match matches.iter().find(|m| m.occurrence == n) {
+            Some(found) => found,
+            None => {
+                eprintln!("{file}: `{qualname}` has no occurrence #{n}");
+                return Err(ExitCode::from(1));
+            }
+        },
+        (None, Some(id), _) => match matches.iter().find(|m| m.marker.as_deref() == Some(id)) {
+            Some(found) => found,
+            None => {
+                eprintln!("{file}: no def `{qualname}` carries {}: {id}", style.label);
+                return Err(ExitCode::from(1));
+            }
+        },
+        (None, None, [only]) => only,
+        (None, None, _) => {
+            // D15: a qualname is not unique; the person says which, and the first is never picked
+            let text = std::fs::read_to_string(dir.join(file)).unwrap_or_default();
+            let lines = LineIndex::new(&text);
+            eprintln!(
+                "{file}: `{qualname}` matches {} defs; pick one with --id <marker> or --occurrence <n>:",
+                matches.len()
+            );
+            for m in &matches {
+                let at = lines
+                    .position(&text, m.range.start, Encoding::Utf16)
+                    .map_or_else(
+                        || "?".to_owned(),
+                        |p| format!("{}:{}", p.line + 1, p.column + 1),
+                    );
+                let marker = m.marker.as_ref().map_or_else(
+                    || "no marker".to_owned(),
+                    |m| format!("{}: {m}", style.label),
+                );
+                eprintln!("  #{}  {:?}  {at}  {marker}", m.occurrence, m.kind);
+            }
+            return Err(ExitCode::from(2));
+        }
+    };
+    Ok(chosen.occurrence)
 }

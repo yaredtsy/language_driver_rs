@@ -63,6 +63,12 @@ pub fn twin_a() {}
 /// ID: twin
 pub fn twin_b() {}
 
+/// The second of two defs with one marker is named by where it is (D34), and a graph that holds it counts it.
+pub fn uses_the_twins() {
+    twin_a();
+    twin_b();
+}
+
 /// The engine has no def for what a `cfg` turns off, and an entry there is `None`: the join test's listed exception.
 #[cfg(any())]
 pub fn disabled() {

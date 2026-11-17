@@ -3,13 +3,6 @@
 //!
 //! A site is taken from the code the engine **lowered into the body**, never from the file's text: a `#[cfg(any())]` statement, block or match arm
 //! inside an active body is text the engine has no expression for, and name resolution still answers there (ENGINE.md, "RS4: the bridge").
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "RS4's walk (step 4) reads the sites; steps 2 and 3 prove them in the snapshot tests"
-    )
-)]
 
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -49,10 +42,24 @@ pub(crate) struct RawSite {
     span: Site,
     /// Inside a closure or an `async` block: the number of the innermost one, in source order within the def, counted from 0. Layer 1 ignores it; RC2
     /// reads it.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "RC2 reads the closure a site is in; the tests read it today"
+        )
+    )]
     closure: Option<u32>,
     node: Node,
 }
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the tests read the kind, and RC2 the closure; the walk reads the span and the node"
+    )
+)]
 impl RawSite {
     pub(crate) fn kind(&self) -> SiteKind {
         self.kind

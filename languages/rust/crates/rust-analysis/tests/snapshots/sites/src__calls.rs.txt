@@ -63,3 +63,7 @@ order
   Call 34..39 "twice"
   MethodCall 42..47 "value"
   Call 53..59 "helper"
+recurse_a
+  Call 68..77 "recurse_b"
+recurse_b
+  Call 25..34 "recurse_a"

@@ -17,6 +17,9 @@ with_inner::{fn}::inner
 marked
 twin_a
 twin_b
+uses_the_twins
+  Call 141..147 "twin_a"
+  Call 155..161 "twin_b"
 tests::a_test
 calls_generated
   Call 31..40 "generated"

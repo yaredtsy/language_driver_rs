@@ -1,8 +1,12 @@
 use std::fmt;
 use std::path::Path;
 
+use analyzer_core::edit::MarkerStyle;
+use analyzer_core::outline::DefKind;
+use analyzer_core::text::Span;
+
 use crate::paths;
-use crate::sem::{self, Loaded, Rung};
+use crate::sem::{self, Loaded, Rung, attached};
 use crate::warning::{self, Facts, Warning};
 
 /// Config, manifest and lock files whose change means "load again". Each is relative to the root, so it starts with `**/`.
@@ -24,6 +28,18 @@ pub struct Project {
     warnings: Vec<Warning>,
     /// Build scripts ran (they were asked for, or proc macros were: those are built by the same run).
     build_scripts_ran: bool,
+}
+
+/// A def found by qualname: which of the same-named defs it is, what it is, where, and its marker (D15).
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct DefMatch {
+    /// The number `Entry::Def::occurrence` takes: 0-based, in source order.
+    pub occurrence: u16,
+    pub kind: DefKind,
+    /// The whole def, in bytes of the file.
+    pub range: Span,
+    pub marker: Option<String>,
 }
 
 /// What a load may do beyond reading the workspace (RS3 §3). Both are off by default: each runs the project's own code (a `build.rs`, a proc
@@ -112,6 +128,29 @@ impl Project {
         self.loaded.files()
     }
 
+    /// The defs of `file` (relative to the root, as `files` lists it) that the outline names `qualname`, in source order: a qualname is not unique in a
+    /// file (D15: two `impl S` blocks with one method, `#[cfg]` twins), so a tool lists the matches and never picks the first. `None` unless the file is
+    /// project code: one of `files()`. Every def the outline lists is offered, including those that cannot start a graph (a trait, a module): asking
+    /// `call_graph` for one says so with `None`.
+    pub fn defs_named(
+        &self,
+        file: &str,
+        qualname: &str,
+        marker: MarkerStyle<'_>,
+    ) -> Option<Vec<DefMatch>> {
+        attached(&self.loaded, marker, |sem| sem.defs_named(file, qualname)).map(|found| {
+            found
+                .into_iter()
+                .map(|def| DefMatch {
+                    occurrence: def.occurrence,
+                    kind: def.kind,
+                    range: def.range,
+                    marker: def.marker,
+                })
+                .collect()
+        })
+    }
+
     /// The `Cargo.toml` that was found for the file, relative to the root with `/`: never a path with `..`, even when cargo's workspace root is
     /// above the root.
     pub fn manifest(&self) -> &str {
@@ -129,6 +168,11 @@ impl Project {
         }
         inputs.extend(self.loaded.outside_inputs().iter().cloned());
         inputs
+    }
+
+    /// The engine's load, for the call graph (`calls.rs`): it builds its `Sem` inside one `attach_db` per request.
+    pub(crate) fn loaded(&self) -> &Loaded {
+        &self.loaded
     }
 
     /// What this load did not do, by name, sorted (§3): `build_scripts_skipped`, the local packages (members and path dependencies) that have a build script, when the

@@ -10,13 +10,13 @@ mod sites;
     unused_imports,
     reason = "RS4's calls.rs and walk.rs use them (steps 3 and 4)"
 )]
-pub(crate) use bridge::{Bridged, Func, Sem, attached};
+pub(crate) use bridge::{Bridged, DefFound, Func, Sem, attached};
 pub(crate) use load::{Loaded, Rung, load};
 #[expect(unused_imports, reason = "RS4's calls.rs uses them (step 4)")]
 pub(crate) use origin::{Cause, Item, Owner};
 #[expect(unused_imports, reason = "RS4's calls.rs uses them (step 4)")]
 pub(crate) use resolve::{Callee, Found, Open, Reason};
-pub(crate) use sites::{RawSite, SiteKind};
+pub(crate) use sites::RawSite;
 
 // the helpers of the integration tests, which are one place for "copy a fixture under target/" (that file says `#![allow(dead_code)]`: each program
 // uses some of it). A unit test cannot `use` code from `tests/`, so the file is included by path, once, for every test module of `sem`.

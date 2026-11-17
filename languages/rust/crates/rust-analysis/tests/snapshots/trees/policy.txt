@@ -1,0 +1,219 @@
+=== src/calls.rs plain_calls
+plain_calls
+  twice
+  helper
+
+breakdown:
+  edges: 2 call, 0 construct, 0 external, 0 unresolved
+  contexts 3, bodies walked 3, summaries reused 0
+  cuts: none
+
+=== src/calls.rs method_chain
+method_chain
+  Rec::value
+
+breakdown:
+  edges: 1 call, 0 construct, 2 external, 0 unresolved
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/calls.rs constructions
+constructions
+  Pair
+  E
+  Rec
+  E
+
+breakdown:
+  edges: 0 call, 4 construct, 0 external, 0 unresolved
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+
+=== src/calls.rs closures
+closures
+  helper
+  twice
+  helper
+
+breakdown:
+  edges: 3 call, 0 construct, 0 external, 3 unresolved
+  unresolved by reason:
+    function_typed_value: 3
+  open (the answer is a family of defs), by why:
+    closure: 3
+  contexts 3, bodies walked 3, summaries reused 0
+  cuts: none
+
+=== src/calls.rs nested_items
+nested_items
+  nested_items::{fn}::inner
+    helper
+
+breakdown:
+  edges: 2 call, 0 construct, 0 external, 0 unresolved
+  contexts 3, bodies walked 3, summaries reused 0
+  cuts: none
+
+=== src/calls.rs macro_from_another_module
+macro_from_another_module
+  elsewhere
+  helper
+
+breakdown:
+  edges: 2 call, 0 construct, 0 external, 0 unresolved
+  contexts 3, bodies walked 3, summaries reused 0
+  cuts: none
+
+=== src/calls.rs recurse_a
+recurse_a
+  recurse_b
+    recurse_a [Recursive]
+
+breakdown:
+  edges: 2 call, 0 construct, 0 external, 0 unresolved
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/calls.rs FROM_CONST
+FROM_CONST
+  helper_const
+
+breakdown:
+  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/calls.rs Wrapper
+Wrapper
+
+breakdown:
+  edges: 0 call, 0 construct, 0 external, 0 unresolved
+  contexts 0, bodies walked 0, summaries reused 0
+  cuts: none
+
+=== src/macros.rs std_arguments
+std_arguments
+  f
+  g
+  f
+
+breakdown:
+  edges: 3 call, 0 construct, 0 external, 0 unresolved
+  contexts 3, bodies walked 3, summaries reused 0
+  cuts: none
+
+=== src/macros.rs project_wrapping_external
+project_wrapping_external
+  f
+
+breakdown:
+  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/dispatch.rs generic_by_value
+generic_by_value
+  Writer::write
+
+breakdown:
+  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  open (the answer is a family of defs), by why:
+    type_param: 1
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/dispatch.rs impl_return
+impl_return
+  make_writer
+  <Json as Writer>::write
+
+breakdown:
+  edges: 2 call, 0 construct, 0 external, 0 unresolved
+  contexts 3, bodies walked 3, summaries reused 0
+  cuts: none
+
+=== src/dispatch.rs impl_return_of_a_parameter
+impl_return_of_a_parameter
+  make_generic
+  Writer::write
+
+breakdown:
+  edges: 2 call, 0 construct, 1 external, 0 unresolved
+  open (the answer is a family of defs), by why:
+    opaque: 1
+    type_param: 1
+  contexts 3, bodies walked 3, summaries reused 0
+  cuts: none
+
+=== src/dispatch.rs fn_pointer
+fn_pointer
+
+breakdown:
+  edges: 0 call, 0 construct, 0 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
+  open (the answer is a family of defs), by why:
+    fn_pointer: 1
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+
+=== src/shapes.rs derived
+derived
+  Derived
+
+breakdown:
+  edges: 0 call, 1 construct, 2 external, 0 unresolved
+  calls to a def a macro or a derive made, not entered: 2
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+
+=== src/shapes.rs E
+E
+
+breakdown:
+  edges: 0 call, 0 construct, 0 external, 0 unresolved
+  contexts 0, bodies walked 0, summaries reused 0
+  cuts: none
+
+=== src/lib.rs Writer::twice
+Writer::twice
+  Writer::write
+  Writer::write
+
+breakdown:
+  edges: 2 call, 0 construct, 0 external, 0 unresolved
+  open (the answer is a family of defs), by why:
+    self_in_trait: 2
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/lib.rs uses_the_twins
+uses_the_twins
+  twin_a
+  twin_b
+
+breakdown:
+  edges: 2 call, 0 construct, 0 external, 0 unresolved
+  defs named by where they are, because a def of the same file owns their marker: 1
+  contexts 3, bodies walked 3, summaries reused 0
+  cuts: none
+
+=== src/external.rs std_calls
+std_calls
+  derived
+    Derived
+
+breakdown:
+  edges: 1 call, 1 construct, 10 external, 0 unresolved
+  calls to a def a macro or a derive made, not entered: 2
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/external.rs std_naming
+std_naming
+
+breakdown:
+  edges: 0 call, 0 construct, 3 external, 0 unresolved
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+

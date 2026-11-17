@@ -1,5 +1,6 @@
 //! SLOW: project loading, call sites, call graph. The `sem` folder is the only code that imports the checker.
 
+mod calls;
 mod env;
 mod key;
 mod manifest;
@@ -10,5 +11,13 @@ mod toolchain;
 mod walk;
 mod warning;
 
-pub use project::{LoadOptions, OpenError, Project};
+pub use analyzer_core::graph::{
+    Basis, Context, ContextId, Cut, DefInfo, Edge, EdgeTo, Entry, External, Graph, Reason, Root,
+    Site, StableDef, Stats, Status,
+};
+pub use analyzer_core::render::{Mark, Node, RenderOptions, render, to_text};
+pub use analyzer_core::solve::{Budget, Cancel, Limits};
+pub use calls::{Breakdown, Options, breakdown, call_graph};
+pub use project::{DefMatch, LoadOptions, OpenError, Project};
+pub use rust_syntax::{DefKind, MarkerStyle, Placement, Span};
 pub use warning::{Warning, Why};

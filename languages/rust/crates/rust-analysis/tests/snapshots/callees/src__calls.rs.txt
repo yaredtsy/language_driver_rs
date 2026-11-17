@@ -56,3 +56,7 @@ order
   Call "twice" -> Def src/calls.rs:twice
   MethodCall "value" -> Def src/shapes.rs:Rec::value
   Call "helper" -> Def src/calls.rs:helper
+recurse_a
+  Call "recurse_b" -> Def src/calls.rs:recurse_b
+recurse_b
+  Call "recurse_a" -> Def src/calls.rs:recurse_a
