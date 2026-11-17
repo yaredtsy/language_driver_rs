@@ -9,7 +9,7 @@ use analyzer_testkit::graph::check_invariants;
 use common::{STYLE, edges_as_text};
 use typescript_analysis::{
     Budget, Cancel, DefKind, Entry, Graph, Options, Project, RenderOptions, Session, StableDef,
-    WireOptions, WireStyle, call_graph, render, to_text, wire,
+    WireOptions, WireStyle, breakdown, call_graph, render, to_text, wire,
 };
 
 fn root() -> PathBuf {
@@ -80,6 +80,44 @@ fn a_property_assigned_function_is_drawn_under_the_module() {
 #[test]
 fn an_iife_is_drawn_under_the_module() {
     assert_eq!(tree_of("src/iife.ts"), "src/iife.ts\n  h\n");
+}
+
+/// H10: the call of a function expression written in place is `Unresolved`, and counted, as it always was; only the reason is new. It was `no_declaration`,
+/// which says the engine could not tell, and nothing about an IIFE is unknown.
+#[test]
+fn an_iifes_own_call_has_its_own_reason() {
+    let graph = file_graph("src/iife.ts").unwrap();
+    let summary = breakdown(&graph);
+    assert_eq!(summary.unresolved, 1);
+    assert_eq!(
+        summary.reasons.into_iter().collect::<Vec<_>>(),
+        [("anonymous_function_called".to_owned(), 1)]
+    );
+    // the edge counts are what they were: `h` is a call, the IIFE itself one unresolved edge
+    assert_eq!(summary.calls, 1);
+}
+
+#[test]
+fn every_shape_of_an_iife_has_the_same_reason() {
+    let graph = file_graph("src/iife-forms.ts").unwrap();
+    check_invariants(&graph);
+    let summary = breakdown(&graph);
+    // the arrow, the function, the async arrow, `!function(){}()`, and the named function expression: five calls of a function expression written in place.
+    // (The named one is a def of its own that this call does not enter: unresolved today, as before H10; only the reason is the new one.)
+    assert_eq!(
+        summary.reasons.into_iter().collect::<Vec<_>>(),
+        [("anonymous_function_called".to_owned(), 5)]
+    );
+    assert_eq!(summary.unresolved, 5);
+    // the four anonymous bodies draw `h` in the module
+    let edges = edges_as_text(&graph, &root());
+    assert_eq!(
+        edges
+            .iter()
+            .filter(|edge| edge.starts_with("src/iife-forms.ts |") && edge.ends_with("| call h"))
+            .count(),
+        4
+    );
 }
 
 #[test]

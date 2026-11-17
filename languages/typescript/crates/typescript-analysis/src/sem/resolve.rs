@@ -68,6 +68,9 @@ pub(crate) enum Why {
     /// `@decorator(1)`: the function the factory returned is called with what is decorated, and nothing names it (an arrow written in the factory, a
     /// function type): the second call of a decorator that takes arguments.
     DecoratorResult,
+    /// `(() => {…})()`, `(function () {…})()`: the call of a function expression written where it is called. Nothing about it is unknown: the function is
+    /// right there, part of the body that calls it (its calls are drawn in that body), and no declaration is to be entered (H10).
+    AnonymousFunctionCalled,
     /// None of the above: no symbol, or a symbol with nothing to call.
     NoDeclaration,
 }
@@ -82,6 +85,7 @@ impl Why {
             Why::ComputedName => "computed_name",
             Why::NotInOutline => "decl_not_in_outline",
             Why::DecoratorResult => "decorator_result",
+            Why::AnonymousFunctionCalled => "anonymous_function_called",
             Why::NoDeclaration => "no_declaration",
         }
     }
@@ -665,6 +669,13 @@ fn accessor_declarations(
 fn why_unknown(checker: &mut Checker, callee: P<Node>) -> Why {
     if ast::is_element_access_expression(callee) {
         return Why::ComputedName;
+    }
+    // under the parentheses and assertions of `(() => {})()`, `(function () {})()`, `(<any>function () {})()`
+    if matches!(
+        unwrap_expression(callee).kind(),
+        Kind::ArrowFunction | Kind::FunctionExpression
+    ) {
+        return Why::AnonymousFunctionCalled;
     }
     if checker
         .get_type_at_location(callee)

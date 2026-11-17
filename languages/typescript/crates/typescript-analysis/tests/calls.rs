@@ -1221,6 +1221,19 @@ fn decorator_a_class_entry_counts_no_decorator_because_the_module_draws_them() {
     assert!(breakdown(&module).uncovered.is_empty());
 }
 
+/// H10 for a function's IIFE (`coverage/src/iife.ts`, `run`): the arrow written in place is called once, and `no_declaration` is 0.
+#[test]
+fn an_iife_in_a_function_says_anonymous_function_called_and_not_no_declaration() {
+    let graph = graph_of(&fixture("coverage"), "src/iife.ts", "run");
+    check_invariants(&graph);
+    let summary = breakdown(&graph);
+    assert_eq!(
+        summary.reasons.into_iter().collect::<Vec<_>>(),
+        [("anonymous_function_called".to_owned(), 1)]
+    );
+    assert_eq!(graph.stats.language.get("no_declaration"), None);
+}
+
 /// D15 through a request (H6): a getter and its setter share a qualname, and `occurrence` says which one the request is for.
 #[test]
 fn occurrence_picks_the_second_def_of_a_qualname() {
