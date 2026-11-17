@@ -1,4 +1,4 @@
-use super::project::is_within;
+use super::project::{is_within, under_root};
 use super::*;
 use typescript_syntax::MarkerStyle;
 
@@ -171,6 +171,24 @@ fn a_directory_is_within_the_root_whichever_way_each_is_spelled() {
         Path::new("D:/repository")
     ));
     assert!(!is_within(Path::new("/repo"), Path::new("/repository")));
+}
+
+/// H8: a root that is a drive root is spelled with its `/` already (`C:/`, `/`), so the `/` that `under_root` took off the path's front left nothing to
+/// strip, and every file under it was outside it. Text on both sides, so this runs on every OS.
+#[test]
+fn a_file_is_under_a_root_that_is_a_drive_root() {
+    assert_eq!(under_root("C:/", "C:/a.ts"), Some("a.ts"));
+    assert_eq!(under_root("C:/", "C:/dir/a.ts"), Some("dir/a.ts"));
+    assert_eq!(under_root("/", "/a.ts"), Some("a.ts"));
+    assert_eq!(under_root("/", "/dir/a.ts"), Some("dir/a.ts"));
+    // nothing else about the rule moves: a name that only starts with the root's, the root itself, a path outside
+    assert_eq!(under_root("/a/root", "/a/root/f.ts"), Some("f.ts"));
+    assert_eq!(under_root("/a/root", "/a/rootx/f.ts"), None);
+    assert_eq!(under_root("/a/root", "/a/root"), None);
+    assert_eq!(under_root("/a/root", "/b/f.ts"), None);
+    assert_eq!(under_root("C:/", "D:/a.ts"), None);
+    assert_eq!(under_root("/", "/"), None);
+    assert_eq!(under_root("C:/", "C:/"), None);
 }
 
 #[test]

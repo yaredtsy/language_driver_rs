@@ -171,9 +171,13 @@ pub(super) fn relative_to(root: &Path, engine_path: &str) -> String {
 }
 
 /// The one rule for "under the root", for `relative_path`, `relative_to` and `Sem::open`: `path` with the root's engine spelling and then a `/` taken off
-/// its front, so `/a/root` is not a prefix of `/a/rootx/f.ts`. `None` when `path` is not under the root (or is the root itself).
+/// its front, so `/a/root` is not a prefix of `/a/rootx/f.ts`. `None` when `path` is not under the root (or is the root itself). A root that is a drive root
+/// is spelled with its `/` (`C:/`, `/`), so that one is taken off the root first, and the `/` after it is the one the path has (H8).
 pub(super) fn under_root<'a>(root: &str, path: &'a str) -> Option<&'a str> {
-    path.strip_prefix(root)?.strip_prefix('/')
+    let root = root.strip_suffix('/').unwrap_or(root);
+    path.strip_prefix(root)?
+        .strip_prefix('/')
+        .filter(|inside| !inside.is_empty())
 }
 
 /// The path from the directory `root` to `file`, both in the engine's spelling: `src/main.ts` under it, `../shared/lib.ts` beside it. TypeScript's own
