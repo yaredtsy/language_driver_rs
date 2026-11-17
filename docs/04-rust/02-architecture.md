@@ -197,7 +197,7 @@ Each row is in a phase file; this is the list to check them against (the Rust co
 | Learned in | What | Rust takes it as |
 |---|---|---|
 | TS, D15 | a qualname is not unique in a file; a tool lists the matches and never picks the first | the same: `#[cfg]` twins, two `impl S` blocks with one method name (`impl S<u8>` / `impl S<u16>` differ since D29). `Project::defs_named` exists from RS4 |
-| TS/PY, D18, D20 | `occurrence` is 0-based; a def is named (file, qualname, occurrence) going in and coming out; `Entry` is core's | used as it is. `call_graph(project, file, &Entry, …)` |
+| TS/PY, D18, D20 | `occurrence` is 0-based; a def is named (file, qualname, occurrence) going in and coming out; `Entry` is core's | used as it is. `call_graph(project, file, &Entry, …)`; `Entry::File` (D32) is always `None` in Rust: nothing runs at the top of a Rust file |
 | TS, D16 | a call through a function-typed value is `Unresolved`, counted as `function_typed_value` | the same key for `FnPointer`, `FnParam` and `Closure`; the `open_*` counters split it |
 | PY, D17 | the wire is the output that is used; merged on request; prefixes are parameters | `rust-analysis` re-exports core's `wire`, `merge`, `WireStyle`; `rust-cli calls --wire [--merged]` in RS4, not later |
 | TS, D22 | a def handed over and not called gets a passed edge | `xs.iter().map(parse)`, `thread::spawn(worker)`, `.map(Self::helper)`: a path to a function in a value position ([RS4](04-default-resolver/05-rs4-calls.md) §3) |

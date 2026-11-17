@@ -68,7 +68,26 @@ new call into the engine adds its row in the same commit (the reviewer writes it
 | `ProjectWorkspace::sysroot.error()`, `ProjectWorkspaceKind::Cargo { error, .. }` | `load.rs` | read right after `ProjectWorkspace::load`: a missing `rust-src` (`NoStdSource`) and the `--no-deps` retry's cargo message (`DependenciesMissing`); the load itself says neither (RS3 §6, step 5a) |
 | `ra_ap_project_model::project_json::{ProjectJsonData, ProjectJson::new}`, `ProjectWorkspace::load_inline(ProjectJson, &CargoConfig, progress)` | `load.rs` | rungs 3 and 4 (RS3 §6): our reader's crates as JSON (`display_name`, `root_module`, `edition`, `deps`, `is_workspace_member`, `cfg`, `is_proc_macro`, `source.include_dirs` / `exclude_dirs`), sysroot `None`; with no `rustc` the engine falls back to no cfgs and keeps the data-layout error ("Rung 3") |
 | `Semantics::file_to_module_def(FileId)` (inside `attach_db`) | `load.rs` | `files()`: a loaded `.rs` file is listed only when some crate has a module for it (RS3 §2); the first call builds the module maps (seconds) |
+| `Const::{module, source, name, as_assoc_item}`, `Static::{module, source, name}`, `Adt::{module, source, name}`, `Variant::adt`, `InFile<N: HasName>::value.name()` | `origin.rs` (RS4 step 1, e9e03ed) | the owner of every kind of `Func` and of a construction's class; a variant is owned by its enum; a project def's owner holds its **name** range, the outline's `name_range` |
+| `Semantics::file_to_module_defs(file)`, `Module::krate` | `origin.rs` | whether a file outside the root is a module of the def's own crate (`OutsideRoot`) or of another (`OtherCrate`: a built-in derive's method, whose source is the trait's declaration in `core`) |
+| `Semantics::{new, attach_first_edition_opt, parse}`, `EditionedFileId::edition`, `SyntaxNode::{text, covering_element, ancestors}` | `bridge.rs` | a project file opened once per request from the **engine's** text (so a byte-order mark shifts both outlines alike); a file no crate has a module for gives no edition, so no entry |
+| `Semantics::to_def` on `ast::{Fn, Adt, Const, Static}` | `bridge.rs` | the outline's def → the engine's: the node whose name is exactly the outline's `name_range`; `None` in `#[cfg]`-disabled code |
+| `hir::attach_db` once per request (`sem::attached`), the `Semantics` built inside it | `bridge.rs` | S-RS2's rule, for a whole request |
 | test only: `Semantics::{new, attach_first_edition_opt, parse, resolve_expr_as_callable, resolve_method_call_fallback}`, `CallableKind::Function`, `Either::left`; `ra_ap_syntax::{ast::CallExpr, ast::MethodCallExpr, AstNode}` | `origin.rs` tests | the fixture's call walk, the part of RS4's site walk RS3 needs |
+
+## RS4: the bridge (step 1, e9e03ed, 2026-11-17)
+
+Found while building it, on the policy fixture (`crates/rust-analysis/tests/fixtures/policy/`):
+
+- **A built-in derive's method is named by the type.** `Derived::default()` (`#[derive(Default)]`) resolved **path first** is the derived impl's
+  method: its `module` is the type's module, its source the trait's declaration in `core`, so `External { package: "policy", name:
+  "shapes::Derived::default" }`, cause `OtherCrate`. `.clone()` on it has the same shape. The callable type first answers `core`'s
+  `Default::default` instead: one more case where the path is the more specific answer (RS4 §4). Answers RS4 §5's [check].
+- **Name resolution answers inside `#[cfg]`-disabled code.** `helper()` in a `#[cfg(any())] fn disabled` resolves by path, though the engine
+  has no def for `disabled` (`to_def` is `None`) and the callable type does not resolve. So a site list must come from code the engine
+  lowered, never from the file's text (RS4 §3).
+- **A file with a byte-order mark joins**: the outline is built from the engine's text of the file, whose offsets are the ones `HasSource`
+  reports.
 
 ## S-RS1: does it build as a dependency?
 
