@@ -18,7 +18,8 @@ use ra_ap_vfs::{AbsPathBuf, Vfs, VfsPath};
 pub(crate) struct Loaded {
     db: RootDatabase,
     vfs: Vfs,
-    /// The project had no `Cargo.lock` and has one now: cargo wrote it into the user's folder (the toolchain does not honour the redirect, §5 option A).
+    /// Cargo wrote the project's `Cargo.lock`: the project had none and has one now, or its lock changed (the toolchain does not honour the redirect,
+    /// §5 option A).
     wrote_lockfile: bool,
     /// The toolchain (the name of its folder) whose standard library source is not installed: the load went on without `std` (S-RS3).
     no_std_source: Option<String>,
@@ -138,7 +139,10 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
     }
 
     let lock = workspace_dir(dir, manifest_path, chosen).join("Cargo.lock");
-    let had_lock = lock.exists();
+    // the lock's bytes before the load: a toolchain that ignores the redirect (below 1.97) writes a missing lock, and one below 1.82 also rewrites a
+    // stale one in place
+    let lock_before = std::fs::read(&lock).ok();
+    let had_lock = lock_before.is_some();
     // `redirect` is dropped (its folder deleted) when this function returns, after the last cargo has run, on every path out of it
     let redirect =
         if !had_lock && toolchain::honours_lockfile_path(toolchain::cargo_version(dir, chosen)) {
@@ -212,7 +216,7 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
     Ok(Loaded {
         db,
         vfs,
-        wrote_lockfile: !had_lock && lock.exists(),
+        wrote_lockfile: lock_written(lock_before.as_deref(), std::fs::read(&lock).ok().as_deref()),
         no_std_source,
         dependencies_error,
         toolchain_warning: decision.warning,
@@ -340,6 +344,17 @@ impl Drop for TempDir {
     }
 }
 
+/// Did the load write the project's `Cargo.lock`? The bytes of the lock before and after (`None`: no file): a lock that appeared, or one that is
+/// not what it was. A lock that is gone is not a write, and neither is no lock before and after. (Below 1.82 cargo rewrites a stale lock in place;
+/// from 1.82 the engine works on a copy of an existing one.)
+fn lock_written(before: Option<&[u8]>, after: Option<&[u8]>) -> bool {
+    match (before, after) {
+        (None, Some(_)) => true,
+        (Some(before), Some(after)) => before != after,
+        (_, None) => false,
+    }
+}
+
 /// A load without `std` is never silent (RS3 §6): the toolchain to name in `NoStdSource`, when the standard library is not there. `sysroot` is
 /// the toolchain's folder as `rustc --print sysroot` said, `None` when it said nothing (no `rustc`): the engine then has no sysroot at all, so
 /// no `std`, and the toolchain is called `unknown`. With a sysroot, `std` is missing when the engine could not load its source.
@@ -372,6 +387,27 @@ fn sysroot_dir(dir: &Path, toolchain: Option<&str>) -> Option<AbsPathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lock_that_appeared_or_changed_is_a_write() {
+        let old = Some(&b"version = 3\n"[..]);
+        let new = Some(&b"version = 3\n[[package]]\n"[..]);
+        assert!(lock_written(None, new), "a lock appeared");
+        assert!(
+            lock_written(old, new),
+            "a stale lock was rewritten in place"
+        );
+        assert!(!lock_written(old, old), "a lock that is as it was");
+        assert!(!lock_written(None, None), "no lock before and after");
+        assert!(
+            !lock_written(old, None),
+            "a lock that is gone was not written"
+        );
+        assert!(
+            !lock_written(Some(b""), Some(b"")),
+            "an empty lock is a lock, and unchanged"
+        );
+    }
 
     #[test]
     fn a_load_without_std_names_its_toolchain_or_says_unknown() {
