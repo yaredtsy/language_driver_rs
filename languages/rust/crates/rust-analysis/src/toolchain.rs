@@ -27,8 +27,9 @@ impl fmt::Display for Version {
     }
 }
 
-/// The oldest toolchain whose loads are trusted as they are (RS3 §6). A constant until the measurement of RS3 step 5b sets it: it is 1.82, the
-/// first cargo that copies the lock for `cargo metadata`.
+/// The oldest toolchain whose loads are trusted as they are (RS3 §6). 1.82 is the first cargo that copies the lock for `cargo metadata`, so
+/// below it a load can rewrite the user's stale `Cargo.lock`. The measurement of 1.74.1, 1.94.1, 1.98.0 and 1.99.1 found nothing else lost in
+/// the project's own calls: `languages/rust/ENGINE.md`, "Old toolchains", and RS3 §6.
 pub(crate) const MINIMUM: Version = Version::release(1, 82, 0);
 
 impl Version {
