@@ -41,7 +41,7 @@ fn policy(name: &str) -> (PathBuf, Project) {
 
 /// Every entry of the first-trees snapshot: a function, a method, a const's initializer, a struct and an enum (a construction with nothing to enter),
 /// recursion, a project macro defined elsewhere, an `impl Trait` the engine sees through, one it does not, a built-in derive, a std call, a duplicate marker.
-const ENTRIES: [(&str, &str, u16); 34] = [
+const ENTRIES: [(&str, &str, u16); 40] = [
     ("src/calls.rs", "plain_calls", 0),
     ("src/calls.rs", "method_chain", 0),
     ("src/calls.rs", "constructions", 0),
@@ -78,6 +78,13 @@ const ENTRIES: [(&str, &str, u16); 34] = [
     ("src/passed.rs", "externals", 0),
     ("src/passed.rs", "locals", 0),
     ("src/passed.rs", "through_a_parameter", 0),
+    // macros (step 7): a project macro around an external one, two project levels, an unknown macro, a derive, a function a macro made
+    ("src/macros.rs", "project_macro_around_external", 0),
+    ("src/macros.rs", "argument_through_external", 0),
+    ("src/macros.rs", "two_project_levels", 0),
+    ("src/macros.rs", "unknown_in_unknown", 0),
+    ("src/macros.rs", "derived_methods", 0),
+    ("src/macros.rs", "calls_made_functions", 0),
 ];
 
 fn text(graph: &Graph) -> String {
@@ -434,6 +441,56 @@ fn what_is_handed_over_is_a_passed_edge_or_a_count() {
     let graph = graph_of(&project, file, "through_a_parameter");
     assert!(graph.edges.iter().any(|edge| edge.passed));
     assert_eq!(graph.stats.language["open_type_param"], 1);
+}
+
+/// What step 2 built, as the counters of a graph: a call to a function a project macro made, and to a built-in derive's method, are `External`, named, and
+/// counted `macro_generated_target` once per call; an unexpandable macro is `macro_not_expanded` once and loses what is in its arguments.
+#[test]
+fn generated_targets_derives_and_unexpanded_macros_are_counted() {
+    let (_copy, project) = policy("calls_macro_counters");
+    let file = "src/macros.rs";
+    // two calls to `by_macro`, made by a project macro
+    let graph = graph_of(&project, file, "calls_made_functions");
+    assert_eq!(graph.stats.language["macro_generated_target"], 2);
+    assert_eq!(breakdown(&graph).externals, 2);
+    // the derive's `default` and `clone`: written nowhere, their source the trait's declaration in `core`
+    let graph = graph_of(&project, file, "derived_methods");
+    assert_eq!(graph.stats.language["macro_generated_target"], 2);
+    // a function written by hand and called is not one
+    let graph = graph_of(&project, file, "project_body");
+    assert!(!graph.stats.language.contains_key("macro_generated_target"));
+    // the arguments of an unexpandable macro: no call, one count, and no `unknown_*` reason for what was inside
+    for (qualname, calls) in [
+        ("unknown_around_a_call", 0),
+        ("unknown_in_unknown", 1),
+        ("unknown_in_known", 0),
+    ] {
+        let graph = graph_of(&project, file, qualname);
+        assert_eq!(graph.stats.language["macro_not_expanded"], 1, "{qualname}");
+        let summary = breakdown(&graph);
+        assert_eq!(summary.macro_not_expanded, 1);
+        assert_eq!(summary.unresolved, 0, "{qualname}");
+        assert_eq!(summary.calls, calls, "{qualname}");
+    }
+}
+
+/// A call written in a project macro's body as an argument of an external macro is a site at the project macro (the `upmap_once` rule): its tree has the
+/// callee, which was dropped without a count before.
+#[test]
+fn a_project_macros_call_inside_an_external_macro_is_in_the_tree() {
+    let (_copy, project) = policy("calls_macro_in_macro");
+    let file = "src/macros.rs";
+    for qualname in [
+        "project_macro_around_external",
+        "two_project_levels",
+        "argument_through_external",
+    ] {
+        let graph = graph_of(&project, file, qualname);
+        check_invariants(&graph);
+        assert_eq!(breakdown(&graph).calls, 1, "{qualname}");
+        let shown = text(&graph);
+        assert!(shown.contains("\n  g\n"), "{qualname}: {shown}");
+    }
 }
 
 /// A graph of a complete load has no `warning_*` and no `*_skipped`: the keys are absent when 0.

@@ -11,9 +11,9 @@ use analyzer_core::edit::MarkerStyle;
 use analyzer_core::graph::{DefInfo, StableDef};
 use analyzer_core::outline::{DefKind, Outline};
 use analyzer_core::text::Span;
-use ra_ap_hir::{Macro, Semantics, Variant, attach_db};
+use ra_ap_hir::{InMacroFile, Macro, MacroCallId, Semantics, Variant, attach_db};
 use ra_ap_ide_db::RootDatabase;
-use ra_ap_syntax::{AstNode, NodeOrToken, SyntaxNode, TextRange, ast};
+use ra_ap_syntax::{AstNode, NodeOrToken, SyntaxNode, SyntaxToken, TextRange, ast};
 use rust_syntax::Edition;
 
 use super::load::Loaded;
@@ -355,11 +355,26 @@ impl<'p> Sem<'p> {
         }
     }
 
-    /// The expansion of a macro call, `None` when the engine cannot expand it.
-    pub(super) fn expand(&self, call: &ast::MacroCall) -> Option<SyntaxNode> {
+    /// The expansion of a macro call and which expansion it is, `None` when the engine cannot expand it.
+    pub(super) fn expand(
+        &self,
+        call: &ast::MacroCall,
+    ) -> Option<(SyntaxNode, Option<MacroCallId>)> {
         self.sema
             .expand_macro_call(call)
-            .map(|expanded| expanded.value)
+            .map(|expanded| (expanded.value, expanded.file_id.macro_file()))
+    }
+
+    /// Where a token of the expansion `file` came from **in the arguments of the macro call that made it**, one expansion out: the range in the text of the
+    /// file the call is written in. `None` for a token the macro's own body made (its span is not among the call's arguments). Only for a call written
+    /// inside another expansion: for one written in a file the engine maps a body token to the macro's definition, which is no answer to this question.
+    pub(super) fn upmap_once(&self, file: MacroCallId, token: &SyntaxToken) -> Option<TextRange> {
+        let up = InMacroFile {
+            file_id: file,
+            value: token.clone(),
+        }
+        .upmap_once(self.loaded.db());
+        up.value.first().copied()
     }
 
     /// Where a node of an expansion is written in `file`, when it is written there (an argument of the macro call) and not made by the macro's body. The
@@ -571,16 +586,20 @@ mod tests {
                 "src/macros.rs:both!",
                 "src/macros.rs:nested!",
                 "src/macros.rs:statements!",
+                "src/macros.rs:wrap!",
+                "src/macros.rs:wrap_argument!",
+                "src/macros.rs:nest_wrap!",
+                "src/macros.rs:make_function!",
                 "src/passed.rs:Build",
                 "src/passed.rs:make_function!",
                 "src/shapes.rs:Alias",
                 "src/shared.rs:from_elsewhere!",
             ],
-            "the five traits, the inline module, the eight macros, the type alias"
+            "the five traits, the inline module, the twelve macros, the type alias"
         );
-        // every other def: 18 in lib.rs, 8 in constructions.rs, 16 in shapes.rs, 28 in calls.rs, 30 in dispatch.rs, 10 in macros.rs, 11 in cfg_off.rs, 19 in passed.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
+        // every other def: 18 in lib.rs, 8 in constructions.rs, 16 in shapes.rs, 28 in calls.rs, 30 in dispatch.rs, 19 in macros.rs, 11 in cfg_off.rs, 19 in passed.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
         // byte-order mark
-        assert_eq!(joined, 150);
+        assert_eq!(joined, 159);
     }
 
     /// What `entry` answers `None` to, besides a def a `cfg` turns off (the join test): no file, a file no module reaches, a kind that cannot start a

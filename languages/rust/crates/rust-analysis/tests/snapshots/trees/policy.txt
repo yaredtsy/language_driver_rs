@@ -343,3 +343,58 @@ breakdown:
   contexts 2, bodies walked 2, summaries reused 0
   cuts: none
 
+=== src/macros.rs project_macro_around_external
+project_macro_around_external
+  g
+
+breakdown:
+  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/macros.rs argument_through_external
+argument_through_external
+  g
+
+breakdown:
+  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/macros.rs two_project_levels
+two_project_levels
+  g
+
+breakdown:
+  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/macros.rs unknown_in_unknown
+unknown_in_unknown
+  g
+
+breakdown:
+  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  macro calls not expanded (their arguments are lost): 1
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts: none
+
+=== src/macros.rs derived_methods
+derived_methods
+
+breakdown:
+  edges: 0 call, 0 construct, 2 external, 0 unresolved
+  calls to a def a macro or a derive made, not entered: 2
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+
+=== src/macros.rs calls_made_functions
+calls_made_functions
+
+breakdown:
+  edges: 0 call, 0 construct, 2 external, 0 unresolved
+  calls to a def a macro or a derive made, not entered: 2
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts: none
+

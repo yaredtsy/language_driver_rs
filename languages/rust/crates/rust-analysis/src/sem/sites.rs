@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use analyzer_core::graph::Site;
 use analyzer_core::text::Span;
-use ra_ap_hir::Macro;
+use ra_ap_hir::{Macro, MacroCallId};
 use ra_ap_syntax::{AstNode, SyntaxNode, TextRange, WalkEvent, ast};
 
 use super::bridge::{Func, Sem};
@@ -103,13 +103,21 @@ const MAX_MACRO_DEPTH: usize = 128;
 /// The macro call whose expansion the walk is in: the innermost one decides `MacroBody` (§3).
 #[derive(Clone, Copy)]
 struct Expansion {
-    /// The macro is the project's own (RS3 §4): its body is walked, and a call from it with no place in the file is a `MacroBody` site.
-    project: bool,
     /// Where the macro call is written in the file, relative to the def: the path of the outermost call, or of the nearest one that has a place in the file.
     at: Site,
     depth: usize,
     /// The macro call, or one it is in the expansion of, is under a `#[cfg]` of the body: the code may be turned off.
     cfg: bool,
+}
+
+/// One macro call the walk is inside, outermost first: what the walk needs to say whose text a call is.
+struct Level {
+    /// Which expansion this is; `None` when the engine does not say (nothing is then mapped through it).
+    file: Option<MacroCallId>,
+    /// The expansion's root: the tree the next level's call is written in.
+    tree: SyntaxNode,
+    project: bool,
+    at: Site,
 }
 
 struct Walk<'a, 'p> {
@@ -120,6 +128,8 @@ struct Walk<'a, 'p> {
     file: u32,
     list: Vec<RawSite>,
     macro_not_expanded: u32,
+    /// The macro calls the walk is inside, outermost first.
+    levels: Vec<Level>,
     /// Closures and `async` blocks met so far, in source order.
     closures: u32,
 }
@@ -145,6 +155,7 @@ impl<'p> Sem<'p> {
             file: func.file(),
             list: Vec::new(),
             macro_not_expanded: 0,
+            levels: Vec::new(),
             closures: 0,
         };
         if let Some(body) = self.body_of(func) {
@@ -217,7 +228,7 @@ impl Walk<'_, '_> {
         let expanded = (depth <= MAX_MACRO_DEPTH)
             .then(|| self.sem.expand(call))
             .flatten();
-        let Some(expanded) = expanded else {
+        let Some((expanded, file)) = expanded else {
             // The engine gives no expansion both for a macro it cannot expand and for one in a statement a `cfg` turns off (the inner `format_args_nl!` of a
             // disabled `println!`), and does not say which. Under a `#[cfg]` of the body it is the second, far more often: not counted. Anywhere else it
             // is a loss, counted.
@@ -239,16 +250,44 @@ impl Walk<'_, '_> {
             (None, None) => Site::at(0),
         };
         let project = self.sem.macro_of(call).is_some_and(|m| self.is_project(m));
-        self.node(
-            &expanded,
-            Some(Expansion {
-                project,
-                at,
-                depth,
-                cfg,
-            }),
-            enclosing,
-        );
+        self.levels.push(Level {
+            file,
+            tree: expanded.clone(),
+            project,
+            at,
+        });
+        self.node(&expanded, Some(Expansion { at, depth, cfg }), enclosing);
+        self.levels.pop();
+    }
+
+    /// Where a call that has no place in the file is made: at the macro call whose **text** it is, when that macro is the project's (D30), else nowhere.
+    ///
+    /// The innermost macro call is not always the one whose text the call is. In `macro_rules! wrap { () => { vec![g()] } }` the `g()` is in the arguments of
+    /// `vec!`, which is external, and is written in `wrap`'s body. So the token is mapped up, one expansion at a time, while it came from the arguments of
+    /// the macro call that holds it (`Sem::upmap_once`); the macro whose body it is in is the one that decides. In the innermost call's own body (a
+    /// `println!`'s `_print`) the mapping finds nothing and that call decides, as it did before.
+    fn body_owner(&self, written: &SyntaxNode) -> Option<Site> {
+        let mut token = written.last_token()?;
+        let mut depth = self.levels.len();
+        // one level is a call written in the file: there a body token maps to the macro's definition, and the engine has already said it has no place in the
+        // file (`original_range`), so the question is only whose body it is
+        while depth >= 2 {
+            let Some(file) = self.levels[depth - 1].file else {
+                break;
+            };
+            let Some(range) = self.sem.upmap_once(file, &token) else {
+                break;
+            };
+            // written in the arguments of that call, so it is the text of the macro one level out
+            let parent = &self.levels[depth - 2].tree;
+            let Some(up) = parent.covering_element(range).into_token() else {
+                break;
+            };
+            token = up;
+            depth -= 1;
+        }
+        let owner = self.levels.get(depth.checked_sub(1)?)?;
+        owner.project.then_some(owner.at)
     }
 
     /// The expression kinds that are sites.
@@ -303,16 +342,19 @@ impl Walk<'_, '_> {
         }
         let (kind, span) = match expansion {
             None => (kind, self.relative(span_of(written.text_range()))),
-            Some(expansion) => match self
+            Some(_) => match self
                 .sem
                 .original_range(&written, self.file)
                 .and_then(|range| self.within_def(range))
             {
                 // written in the file: an argument of the macro call
                 Some(range) => (kind, self.relative(range)),
-                // made by the macro's own body: a site only when the macro is the project's (D30), and then at the macro call
-                None if expansion.project => (SiteKind::MacroBody, expansion.at),
-                None => return,
+                // made by a macro's own body: a site only when that macro is the project's (D30), and then at the macro call. Which macro's body it is is
+                // not always the innermost one (`body_owner`)
+                None => match self.body_owner(&written) {
+                    Some(at) => (SiteKind::MacroBody, at),
+                    None => return,
+                },
             },
         };
         self.list.push(RawSite {
@@ -562,8 +604,26 @@ mod tests {
             let (written, _) = site_texts(sem, &root, file, "macro_from_another_module");
             assert_eq!(written, ["from_elsewhere", "helper"]);
             let func = sem.entry(file, "macro_from_another_module", 0).unwrap();
-            let kinds: Vec<_> = sem.sites(func).list.iter().map(RawSite::kind).collect();
-            assert_eq!(kinds, [SiteKind::MacroBody, SiteKind::Call]);
+            let elsewhere: Vec<_> = sem.sites(func).list.iter().map(RawSite::kind).collect();
+            assert_eq!(elsewhere, [SiteKind::MacroBody, SiteKind::Call]);
+            // the text of a project macro handed to an external one: `vec![g()]` is in `wrap`'s body, so the site is at `wrap!` and not dropped with `vec!`
+            assert_eq!(texts("project_macro_around_external").0, ["wrap"]);
+            assert_eq!(
+                kinds("project_macro_around_external"),
+                [SiteKind::MacroBody]
+            );
+            // two project levels around the external one: the macro call written in the file, `nest_wrap!`
+            assert_eq!(texts("two_project_levels").0, ["nest_wrap"]);
+            assert_eq!(kinds("two_project_levels"), [SiteKind::MacroBody]);
+            // the same call written by the user, in the arguments of a project macro that hands it to `vec!`: where it is written
+            assert_eq!(texts("argument_through_external").0, ["g"]);
+            assert_eq!(kinds("argument_through_external"), [SiteKind::Call]);
+            // what the engine cannot expand: the arguments give no site (`f()` is lost), and the macro is counted once, not once more for the call in it
+            assert_eq!(texts("unknown_around_a_call"), (vec![], 1));
+            // an unknown macro in an unknown macro: the outer is not expanded, so the inner is never met: one
+            assert_eq!(texts("unknown_in_unknown"), (vec!["g".to_owned()], 1));
+            // an unknown macro in the arguments of one that expands: met in the expansion, once
+            assert_eq!(texts("unknown_in_known"), (vec![], 1));
             // what the engine cannot expand is counted, and what was in its arguments is lost
             assert_eq!(texts("not_expanded"), (vec!["g".to_owned()], 1));
         });

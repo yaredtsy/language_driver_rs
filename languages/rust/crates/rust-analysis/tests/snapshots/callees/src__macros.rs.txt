@@ -16,3 +16,17 @@ statements_in_a_body
   Call "f" -> Def src/macros.rs:f
 not_expanded
   Call "g" -> Def src/macros.rs:g
+project_macro_around_external
+  MacroBody "wrap" -> Def src/macros.rs:g
+argument_through_external
+  Call "g" -> Def src/macros.rs:g
+two_project_levels
+  MacroBody "nest_wrap" -> Def src/macros.rs:g
+unknown_in_unknown
+  Call "g" -> Def src/macros.rs:g
+derived_methods
+  Call "Plain::default" -> External policy macros::<Plain as Default>::default (OtherCrate)
+  MethodCall "clone" -> External policy macros::<Plain as Clone>::clone (OtherCrate)
+calls_made_functions
+  Call "by_macro" -> External policy macros::by_macro (MacroFile)
+  Call "by_macro" -> External policy macros::by_macro (MacroFile)

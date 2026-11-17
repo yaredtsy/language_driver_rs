@@ -69,3 +69,74 @@ pub fn not_expanded() {
     unknown_macro!(f());
     g();
 }
+
+macro_rules! wrap {
+    () => {
+        vec![g()]
+    };
+}
+
+macro_rules! wrap_argument {
+    ($e:expr) => {
+        vec![$e]
+    };
+}
+
+macro_rules! nest_wrap {
+    () => {
+        wrap!()
+    };
+}
+
+macro_rules! make_function {
+    ($name:ident) => {
+        pub fn $name() {}
+    };
+}
+
+make_function!(by_macro);
+
+/// `g()` is written in the body of a project macro, as an argument of an external one: the text of `wrap`, not of `vec!`, so a site at `wrap!`.
+pub fn project_macro_around_external() {
+    let _v = wrap!();
+}
+
+/// The same call written by the user, in the arguments of a project macro that hands it to `vec!`: a call where it is written.
+pub fn argument_through_external() {
+    let _v = wrap_argument!(g());
+}
+
+/// Two project levels and an external one: the macro whose text it is is `wrap`, written in `nest_wrap`'s body: the outermost call written in the file.
+pub fn two_project_levels() {
+    let _v = nest_wrap!();
+}
+
+/// Arguments of a macro the engine cannot expand give no site, and the macro is counted once, not once for the call inside and once for it.
+pub fn unknown_around_a_call() {
+    unknown_macro!(f());
+}
+
+pub fn unknown_in_unknown() {
+    unknown_macro!(other_unknown!(f()));
+    g();
+}
+
+/// An unknown macro in the arguments of one that expands: the expansion holds it, it cannot be expanded, and it is counted once.
+pub fn unknown_in_known() {
+    let _v = vec![unknown_macro!(f())];
+}
+
+#[derive(Default, Clone)]
+pub struct Plain;
+
+/// A built-in derive's methods have no source of their own: `External`, named by the type, counted `macro_generated_target`.
+pub fn derived_methods() {
+    let plain = Plain::default();
+    let _copy = plain.clone();
+}
+
+/// A function a project macro made is `External` and counted `macro_generated_target` once per call.
+pub fn calls_made_functions() {
+    by_macro();
+    by_macro();
+}

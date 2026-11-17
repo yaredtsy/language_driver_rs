@@ -20,3 +20,23 @@ statements_in_a_body
 not_expanded
   Call 53..54 "g"
   macro_not_expanded 1
+project_macro_around_external
+  MacroBody 199..203 "wrap"
+argument_through_external
+  Call 193..194 "g"
+two_project_levels
+  MacroBody 196..205 "nest_wrap"
+unknown_around_a_call
+  macro_not_expanded 1
+unknown_in_unknown
+  Call 75..76 "g"
+  macro_not_expanded 1
+unknown_in_known
+  macro_not_expanded 1
+Plain
+derived_methods
+  Call 169..183 "Plain::default"
+  MethodCall 209..214 "clone"
+calls_made_functions
+  Call 138..146 "by_macro"
+  Call 154..162 "by_macro"
