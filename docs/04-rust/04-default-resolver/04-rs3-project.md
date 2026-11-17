@@ -96,7 +96,8 @@ and holds five workspaces (`core/`, one per language). So, as TypeScript finds t
   when proc macros were asked for), and step 5 turns its message into a warning.
 - `environment_inputs()`: the five globs, `**/build.rs` when the build ran, then the exact files no glob covers: the manifests of the local
   packages, the workspace's root manifest and its lock, when outside the root, spelled as the engine spells them (absolute, `/`), as
-  TypeScript's `config_files` are. Copied into `Stats.language` from RS4 on.
+  TypeScript's `config_files` are. **Not** copied into `Stats.language` (corrected 2026-11-17: it holds counts, and these are strings;
+  TypeScript does not copy its `config_files` either). `skipped()` is copied (RS4 §2).
 
 ## 4. What is project code
 

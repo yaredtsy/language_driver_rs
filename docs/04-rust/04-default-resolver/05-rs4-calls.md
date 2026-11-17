@@ -15,21 +15,36 @@ RS4
 
 Read [`../02-architecture.md`](../02-architecture.md) first: §5 and §6 there are why this phase has the shape it has.
 
+**Checked against RS3 as built (2026-11-17, reviewer, at `98770af`).** This file was written on 2026-11-12, before RS0 and RS3. What changed:
+the `sem/` layout is the built one (§7: `origin.rs` holds `Owner` and is extended, not replaced by `bridge.rs`); a call by path asks
+`resolve_path` first and the callable type second (§4, ENGINE.md "Rung 3" point 3); a record asks `resolve_variant`; the bridge has three
+ways a def of a local crate is still `External`, each counted (§5); a def's id follows D34; the external name is settled (§5, §6); every
+`warning_<code>` and the load's `skipped()` go into `Stats.language` (§2); what rungs 3 and 4 (no `std`) do to the tree (§6, §8);
+the solver is called with `Start` and a `Budget`, as TypeScript's is (§1, §2); built-in derives expand without the proc-macro server (§6);
+a call from an external macro's body that a project macro uses is still not entered (§3).
+
 ## 1. The public function
 
 ```rust
-// rust-analysis/src/lib.rs — the same shape as typescript-analysis
+// rust-analysis/src/calls.rs, re-exported by name from lib.rs — the same shape as typescript-analysis
 pub fn call_graph(project: &Project, file: &str, entry: &Entry<'_>, opts: &Options, cancel: &Cancel) -> Option<Graph>;
+pub(crate) fn graph_within(project: &Project, file: &str, entry: &Entry<'_>, opts: &Options, budget: &Budget, cancel: &Cancel) -> Option<Graph>;
 
 #[non_exhaustive]
-pub struct Options { pub marker: MarkerStyle<'static>, pub limits: Limits }
+pub struct Options { pub marker: MarkerStyle<'static>, pub limits: Limits }   // + `Options::new(marker)`, as TypeScript
 
 pub fn breakdown(graph: &Graph) -> Breakdown;        // why edges are unresolved, and what is open; `Display` prints it
 ```
 
-`None`: no such file, no def with that (qualname, occurrence), or a def that cannot be an entry (a trait, a module, a type alias, a
-macro). A struct or an enum **can** be an entry: its root is `Root::Construct` with no `init`, a childless node, drawn exactly as when it
-is a callee (D20 point 4). The tree and the wire are core's views of the graph (rule 7), re-exported.
+`call_graph` is `graph_within` with `Budget::default()`, as in TypeScript (`typescript-analysis/src/calls.rs`), so RS5's session cannot
+drift from it. `file` is relative to the root, as `Project::files()` lists it.
+
+`None`: no such file, a file that is not in `Project::files()` (in no crate's module tree, RS3 §2), no def with that (qualname, occurrence),
+a def the engine has no def for (in `#[cfg]`-disabled code), or a def that cannot be an entry (a trait, a module, a type alias, a macro, an
+impl). A struct, a union or an enum **can** be an entry: the solver starts from `Start::Construct { class, init: None }` (core's
+`solve::Start`, as TypeScript's `start_of`), and the graph's root is `Root::Construct` with no `init`, a childless node, drawn exactly as
+when it is a callee (D20 point 4, D25 point 1). Rust has no constructor function, so `init` is always `None`. The tree and the wire are
+core's views of the graph (rule 7), re-exported.
 
 ## 2. The pipeline
 
@@ -37,18 +52,37 @@ is a callee (D20 point 4). The tree and the wire are core's views of the graph (
 entry (file, qualname, occurrence)
    │ sem::entry                         the outline's def → the engine's def (the bridge of §5, backwards)
    ▼
-Solver<Rust>::graph(&[(func, Key)])     core's flat solver. `Key` is `()`
-   │ for each context:  Lang::walk
+sem::attached(&project, |sem| …)        one `hir::attach_db` around the whole request: every engine call, and the `Semantics`, live inside it
+   ▼
+Solver<Rust>::graph_within(&[Start], budget, cancel)   core's flat solver. `Key` is `()`. `Start::Call(func, ())` or `Start::Construct`
+   │ for each context:  Lang::walk(f, key, cancel)
    ▼
 walk::body(f, &Env)
    │ A  sem.sites(f)                    the list of RawSite, cached
    │ B  resolve(f, site, &env)          for each, in order → Vec<Target>
    ▼
-Graph ── calls::finish ──▶ Stats.language: reasons, open_* counters, the load's `skipped`
+Graph ── calls::finish ──▶ Stats.language
    │
    ├── render → Node → to_text          the tree
    └── wire(graph, root, sources, opts) the output that is used (D17); merged on request
 ```
+
+`hir::attach_db` is not optional (S-RS2: a `hir` call outside it panics), and a `Semantics` made outside it is a bug. `origin.rs` attaches
+per call today (nesting is allowed: its tests call it inside their own `attach_db`); RS4 makes one `attach_db` per request and builds the
+`Sem` inside it, so the solver runs inside one closure. (A closure-scoped context, not a value you can store: this is why `Sem` is made and
+dropped inside `call_graph`, never kept in `Project`.)
+
+What `calls::finish` writes into `Stats.language` (a `BTreeMap<String, u64>`, so counts only, never a message):
+
+| Key | From |
+|---|---|
+| each `Unresolved` reason | the edges, as TypeScript's `finish` |
+| `open_*`, `macro_not_expanded`, `external_passed`, `constructor_passed`, `macro_generated_target`, `outside_root`, `duplicate_marker` | the notes of the walk and the bridge (§3–§5), absent when 0 |
+| `build_scripts_skipped`, `proc_macros_skipped`, `layout_skipped` | `Project::skipped()`, as it is (RS3 §3, §6) |
+| `warning_<code>: 1` | each of `Project::warnings()` (D37): `warning_no_toolchain`, `warning_dependencies_missing`, … The message stays on the `Warning` |
+
+`Project::environment_inputs()` is strings, so it is **not** copied (RS3 §3 said it would be; corrected there). `Breakdown` reads the
+`warning_*` keys back and prints them first: a tree read at rung 3 says so at its top.
 
 ## 3. Step A: the sites of a body
 
@@ -57,6 +91,12 @@ their list is empty and they are leaves.
 
 `sem.sites(f)` walks the body's syntax **in source order**. With macros it walks the expansion in place of the macro call, so the order
 is the order the code runs in.
+
+Step A is not "syntax only" (as `../02-architecture.md` §5 first said): it expands macros and resolves the names of value paths, both
+engine questions. What it may ask is what **does not depend on the key**: the syntax, a macro's expansion, and name resolution of a path
+(`resolve_path`). Types are step B's. So a `Passed` site is made only when name resolution says the path is a function or a tuple
+constructor; a path to a local, a const, a static, a unit struct or variant is no site and no count (a variable read is not a call). A
+path through a type parameter (`.map(W::make)`) is a `Passed` site whose answer step B opens.
 
 | Syntax | Site? | `SiteKind` | Its span |
 |---|---|---|---|
@@ -81,6 +121,18 @@ How "written in the arguments" and "from the macro's body" are told apart (**ans
 file** (an argument of the macro; the range is exactly what was written). **`None` is a call from the macro's own body** (`println!`'s `_print`, `vec!`'s helpers, the
 `inner_call()` of a project `macro_rules!`): its site is the macro call's range, kind `MacroBody`. A call whose callee resolves through a function a `macro_rules!`
 generated has a callee `HasSource` in a macro file (External-like: no outline entry of ours).
+
+**Whose body a call comes from is the innermost macro call that made it.** The walk recurses one macro call at a time, so at each level it
+knows the macro (`Semantics::resolve_macro_call`) and its crate. A call with no original range is a `MacroBody` site only when the macro
+that expanded to it is a **project** macro (RS3 §4: its crate is `Local`, its `macro_rules!` written under the root). So in
+`macro_rules! log { ($e:expr) => { println!("{}", $e) } }` used as `log!(f())`, `f()` is a site where it is written, and `println!`'s own
+`_print` is not a site, although it sits inside a project macro's expansion (D30 point 1: an external macro's body is never entered).
+Fixture in step 7.
+
+At rungs 3 and 4 (no `std`, RS3 §6) `println!`, `vec!`, `format!`, `assert!` have no definition, so they do not expand: each is
+`macro_not_expanded`, and the calls written in their arguments are lost, counted, and explained by `warning_no_toolchain` (or
+`warning_cargo_failed`, `warning_no_manifest`, `warning_manifest_unreadable`). **[check]** in step 7: that an unexpanded macro call's
+arguments really give no site (the arguments are a token tree, not expressions) and that nothing is counted twice.
 
 The span is relative to the def's `range.start`, as core's `Site` wants. Two sites never share (start, end) and kind except `MacroBody`.
 
@@ -108,15 +160,24 @@ which key the callee is walked ([`../02-architecture.md`](../02-architecture.md)
 |---|---|---|---|
 | `MethodCall` | `resolve_method_call_fallback` → a function | `Def` if project code, else `External` | `Some(..)` when the function is a **trait's own item** and the receiver's type (after auto-deref) is a type parameter → `TypeParam`; `Self` in a trait → `SelfInTrait`; an `impl Trait` parameter → `ImplTrait`; an opaque return type → `Opaque`; `dyn` → `Dyn`. Else `None` |
 | | → a field, or nothing | `Unknown(unknown_method)` | `None` |
-| `Call` | the callee's type → `as_callable()` → `Function` | `Def` / `External` | as above, on the path's qualifier (`W::new()`) |
+| `Call`, callee a path | **first** `resolve_path_with_subst` on the path → `Function` | `Def` / `External` | as above, on the path's qualifier (`W::new()`) |
+| | → a struct (`Adt`), an enum variant (`Variant`) | `Construct(struct or enum)` / `External` | `None` |
+| | → `SelfType` (`Self(1, 2)`), a local, or nothing: go on to the callable type, below | | |
+| `Call`, any callee | `type_of_expr(callee)` → `as_callable()` → `Function` | `Def` / `External` | as above |
 | | → `TupleStruct`, `TupleEnumVariant` | `Construct(struct or enum)` / `External` | `None` |
 | | → `Closure` | `Unknown(function_typed_value)` | `Closure` |
 | | → `FnPtr` | `Unknown(function_typed_value)` | `FnPointer` |
-| | → `FnImpl` (a value whose type is a parameter bounded by `Fn*`, or `impl Fn`) | `Unknown(function_typed_value)` | `FnParam` |
+| | → `FnImpl` (a value whose type is a parameter bounded by `Fn*`, `impl Fn`, `&dyn Fn`) | `Unknown(function_typed_value)` | `FnParam` |
 | | → nothing (the type is unknown or an error) | `Unknown(unknown_callee)` | `None` |
-| `Record` | the path → a struct, a union, an enum variant | `Construct` / `External` | `None` |
+| `Record` | `resolve_variant(RecordExpr)` → a struct, a union, an enum variant (`hir::Variant` covers all three, and answers `Self { .. }`) | `Construct` / `External` | `None` |
 | `Passed` | the path → a function | `Def` → a **passed** site (`SiteCalls::passed`). `External` → no edge, counted `external_passed`. A tuple struct or variant → no edge, counted `constructor_passed` (only a call into project code can be passed: D22) | as for `Call` |
 | `MacroBody` | as `Call` / `MethodCall` | the same | the same |
+
+**Why the path first** (S-RS2's rule, measured in RS3 step 7, ENGINE.md "Rung 3" point 3): `resolve_expr_as_callable` fails when the
+function's signature names a type the load does not know (`Option`, `String` without `std`), while name resolution does not need the
+signature. On rung 1 the path first lifts `core/`'s in-project edges from 826 to 881; on rung 3, `languages/rust/` loses 5% of its
+in-project edges path first and 22% callable first. It is also the more specific answer: `<JsonWriter as Make>::make()` is the impl's
+`make` by path and the trait's by type. The callable type is the fallback for what has no path (`(h.cb)(1)`) or whose path names a value.
 
 Three rules about this table:
 
@@ -129,30 +190,57 @@ Three rules about this table:
 
 `Why` (the reason of an `Unresolved` edge, and its counter): `function_typed_value` (D16), `unknown_callee`, `unknown_method`,
 `def_without_node`, `def_not_in_outline` (§5). The `open_*` counters and `macro_not_expanded`, `external_passed`,
-`constructor_passed`, `macro_generated_target` are **notes**: counted in `Stats.language`, printed by `Breakdown`, never an edge's reason.
+`constructor_passed`, `macro_generated_target`, `outside_root`, `duplicate_marker` are **notes**: counted in `Stats.language`, printed by
+`Breakdown`, never an edge's reason.
 
 ## 5. The bridge
 
-The graph names a def the way the outline does (D20). So every engine def that becomes a `Func` goes through one function:
+The graph names a def the way the outline does (D20). So every engine def that becomes a `Func` goes through one function. Its first
+half is built: `sem/origin.rs`, `Loaded::owner_of_function → Owner::{Project { file }, External { package, name }}` (RS3 step 3, RS3 §4).
+RS4 extends it, in that file, to the other kinds a `Func` or a construction names (a `Const`, a `Static`, an `Adt`, a `Variant`, whose
+owner is its enum's) and to the name range; `bridge.rs` is the second half.
 
 ```
-hir def ──HasSource──▶ (file, name range)
-   │  the file is a macro expansion           → not a def of the text: External { package: <its crate>, name: <its path> }, counted `macro_generated_target`
-   │  not project code (RS3 §4)               → External
+hir def ──origin.rs──▶ Owner
+   │  External                                → External { package, name } (the name format below)
+   │  Project { file, name range }
    ▼
 sem.outline(file)   rust-syntax's outline of that file, computed once per request and cached
    │  the def whose `name_range` is that range
    │  none (the two parses disagree)          → Unknown(def_not_in_outline): a bug that must show on the graph, not hide
    ▼
-DefInfo { id: StableDef (the marker, or the path form), qualname, occurrence, kind, file, range }
+DefInfo { id: StableDef (the marker, or the path form; D34), qualname, occurrence, kind, file, range }
 ```
 
-`Lang::describe(f)` is this, memoized. It answers for functions **and** for structs and enums: the solver calls it for the `class` of
-every construction and writes the row of `Graph::defs` (D13). For `Enum::Variant(a)` the class is the **enum** (a variant is not a def).
+**A def of a local crate can still be `External`, three ways**, and each is counted, because each is a body we could have walked and did
+not (rule 8). `Owner` today folds them into `External`; RS4 gives the bridge a way to tell them apart (a field or a variant: the coding
+session's choice, crate-private):
+
+| The def's source | Example | Edge | Counted |
+|---|---|---|---|
+| in a macro file (`file_id()` is `None`) | `make!(generated)` of a project `macro_rules!`; an `include!` of build-script output | `External { package: <its crate> }` | `macro_generated_target` |
+| in a file of **another** crate | a built-in derive: `#[derive(Default)]`'s `default` has the trait's declaration in `core` as its source (S-RS2) | `External { package: <the type's crate> }` | `macro_generated_target`. **[check]** in step 7: what `owner_of_function` gives for it (the `module` of a derived impl's method) |
+| in a file of its own crate, outside the root | a path dependency or workspace member above or beside the root (RS3 §2, as D33) | `External { package: <its crate> }` | `outside_root`, as TypeScript's |
+
+**The external name** (provisional in RS3 §4, settled here): `package` is the crate's display name, and `name` is the path **from the
+crate's root, without the crate's own name**: `External { package: "alloc", name: "string::String::len" }`. Today `origin.rs` puts the
+crate in both (`name: "alloc::string::String::len"`), and core's `render` draws an external as `"{package}.{name}"`, so the tree and the
+wire would show `alloc.alloc::string::String::len`. Without the repeat it is `alloc.string::String::len`, the same split as Python
+(`package` the module, `name` the qualname) and TypeScript (`react` · `useState`). The crate is the **defining** one, as the engine says
+(`alloc`, not `std`, for `String`: D7). The name is not stored in users' files, so it may still change; the joiner `.` is core's and is
+not changed for one language.
+
+`Lang::describe(f)` is this, memoized. It answers for functions **and** for structs, unions and enums: the solver calls it for the `class`
+of every construction and writes the row of `Graph::defs` (D13). For `Enum::Variant(a)` the class is the **enum** (a variant is not a def).
 A `Func` is only ever made by the bridge, so a `Func` always has a row: `check_invariants` cannot find a missing one.
 
+**The id follows D34**, as TypeScript's `describe` does (TS5 D1, `c30e969`): the marker is read with `Options::marker` (RS2's reader);
+when an earlier def **of the same file** has the same marker, this def's id is the path form and it is counted `duplicate_marker`. The
+outline of the file is cached anyway, so the check costs nothing.
+
 `sem::entry(file, qualname, occurrence)` is the same bridge backwards: the outline's def → its name range → the engine's def at that
-range (`Semantics::to_def` on the node there).
+range (`Semantics::to_def` on the node there). `None` when the file is not in `files()` or the def is in code a `cfg` turns off (the
+engine has no def there).
 
 A function that a macro generated is `External`, named, not entered: there is no place in the text to attach a doc or a marker to
 ([`../01`](../01-what-rust-analyzer-gives.md) §5b). What it calls is not in the tree; `macro_generated_target` counts how often that
@@ -170,7 +258,8 @@ This becomes `languages/rust/docs/policy.md`, with the name of each row's fixtur
 | a method on the result of `-> impl Trait` | **the engine's answer, the impl's method**: it sees through a return-position `impl Trait` to the hidden type (S-RS2, `ENGINE.md`), so `make().write()` is `<Json as Writer>::write` in layer 1 already (D7). Only where the engine still answers the trait's declaration (expected: a hidden type that depends on the function's own type parameters, `fn make<W: Writer + Default>() -> impl Writer`; **[check]** in step 5) is it the declaration, counted `open_opaque` | RC4 §2, only for what `open_opaque` still counts |
 | `Foo::new()` | a call to the function. Rust has no constructors |  |
 | `Foo { a, b }`, `Foo(a, b)`, `Enum::Variant(a)`, `Self { .. }` | `Construct { class, init: None }`; the class of a variant is its enum | |
-| `Some(x)`, `Ok(x)`, `String::from(..)` | `External` (`core`, `alloc`, `std`). D30: kept as edges; their share of all edges is **[measure]**d in step 9, and a large share reopens the question with the number | |
+| `Some(x)`, `Ok(x)`, `String::from(..)` | `External` (`core`, `alloc`, `std`). D30: kept as edges; their share of all edges is **[measure]**d in step 9 on a rung-1 load, and a large share reopens the question with the number | |
+| no `std` (rungs 3 and 4; `NoStdSource` on rung 1) | `Some(x)`, `String::new()` have no def: `Unresolved(unknown_callee)`; a method on a `std`-typed receiver `Unresolved(unknown_method)`; `std`'s macros `macro_not_expanded` (§3). No new reason: `warning_<code>` in the same `Stats` says why. Calls by path and methods on project types still resolve (ENGINE.md "Rung 3") | |
 | a closure | not a def. Its calls are the enclosing def's, where they are written | RC2 (in part) |
 | calling a closure value, a `fn` pointer, a parameter bounded by `Fn*` | `Unresolved(function_typed_value)`; counted `open_closure` / `open_fn_pointer` / `open_fn_param` | RC2, RC3–RC5 |
 | a function named as a value | a **passed** edge to it, at the name (D22) | |
@@ -179,34 +268,45 @@ This becomes `languages/rust/docs/policy.md`, with the name of each row's fixtur
 | a call written in a macro's arguments | a site, where it is written | |
 | a call from the body of a project macro | a site at the macro call | |
 | the body of an external macro | not entered; the macro is not a node | |
-| a call to a function a macro generated | `External`, named; counted | |
-| derives and attribute macros | not expanded by default (RS3 §3); counted | `LoadOptions` |
+| a call to a function a macro generated | `External`, named; counted `macro_generated_target` (§5) | |
+| built-in derives (`Clone`, `Debug`, `Default`, `PartialEq`, …) | expanded by the engine itself, with no proc-macro server: `x.clone()` on a `#[derive(Clone)]` project type resolves to a method with no source of its own, so `External`, named by the type's crate, counted `macro_generated_target` (§5) | |
+| derives and attribute macros from a proc-macro crate | not expanded by default (RS3 §3); counted `proc_macros_skipped` | `LoadOptions` |
+| a call into a local crate outside the root | `External`, named by its crate; counted `outside_root` (§5, RS3 §2) | |
 | `#[test]` functions, `#[cfg(test)]` modules | ordinary defs when the engine has them. Hiding them is the driver's choice | |
 | generics | one context for the generic function | RC1 |
 | branches, loops, `match`, `if let`, `let else` | every call in the body is a site, once | |
 | recursion | shown, not entered (rule 8 of the tree) | |
 | aliases: `use a::f as g`, `pub use`, a type alias in a path (`type A = S; A::new()`) | followed to the real def. The edge names the def, never the alias | |
 | project code | RS3 §4 | |
-| external | `External { package: <crate name>, name: <path from the crate root> }` | |
+| external | `External { package: <crate name>, name: <path from the crate root, the crate left out> }`: `alloc` · `string::String::len` (§5) | |
 
 ## 7. The crate, file by file
 
 ```
 rust-analysis/src/
-├── lib.rs       Project, call_graph, Options, Breakdown, re-exports. Names only
+├── lib.rs       module list and re-exports by name only (as built: Project, LoadOptions, OpenError, Warning, Why; RS4 adds call_graph, Options, Breakdown, breakdown)
+├── project.rs   RS3: Project, LoadOptions, OpenError                      (built)
+├── warning.rs   RS3: Warning, Why, collect                                 (built)
+├── paths.rs     RS3: engine-text paths, root-relative                      (built)
+├── manifest.rs  RS3: the Cargo.toml reader of rung 3                       (built)
+├── toolchain.rs RS3: cargo --version, rustup, substitution                 (built)
 ├── sem/         the engine, the only module that names it (D35)
-│   ├── mod.rs       Sem, Func, RawSite, SiteKind, Callee, Found, Open, Why: the whole surface the rest of the crate sees
-│   ├── load.rs      RS3
-│   ├── bridge.rs    §5: describe, entry, project code, the outline cache
+│   ├── mod.rs       exports by name: Loaded, Rung, load (built); RS4 adds Sem, Func, RawSite, SiteKind, Callee, Found, Open, Why, attached
+│   ├── load.rs      RS3                                                    (built)
+│   ├── origin.rs    Owner, owner_of_function (built); RS4 extends it (§5)
+│   ├── bridge.rs    §5: describe, entry, the outline cache, D34
 │   ├── sites.rs     §3: step A
 │   └── resolve.rs   §4: step B
-├── walk.rs      body(): the loop; resolve(); resolve_from_env() (returns None); target()
+├── walk.rs      body(): the loop; resolve(); resolve_from_env() (returns None); callee_key(); target()
 ├── env.rs       pub(crate) struct Env;
 ├── key.rs       pub(crate) type Key = ();
-└── calls.rs     struct Rust<'p>; impl Lang (BASIS = Type, Func, Key, describe, digest → zeros, walk); call_graph; finish; Breakdown
+└── calls.rs     struct Rust<'p>; impl Lang (BASIS = Type, Func, Key, describe, digest → zeros, walk); call_graph; graph_within; start_of; finish; Breakdown
 ```
 
-`walk.rs`, `env.rs`, `key.rs`, `calls.rs` import nothing from `ra_ap_*`. `scripts/check-all.sh` checks it.
+`Why` in `sem/mod.rs` is the unresolved reason; the crate already exports a `Why` (`warning::Why`, why a toolchain was substituted). The
+two never meet outside the crate, but one of them is renamed when RS4 adds the first (the sem one, say `Unknown`): two `Why` in one
+crate is a trap for a reader. Everything outside `sem/` imports nothing from `ra_ap_*`: rule 4, which `scripts/check-all.sh` checks for
+the whole crate.
 
 ## 8. Tests
 
@@ -214,10 +314,11 @@ rust-analysis/src/
 |---|---|
 | **the policy workspace** | `tests/fixtures/policy/`: one Cargo package, one module per row of §3, §4 and §6, loaded **once**. For each row: an entry, and its tree and `Breakdown` as a reviewed snapshot file |
 | **the context workspace** | `tests/fixtures/context/`: the programs layer 2 is about (a generic called from two callers, a callback, a `dyn` in a local, a `dyn` parameter, a factory, a struct holding a `Box<dyn …>`, a recursive generic), written **now**, with their layer-1 trees and their `open_*` counts as snapshots. Each RC phase changes some of these snapshots on purpose; none writes a new program under pressure |
-| **scenarios** | a `rust/` Cargo package in every folder of `scenarios/`; `analyzer_testkit::scenarios::run(&RUST, Level::Default)`. Rust's names differ from the shared trees (`Counter::bump`, not `Counter.bump`), so the testkit looks for a per-language tree file (`expected.default.rust.tree`) before the shared one, only where names differ (D30) |
-| **the oracle** | for every function of both workspaces: every range `ide::Analysis::outgoing_calls` reports is a site of ours with the same target, except ranges inside nested items (§3). The engine's call hierarchy is the definition of "follow the engine" (D7); this test is that sentence, executable |
+| **scenarios** | a `rust/` Cargo package in every folder of `scenarios/`; `analyzer_testkit::scenarios::run(&RUST, Level::Default)`. Rust's names differ from the shared trees (`Counter::bump`, not `Counter.bump`), so the testkit looks for a per-language tree file (`expected.default.rust.tree`) before the shared one, only where names differ (D30). **Loaded once, as one workspace** (ENGINE.md, S-RS2 "Scenario cost": 3 s for all against 3 s each): the harness copies the `rust/` folders into a temporary folder with a generated `[workspace]` manifest, under the test's `target/` copy helper (`tests/common`) |
+| **the oracle** | for every function of both workspaces: every range `ide::Analysis::outgoing_calls` reports is a site of ours with the same target, except ranges inside nested items (§3). The engine's call hierarchy is the definition of "follow the engine" (D7); this test is that sentence, executable. Needs `ra_ap_ide` as a dev-dependency (not yet in `Cargo.toml`; about 2.5 min of cold build, ENGINE.md S-RS1), and a `cargo tree` check that it stays dev-only |
 | invariants and determinism | `analyzer_testkit::graph::check_invariants` on every graph; `assert_deterministic` on three |
-| the join | every def the outline lists in both workspaces is found by `sem::entry`, and `describe` of it gives the same (file, qualname, occurrence) back. The TypeScript join test (48 files, 334 defs) is the model |
+| the join | every def the outline lists in both workspaces is found by `sem::entry`, and `describe` of it gives the same (file, qualname, occurrence) back. The TypeScript join test (48 files, 334 defs) is the model. Stated exceptions, each listed in the test: kinds that cannot be an entry (§1), and defs in `#[cfg]`-disabled code (the fixture has one, `#[cfg(any())]`) |
+| **no `std`** | the policy workspace's plain-call and project-method rows at rung 3 (a worker with no `cargo` on `PATH`, as RS3's `worker_without_cargo`): the project edges are the same as at rung 1, `std` calls are `Unresolved`, `warning_no_toolchain: 1` and `macro_not_expanded` are in `Stats.language`. A lone file (rung 4): one entry, `warning_no_manifest: 1` |
 | a real project | this repo's `core/`: every def an entry; no panic; the `Breakdown` of the whole, written into `ENGINE.md` with the date. These are the first real `open_*` numbers |
 | the wire | one policy entry through `wire` unmerged and merged, as a snapshot; `WIRE_FORMAT_VERSION` asserted |
 
@@ -225,15 +326,15 @@ rust-analysis/src/
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | the bridge: `sem::entry`, `describe`, the outline cache | the join test |
+| 1 | the bridge: `origin.rs` extended (const, static, ADT, variant; the name range; the three `External` causes of §5; the name without the crate), `bridge.rs` (`sem::entry`, `describe` with D34, the outline cache), one `attach_db` per request | the join test; `origin.rs`'s owner tests updated to the new name |
 | 2 | step A for plain calls, method calls, records; nested items skipped; closures tagged | a snapshot of the **site list** per policy module (no targets yet) |
-| 3 | step B for those; `Callee`, `Open`, `Why`; `walk.rs`, `env.rs`, `key.rs` in final form | `sem`-level snapshots: site → `Found` + `open` |
-| 4 | `calls.rs`: `impl Lang`, `call_graph`, `finish`, `Breakdown`; `rust-cli calls` | the first trees; invariants; determinism |
-| 5 | constructions and `describe` for types; a struct as an entry | the construction fixtures, with a marked struct, tuple struct and enum shown by name |
-| 6 | passed sites (D22) | fixtures: named, as a method path, a constructor (counted, no edge) |
-| 7 | macros: arguments, project macro bodies, external bodies, unexpanded, generated targets | fixtures; the counters |
+| 3 | step B for those, path first (§4); `Callee`, `Open`, `Why`; `walk.rs`, `env.rs`, `key.rs` in final form | `sem`-level snapshots: site → `Found` + `open` |
+| 4 | `calls.rs`: `impl Lang`, `call_graph` over `graph_within`, `finish` (the `Stats.language` table of §2, `skipped()` and `warning_*` included), `Breakdown`; `rust-cli calls` | the first trees; invariants; determinism; a graph of a load with a warning has its `warning_<code>` |
+| 5 | constructions and `describe` for types; a struct as an entry (`Start::Construct`) | the construction fixtures, with a marked struct, tuple struct and enum shown by name |
+| 6 | passed sites (D22) | fixtures: named, as a method path, a constructor (counted, no edge), a local (no site) |
+| 7 | macros: arguments, project macro bodies, external bodies, an external macro inside a project one, unexpanded, generated targets, built-in derives | fixtures; the counters; the two [check]s of §3 and §5 |
 | 8 | the wire and `rust-cli calls --wire [--merged]` | the wire snapshot |
-| 9 | scenarios (per-language trees, D30), the oracle, the real project | all of §8 |
+| 9 | scenarios (per-language trees, D30, one shared workspace), the oracle, no `std`, the real project | all of §8 |
 | 10 | `languages/rust/docs/policy.md`, one fixture named per row; `ENGINE.md` | reviewed |
 | | **tag `rust-v0.2.0`** | |
 

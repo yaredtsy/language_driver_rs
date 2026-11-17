@@ -105,9 +105,12 @@ and converts. [S-RC1](05-context-layer/02-rc0-spikes.md) decides. The rule that 
 ## 5. A body is read in two steps
 
 ```
-step A   sem.sites(f)            → Arc<[RawSite]>     syntax only. Cached per Func. The same for every key.
+step A   sem.sites(f)            → Arc<[RawSite]>     nothing that depends on the key. Cached per Func. The same for every key.
 step B   walk::resolve(f, site, &env)  → Vec<Target>  one engine question per site. Depends on the key in layer 2.
 ```
+
+Step A is the syntax plus the engine questions whose answer is the same under every key: macro expansion and the name resolution of a
+path (RS4 §3; first written here as "syntax only", which macros already made false). Types are step B's.
 
 Layer 1 could do both in one pass. It does not, for three reasons that are all about layer 2:
 
