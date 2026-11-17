@@ -120,7 +120,7 @@ crate-private until RS4 calls it.
   `fixtures/owner/` covers `Local` under the root, `Local` above the root (root at `app`), a macro-made def, and `Lang` (`String`).
 - Paths are compared as engine text in one function (`paths::relative`): `/` separators, no `\\?\` prefix, the drive letter upper case.
   The engine also treats `C:/x.rs` and `c:/x.rs` as one path (`ra_ap_vfs` `vfs_path.rs`, `paths_encoding`). Python and TypeScript strip the
-  prefix and do not fold the letter. **Not yet run on Windows**: the `windows-latest` job is the proof.
+  prefix and do not fold the letter. **Green on Windows** (the `windows-latest` CI job, reported by the owner 2026-11-17).
 
 ## 5. Inside
 
@@ -334,7 +334,7 @@ path the engine cannot be given (not UTF-8), and the engine's own `load_workspac
 - Tests: ten reader table tests on an in-memory tree; `tests/ladder.rs` (a lone file with a `mod` child, a `Cargo.toml` that is not TOML,
   one only cargo refuses); a worker with no `cargo` and no `rustc` on `PATH` and an empty `HOME` that resolves §6's calls across two crates
   (one called by its `[lib] name`), the host's `#[cfg(unix)]` or `#[cfg(windows)]` call and a `#[path]` module outside `src/`, with
-  `NoToolchain`; it keeps `SystemRoot`, `TMP`, `TEMP` for Windows. Not run on Windows yet.
+  `NoToolchain`; it keeps `SystemRoot`, `TMP`, `TEMP` for Windows. Green on Windows CI (2026-11-17).
 
 **How each condition is found** (S-RS3, `ENGINE.md`): `sem::load` never uses `RustLibSource::Discover` (it runs `rustup component add
 rust-src` by itself). It reads the version with `cargo --version` in the manifest's folder, finds the sysroot with `rustc --print sysroot`
@@ -397,7 +397,7 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 | 1 | the engine dependencies (again `cargo update -p unicode-properties --precise 0.1.4`, `ENGINE.md` S-RS1); `sem::load`; `Project::open` on a manifest path; the in-project measurement of §5 (B, D, no `std`), then the lockfile rule Q-RS6 picks | `core/` loads; the table in `ENGINE.md`; the lockfile test. **Done but the lockfile rule** (f4064e4; table in `ENGINE.md`): the measurement picked B (D38) |
 | 1b | the lockfile rule (§5, D38): `cargo --version` in the manifest's folder (step 5 reuses it); from 1.97 and only when the project has no `Cargo.lock`, B (`CARGO_RESOLVER_LOCKFILE_PATH` in `extra_env` to a temporary folder, deleted before `open` returns); below 1.97, A. A's `LockfileWritten` warning comes with `Warning` in step 5; until then the load records that it wrote one | §7's lockfile test: a fixture with no lock and one with a stale lock are byte-identical after `open` (on the installed 1.99.1); a table test of the version rule (`1.96.x` → A, `1.97.0` → B, a suffixed version, an unreadable one → A). **Done** (ccb699e, as built in §5) |
 | 2 | finding the manifest from a file; the root limit | the five-workspaces test. **Done** (0364d27; UTF-8 fix 98cf4d3): `open(root, file)` without `opts` until step 4; errors are `OpenError::Load` until steps 5 and 7; pure path functions in `paths.rs` |
-| 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI. **Done but Windows** (457a16a; test scope 193402f; as built in §4): the Windows job has not run, nothing is pushed |
+| 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI. **Done** (457a16a; test scope 193402f; as built in §4); the Windows job green, reported by the owner 2026-11-17. **RS3 is complete** |
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures. **Done** (888c228; as built in §3), with two fixes asked in review: a failed build run must not fail the load, and `build_scripts_skipped` counts local packages |
 | 5a | `OpenError` and `Warning` (§6, D37), from S-RS3's texts; the warnings CI can make | §7's error and warning tests. **Done** (b9e48bf; as built in §6), with fixes asked in review: `BuildScriptsFailed`, `NoStdSource` for a sysroot nobody can find, `OpenError`'s `Display`, `rust-src` in `rust-toolchain.toml` |
 | 5b | the old-toolchain measurement and the minimum; the substitution (`ToolchainSubstituted`, `OldToolchain`); then the old toolchains are uninstalled | §7's measurement table in `ENGINE.md`; the substitution test. **Done** (21f38e6, fixes fa4b54c 6cb8dce 42b3087 59eede1 8e9d313; table and rustup facts in `ENGINE.md`). **Minimum 1.82**, set from the measurement: no call is lost down to 1.74.1, so the line is the lockfile's. One fix asked in review: a rewritten existing lock is `LockfileWritten` too |
