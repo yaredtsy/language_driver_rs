@@ -469,17 +469,15 @@ impl Sem {
             defs.outline
                 .defs
                 .iter()
-                .filter(|def| def.qualname == qualname)
                 .enumerate()
-                .map(|(occurrence, def)| {
-                    let mut found = crate::DefMatch {
-                        occurrence: occurrence as u16,
-                        kind: def.kind.clone(),
-                        range: def.range,
-                        marker: None,
-                    };
-                    found.marker = def.marker.clone();
-                    found
+                .filter(|(_, def)| def.qualname == qualname)
+                .enumerate()
+                .map(|(occurrence, (index, def))| crate::DefMatch {
+                    occurrence: occurrence as u16,
+                    kind: def.kind.clone(),
+                    range: def.range,
+                    marker: def.marker.clone(),
+                    owns_marker: def.marker.is_some() && defs.owns_marker[index],
                 })
                 .collect(),
         )

@@ -179,6 +179,36 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// `line:column`, 1-based, in UTF-16 units, as an editor shows them.
+fn line_and_column(text: &str, lines: &LineIndex, offset: u32) -> String {
+    lines.position(text, offset, Encoding::Utf16).map_or_else(
+        || "?".to_owned(),
+        |p| format!("{}:{}", p.line + 1, p.column + 1),
+    )
+}
+
+/// The def of `file` that owns the marker `id` (D34 rule 1: the first in source order that carries the text), with where it is: from the outline alone,
+/// which reports the marker on every def that carries it. `None` when the file cannot be read as code or no def carries it.
+fn owner_of(
+    dir: &Path,
+    file: &str,
+    id: &str,
+    style: MarkerStyle<'static>,
+) -> Option<(String, String)> {
+    let text = std::fs::read_to_string(dir.join(file)).ok()?;
+    let found = outline(&text, Dialect::from_path(file)?, style);
+    let owner = found
+        .defs
+        .iter()
+        .filter(|def| def.marker.as_deref() == Some(id))
+        .min_by_key(|def| def.range.start)?;
+    let lines = LineIndex::new(&text);
+    Some((
+        owner.qualname.clone(),
+        line_and_column(&text, &lines, owner.range.start),
+    ))
+}
+
 const NOT_PROJECT_CODE: &str = "not project code (in node_modules, a declaration file, outside the root) or not a TypeScript or JavaScript file the project holds";
 
 /// The def `qualname` names in `file`, as an entry: the one `id` picks, or the only one. A message and the exit code when there is none, or several (D15).
@@ -200,8 +230,22 @@ fn choose_def<'a>(
             eprintln!("{file}: no def named `{qualname}`");
             return Err(ExitCode::from(1));
         }
-        (Some(id), _) => match matches.iter().find(|m| m.marker.as_deref() == Some(id)) {
+        // the def that owns the marker (D34): a def that carries the same text without owning it has another id, so it is not what `--id` names
+        (Some(id), _) => match matches
+            .iter()
+            .find(|m| m.owns_marker && m.marker.as_deref() == Some(id))
+        {
             Some(found) => found,
+            None if matches.iter().any(|m| m.marker.as_deref() == Some(id)) => {
+                eprintln!("{file}: no def `{qualname}` owns {label}: {id}");
+                match owner_of(dir, file, id, style) {
+                    Some((owner, at)) => eprintln!(
+                        "  `{owner}` at {at} owns it, and `{qualname}` is named by where it is"
+                    ),
+                    None => eprintln!("  another def of the file owns it"),
+                }
+                return Err(ExitCode::from(1));
+            }
             None => {
                 eprintln!("{file}: no def `{qualname}` carries {label}: {id}");
                 return Err(ExitCode::from(1));
@@ -217,12 +261,7 @@ fn choose_def<'a>(
                 matches.len()
             );
             for m in &matches {
-                let at = lines
-                    .position(&text, m.range.start, Encoding::Utf16)
-                    .map_or_else(
-                        || "?".to_owned(),
-                        |p| format!("{}:{}", p.line + 1, p.column + 1),
-                    );
+                let at = line_and_column(&text, &lines, m.range.start);
                 let marker = m
                     .marker
                     .as_ref()

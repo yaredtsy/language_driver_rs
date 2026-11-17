@@ -378,6 +378,10 @@ pub struct DefMatch {
     /// The whole def, in bytes of the file.
     pub range: Span,
     pub marker: Option<String>,
+    /// Whether this def is the one the marker names: it carries one, and no def of the file that starts earlier carries the same text (D34 rule 1). Only the
+    /// owner has the marker as its id; a def that carries a marker another def owns is identified by where it is, as a def with no marker is. `false` for
+    /// a def with no marker. The outline reports the marker on both; this is how a driver says "`ID: SAME` is here, but `a` owns it" without a second look.
+    pub owns_marker: bool,
 }
 
 /// Why a project did not load.

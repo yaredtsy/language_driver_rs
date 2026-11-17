@@ -193,6 +193,30 @@ fn the_outline_still_reports_the_marker_on_both() {
     }
 }
 
+/// H9: a driver that lists the defs of a qualname can say "this def carries `ID: SAME`, but another one owns it" without reading the file again.
+#[test]
+fn defs_named_says_which_def_owns_its_marker() {
+    let project = project();
+    let owns = |name: &str| {
+        let found = project.defs_named("src/main.ts", name, STYLE).unwrap();
+        assert_eq!(found.len(), 1, "{name}");
+        found[0].owns_marker
+    };
+    // the first in source order owns the text, the copy does not
+    assert!(owns("a"));
+    assert!(!owns("b"));
+    // three carriers: one owner
+    assert!(owns("p"));
+    assert!(!owns("q"));
+    assert!(!owns("r"));
+    // a class and a function with one marker: the class is first
+    assert!(owns("K"));
+    assert!(!owns("f"));
+    // a def with no marker owns none
+    assert!(!owns("x"));
+    assert!(!owns("main"));
+}
+
 #[test]
 fn a_graph_with_no_duplicate_has_no_counter_and_no_line() {
     let none = Project::open(&root().join("../three-files"), Path::new("src/main.ts")).unwrap();
