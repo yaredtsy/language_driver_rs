@@ -138,7 +138,7 @@ impl Sem {
             return (vec![Resolved::Unknown(Why::NoDeclaration)], facts);
         };
         facts.jsx = call.kind == SiteKind::Jsx;
-        let _scope = self._region.enter();
+        let _scope = self.region.enter();
         // one checker, so one handle at a time: it is dropped before this returns
         let mut checker = self.checker();
         let callee = call.expr;
@@ -479,7 +479,7 @@ impl Sem {
             let Some(base) = heritage.expression() else {
                 return Init::Unknown;
             };
-            let _scope = self._region.enter();
+            let _scope = self.region.enter();
             let mut checker = self.checker();
             let mut resolved: Vec<Resolved<'_>> = Vec::new();
             let mut declarations = declarations_of(&mut checker, base);

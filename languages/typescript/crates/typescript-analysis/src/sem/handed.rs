@@ -165,7 +165,7 @@ impl Sem {
                 }
             }
         }
-        let _scope = self._region.enter();
+        let _scope = self.region.enter();
         let mut checker = self.checker();
         // the variables an object pattern on the left of `=` assigns a def, or a rest object that holds one, to (`({ load, ...others } = api)`)
         let mut assigned = Assigned::default();

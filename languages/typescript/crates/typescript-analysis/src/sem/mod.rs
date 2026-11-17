@@ -237,7 +237,7 @@ pub struct Sem {
     bodies: RefCell<HashMap<P<Node>, Arc<Body>>>,
     // Fields drop in this order, after `Drop::drop` has freed the program: the loaders' regions, then the program's own.
     _loaders: Arc<ProgramRegions>,
-    _region: Region,
+    region: Region,
 }
 
 impl Sem {
@@ -327,7 +327,7 @@ impl Sem {
             file_defs: RefCell::new(HashMap::new()),
             bodies: RefCell::new(HashMap::new()),
             _loaders: loaders,
-            _region: region,
+            region,
         };
         if sem
             .program
@@ -417,7 +417,7 @@ impl Sem {
             return Some(Arc::clone(&found.defs));
         }
         // looking at the tree may allocate in the engine; the program's region is where that belongs
-        let _scope = self._region.enter();
+        let _scope = self.region.enter();
         let (outline, spans) =
             typescript_syntax::outline_with_nodes(file.node.text(), dialect, style);
         let by_span = nodes_by_span(file.node, &spans.iter().copied().collect());
@@ -565,7 +565,7 @@ impl Sem {
         if let Some(found) = self.bodies.borrow().get(&node) {
             return Some(Arc::clone(found));
         }
-        let _scope = self._region.enter();
+        let _scope = self.region.enter();
         let mut collector = Collector::new(func.file.node.text(), &defs.def_of, node);
         collector.body_of(node);
         let accessors = self.accessor_sites(&collector.accesses, collector.text);
@@ -770,7 +770,7 @@ impl Drop for Sem {
     /// The only `unsafe` in the workspace: tsrs's contract for freeing a program (`tsrs_lint` does the same in `ProgramOwner::drop`).
     #[allow(unsafe_code)]
     fn drop(&mut self) {
-        let _scope = self._region.enter();
+        let _scope = self.region.enter();
         // SAFETY: `open` made this program and shared nothing of it with another (no `update_program`); `Sem` holds no checker handle and
         // hands none out, and nothing reads `self.program` after this. "Hands none out" is true only while `Sem` has no handle type: the
         // first one (`File<'p>`, TS3 step 4) must carry `PhantomData<&'p Sem>`, so the compiler checks that none outlives this drop.

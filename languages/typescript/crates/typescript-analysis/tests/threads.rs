@@ -1,6 +1,7 @@
-//! A `Project` is `Send + Sync` today (`ENGINE.md`: nothing pins it, the decision is TS4's first checker query). What it must survive in the meantime
-//! is the case a driver hits: opened on one thread, dropped on another. `Sem::drop` enters the program's region and frees it, and tsrs enters
-//! regions per thread, so this is the test that the free does not depend on the thread that made the program.
+//! A `Project` is `Send` and not `Sync` (`Sem` holds a `Cell` and `RefCell`s: one checker answers one question at a time, and nothing here makes concurrent
+//! questions safe; `proof` pins the compile error). What it must survive is the case a driver hits: opened on one thread, dropped on another. `Sem::drop`
+//! enters the program's region and frees it, and tsrs enters regions per thread, so this is the test that the free does not depend on the thread that made the
+//! program.
 
 use std::path::{Path, PathBuf};
 use std::thread;

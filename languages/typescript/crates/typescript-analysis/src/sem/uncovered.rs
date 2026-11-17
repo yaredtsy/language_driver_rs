@@ -98,7 +98,7 @@ impl Sem {
         let Some(node) = self.node_of(class, style) else {
             return false;
         };
-        let _scope = self._region.enter();
+        let _scope = self.region.enter();
         let mut checker = self.checker();
         let Some(symbol) = checker.get_symbol_of_declaration_exported(node) else {
             return false;
