@@ -125,7 +125,8 @@ impl Project {
 
     /// The defs of `file` (relative to the root) with this qualname, in source order: what a person must choose from when a qualname is not unique
     /// (D15: overloads without an implementation, a getter and its setter, merged declarations). `occurrence` is the number `Entry` takes. `None` when
-    /// there is no such file, or it is not code.
+    /// there is no such file, or it is not project code (D33): in `node_modules`, a declaration file, outside the root, or not TypeScript or JavaScript. Those
+    /// have no entry (`call_graph`), so nothing is offered to choose from.
     pub fn defs_named(
         &self,
         file: &str,

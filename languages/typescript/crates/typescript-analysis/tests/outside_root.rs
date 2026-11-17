@@ -244,3 +244,21 @@ fn a_file_under_the_root_by_its_absolute_path_still_opens() {
     let project = Project::open(&app(), &app().join("src/main.ts")).unwrap();
     assert_eq!(project.files(), ["src/local.ts", "src/main.ts"]);
 }
+
+#[test]
+fn a_file_that_is_not_project_code_has_no_defs_to_choose_from() {
+    let root = fixture("node-modules-source");
+    let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
+    assert!(
+        project
+            .defs_named("node_modules/lib/index.ts", "inside", STYLE)
+            .is_none()
+    );
+    assert!(project.defs_named("src/main.ts", "main", STYLE).is_some());
+    let beside = Project::open(&app(), Path::new("src/main.ts")).unwrap();
+    assert!(
+        beside
+            .defs_named("../shared/lib.ts", "helper", STYLE)
+            .is_none()
+    );
+}

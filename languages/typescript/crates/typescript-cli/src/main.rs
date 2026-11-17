@@ -123,7 +123,9 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
     let label: &'static str = Box::leak(ask.label.clone().into_boxed_str());
     let style = MarkerStyle::docstring(label);
     let Some(matches) = project.defs_named(file, ask.entry, style) else {
-        eprintln!("{file}: not a TypeScript or JavaScript file the project holds");
+        eprintln!(
+            "{file}: not project code (in node_modules, a declaration file, outside the root) or not a TypeScript or JavaScript file the project holds"
+        );
         return ExitCode::from(1);
     };
     let chosen = match (ask.id, matches.as_slice()) {

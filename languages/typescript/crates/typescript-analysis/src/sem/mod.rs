@@ -400,7 +400,12 @@ impl Sem {
         qualname: &str,
         style: MarkerStyle<'_>,
     ) -> Option<Vec<crate::DefMatch>> {
-        let defs = self.file_defs(self.file(file)?, style)?;
+        let file = self.file(file)?;
+        // the defs a person may choose from are the ones that can be entries (`entry`): project code only (D33)
+        if !self.is_project_code(file) {
+            return None;
+        }
+        let defs = self.file_defs(file, style)?;
         Some(
             defs.outline
                 .defs
