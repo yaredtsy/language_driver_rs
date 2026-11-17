@@ -19,16 +19,14 @@ mod common;
 use common::copy_of_fixture;
 
 /// Runs the worker `name` of this program with `RUSTUP_TOOLCHAIN=toolchain` (or with none: `cargo test` sets it, and it beats a
-/// `rust-toolchain.toml`), and fails with its output when it fails. `CARGO` and `RUSTC` go too: `cargo test` sets them to the toolchain's own binaries,
-/// the engine's rule (`Tool::path`, which this crate follows) takes them before `PATH`, and a binary named like that is not rustup's proxy, so it
-/// would read no `rust-toolchain.toml` either.
+/// `rust-toolchain.toml`), and fails with its output when it fails. `CARGO` and `RUSTC` stay as `cargo test` sets them (the toolchain's own binaries, not
+/// rustup's proxy): the engine's rule for a load with a sysroot, `prefer_proxy`, finds the proxy first, so a pin is still read. A worker that passes
+/// with them set is what proves `sem::tool_path` does not use `Tool::path`.
 fn run_worker(name: &str, toolchain: Option<&str>) {
     let mut command = Command::new(std::env::current_exe().unwrap());
     command
         .args(["--ignored", "--exact", name, "--nocapture"])
-        .env("RS_WORKER", "1")
-        .env_remove("CARGO")
-        .env_remove("RUSTC");
+        .env("RS_WORKER", "1");
     match toolchain {
         Some(toolchain) => command.env("RUSTUP_TOOLCHAIN", toolchain),
         None => command.env_remove("RUSTUP_TOOLCHAIN"),

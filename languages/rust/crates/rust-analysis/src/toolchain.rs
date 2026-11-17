@@ -78,8 +78,9 @@ pub(crate) enum Probe {
     Unreadable,
 }
 
-/// A tool of the toolchain this crate starts. It is found the way the engine finds it (`sem::tool_path`), never by the bare name: a `PATH` that lacks
-/// `~/.cargo/bin` must not give a load with the engine's `cargo` and no `std`.
+/// A tool of the toolchain this crate starts. It is found the way the engine finds it when it has a sysroot (`sem::tool_path`: the rustup proxy first), never
+/// by the bare name: a `PATH` that lacks `~/.cargo/bin` must not give a load with the engine's `cargo` and no `std`, and a `CARGO` that names the
+/// toolchain's own binary must not hide a `rust-toolchain.toml`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Tool {
     Cargo,
