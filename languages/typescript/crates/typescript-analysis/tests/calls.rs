@@ -1221,6 +1221,40 @@ fn decorator_a_class_entry_counts_no_decorator_because_the_module_draws_them() {
     assert!(breakdown(&module).uncovered.is_empty());
 }
 
+/// D15 through a request (H6): a getter and its setter share a qualname, and `occurrence` says which one the request is for.
+#[test]
+fn occurrence_picks_the_second_def_of_a_qualname() {
+    let root = fixture("site-kinds");
+    let file = "src/accessors.ts";
+    let project = Project::open(&root, Path::new(file)).unwrap();
+    let ask = |occurrence| {
+        let entry = Entry::Def {
+            qualname: "Box.value",
+            occurrence,
+        };
+        call_graph(&project, file, &entry, &Options::new(STYLE), &Cancel::new())
+    };
+    let trees: Vec<String> = [0, 1]
+        .into_iter()
+        .map(|occurrence| {
+            let graph = ask(occurrence).unwrap_or_else(|| panic!("no #{occurrence}"));
+            check_invariants(&graph);
+            // the entry's row says which def it is: the occurrence and where it starts
+            let row = graph.def(&graph.entries[0].func().clone()).unwrap();
+            assert_eq!(row.occurrence, occurrence);
+            to_text(&render(
+                &graph,
+                &graph.entries[0],
+                &RenderOptions::default(),
+            ))
+        })
+        .collect();
+    // the getter calls `read`, the setter calls `write`
+    assert_eq!(trees, ["Box.value\n  read\n", "Box.value\n  write\n"]);
+    // there is no third
+    assert!(ask(2).is_none());
+}
+
 #[test]
 fn accessor_a_read_is_the_getter_a_write_the_setter_and_a_compound_write_both() {
     let root = fixture("site-kinds");
