@@ -1382,6 +1382,7 @@ dependencies = [
  "analyzer-core",
  "rust-analysis",
  "rust-syntax",
+ "serde_json",
 ]
 
 [[package]]

@@ -60,3 +60,7 @@ recurse_a
   Call "recurse_b" -> Def src/calls.rs:recurse_b
 recurse_b
   Call "recurse_a" -> Def src/calls.rs:recurse_a
+calls_helper_twice
+  Call "helper" -> Def src/calls.rs:helper
+  Call "twice" -> Def src/calls.rs:twice
+  Call "helper" -> Def src/calls.rs:helper

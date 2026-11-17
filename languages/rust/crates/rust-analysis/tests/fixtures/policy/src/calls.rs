@@ -119,3 +119,10 @@ pub fn recurse_a() {
 pub fn recurse_b() {
     recurse_a();
 }
+
+/// The same def called at two sites: two nodes in the unmerged wire, one with `call_count` 1 in the merged one.
+pub fn calls_helper_twice() {
+    helper();
+    twice(1);
+    helper();
+}

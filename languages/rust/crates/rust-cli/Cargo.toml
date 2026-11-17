@@ -12,3 +12,4 @@ workspace = true
 analyzer-core = { workspace = true }
 rust-syntax = { workspace = true }
 rust-analysis = { workspace = true }
+serde_json = { workspace = true }

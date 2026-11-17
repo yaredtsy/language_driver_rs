@@ -1,0 +1,279 @@
+unmerged
+{
+  "target_qname": "uses_the_twins",
+  "target_id": "",
+  "target_file": "src/lib.rs",
+  "target_qualname": "uses_the_twins",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "src/lib.rs",
+          "qname": "uses_the_twins",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "twin_a",
+      "target_id": "fn:twin",
+      "target_file": "src/lib.rs",
+      "target_qualname": "twin_a",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          70,
+          5
+        ],
+        "end": [
+          70,
+          11
+        ]
+      },
+      "call_site_file": "src/lib.rs",
+      "contexts": [
+        {
+          "func": {
+            "Marked": "twin"
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "twin_b",
+      "target_id": "",
+      "target_file": "src/lib.rs",
+      "target_qualname": "twin_b",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          71,
+          5
+        ],
+        "end": [
+          71,
+          11
+        ]
+      },
+      "call_site_file": "src/lib.rs",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "src/lib.rs",
+              "qname": "twin_b",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    }
+  ]
+}
+
+merged
+{
+  "target_qname": "uses_the_twins",
+  "target_id": "",
+  "target_file": "src/lib.rs",
+  "target_qualname": "uses_the_twins",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "src/lib.rs",
+          "qname": "uses_the_twins",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "twin_a",
+      "target_id": "fn:twin",
+      "target_file": "src/lib.rs",
+      "target_qualname": "twin_a",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          70,
+          5
+        ],
+        "end": [
+          70,
+          11
+        ]
+      },
+      "call_site_file": "src/lib.rs",
+      "contexts": [
+        {
+          "func": {
+            "Marked": "twin"
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "twin_b",
+      "target_id": "",
+      "target_file": "src/lib.rs",
+      "target_qualname": "twin_b",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          71,
+          5
+        ],
+        "end": [
+          71,
+          11
+        ]
+      },
+      "call_site_file": "src/lib.rs",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "src/lib.rs",
+              "qname": "twin_b",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    }
+  ]
+}

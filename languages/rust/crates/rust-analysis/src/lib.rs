@@ -17,6 +17,7 @@ pub use analyzer_core::graph::{
 };
 pub use analyzer_core::render::{Mark, Node, RenderOptions, render, to_text};
 pub use analyzer_core::solve::{Budget, Cancel, Limits};
+pub use analyzer_core::wire::{Frame, LineSpan, Sources, WireOptions, WireStyle, merge, wire};
 pub use calls::{Breakdown, Options, breakdown, call_graph};
 pub use project::{DefMatch, LoadOptions, OpenError, Project};
 pub use rust_syntax::{DefKind, MarkerStyle, Placement, Span};

@@ -11,7 +11,7 @@ mod tool;
     unused_imports,
     reason = "RS4's calls.rs and walk.rs use them (steps 3 and 4)"
 )]
-pub(crate) use bridge::{Bridged, DefFound, Func, Sem, attached};
+pub(crate) use bridge::{Bridged, DefFound, Func, Sem, attached, text_of};
 pub(crate) use load::{Loaded, Rung, load};
 #[expect(unused_imports, reason = "RS4's calls.rs uses them (step 4)")]
 pub(crate) use origin::{Cause, Item, Owner};

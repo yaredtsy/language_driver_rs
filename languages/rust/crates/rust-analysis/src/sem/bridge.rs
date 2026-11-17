@@ -105,6 +105,12 @@ pub(crate) struct Sem<'p> {
     sites: RefCell<HashMap<Func<'p>, Rc<Sites>>>,
 }
 
+/// The text of the project file at `path` as the engine loaded it, for the wire (`Project: Sources`). One `attach_db` for the call, as every use of the engine
+/// is; the style is not read.
+pub(crate) fn text_of(loaded: &Loaded, path: &str) -> Option<String> {
+    attached(loaded, MarkerStyle::docstring(""), |sem| sem.text(path))
+}
+
 /// One `attach_db` for the whole request, with the `Sem` built inside it (§2): every engine call and the solver run inside `f`. `style` is how the
 /// request reads markers (`Options::marker`, RS4 step 4).
 pub(crate) fn attached<'p, R>(
@@ -257,16 +263,7 @@ impl<'p> Sem<'p> {
         if let Some(&known) = self.files.borrow().numbered.get(path) {
             return Some(known);
         }
-        let db = self.loaded.db();
-        let (tree, edition) = self.loaded.vfs().iter().find_map(|(file, vfs_path)| {
-            if vfs_path.as_path()?.extension()? != "rs"
-                || self.loaded.root_relative(vfs_path)?.as_str() != path
-            {
-                return None;
-            }
-            let editioned = self.sema.attach_first_edition_opt(file)?;
-            Some((self.sema.parse(editioned), editioned.edition(db)))
-        })?;
+        let (tree, edition) = self.find(path)?;
         let text = tree.syntax().text().to_string();
         let outline = rust_syntax::outline(&text, edition_of(edition), self.style);
         let defs = Rc::new(FileDefs {
@@ -280,6 +277,28 @@ impl<'p> Sem<'p> {
         files.numbered.insert(path.to_owned(), number);
         files.opened.push(Opened { defs, tree });
         Some(number)
+    }
+
+    /// The engine's syntax tree of the project file at `path`, and its edition: `None` for a path that is no file of the load under the root, and for a
+    /// file no crate has a module for (`Project::files()`'s own test, RS3 §2).
+    fn find(&self, path: &str) -> Option<(ast::SourceFile, ra_ap_syntax::Edition)> {
+        let db = self.loaded.db();
+        self.loaded.vfs().iter().find_map(|(file, vfs_path)| {
+            if vfs_path.as_path()?.extension()? != "rs"
+                || self.loaded.root_relative(vfs_path)?.as_str() != path
+            {
+                return None;
+            }
+            let editioned = self.sema.attach_first_edition_opt(file)?;
+            Some((self.sema.parse(editioned), editioned.edition(db)))
+        })
+    }
+
+    /// The text of the project file at `path` **as the engine holds it**, the text every offset of the graph counts in (a byte-order mark, a `\r\n`
+    /// included): the wire turns a site into a line and a column with it.
+    pub(crate) fn text(&self, path: &str) -> Option<String> {
+        let (tree, _) = self.find(path)?;
+        Some(tree.syntax().text().to_string())
     }
 
     /// An opened file's outline and syntax tree.
@@ -598,9 +617,9 @@ mod tests {
             ],
             "the five traits, the inline module, the thirteen macros, the type alias"
         );
-        // every other def: 18 in lib.rs, 8 in constructions.rs, 16 in shapes.rs, 28 in calls.rs, 30 in dispatch.rs, 21 in macros.rs, 11 in cfg_off.rs, 19 in passed.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
+        // every other def: 18 in lib.rs, 8 in constructions.rs, 16 in shapes.rs, 29 in calls.rs, 30 in dispatch.rs, 21 in macros.rs, 11 in cfg_off.rs, 19 in passed.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
         // byte-order mark
-        assert_eq!(joined, 161);
+        assert_eq!(joined, 162);
     }
 
     /// What `entry` answers `None` to, besides a def a `cfg` turns off (the join test): no file, a file no module reaches, a kind that cannot start a

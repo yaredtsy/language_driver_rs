@@ -1,0 +1,389 @@
+unmerged
+{
+  "target_qname": "called_and_passed",
+  "target_id": "",
+  "target_file": "src/passed.rs",
+  "target_qualname": "called_and_passed",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "src/passed.rs",
+          "qname": "called_and_passed",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "worker",
+      "target_id": "",
+      "target_file": "src/passed.rs",
+      "target_qualname": "worker",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          53,
+          5
+        ],
+        "end": [
+          53,
+          11
+        ]
+      },
+      "call_site_file": "src/passed.rs",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "src/passed.rs",
+              "qname": "worker",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "spawn",
+      "target_id": "",
+      "target_file": "src/passed.rs",
+      "target_qualname": "spawn",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          54,
+          5
+        ],
+        "end": [
+          54,
+          10
+        ]
+      },
+      "call_site_file": "src/passed.rs",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "src/passed.rs",
+              "qname": "spawn",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "worker",
+      "target_id": "",
+      "target_file": "src/passed.rs",
+      "target_qualname": "worker",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          54,
+          11
+        ],
+        "end": [
+          54,
+          17
+        ]
+      },
+      "call_site_file": "src/passed.rs",
+      "passed": true,
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "src/passed.rs",
+              "qname": "worker",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    }
+  ]
+}
+
+merged
+{
+  "target_qname": "called_and_passed",
+  "target_id": "",
+  "target_file": "src/passed.rs",
+  "target_qualname": "called_and_passed",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "src/passed.rs",
+          "qname": "called_and_passed",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "worker",
+      "target_id": "",
+      "target_file": "src/passed.rs",
+      "target_qualname": "worker",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          53,
+          5
+        ],
+        "end": [
+          53,
+          11
+        ]
+      },
+      "call_site_file": "src/passed.rs",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "src/passed.rs",
+              "qname": "worker",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "spawn",
+      "target_id": "",
+      "target_file": "src/passed.rs",
+      "target_qualname": "spawn",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          54,
+          5
+        ],
+        "end": [
+          54,
+          10
+        ]
+      },
+      "call_site_file": "src/passed.rs",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "src/passed.rs",
+              "qname": "spawn",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "worker",
+      "target_id": "",
+      "target_file": "src/passed.rs",
+      "target_qualname": "worker",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          54,
+          11
+        ],
+        "end": [
+          54,
+          17
+        ]
+      },
+      "call_site_file": "src/passed.rs",
+      "passed": true,
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "src/passed.rs",
+              "qname": "worker",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    }
+  ]
+}

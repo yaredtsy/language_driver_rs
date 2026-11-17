@@ -1,0 +1,287 @@
+unmerged
+{
+  "target_qname": "build_external",
+  "target_id": "",
+  "target_file": "src/constructions.rs",
+  "target_qualname": "build_external",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "src/constructions.rs",
+          "qname": "build_external",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "core.option::Option::Some",
+      "target_id": "",
+      "target_file": null,
+      "target_qualname": "",
+      "target_occurrence": 0,
+      "target_kind": null,
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          39,
+          5
+        ],
+        "end": [
+          39,
+          9
+        ]
+      },
+      "call_site_file": "src/constructions.rs",
+      "contexts": [],
+      "marks": [
+        "external"
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "core.result::Result::Ok",
+      "target_id": "",
+      "target_file": null,
+      "target_qualname": "",
+      "target_occurrence": 0,
+      "target_kind": null,
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          40,
+          5
+        ],
+        "end": [
+          40,
+          17
+        ]
+      },
+      "call_site_file": "src/constructions.rs",
+      "contexts": [],
+      "marks": [
+        "external"
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "core.result::Result::Err",
+      "target_id": "",
+      "target_file": null,
+      "target_qualname": "",
+      "target_occurrence": 0,
+      "target_kind": null,
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          41,
+          5
+        ],
+        "end": [
+          41,
+          18
+        ]
+      },
+      "call_site_file": "src/constructions.rs",
+      "contexts": [],
+      "marks": [
+        "external"
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "core.ops::range::Range",
+      "target_id": "",
+      "target_file": null,
+      "target_qualname": "",
+      "target_occurrence": 0,
+      "target_kind": null,
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          43,
+          5
+        ],
+        "end": [
+          43,
+          20
+        ]
+      },
+      "call_site_file": "src/constructions.rs",
+      "contexts": [],
+      "marks": [
+        "external"
+      ],
+      "children": []
+    }
+  ]
+}
+
+merged
+{
+  "target_qname": "build_external",
+  "target_id": "",
+  "target_file": "src/constructions.rs",
+  "target_qualname": "build_external",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "src/constructions.rs",
+          "qname": "build_external",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "core.option::Option::Some",
+      "target_id": "",
+      "target_file": null,
+      "target_qualname": "",
+      "target_occurrence": 0,
+      "target_kind": null,
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          39,
+          5
+        ],
+        "end": [
+          39,
+          9
+        ]
+      },
+      "call_site_file": "src/constructions.rs",
+      "contexts": [],
+      "marks": [
+        "external"
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "core.result::Result::Ok",
+      "target_id": "",
+      "target_file": null,
+      "target_qualname": "",
+      "target_occurrence": 0,
+      "target_kind": null,
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          40,
+          5
+        ],
+        "end": [
+          40,
+          17
+        ]
+      },
+      "call_site_file": "src/constructions.rs",
+      "contexts": [],
+      "marks": [
+        "external"
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "core.result::Result::Err",
+      "target_id": "",
+      "target_file": null,
+      "target_qualname": "",
+      "target_occurrence": 0,
+      "target_kind": null,
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          41,
+          5
+        ],
+        "end": [
+          41,
+          18
+        ]
+      },
+      "call_site_file": "src/constructions.rs",
+      "contexts": [],
+      "marks": [
+        "external"
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "core.ops::range::Range",
+      "target_id": "",
+      "target_file": null,
+      "target_qualname": "",
+      "target_occurrence": 0,
+      "target_kind": null,
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          43,
+          5
+        ],
+        "end": [
+          43,
+          20
+        ]
+      },
+      "call_site_file": "src/constructions.rs",
+      "contexts": [],
+      "marks": [
+        "external"
+      ],
+      "children": []
+    }
+  ]
+}

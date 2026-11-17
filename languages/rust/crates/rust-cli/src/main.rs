@@ -8,10 +8,13 @@
 //!   read again, and the marker read back is printed. This tool is the only place a file is written (rule 2) and the only place that is given
 //!   the marker text: it never makes one up. Exit 0 for a marker planned (and written), 1 for a file that cannot be read, written or read back,
 //!   2 for bad usage (a qualname of several defs is listed and none is picked, D15), 3 for a plan that is a skip, with its reason.
-//! - `calls <dir> <file> --entry <qualname> [--id <marker> | --occurrence <n>] [--graph] [--timing] [--label <label>]`: the call tree under a def of
+//! - `calls <dir> <file> --entry <qualname> [--id <marker> | --occurrence <n>] [--graph | --wire [--merged] [--function-prefix P] [--class-prefix P]] [--timing]
+//!   [--label <label>]`: the call tree under a def of
 //!   `file` (relative to `dir`), then the breakdown of the graph (the load's warnings first, edges by kind, unresolved edges by reason, what is open). A
 //!   qualname is not unique in a file (D15): when it matches several defs they are listed and the exit code is 2, never the first one picked. `--entry` is
-//!   required: nothing runs at the top of a Rust file, so there is no file entry. The load's warnings go to stderr before the tree.
+//!   required: nothing runs at the top of a Rust file, so there is no file entry. The load's warnings go to stderr before the tree. `--wire` prints the
+//!   wire (D17) instead of the tree, as JSON alone on stdout, with the prefixes the caller gives for the ids of functions and classes; `--merged` joins
+//!   siblings with one target (`call_count`). `--graph` and `--wire` are two outputs, and `--merged` and the prefixes belong to `--wire`.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -19,8 +22,8 @@ use std::process::ExitCode;
 use analyzer_core::edit::apply;
 use analyzer_core::text::{Encoding, LineIndex};
 use rust_analysis::{
-    Cancel, Entry, LoadOptions, Options, Project, RenderOptions, breakdown, call_graph, render,
-    to_text,
+    Cancel, Entry, LoadOptions, Options, Project, RenderOptions, WireOptions, WireStyle, breakdown,
+    call_graph, render, to_text, wire,
 };
 use rust_syntax::{
     Edition, MarkerStyle, header_marker, marker, occurrences, outline, plan_header_marker,
@@ -29,7 +32,7 @@ use rust_syntax::{
 
 const USAGE: &str = "usage: rust-cli outline <file> [--label <label>] [--edition <2015|2018|2021|2024>]
        rust-cli marker <file> (--def <qualname> [--occurrence <n>] | --header) --text <text> [--write] [--label <label>] [--edition <2015|2018|2021|2024>]
-       rust-cli calls <dir> <file> --entry <qualname> [--id <marker> | --occurrence <n>] [--graph] [--timing] [--label <label>]";
+       rust-cli calls <dir> <file> --entry <qualname> [--id <marker> | --occurrence <n>] [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--timing] [--label <label>]";
 
 /// Remove `--name value` from `args` and return the value.
 fn take_value(args: &mut Vec<String>, name: &str) -> Option<String> {
@@ -69,6 +72,10 @@ fn main() -> ExitCode {
         take_flag(&mut args, "--graph"),
         take_flag(&mut args, "--timing"),
     );
+    let as_wire = take_flag(&mut args, "--wire");
+    let merged = take_flag(&mut args, "--merged");
+    let function_prefix = take_value(&mut args, "--function-prefix");
+    let class_prefix = take_value(&mut args, "--class-prefix");
     let (def, occurrence, text) = (
         take_value(&mut args, "--def"),
         take_value(&mut args, "--occurrence"),
@@ -93,6 +100,16 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["outline", path] => print_outline(path, &label, edition),
+        ["calls", _, _]
+            if (graph && as_wire)
+                || (!as_wire
+                    && (merged || function_prefix.is_some() || class_prefix.is_some())) =>
+        {
+            eprintln!(
+                "--graph and --wire are two outputs, and --merged and the prefixes belong to --wire\n{USAGE}"
+            );
+            ExitCode::from(2)
+        }
         ["calls", dir, file] => match (entry.as_deref(), occurrence.as_deref().map(str::parse)) {
             (Some(_), Some(Err(_))) | (None, _) => {
                 eprintln!("calls needs --entry <qualname>; --occurrence is a number\n{USAGE}");
@@ -111,6 +128,11 @@ fn main() -> ExitCode {
                     id: id.as_deref(),
                     label,
                     graph,
+                    wire: as_wire.then(|| WireStyle {
+                        function_prefix: function_prefix.unwrap_or_default(),
+                        class_prefix: class_prefix.unwrap_or_default(),
+                    }),
+                    merged,
                     timing,
                 },
             ),
@@ -359,6 +381,9 @@ struct Calls<'a> {
     id: Option<&'a str>,
     label: String,
     graph: bool,
+    /// `Some`: print the wire, with these prefixes.
+    wire: Option<WireStyle>,
+    merged: bool,
     timing: bool,
 }
 
@@ -403,7 +428,19 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
         );
     }
     let summary = breakdown(&graph);
-    if ask.graph {
+    if let Some(style) = &ask.wire {
+        // the wire alone on stdout: JSON, so it can be read as it is; the breakdown goes to stderr
+        let options = WireOptions::new(style.clone(), ask.merged, RenderOptions::default());
+        let frame = wire(&graph, &graph.entries[0], &project, &options);
+        match serde_json::to_string_pretty(&frame) {
+            Ok(json) => println!("{json}"),
+            Err(e) => {
+                eprintln!("{file}: the wire cannot be written: {e}");
+                return ExitCode::from(1);
+            }
+        }
+        eprint!("{summary}");
+    } else if ask.graph {
         // the graph on stdout and nothing else, so it can be read as it is; the breakdown goes to stderr
         println!("{graph:#?}");
         eprint!("{summary}");

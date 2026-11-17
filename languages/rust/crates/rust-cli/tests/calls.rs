@@ -123,3 +123,66 @@ fn what_cannot_start_a_graph_and_bad_usage_are_said() {
     ]);
     assert_eq!(out.status.code(), Some(2));
 }
+
+/// `--wire`: JSON alone on stdout, the breakdown on stderr; `--merged` joins siblings with one target; the prefixes are the caller's.
+#[test]
+fn the_wire_is_json_alone_on_stdout() {
+    let dir = policy_copy();
+    let dir = dir.to_str().unwrap();
+    let wire = |extra: &[&str]| {
+        let mut args = vec![
+            "calls",
+            dir,
+            "src/calls.rs",
+            "--entry",
+            "calls_helper_twice",
+            "--wire",
+        ];
+        args.extend_from_slice(extra);
+        let out = cli(&args);
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+        // stdout is the JSON and nothing else: it parses as it is; the breakdown is on stderr
+        let frame: serde_json::Value = serde_json::from_slice(&out.stdout).expect("JSON alone");
+        assert!(text(&out.stderr).contains("breakdown:"));
+        frame
+    };
+    let children = |frame: &serde_json::Value| frame["children"].as_array().unwrap().len();
+    assert_eq!(children(&wire(&[])), 3);
+    let merged = wire(&["--merged"]);
+    assert_eq!(children(&merged), 2);
+    assert_eq!(merged["children"][0]["call_count"], 1);
+
+    let marked = cli(&[
+        "calls",
+        dir,
+        "src/lib.rs",
+        "--entry",
+        "uses_the_twins",
+        "--wire",
+        "--function-prefix",
+        "fn:",
+    ]);
+    let frame: serde_json::Value = serde_json::from_slice(&marked.stdout).unwrap();
+    assert_eq!(frame["children"][0]["target_id"], "fn:twin");
+}
+
+/// The flag rules are TypeScript's: two outputs, or `--merged` and a prefix without `--wire`, are usage errors (exit 2, and nothing on stdout).
+#[test]
+fn the_wire_flags_are_checked() {
+    let dir = policy_copy();
+    let dir = dir.to_str().unwrap();
+    let base = ["calls", dir, "src/calls.rs", "--entry", "plain_calls"];
+    for extra in [
+        &["--graph", "--wire"][..],
+        &["--merged"][..],
+        &["--function-prefix", "fn:"][..],
+        &["--class-prefix", "class:"][..],
+    ] {
+        let mut args = base.to_vec();
+        args.extend_from_slice(extra);
+        let out = cli(&args);
+        assert_eq!(out.status.code(), Some(2), "{extra:?}");
+        assert!(text(&out.stdout).is_empty(), "{extra:?}");
+        assert!(text(&out.stderr).contains("usage:"), "{extra:?}");
+    }
+}

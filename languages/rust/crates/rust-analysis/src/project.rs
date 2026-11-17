@@ -4,9 +4,10 @@ use std::path::Path;
 use analyzer_core::edit::MarkerStyle;
 use analyzer_core::outline::DefKind;
 use analyzer_core::text::Span;
+use analyzer_core::wire::Sources;
 
 use crate::paths;
-use crate::sem::{self, Loaded, Rung, attached};
+use crate::sem::{self, Loaded, Rung, attached, text_of};
 use crate::warning::{self, Facts, Warning};
 
 /// Config, manifest and lock files whose change means "load again". Each is relative to the root, so it starts with `**/`.
@@ -186,6 +187,14 @@ impl Project {
     /// recent toolchain. Each is also meant for `Stats.language` as `warning_<code>: 1` (RS4).
     pub fn warnings(&self) -> &[Warning] {
         &self.warnings
+    }
+}
+
+/// The wire needs the text of a file to turn a call site (bytes relative to its function) into a line and a column. A project has it: the text of the file
+/// **as the engine loaded it**, by its path relative to the root, not a fresh read of the disk, so the wire's offsets are the graph's.
+impl Sources for Project {
+    fn text(&self, file: &str) -> Option<String> {
+        text_of(&self.loaded, file)
     }
 }
 

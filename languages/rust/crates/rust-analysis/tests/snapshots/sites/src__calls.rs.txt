@@ -67,3 +67,7 @@ recurse_a
   Call 68..77 "recurse_b"
 recurse_b
   Call 25..34 "recurse_a"
+calls_helper_twice
+  Call 147..153 "helper"
+  Call 161..166 "twice"
+  Call 175..181 "helper"
