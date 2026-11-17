@@ -138,10 +138,10 @@ pub(crate) fn load(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<L
 
     // What the engine knows and does not say: the standard library source missing (`load_workspace_at` hides it) and a `cargo metadata` that failed
     // and was retried without dependencies (S-RS3). Both are read before the load goes on.
-    let no_std_source = match (&sysroot, workspace.sysroot.error()) {
-        (Some(dir), Some(_)) => Some(dir.file_name().unwrap_or("unknown").to_owned()),
-        _ => None,
-    };
+    let no_std_source = no_std_toolchain(
+        sysroot.as_ref().map(AsRef::<Path>::as_ref),
+        workspace.sysroot.error().is_some(),
+    );
     let dependencies_error = match &workspace.kind {
         ProjectWorkspaceKind::Cargo {
             error: Some(error), ..
@@ -321,6 +321,22 @@ impl Drop for TempDir {
     }
 }
 
+/// A load without `std` is never silent (RS3 §6): the toolchain to name in `NoStdSource`, when the standard library is not there. `sysroot` is
+/// the toolchain's folder as `rustc --print sysroot` said, `None` when it said nothing (no `rustc`): the engine then has no sysroot at all, so
+/// no `std`, and the toolchain is called `unknown`. With a sysroot, `std` is missing when the engine could not load its source.
+fn no_std_toolchain(sysroot: Option<&Path>, source_missing: bool) -> Option<String> {
+    match sysroot {
+        None => Some("unknown".to_owned()),
+        Some(dir) if source_missing => Some(
+            dir.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("unknown")
+                .to_owned(),
+        ),
+        Some(_) => None,
+    }
+}
+
 /// The toolchain's sysroot as `rustc --print sysroot` says in `dir` (so a `rust-toolchain.toml` there counts). `RUSTUP_AUTO_INSTALL=0`: a
 /// toolchain that is named and not installed must fail here, not be downloaded.
 fn sysroot_dir(dir: &Path) -> Option<AbsPathBuf> {
@@ -339,6 +355,26 @@ fn sysroot_dir(dir: &Path) -> Option<AbsPathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_load_without_std_names_its_toolchain_or_says_unknown() {
+        let dir = Path::new("/home/u/.rustup/toolchains/1.99.1-x86_64-unknown-linux-gnu");
+        // a sysroot whose source is there: nothing to say
+        assert_eq!(no_std_toolchain(Some(dir), false), None);
+        // its source is missing: the folder's name is the toolchain
+        assert_eq!(
+            no_std_toolchain(Some(dir), true).as_deref(),
+            Some("1.99.1-x86_64-unknown-linux-gnu")
+        );
+        // no sysroot at all (no rustc): no std either, whatever `source_missing` says, and no name to give
+        assert_eq!(no_std_toolchain(None, false).as_deref(), Some("unknown"));
+        assert_eq!(no_std_toolchain(None, true).as_deref(), Some("unknown"));
+        // a sysroot path with no last component
+        assert_eq!(
+            no_std_toolchain(Some(Path::new("/")), true).as_deref(),
+            Some("unknown")
+        );
+    }
 
     #[test]
     fn the_lock_goes_inside_the_folder() {
