@@ -85,6 +85,10 @@ new call into the engine adds its row in the same commit (the reviewer writes it
 | `ast::{MacroCall, CallExpr, MethodCallExpr, RecordExpr, PathExpr, ParenExpr, ClosureExpr, BlockExpr::async_token, Item, Attr::simple_name}`, `SyntaxNode::preorder`, `Preorder::skip_subtree` | `sites.rs` | the walk of a body and of an expansion: nested items skipped, closures and `async` blocks numbered, `#[cfg]` read by the tree |
 | test only: `Semantics::{new, attach_first_edition_opt, parse, resolve_expr_as_callable, resolve_method_call_fallback}`, `CallableKind::Function`, `Either::left`; `ra_ap_syntax::{ast::CallExpr, ast::MethodCallExpr, AstNode}` | `origin.rs` tests | the fixture's call walk, the part of RS4's site walk RS3 needs |
 
+**Test-only** (`sem/oracle.rs`, RS4 step 9, 33f7779; `ra_ap_ide =0.0.358` is a dev-dependency, kept out of the normal tree by
+`scripts/check-all.sh --static`): `ra_ap_ide::{AnalysisHost::with_database, Analysis::outgoing_calls, CallHierarchyConfig, FilePosition,
+RaFixtureConfig}` and `CallItem::{target, ranges}`; `hir::{AsAssocItem, AssocItemContainer}`, `Trait` equality for the trait-method class.
+
 ## RS4: the bridge (step 1, e9e03ed, 2026-11-17)
 
 Found while building it, on the policy fixture (`crates/rust-analysis/tests/fixtures/policy/`):
@@ -385,11 +389,12 @@ Where the sets differ: the oracle never reports `f()` inside `println!(…)` (ou
 It also drops a call it cannot turn into a navigation target (no target, no entry). So the subset check is the right oracle test, and "the oracle finds
 everything" is not.
 
-**Targets, on the whole policy workspace (RS4 step 9 spike, 2026-11-17).** 133 ranges: 120 the same target as ours, 3 inside nested items
-(§3 allows it), and the rest different in three classes, each by design: a tuple variant (`E::V(1)`: the oracle names the variant, we the
+**Targets, on the whole policy workspace (RS4 step 9, 33f7779, 2026-11-17).** 137 ranges: 124 the same target as ours, 3 inside nested
+items (§3 allows it), and 10 different in three classes (2 + 6 + 2), each by design: a tuple variant (`E::V(1)`: the oracle names the variant, we the
 enum); a macro-made function or a built-in derive's method (the oracle's target is in the project, ours is `External`); a trait-qualified
 path on a concrete type (`Writer::write(&json)`, `<Json as Make>::make()`: the oracle takes the callable type, which names the trait's
-declaration, while name resolution, which we ask first, answers the impl). The oracle test states these three as exceptions (RS4 §8).
+declaration, while name resolution, which we ask first, answers the impl). The oracle test states these three, and nested items, as
+exceptions recognised by rule (RS4 §8). On the context workspace all 28 ranges are the same target.
 
 ### Cancellation (RS5 depends on this)
 

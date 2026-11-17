@@ -422,16 +422,23 @@ the whole crate.
   every one of the 3333 sites counted once, as exactly one category (asserted); no `unknown_*`, `def_not_in_outline`, `open_other` or
   `macro_not_expanded` (asserted, so a change in `core/` that adds one fails Rust's test: the classification to extend or the number to
   accept). The numbers are in `ENGINE.md` "RS4: core/ as a real project". Exact counts are not pinned: `core/` changes.
-- **The oracle** (spike, not built): `outgoing_calls` reports 133 ranges on the policy workspace: 120 the same target, 3 inside nested items
-  (allowed), the rest different **by design**, in three classes: a tuple variant (the oracle names the variant, we the enum, §5); a
-  macro-made function or a built-in derive's method (the oracle's target is in the project, ours is `External`, §5); a trait-qualified path
-  on a concrete type (`Writer::write(&json)`, `<Json as Make>::make()`: the oracle takes the callable type, the trait's declaration; we
-  take the path first, and the engine's name resolution answers the impl, §4 rule 3). **Decided: build it with these three classes as
-  stated exceptions, each recognised by a rule, not by a position list** (the variant's enum is our target; our target is `External` with
-  cause `MacroFile` / `OtherCrate` and the oracle's file is the project's; ours is an impl's method of the oracle's trait function), so any
-  other difference fails. Pin the count of each class. The report's counts disagreed (10 differences, 3 + 6 + 2 = 11): the test settles it.
-- **Not built yet: the context workspace** (`tests/fixtures/context/`, the table above): step 9's, since it is "written now" so no RC phase
-  writes a program under pressure; the oracle runs over it too.
+- **The oracle** (33f7779, `sem/oracle.rs`): for every function, const and static, every range `outgoing_calls` reports is a site of ours
+  with the same target, or one of **four classes, each recognised by a rule and counted**: a **nested item** (another outline def inside
+  this one holds the range, §3); a **tuple variant** (the oracle's target is a variant lying inside our target, its enum, §5); a
+  **generated target** (ours is `External` with cause `MacroFile` / `OtherCrate`, the oracle's is in the project, §5); a **trait method**
+  (ours is an impl's method of the oracle's trait function, same name, `trait_()` equal: the oracle takes the callable type, we the path
+  first and the engine's name resolution answers the impl, §4 rule 3). Any other difference fails with its range. **Policy workspace: 124
+  the same, 3 nested, 2 tuple variants, 6 generated, 2 trait methods; context workspace: all 28 the same**, all pinned. (The review's
+  "3 + 6 + 2 = 11" had left out the two tuple variants; the spike's "10" was the last three classes: 13 exceptions in all.) `ra_ap_ide`
+  is a dev-dependency only, and `scripts/check-all.sh --static` checks the normal `cargo tree` of `rust-analysis` and `rust-cli` has
+  `ra_ap_ide_db` and no `ra_ap_ide` (it fails when the dependency is moved). The oracle reports calls and method calls only, so a record,
+  a hand-over and a macro's arguments are ours alone.
+- **The context workspace** (eab0ce0, `tests/fixtures/context/`, `tests/context.rs`): a generic called from two callers, a callback (a
+  `fn` pointer, an `Fn` parameter, a closure, a def handed over), a `dyn` in a local, a `dyn` parameter, a factory (`Box<dyn Writer>`,
+  and `impl Writer`, which the engine sees through), a struct holding a `Box<dyn Writer>`, a recursive generic. 14 trees with their
+  `Breakdown` in `tests/snapshots/trees/context.txt` (read in the review: `emit` and `countdown` one node with `type_param` 1; `apply` /
+  `apply_generic` `fn_pointer` / `fn_param`; the `dyn` cases `Writer::write` with `dyn` 1; `make_impl().write()` already
+  `<Json as Writer>::write`). The join finds and names its 26 entries. Each RC phase changes these snapshots on purpose.
 
 ## 9. Steps
 
@@ -445,7 +452,7 @@ the whole crate.
 | 6 ✅ | **done** (719b1ad, reviewed 2026-11-17: `tests/fixtures/policy/src/passed.rs`, seven trees; step A takes a path in a value position that `resolve_path` says is a function, a tuple struct or variant, or `Self` of a tuple struct, never the callee of a call (parentheses looked through: `(f)(1)`), only from lowered code; `RawSite::is_passed` tells a `MacroBody` hand-over from a call. Probed: a hand-over in a project macro's body, `&helper`, `helper as fn()`, a struct field, an array, a return value; a macro-made and two derive-made functions handed over, counted `external_passed`; `core/` unchanged) | fixtures: named, as a method path, a constructor (counted, no edge), a local (no site) |
 | 7 ✅ | **done** (5cee903 `external_passed` label + `generated_handed_over` row, 8355422, reviewed 2026-11-17: `body_owner` + `upmap_once` close the `wrap!` gap; fixtures in `macros.rs`; ten trees; the §3 [check] answered; `macro_generated_target` counts calls to a project macro's function and a derive's methods once per call, `core/`'s 8 are all derives; `core/` unchanged, 22 / 11 / 108 / 0). Fix asked: one `macro_not_expanded` per written place (§3). Was: macros: what step 2 left (§3 "As built": a project macro's own call written as an external macro's argument, `upmap_once`), generated targets, built-in derives; the policy rows and counters for what step 2 built | fixtures; the counters; the two [check]s of §3 and §5 |
 | 8 ✅ | **done** (ff8f48b `macro_not_expanded` once per written place; 97d1311 the wire, reviewed 2026-11-17: `lib.rs` re-exports core's wire items by name; `impl Sources for Project` gives the engine's loaded text (`sem::text_of`), byte-equal to the file; `rust-cli calls … --wire [--merged] [--function-prefix P] [--class-prefix P]`, JSON alone on stdout, flag rules as `typescript-cli`; `tests/wire.rs`: four entries unmerged and merged, `WIRE_FORMAT_VERSION` 2. Probed on `core/`'s `render`: 59 nodes unmerged, 28 merged with `call_count` summing to 31 (28 + 31 = 59). Two findings for core, both outside this step: (1) a **byte-order mark is counted as a column** on line 1 (`Positions::at`): `(1,19)` where an editor says 18; TypeScript's `text_of` keeps the mark too, so it is not Rust's alone; fix asked in core, (2) a marked struct gets `function_prefix`: Q-RS7) | the wire snapshot |
-| 9 | scenarios (per-language trees, D30, one shared workspace), the oracle, no `std`, the real project. **Partly done** (52e98e7, 0d7bad2, b41610b; core 3edf5bb BOM column; reviewed 2026-11-17, §8 "As built"): left are the oracle (three stated classes) and the context workspace | all of §8 |
+| 9 ✅ | scenarios (per-language trees, D30, one shared workspace), the oracle, no `std`, the real project. **Done** (52e98e7, 0d7bad2, b41610b, 33f7779, eab0ce0; core 3edf5bb BOM column; reviewed 2026-11-17, §8 "As built") | all of §8 |
 | 10 | `languages/rust/docs/policy.md`, one fixture named per row; `ENGINE.md` | reviewed |
 | | **tag `rust-v0.2.0`** | |
 
