@@ -50,10 +50,10 @@ Wrapper::all
   Passed 62..66 "Self"
   MethodCall 68..73 "count"
 externals
-  MethodCall 113..122 "into_iter"
-  MethodCall 125..128 "map"
-  Passed 129..141 "String::from"
-  MethodCall 143..148 "count"
+  MethodCall 117..126 "into_iter"
+  MethodCall 129..132 "map"
+  Passed 133..145 "String::from"
+  MethodCall 147..152 "count"
 locals
   Call 201..202 "c"
   Call 210..211 "g"
@@ -62,3 +62,6 @@ through_a_parameter
   MethodCall 153..156 "map"
   Passed 157..165 "W::build"
   MethodCall 167..172 "count"
+generated_handed_over
+  Call 192..197 "spawn"
+  Passed 198..202 "made"

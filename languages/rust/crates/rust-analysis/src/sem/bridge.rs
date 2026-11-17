@@ -572,14 +572,15 @@ mod tests {
                 "src/macros.rs:nested!",
                 "src/macros.rs:statements!",
                 "src/passed.rs:Build",
+                "src/passed.rs:make_function!",
                 "src/shapes.rs:Alias",
                 "src/shared.rs:from_elsewhere!",
             ],
-            "the five traits, the inline module, the seven macros, the type alias"
+            "the five traits, the inline module, the eight macros, the type alias"
         );
-        // every other def: 18 in lib.rs, 8 in constructions.rs, 16 in shapes.rs, 28 in calls.rs, 30 in dispatch.rs, 10 in macros.rs, 11 in cfg_off.rs, 18 in passed.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
+        // every other def: 18 in lib.rs, 8 in constructions.rs, 16 in shapes.rs, 28 in calls.rs, 30 in dispatch.rs, 10 in macros.rs, 11 in cfg_off.rs, 19 in passed.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
         // byte-order mark
-        assert_eq!(joined, 149);
+        assert_eq!(joined, 150);
     }
 
     /// What `entry` answers `None` to, besides a def a `cfg` turns off (the join test): no file, a file no module reaches, a kind that cannot start a

@@ -56,3 +56,6 @@ through_a_parameter
   MethodCall "map" -> External core iter::traits::iterator::Iterator::map
   Passed "W::build" -> Def src/passed.rs:Build::build open=type_param
   MethodCall "count" -> External core iter::traits::iterator::Iterator::count
+generated_handed_over
+  Call "spawn" -> Def src/passed.rs:spawn
+  Passed "made" -> External policy passed::made (MacroFile)

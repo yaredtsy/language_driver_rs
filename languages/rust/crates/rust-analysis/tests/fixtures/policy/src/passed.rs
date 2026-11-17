@@ -69,7 +69,7 @@ impl Wrapper {
     }
 }
 
-/// A function of another crate handed over: no edge, counted.
+/// A function outside project code handed over: no edge, counted.
 pub fn externals(xs: Vec<&str>) -> usize {
     xs.into_iter().map(String::from).count()
 }
@@ -85,4 +85,17 @@ pub fn locals(f: fn(u8) -> u8, x: u8) -> u8 {
 /// A path through a type parameter is a hand-over whose answer is open.
 pub fn through_a_parameter<W: Build>(xs: Vec<u8>) -> usize {
     xs.into_iter().map(W::build).count()
+}
+
+macro_rules! make_function {
+    ($name:ident) => {
+        pub fn $name() {}
+    };
+}
+
+make_function!(made);
+
+/// A function a project macro made has no outline def: external whatever its cause, so handing it over is counted `external_passed` as a dependency's is.
+pub fn generated_handed_over() {
+    spawn(made);
 }

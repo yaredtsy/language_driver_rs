@@ -407,7 +407,7 @@ fn what_is_handed_over_is_a_passed_edge_or_a_count() {
         1
     );
 
-    // a function of another crate: no edge, counted, and not an `external` edge either
+    // a function outside project code: no edge, counted, and not an `external` edge either
     let graph = graph_of(&project, file, "externals");
     assert_eq!(graph.stats.language["external_passed"], 1);
     let summary = breakdown(&graph);
@@ -418,6 +418,12 @@ fn what_is_handed_over_is_a_passed_edge_or_a_count() {
             .to_string()
             .contains("handed over and not called (no edge)")
     );
+
+    // whatever the cause: a function a project macro made is counted the same, and is not also a `macro_generated_target` (a hand-over is not a call)
+    let graph = graph_of(&project, file, "generated_handed_over");
+    assert_eq!(graph.stats.language["external_passed"], 1);
+    assert!(!graph.stats.language.contains_key("macro_generated_target"));
+    assert_eq!(breakdown(&graph).passed, 0);
 
     // a local is no site: only the two calls through a value of function type
     let graph = graph_of(&project, file, "locals");

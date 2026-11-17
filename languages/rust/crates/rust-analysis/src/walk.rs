@@ -81,7 +81,7 @@ pub(crate) fn body<'a, 'p>(
             match (&callee.found, passed) {
                 // a def of the project handed over: an edge, walked like a call, that says it is not one (D22)
                 (Found::Def(_), _) => {}
-                // only a call into project code can be passed: a function of another crate handed over, and a constructor, have no edge and are counted
+                // only a call into project code can be passed: a function outside project code handed over (whatever its cause), and a constructor, have no edge and are counted
                 (
                     Found::External {
                         construct: false, ..

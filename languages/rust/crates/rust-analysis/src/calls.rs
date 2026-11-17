@@ -22,7 +22,8 @@ pub(crate) const MACRO_NOT_EXPANDED: &str = "macro_not_expanded";
 pub(crate) const MACRO_GENERATED_TARGET: &str = "macro_generated_target";
 pub(crate) const OUTSIDE_ROOT: &str = "outside_root";
 pub(crate) const DUPLICATE_MARKER: &str = "duplicate_marker";
-/// A function of another crate handed over and not called: no edge (only a call into project code can be passed, D22), counted.
+/// A function outside project code handed over and not called: no edge (only a call into project code can be passed, D22), counted. Whatever its cause: a
+/// dependency's function, one a project macro made, a built-in derive's, one beside the root (`Cause`).
 pub(crate) const EXTERNAL_PASSED: &str = "external_passed";
 /// A tuple struct or variant handed over (`.map(Some)`, `let f = E::P;`): a constructor has no body, so no edge, counted.
 pub(crate) const CONSTRUCTOR_PASSED: &str = "constructor_passed";
@@ -213,7 +214,8 @@ pub struct Breakdown {
     pub open: BTreeMap<String, u64>,
     /// Macro calls the engine could not expand: what was in their arguments is lost.
     pub macro_not_expanded: u64,
-    /// Functions of other crates handed over and not called (`.map(String::from)`): no edge, counted.
+    /// Functions outside project code handed over and not called (`.map(String::from)`, a function a project macro made, a derive's `clone`): no edge,
+    /// counted, whatever the cause.
     pub external_passed: u64,
     /// Tuple structs and variants handed over (`.map(Some)`): no edge, counted.
     pub constructor_passed: u64,
@@ -333,7 +335,7 @@ impl fmt::Display for Breakdown {
                 self.macro_not_expanded,
             ),
             (
-                "functions of other crates handed over and not called (no edge)",
+                "functions outside project code handed over and not called (no edge)",
                 self.external_passed,
             ),
             (

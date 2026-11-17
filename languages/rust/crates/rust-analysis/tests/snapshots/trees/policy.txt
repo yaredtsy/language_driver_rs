@@ -315,7 +315,7 @@ externals
 
 breakdown:
   edges: 0 call, 0 construct, 3 external, 0 unresolved
-  functions of other crates handed over and not called (no edge): 1
+  functions outside project code handed over and not called (no edge): 1
   contexts 1, bodies walked 1, summaries reused 0
   cuts: none
 
