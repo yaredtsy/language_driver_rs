@@ -6,5 +6,9 @@ std_calls
   Call "Some" -> External construct core option::Option
   Call "Ok::<u8, ()>" -> External construct core result::Result
   Record "std::ops::Range" -> External construct core ops::range::Range
-  Call "Default::default" -> External core default::default
+  Call "Default::default" -> External core default::<u8 as Default>::default
   Call "crate::shapes::derived" -> Def src/shapes.rs:derived
+std_naming
+  Call "String::from" -> External alloc string::<String as From<&str>>::from
+  MethodCall "len" -> External core slice::[T]::len
+  Call "std::mem::swap" -> External core mem::swap

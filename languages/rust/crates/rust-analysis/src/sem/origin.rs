@@ -9,8 +9,8 @@
 
 use analyzer_core::text::Span;
 use ra_ap_hir::{
-    Adt, AsAssocItem, AssocItemContainer, Const, Crate, Function, HasSource, InFile, Macro, Module,
-    Semantics, Static, Variant,
+    Adt, AsAssocItem, AssocItemContainer, Const, Crate, Function, HasSource, HirDisplay, InFile,
+    Macro, Module, Semantics, Static, Variant,
 };
 use ra_ap_ide_db::RootDatabase;
 use ra_ap_syntax::{AstNode, TextRange, ast::HasName};
@@ -108,6 +108,7 @@ impl Loaded {
                 let mut path = module_path(db, module);
                 push_container(
                     db,
+                    module.krate(db),
                     function.as_assoc_item(db).map(|i| i.container(db)),
                     &mut path,
                 );
@@ -123,6 +124,7 @@ impl Loaded {
                 let mut path = module_path(db, module);
                 push_container(
                     db,
+                    module.krate(db),
                     konst.as_assoc_item(db).map(|i| i.container(db)),
                     &mut path,
                 );
@@ -257,17 +259,39 @@ impl Loaded {
     }
 }
 
-/// The trait's or the impl's type's name, for an associated item: `String::len`, `Writer::write`. A self type that is not an ADT (`[T]`, `&T`) gives none.
+/// The segment before an associated item's name (RS4 §5's table): a trait's own item has the trait; an inherent impl of a struct, enum or union has the
+/// type's name, without generic arguments; an inherent impl of any other type has the self type as the engine displays it (`u8`, `[T]`); a trait impl
+/// has `<self type as trait>`, both as displayed and with generic arguments (`<String as From<&str>>`). It is never stored, so it only has to be unique
+/// and the same on every run (rule 9): impls on builtin types and the several trait impls of one type must not share a name, for the merged wire counts
+/// one name as one target.
 fn push_container(
     db: &RootDatabase,
+    krate: Crate,
     container: Option<AssocItemContainer>,
     path: &mut Vec<String>,
 ) {
+    let target = krate.to_display_target(db);
     match container {
         Some(AssocItemContainer::Trait(t)) => path.push(t.name(db).as_str().to_owned()),
         Some(AssocItemContainer::Impl(i)) => {
-            if let Some(adt) = i.self_ty(db).as_adt() {
-                path.push(adt.name(db).as_str().to_owned());
+            let self_ty = i.self_ty(db);
+            match i.trait_ref(db) {
+                None => path.push(match self_ty.as_adt() {
+                    Some(adt) => adt.name(db).as_str().to_owned(),
+                    None => self_ty.display(db, target).to_string(),
+                }),
+                Some(trait_ref) => {
+                    let mut trait_text = trait_ref.trait_().name(db).as_str().to_owned();
+                    // the trait's own arguments after `Self`, which is argument 0: `From<&str>`
+                    let args: Vec<String> = (1..)
+                        .map_while(|at| trait_ref.get_type_argument(at))
+                        .map(|arg| arg.display(db, target).to_string())
+                        .collect();
+                    if !args.is_empty() {
+                        trait_text = format!("{trait_text}<{}>", args.join(", "));
+                    }
+                    path.push(format!("<{} as {trait_text}>", self_ty.display(db, target)));
+                }
             }
         }
         None => {}

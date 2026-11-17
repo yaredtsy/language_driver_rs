@@ -53,3 +53,13 @@ projection_receiver
   MethodCall 184..188 "next"
   MethodCall 191..197 "unwrap"
   MethodCall 200..205 "write"
+trait_path_through_a_parameter
+  Call 151..164 "Writer::write"
+trait_path_on_a_concrete_type
+  Call 55..68 "Writer::write"
+trait_path_through_an_iterator
+  Call 68..82 "Iterator::next"
+default_through_a_parameter
+  Call 67..83 "Default::default"
+default_on_a_concrete_type
+  Call 55..71 "Default::default"

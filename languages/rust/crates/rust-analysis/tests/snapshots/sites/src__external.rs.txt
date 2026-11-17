@@ -8,3 +8,7 @@ std_calls
   Record 154..169 "std::ops::Range"
   Call 209..225 "Default::default"
   Call 233..255 "crate::shapes::derived"
+std_naming
+  Call 200..212 "String::from"
+  MethodCall 225..228 "len"
+  Call 236..250 "std::mem::swap"

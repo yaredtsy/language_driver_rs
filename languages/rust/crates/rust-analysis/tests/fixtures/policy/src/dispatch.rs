@@ -107,3 +107,24 @@ where
 {
     items.next().unwrap().write();
 }
+
+/// A trait-qualified path says nothing about the type: it is the substitution's `Self`.
+pub fn trait_path_through_a_parameter<W: Writer>(w: &W) {
+    Writer::write(w);
+}
+
+pub fn trait_path_on_a_concrete_type(json: Json) {
+    Writer::write(&json);
+}
+
+pub fn trait_path_through_an_iterator<I: Iterator>(mut it: I) {
+    Iterator::next(&mut it);
+}
+
+pub fn default_through_a_parameter<W: Default>() {
+    let _x: W = Default::default();
+}
+
+pub fn default_on_a_concrete_type() {
+    let _x: u8 = Default::default();
+}

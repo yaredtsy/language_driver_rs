@@ -540,9 +540,9 @@ mod tests {
             ],
             "the four traits, the inline module, the six macros, the type alias"
         );
-        // every other def: 17 in lib.rs, 16 in shapes.rs, 26 in calls.rs, 25 in dispatch.rs, 10 each in macros.rs and cfg_off.rs, 1 each in external.rs and shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
+        // every other def: 17 in lib.rs, 16 in shapes.rs, 26 in calls.rs, 30 in dispatch.rs, 10 each in macros.rs and cfg_off.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
         // byte-order mark
-        assert_eq!(joined, 113);
+        assert_eq!(joined, 119);
     }
 
     /// What `entry` answers `None` to, besides a def a `cfg` turns off (the join test): no file, a file no module reaches, a kind that cannot start a
@@ -783,8 +783,8 @@ mod tests {
             assert_eq!(texts, ["limit", "Derived::default", "clone"]);
             // a built-in derive's methods: written nowhere, and the trait's declaration in `core` is their source. Named by the type's crate, from its root
             for (at, name) in [
-                (1, "shapes::Derived::default"),
-                (2, "shapes::Derived::clone"),
+                (1, "shapes::<Derived as Default>::default"),
+                (2, "shapes::<Derived as Clone>::clone"),
             ] {
                 assert_eq!(
                     external(shapes[at].1),

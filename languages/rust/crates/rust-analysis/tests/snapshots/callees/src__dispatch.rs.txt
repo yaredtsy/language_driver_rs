@@ -49,4 +49,14 @@ unknown_method
 projection_receiver
   MethodCall "next" -> External core iter::traits::iterator::Iterator::next open=type_param
   MethodCall "unwrap" -> External core option::Option::unwrap
-  MethodCall "write" -> Def src/lib.rs:Writer::write open=other
+  MethodCall "write" -> Def src/lib.rs:Writer::write open=projection
+trait_path_through_a_parameter
+  Call "Writer::write" -> Def src/lib.rs:Writer::write open=type_param
+trait_path_on_a_concrete_type
+  Call "Writer::write" -> Def src/lib.rs:<Json as Writer>::write
+trait_path_through_an_iterator
+  Call "Iterator::next" -> External core iter::traits::iterator::Iterator::next open=type_param
+default_through_a_parameter
+  Call "Default::default" -> External core default::Default::default open=type_param
+default_on_a_concrete_type
+  Call "Default::default" -> External core default::<u8 as Default>::default

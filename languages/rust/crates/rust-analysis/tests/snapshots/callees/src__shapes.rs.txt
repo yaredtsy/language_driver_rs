@@ -3,6 +3,6 @@ LIMIT
 Rec::mk
   Record "Self" -> Construct src/shapes.rs:Rec
 derived
-  Call "Derived::default" -> External policy shapes::Derived::default (OtherCrate)
+  Call "Derived::default" -> External policy shapes::<Derived as Default>::default (OtherCrate)
   Record "Derived" -> Construct src/shapes.rs:Derived
-  MethodCall "clone" -> External policy shapes::Derived::clone (OtherCrate)
+  MethodCall "clone" -> External policy shapes::<Derived as Clone>::clone (OtherCrate)

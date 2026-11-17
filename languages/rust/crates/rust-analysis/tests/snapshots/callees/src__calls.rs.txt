@@ -9,7 +9,7 @@ path_calls
   Call "self::helper" -> Def src/calls.rs:helper
 method_chain
   MethodCall "value" -> Def src/shapes.rs:Rec::value
-  MethodCall "checked_add" -> External core num::checked_add
+  MethodCall "checked_add" -> External core num::u8::checked_add
   MethodCall "unwrap_or" -> External core option::Option::unwrap_or
 constructions
   Call "Pair" -> Construct src/shapes.rs:Pair

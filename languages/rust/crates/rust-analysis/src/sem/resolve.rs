@@ -11,8 +11,8 @@
 )]
 
 use ra_ap_hir::{
-    AsAssocItem, AssocItemContainer, CallableKind, Function, GenericDef, ModuleDef, PathResolution,
-    Type, TypeParam, Variant,
+    AsAssocItem, AssocItemContainer, CallableKind, Function, GenericDef, GenericSubstitution,
+    ModuleDef, PathResolution, Type, TypeParam, Variant,
 };
 use ra_ap_syntax::ast;
 
@@ -55,6 +55,9 @@ pub(crate) enum Open {
     SelfInTrait,
     /// The trait's own item, reached through a parameter of type `impl Trait`.
     ImplTrait,
+    /// The trait's own item, reached through an associated type of a parameter (`I::Item: Writer`, then `.write()`): answered by types, as `TypeParam`
+    /// is, once RC1 substitutes the key.
+    Projection,
     /// The trait's own item, reached through a return type the engine did not see through.
     Opaque,
     /// The trait's own item, reached through `dyn Trait`.
@@ -65,8 +68,7 @@ pub(crate) enum Open {
     FnPointer,
     /// A call through a parameter bounded by `Fn*`, an `impl Fn`, a `&dyn Fn`.
     FnParam,
-    /// The trait's own item, and the receiver's type is none of the above and not a concrete type (a projection, an error type): a case not
-    /// classified. It must be near zero on real code; if it is not, the classification is missing one, and the number says so before RC0 relies on it.
+    /// The trait's own item, and the receiver's type is none of the above and not a concrete type (an unknown type): a case not classified. It must be near zero on real code; if it is not, the classification is missing one, and the number says so before RC0 relies on it.
     Other,
 }
 
@@ -77,6 +79,7 @@ impl Open {
             Open::TypeParam => "open_type_param",
             Open::SelfInTrait => "open_self_in_trait",
             Open::ImplTrait => "open_impl_trait",
+            Open::Projection => "open_projection",
             Open::Opaque => "open_opaque",
             Open::Dyn => "open_dyn",
             Open::Closure => "open_closure",
@@ -116,7 +119,7 @@ enum Dispatch {
     /// The type is known: the impl is what runs, or the trait's default body for it.
     Concrete,
     Open(Open),
-    /// Not concrete and not one of the open kinds: a projection, an error type.
+    /// Not concrete and not one of the open kinds: an error type.
     Unclassified,
 }
 
@@ -164,11 +167,11 @@ impl<'p> Sem<'p> {
         // the path first: name resolution does not need the signature, which names types the load may not know, and it is the more specific answer
         // (`<Json as Make>::make()` is the impl's `make` by path and the trait's by type)
         if let Some(path) = &path
-            && let Some((resolved, _subst)) = self.sema().resolve_path_with_subst(path)
+            && let Some((resolved, subst)) = self.sema().resolve_path_with_subst(path)
         {
             match resolved {
                 PathResolution::Def(ModuleDef::Function(function)) => {
-                    return self.path_function(function, path);
+                    return self.path_function(function, path, subst.as_ref());
                 }
                 PathResolution::Def(ModuleDef::Adt(adt)) => {
                     return self.constructed(Item::Adt(adt));
@@ -188,7 +191,7 @@ impl<'p> Sem<'p> {
         };
         match callable.kind() {
             CallableKind::Function(function) => match &path {
-                Some(path) => self.path_function(function, path),
+                Some(path) => self.path_function(function, path, None),
                 None => Callee {
                     found: self.function_found(function),
                     open: None,
@@ -213,11 +216,17 @@ impl<'p> Sem<'p> {
         }
     }
 
-    /// A function reached by a path: the open question is asked of the path's qualifier (`W::make()`).
-    fn path_function(&self, function: Function, path: &ast::Path) -> Callee<'p> {
+    /// A function reached by a path: the open question is asked of the path's qualifier (`W::make()`), or, for a qualifier that is a trait, of the
+    /// substitution's `Self`.
+    fn path_function(
+        &self,
+        function: Function,
+        path: &ast::Path,
+        subst: Option<&GenericSubstitution<'p>>,
+    ) -> Callee<'p> {
         let open = self
             .trait_item(function)
-            .and_then(|_| self.open_of(self.qualifier_dispatch(path)));
+            .and_then(|_| self.open_of(self.qualifier_dispatch(path, subst)));
         Callee {
             found: self.function_found(function),
             open,
@@ -244,7 +253,11 @@ impl<'p> Sem<'p> {
 
     /// How a path's qualifier dispatches: `W` in `W::make()`, the type in `<W as Make>::make()`, `Self` in a trait. A path with no qualifier names the
     /// function itself, not a type to dispatch on.
-    fn qualifier_dispatch(&self, path: &ast::Path) -> Dispatch {
+    fn qualifier_dispatch(
+        &self,
+        path: &ast::Path,
+        subst: Option<&GenericSubstitution<'p>>,
+    ) -> Dispatch {
         let Some(qualifier) = path.qualifier() else {
             return Dispatch::Concrete;
         };
@@ -266,9 +279,23 @@ impl<'p> Sem<'p> {
             Some(PathResolution::Def(
                 ModuleDef::Adt(_) | ModuleDef::TypeAlias(_) | ModuleDef::BuiltinType(_),
             )) => Dispatch::Concrete,
-            // a trait path (`Writer::write(&x)`), a module, or nothing: not a type we can say
+            // a trait path (`Writer::write(w)`, `Default::default()`) says nothing about the type: it is the substitution's `Self`
+            Some(PathResolution::Def(ModuleDef::Trait(_))) => match self.substituted_self(subst) {
+                Some(ty) => self.dispatch_of(&ty),
+                None => Dispatch::Unclassified,
+            },
+            // a module, or nothing: not a type we can say
             _ => Dispatch::Unclassified,
         }
+    }
+
+    /// The type the engine substituted for `Self` in a trait's item: the entry of `GenericSubstitution::types` named `Self`.
+    fn substituted_self(&self, subst: Option<&GenericSubstitution<'p>>) -> Option<Type<'p>> {
+        subst?
+            .types(self.loaded().db())
+            .into_iter()
+            .find(|(name, _)| name.as_str() == "Self")
+            .map(|(_, ty)| ty)
     }
 
     /// How a type dispatches, looking through references and boxes (auto-deref): the first type on the way that is a parameter, a `dyn`, an opaque
@@ -285,7 +312,10 @@ impl<'p> Sem<'p> {
             if step.as_impl_traits(db).is_some() {
                 return Dispatch::Open(Open::Opaque);
             }
-            if step.is_unknown() || step.as_associated_type_parent_trait(db).is_some() {
+            if step.as_associated_type_parent_trait(db).is_some() {
+                return Dispatch::Open(Open::Projection);
+            }
+            if step.is_unknown() {
                 return Dispatch::Unclassified;
             }
         }
@@ -493,10 +523,25 @@ mod tests {
             assert_eq!(dispatch("fn_pointer_field"), [Some(Open::FnPointer)]);
             assert_eq!(dispatch("fn_bound"), [Some(Open::FnParam)]);
             assert_eq!(dispatch("dyn_fn"), [Some(Open::FnParam)]);
-            // a projection is none of those: counted `other`, the number that says the classification is missing a case
+            // a trait-qualified path is asked of the substitution's `Self`: a parameter is open, a concrete type is the impl
+            assert_eq!(
+                dispatch("trait_path_through_a_parameter"),
+                [Some(Open::TypeParam)]
+            );
+            assert_eq!(
+                dispatch("trait_path_through_an_iterator"),
+                [Some(Open::TypeParam)]
+            );
+            assert_eq!(
+                dispatch("default_through_a_parameter"),
+                [Some(Open::TypeParam)]
+            );
+            assert_eq!(dispatch("trait_path_on_a_concrete_type"), [None]);
+            assert_eq!(dispatch("default_on_a_concrete_type"), [None]);
+            // an associated type of a parameter is answered by types, as the parameter is: its own kind, so `other` keeps meaning "a case is missing"
             assert_eq!(
                 dispatch("projection_receiver"),
-                [Some(Open::TypeParam), None, Some(Open::Other)]
+                [Some(Open::TypeParam), None, Some(Open::Projection)]
             );
             // not open: a concrete receiver (the impl's method, and a default method of the trait for a concrete type), a return-position
             // `impl Trait` the engine sees through, a qualified path to the impl
@@ -558,6 +603,56 @@ mod tests {
                 first("src/dispatch.rs", "unknown_method"),
                 Found::Unknown(Reason::UnknownMethod)
             ));
+        });
+    }
+
+    /// RS4 §5's table of external names, one row each: a trait's own item, an inherent impl of an ADT, of a builtin type and of a slice, a trait impl with and
+    /// without arguments, a built-in derive's, and a free function. Impls on builtin types and the several trait impls of one type must not share a name.
+    #[test]
+    fn external_names_follow_the_table() {
+        let (loaded, _root) = policy("callee_names");
+        attached(&loaded, STYLE, |sem| {
+            let externals = |file: &str, qualname: &str| -> Vec<String> {
+                let func = sem.entry(file, qualname, 0).unwrap();
+                sem.sites(func)
+                    .list
+                    .iter()
+                    .filter_map(|site| match sem.callee(func, site).found {
+                        Found::External { package, name, .. } => Some(format!("{package} {name}")),
+                        _ => None,
+                    })
+                    .collect()
+            };
+            assert_eq!(
+                externals("src/external.rs", "std_naming"),
+                [
+                    // a trait impl with an argument: not the same name as `From<char>` or `From<String>`
+                    "alloc string::<String as From<&str>>::from",
+                    // an inherent impl of a slice: the self type as displayed
+                    "core slice::[T]::len",
+                    // free
+                    "core mem::swap",
+                ]
+            );
+            assert_eq!(
+                externals("src/external.rs", "std_calls"),
+                [
+                    "alloc string::String::new",
+                    "alloc string::String::push",
+                    "alloc string::String::len",
+                    "alloc vec::Vec::new",
+                    "core option::Option",
+                    "core result::Result",
+                    "core ops::range::Range",
+                    // a trait impl on a builtin type
+                    "core default::<u8 as Default>::default",
+                ]
+            );
+            // a trait's own item
+            assert_eq!(
+                externals("src/dispatch.rs", "trait_path_through_an_iterator"),
+                ["core iter::traits::iterator::Iterator::next"]
+            );
         });
     }
 }
