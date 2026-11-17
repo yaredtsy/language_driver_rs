@@ -214,7 +214,7 @@ fn handed_not_called(graph: &Graph, lang: &TypeScript<'_>) -> Vec<(StableDef, bo
         .filter(|(id, _)| !reached.contains(id))
         .map(|(id, written)| (id.clone(), *written))
         .collect();
-    found.sort_by(|a, b| format!("{:?}", a.0).cmp(&format!("{:?}", b.0)));
+    found.sort();
     found
 }
 
