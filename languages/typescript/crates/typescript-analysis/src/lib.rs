@@ -42,18 +42,18 @@ fn matches_a_glob(path: &str) -> bool {
         return false;
     }
     let name = path.rsplit('/').next().unwrap_or(path);
-    (name.starts_with("tsconfig") && name.ends_with(".json"))
-        || [
-            "jsconfig.json",
-            "package.json",
-            "package-lock.json",
-            "npm-shrinkwrap.json",
-            "yarn.lock",
-            "pnpm-lock.yaml",
-            "bun.lock",
-            "bun.lockb",
-        ]
-        .contains(&name)
+    // the globs are `**/<name>` with at most one `*` in the name: what is left of the glob after `**/` is matched against the file name
+    ENVIRONMENT_GLOBS.iter().any(|glob| {
+        let pattern = glob.strip_prefix("**/").unwrap_or(glob);
+        match pattern.split_once('*') {
+            Some((head, tail)) => {
+                name.len() >= head.len() + tail.len()
+                    && name.starts_with(head)
+                    && name.ends_with(tail)
+            }
+            None => name == pattern,
+        }
+    })
 }
 
 /// A loaded TypeScript / JavaScript program. Dropping it frees the program.
@@ -420,3 +420,26 @@ impl fmt::Display for OpenError {
 }
 
 impl std::error::Error for OpenError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `matches_a_glob` is read off `ENVIRONMENT_GLOBS`, so a glob added there covers its files here: a name written from each glob (`*` filled in) is
+    /// covered, at the root and below it, and a path outside the root is not.
+    #[test]
+    fn every_environment_glob_covers_a_name_written_from_it() {
+        for glob in ENVIRONMENT_GLOBS {
+            let name = glob.strip_prefix("**/").unwrap().replace('*', "-base");
+            assert!(matches_a_glob(&name), "{glob}: {name}");
+            assert!(matches_a_glob(&format!("a/b/{name}")), "{glob}: a/b/{name}");
+            assert!(!matches_a_glob(&format!("/abs/{name}")), "{glob}: /abs");
+            assert!(
+                !matches_a_glob(&format!("{name}.bak")),
+                "{glob}: {name}.bak"
+            );
+        }
+        assert!(!matches_a_glob("src/main.ts"));
+        assert!(!matches_a_glob("tsconfig"));
+    }
+}
