@@ -340,17 +340,21 @@ path the engine cannot be given (not UTF-8), and the engine's own `load_workspac
   `NoToolchain`; it keeps `SystemRoot`, `TMP`, `TEMP` for Windows. Green on Windows CI (2026-11-17).
 
 **Every tool is found the way the engine finds it** (fix asked in the RS4 step 4 review, ENGINE.md "Finding a tool"): `cargo`, `rustc`
-and `rustup` by `ra_ap_toolchain::Tool::path()` (environment variable, `PATH`, `$CARGO_HOME/bin`), asked through `sem` (rule 4), never by
-the bare name. Otherwise a driver started with a short `PATH` loads with the engine's `cargo` and without `std`, and says "install
-`rust-src`". Test: a worker with `PATH` set to an empty folder and `HOME`, `CARGO_HOME`, `RUSTUP_HOME` kept loads at rung 1 with `std`
-and no warning.
+and `rustup` by `ra_ap_toolchain::Tool::prefer_proxy()` (`$CARGO_HOME/bin`, environment variable, `PATH`), asked through `sem` (rule 4),
+never by the bare name. It is the engine's rule whenever it has a sysroot (`Sysroot::tool`), so in every load with `std`; `Tool::path()`
+(variable first) is its rule only without one, and under `cargo run` / `cargo test` the variable `CARGO` names a binary that reads no
+`rust-toolchain.toml`. Otherwise a driver started with a short `PATH` loads with the engine's `cargo` and without `std`, and says "install
+`rust-src`". Tests: a worker with `PATH` set to an empty folder and `HOME`, `CARGO_HOME`, `RUSTUP_HOME` kept loads at rung 1 with `std`
+and no warning; the `toolchains.rs` workers keep `CARGO` and `RUSTC` as `cargo test` sets them. Built with `path()` in 8fb062c; changed to
+`prefer_proxy()` after its review.
 
 **How each condition is found** (S-RS3, `ENGINE.md`): `sem::load` never uses `RustLibSource::Discover` (it runs `rustup component add
 rust-src` by itself). It reads the version with `cargo --version` in the manifest's folder, finds the sysroot with `rustc --print sysroot`
 and passes it as `RustLibSource::Path` (built in step 1: the engine then looks for `lib/rustlib/src/rust/library` itself, without
 `rustup`, and a missing one is `sysroot.error()`; `sysroot_src` stays `None`); it loads through `ProjectWorkspace::load`, then reads
 `sysroot.error()` and `ProjectWorkspaceKind::Cargo { error }` before `load_workspace`. The installed toolchains for a substitution come from
-`rustup toolchain list` (**[check]** the form without `rustup`: then no substitution, and `OldToolchain`, or rung 3 of the ladder when there is no `cargo`).
+`rustup toolchain list`, run in a neutral folder with `RUSTUP_AUTO_INSTALL=0` (in a folder pinned to a missing toolchain it installs it;
+ENGINE.md "rustup facts") (**[check]** the form without `rustup`: then no substitution, and `OldToolchain`, or rung 3 of the ladder when there is no `cargo`).
 
 These are the only errors `rust-analysis` has. Everything after `open` returns `Option` (rule 8). `OpenError` has `Display` and
 `std::error::Error`, as Python's and TypeScript's do.

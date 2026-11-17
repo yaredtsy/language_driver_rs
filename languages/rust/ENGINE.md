@@ -109,7 +109,29 @@ driver) the engine loaded the workspace (rung 1, its own `cargo`), and our `rust
 `NoStdSource { toolchain: "unknown" }`, whose advice (install `rust-src`) is wrong. Measured with `rust-cli calls core
 analyzer-core/src/render.rs --entry render` (debug build): with `PATH` missing it, **11 call edges, 77 unresolved, 0 external**; with it, **22 calls,
 108 external, 0 unresolved**. Our `cargo --version` (lockfile rule, D38), `cargo locate-project` and `rustup toolchain list` (substitution)
-had the same blind spot. Rule: every tool we start is found by the engine's `Tool::path()`, so the two never disagree on which Rust there is.
+had the same blind spot.
+
+**The engine has two rules, not one** (read in `ra_ap_toolchain` and `ra_ap_project_model` 0.0.358, tool-path fix review, 2026-11-17):
+
+| Engine call | Order | Used for |
+|---|---|---|
+| `Tool::path()` | variable (`CARGO`, `RUSTC`, `RUSTUP`), `PATH`, `$CARGO_HOME/bin`, bare name | `Sysroot::tool` when there is **no** sysroot; `Sysroot::discover`'s `rustc` (`sysroot.rs:443`) |
+| `Tool::prefer_proxy()` | `$CARGO_HOME/bin`, variable, `PATH`, bare name | `Sysroot::tool` when there **is** a sysroot (`sysroot.rs:163`), with `RUSTUP_TOOLCHAIN` set to the sysroot unless `extra_env` or the process sets one; `rustup component add` (`:474`) |
+
+With a sysroot, `Sysroot::tool` starts `rustc` from `<sysroot>/bin` directly (`:156`). We pass the sysroot (`RustLibSource::Path`), so in
+**every load that has `std` the engine's `cargo` is rustup's proxy**, which reads `rust-toolchain.toml` and `RUSTUP_TOOLCHAIN`.
+
+**`CARGO` and `RUSTC` are set under `cargo run` and `cargo test`** to the toolchain's own binaries, which are not rustup's proxy and read
+neither `rust-toolchain.toml` nor `RUSTUP_TOOLCHAIN`. With `Tool::path()` (8fb062c) our `cargo --version` then reads the outer toolchain
+while the engine runs the proxy: they disagree. Measured: a crate pinned to `1.50.0` (not installed), `rust-cli calls` with
+`CARGO=<1.99.1>/bin/cargo`: the probe sees 1.99.1, nothing is substituted, our `rustc --print sysroot` (the proxy on `PATH`) fails, and the
+load has warnings `dependencies_missing, no_std_source` and **0 edges, 2 unresolved**, where `ToolchainSubstituted { NotInstalled }` with
+`std` was due. The `toolchains.rs` test hit the same and was worked around by removing `CARGO` and `RUSTC` from its workers.
+
+Rule: every tool we start is found by the engine's **`Tool::prefer_proxy()`**, the rule of every load that has `std`, so our probe, our
+sysroot and the engine's `cargo` are the same toolchain. Without rustup's proxies it falls back to the variable and `PATH`, as `path()`
+does. Left: a load without a sysroot, where the engine uses `path()` and a set `CARGO` wins; `std` is already lost there and the warning
+says so.
 
 ## S-RS1: does it build as a dependency?
 
@@ -526,8 +548,11 @@ never touched; below 1.97 a project with none gets one, said by `LockfileWritten
 
 - **`rustup toolchain list` installs a missing toolchain** when it runs in a folder whose `rust-toolchain.toml` names one that is not
   installed (rustup 1.28+: the directory override is resolved first). Found by doing it by hand: it started downloading 1.50.0, which was
-  stopped and removed. So `toolchain::installed` runs it from a neutral folder with `RUSTUP_AUTO_INSTALL=0`, and every `cargo` and `rustc`
-  we start sets `RUSTUP_AUTO_INSTALL=0` (`toolchain::command`). Any new `rustup` call needs the same.
+  stopped and removed. So `toolchain::installed` must run it from a neutral folder with `RUSTUP_AUTO_INSTALL=0`, and every `cargo` and
+  `rustc` we start sets `RUSTUP_AUTO_INSTALL=0` (`toolchain::command`). Any new `rustup` call needs the same. **Not built** (found in the
+  tool-path fix review, 2026-11-17): `installed` starts `rustup toolchain list` with the process's own folder and no variable. `rust-cli
+  calls . src/lib.rs` started inside a crate pinned to `1.50.0` began downloading 1.50.0 again (stopped, uninstalled). The tests never
+  saw it: a test's folder is the package's, whose pin is installed. Fix asked.
 - A default that is also the active toolchain is printed `(active, default)`, not `(default)`: read the words inside the parentheses.
 - A pinned toolchain that is not installed makes `cargo --version` fail with `error: toolchain '<name>' is not installed` on stderr;
   `toolchain::probe` reads the name from that text (English, rustup's wording: a change makes the probe `Unreadable`, and the load then
