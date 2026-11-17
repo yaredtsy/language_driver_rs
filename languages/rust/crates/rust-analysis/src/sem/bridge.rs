@@ -1,0 +1,707 @@
+//! The bridge between the engine's defs and the outline's (RS4 §5, D20). Every def that becomes a `Func` goes through here, so the graph names a def
+//! the way the outline does: the engine says *which* def a call reaches, `origin.rs` says *where it is written*, and the outline of that file says
+//! *what it is called*. All of it is inside one `attach_db` per request (`attached`), and no engine type leaves this module.
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "RS4's walk and calls (steps 3 and 4) use the bridge; step 1 proves it in the join test below"
+    )
+)]
+
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::marker::PhantomData;
+use std::rc::Rc;
+
+use analyzer_core::edit::MarkerStyle;
+use analyzer_core::graph::{DefInfo, StableDef};
+use analyzer_core::outline::{DefKind, Outline};
+use analyzer_core::text::Span;
+use ra_ap_hir::{Semantics, attach_db};
+use ra_ap_ide_db::RootDatabase;
+use ra_ap_syntax::{AstNode, NodeOrToken, SyntaxNode, TextRange, ast};
+use rust_syntax::Edition;
+
+use super::load::Loaded;
+use super::origin::{Cause, Item, Owner};
+
+/// A def of one file's outline (`rust_syntax::outline`, the rule RS1 froze) and the engine's def at the same place. It is `Copy`, `Eq` and `Hash` for
+/// core's solver, and is valid for the `Sem`'s life and no longer (`'p`): the engine's ids mean something only while the database lives.
+///
+/// Only `Sem::entry` and `Sem::bridge` make one, so a `Func` always has a row in the outline (`describe` cannot miss).
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct Func<'p> {
+    /// The file, as `Sem::open` numbers them: in the order a request first touches them.
+    file: u32,
+    /// The index of the def in the file's outline.
+    def: usize,
+    item: Item,
+    request: PhantomData<&'p ()>,
+}
+
+impl Func<'_> {
+    pub(super) fn item(self) -> Item {
+        self.item
+    }
+}
+
+/// What an engine def is, in the graph's terms.
+pub(crate) enum Bridged<'p> {
+    /// A def of the project: a node, with the id the outline gives it.
+    Func(Func<'p>),
+    /// Not entered (`Owner::External`, and its cause): named, never walked.
+    External {
+        package: String,
+        name: String,
+        cause: Cause,
+    },
+    /// Project code the outline of its file has no def for: the two parses disagree (or the def has no name). A bug that must show on the graph,
+    /// not hide: the caller makes it `Unresolved(def_not_in_outline)`.
+    NotInOutline,
+}
+
+/// One file's outline, as the request uses it.
+struct FileDefs {
+    /// Relative to the root, with `/`.
+    path: String,
+    outline: Outline,
+    /// For each def, how many defs before it have its qualname (D18).
+    occurrences: Vec<u16>,
+    /// For each def: it has a marker and no def before it in the file has the same one (D34).
+    owns_marker: Vec<bool>,
+}
+
+/// The files a request has asked about. A file is known by its path relative to the root, and a `Func` holds its number: the engine's own handle for a
+/// file is looked up when the file is opened and not kept (it is one more thing that means something only inside the database).
+#[derive(Default)]
+struct Files {
+    /// Only looked up, never iterated (rule 9).
+    numbered: HashMap<String, u32>,
+    opened: Vec<Opened>,
+}
+
+struct Opened {
+    defs: Rc<FileDefs>,
+    /// The engine's syntax tree of the file, which `Semantics::to_def` is asked about. The same text `defs` was made from.
+    tree: ast::SourceFile,
+}
+
+/// Everything one request asks of the engine. Built inside `attach_db` by `attached`, dropped inside it, never kept: a `Semantics` made or used
+/// outside it is a bug (S-RS2).
+pub(crate) struct Sem<'p> {
+    loaded: &'p Loaded,
+    sema: Semantics<'p, RootDatabase>,
+    style: MarkerStyle<'static>,
+    files: RefCell<Files>,
+}
+
+/// One `attach_db` for the whole request, with the `Sem` built inside it (§2): every engine call and the solver run inside `f`. `style` is how the
+/// request reads markers (`Options::marker`, RS4 step 4).
+pub(crate) fn attached<R>(
+    loaded: &Loaded,
+    style: MarkerStyle<'static>,
+    f: impl FnOnce(&Sem<'_>) -> R,
+) -> R {
+    attach_db(loaded.db(), || f(&Sem::new(loaded, style)))
+}
+
+impl<'p> Sem<'p> {
+    fn new(loaded: &'p Loaded, style: MarkerStyle<'static>) -> Sem<'p> {
+        Sem {
+            loaded,
+            sema: Semantics::new(loaded.db()),
+            style,
+            files: RefCell::new(Files::default()),
+        }
+    }
+
+    /// The function of the graph for the def written in `file` (relative to the root) that the outline names `(qualname, occurrence)`. `None` for a file
+    /// that is not in `Project::files()`, for no such def, for a kind that cannot be an entry (a trait, a module, a type alias, a macro, an impl), and
+    /// for a def in code a `cfg` turns off: the engine has no def there.
+    pub(crate) fn entry(&self, file: &str, qualname: &str, occurrence: u16) -> Option<Func<'p>> {
+        let file = self.open(file)?;
+        let (defs, tree) = self.opened(file);
+        let at = (0..defs.outline.defs.len()).find(|&at| {
+            defs.outline.defs[at].qualname == qualname && defs.occurrences[at] == occurrence
+        })?;
+        let def = &defs.outline.defs[at];
+        if !can_be_entry(&def.kind) {
+            return None;
+        }
+        let item = self.item_named(&tree, def.name_range, &def.kind)?;
+        Some(Func {
+            file,
+            def: at,
+            item,
+            request: PhantomData,
+        })
+    }
+
+    /// What the engine's def is in the graph: its outline def when it is project code, else where it comes from. A variant is passed as the enum
+    /// that owns it (`Item::of_variant`).
+    pub(crate) fn bridge(&self, item: Item) -> Bridged<'p> {
+        match self.loaded.owner_of(&self.sema, item) {
+            Owner::External {
+                package,
+                name,
+                cause,
+            } => Bridged::External {
+                package,
+                name,
+                cause,
+            },
+            Owner::Project { file, name } => {
+                let found = name.and_then(|name| {
+                    let file = self.open(&file)?;
+                    let (defs, _) = self.opened(file);
+                    let at = defs
+                        .outline
+                        .defs
+                        .iter()
+                        .position(|d| d.name_range == name)?;
+                    Some((file, at))
+                });
+                match found {
+                    Some((file, def)) => Bridged::Func(Func {
+                        file,
+                        def,
+                        item,
+                        request: PhantomData,
+                    }),
+                    None => Bridged::NotInOutline,
+                }
+            }
+        }
+    }
+
+    /// What the def is, in the core's terms: `Marked` by its marker when it owns one, else named by where it is (the file relative to the root, its
+    /// qualname, and which of the same-named defs of the file it is, in source order). The qname is the qualname.
+    pub(crate) fn describe(&self, func: Func<'p>) -> DefInfo {
+        let (defs, _) = self.opened(func.file);
+        let def = &defs.outline.defs[func.def];
+        let occurrence = defs.occurrences[func.def];
+        // a marker another def of the file owns is not this def's id (D34): it is named by where it is, as a def with no marker is
+        let id = match &def.marker {
+            Some(marker) if defs.owns_marker[func.def] => StableDef::Marked(marker.clone()),
+            _ => StableDef::Path {
+                module: defs.path.clone(),
+                qname: def.qualname.clone(),
+                nth: occurrence,
+            },
+        };
+        DefInfo::new(
+            id,
+            def.qualname.clone(),
+            def.qualname.clone(),
+            occurrence,
+            def.kind.clone(),
+            defs.path.clone(),
+            def.range,
+        )
+    }
+
+    /// Whether the def has a marker that another def of its file owns, so `describe` names it by where it is (D34): the caller counts it
+    /// `duplicate_marker`.
+    pub(crate) fn has_a_marker_it_does_not_own(&self, func: Func<'p>) -> bool {
+        let (defs, _) = self.opened(func.file);
+        defs.outline.defs[func.def].marker.is_some() && !defs.owns_marker[func.def]
+    }
+
+    /// The number of the project file at `path` (relative to the root, with `/`), the file opened on first use: its text is the engine's, not the
+    /// disk's, so its offsets are the ones `Owner` reports and the two outlines agree on every byte. `None` for a path that is no file of the load
+    /// under the root, and for a file no crate has a module for: `Project::files()`'s own test (RS3 §2), for this one file.
+    fn open(&self, path: &str) -> Option<u32> {
+        if let Some(&known) = self.files.borrow().numbered.get(path) {
+            return Some(known);
+        }
+        let db = self.loaded.db();
+        let (tree, edition) = self.loaded.vfs().iter().find_map(|(file, vfs_path)| {
+            if vfs_path.as_path()?.extension()? != "rs"
+                || self.loaded.root_relative(vfs_path)?.as_str() != path
+            {
+                return None;
+            }
+            let editioned = self.sema.attach_first_edition_opt(file)?;
+            Some((self.sema.parse(editioned), editioned.edition(db)))
+        })?;
+        let text = tree.syntax().text().to_string();
+        let outline = rust_syntax::outline(&text, edition_of(edition), self.style);
+        let defs = Rc::new(FileDefs {
+            path: path.to_owned(),
+            occurrences: rust_syntax::occurrences(&outline),
+            owns_marker: marker_owners(&outline),
+            outline,
+        });
+        let mut files = self.files.borrow_mut();
+        let number = u32::try_from(files.opened.len()).expect("fewer than 2^32 files");
+        files.numbered.insert(path.to_owned(), number);
+        files.opened.push(Opened { defs, tree });
+        Some(number)
+    }
+
+    /// An opened file's outline and syntax tree.
+    fn opened(&self, file: u32) -> (Rc<FileDefs>, ast::SourceFile) {
+        let files = self.files.borrow();
+        let opened = &files.opened[file as usize];
+        (Rc::clone(&opened.defs), opened.tree.clone())
+    }
+
+    /// The engine's def whose name is at `name` in the file, of the kind the outline says (`Semantics::to_def`). `None` where the engine has no def: in
+    /// code a `cfg` turns off.
+    fn item_named(&self, tree: &ast::SourceFile, name: Span, kind: &DefKind) -> Option<Item> {
+        let range = TextRange::new(name.start.into(), name.end.into());
+        let node = match tree.syntax().covering_element(range) {
+            NodeOrToken::Node(node) => node,
+            NodeOrToken::Token(token) => token.parent()?,
+        };
+        match kind {
+            DefKind::Function | DefKind::Method => self
+                .sema
+                .to_def(&named::<ast::Fn>(&node, range)?)
+                .map(Item::Function),
+            DefKind::Struct | DefKind::Enum => self
+                .sema
+                .to_def(&named::<ast::Adt>(&node, range)?)
+                .map(Item::Adt),
+            DefKind::Other(what) if what == "const" => self
+                .sema
+                .to_def(&named::<ast::Const>(&node, range)?)
+                .map(Item::Const),
+            DefKind::Other(what) if what == "static" => self
+                .sema
+                .to_def(&named::<ast::Static>(&node, range)?)
+                .map(Item::Static),
+            _ => None,
+        }
+    }
+}
+
+/// The nearest `N` around `node` whose name is exactly at `range`.
+fn named<N: ast::HasName>(node: &SyntaxNode, range: TextRange) -> Option<N> {
+    node.ancestors().find_map(N::cast).filter(|found| {
+        found
+            .name()
+            .is_some_and(|name| name.syntax().text_range() == range)
+    })
+}
+
+/// Which kinds of def start a graph (§1): a function, a method, a struct, a union, an enum, a const, a static. A trait, a module, a type alias, a macro
+/// and an impl do not.
+fn can_be_entry(kind: &DefKind) -> bool {
+    match kind {
+        DefKind::Function | DefKind::Method | DefKind::Struct | DefKind::Enum => true,
+        DefKind::Other(what) => what == "const" || what == "static",
+        _ => false,
+    }
+}
+
+/// Which defs own their marker (`FileDefs::owns_marker`): the first in source order (by where the def starts, not by the order of the outline) of each
+/// text, as TypeScript's.
+fn marker_owners(outline: &Outline) -> Vec<bool> {
+    let mut order: Vec<usize> = (0..outline.defs.len()).collect();
+    order.sort_by_key(|&index| (outline.defs[index].range.start, index));
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut owns = vec![false; outline.defs.len()];
+    for index in order {
+        if let Some(marker) = outline.defs[index].marker.as_deref() {
+            owns[index] = seen.insert(marker);
+        }
+    }
+    owns
+}
+
+/// The engine's edition, as `rust-syntax` spells it.
+fn edition_of(edition: ra_ap_syntax::Edition) -> Edition {
+    match edition {
+        ra_ap_syntax::Edition::Edition2015 => Edition::E2015,
+        ra_ap_syntax::Edition::Edition2018 => Edition::E2018,
+        ra_ap_syntax::Edition::Edition2021 => Edition::E2021,
+        // `Edition` is `#[non_exhaustive]` on neither side; a newer one the pinned engine does not have is a bump's to add
+        ra_ap_syntax::Edition::Edition2024 => Edition::E2024,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use analyzer_core::outline::DefKind;
+    use ra_ap_hir::Adt;
+
+    use super::*;
+    use crate::LoadOptions;
+    use crate::sem::{common, load};
+
+    const STYLE: MarkerStyle<'static> = MarkerStyle {
+        label: "ID",
+        placement: analyzer_core::edit::Placement::Docstring,
+    };
+
+    /// A fresh copy of `fixtures/policy/` under `target/`, loaded as cargo's workspace of one package. Its root is the copy.
+    fn policy(name: &str) -> (Loaded, std::path::PathBuf) {
+        let copy = crate::paths::absolute(&common::copy_of_fixture("policy", name)).unwrap();
+        let manifest = copy.join("Cargo.toml");
+        let loaded = load(&copy, Some(&manifest), &manifest, &LoadOptions::default())
+            .expect("the policy fixture loads");
+        (loaded, copy)
+    }
+
+    /// `rust-syntax`'s outline of a file's text on disk, in the edition of the fixture: the plan's "the outline lists".
+    fn disk_outline(root: &Path, file: &str) -> Outline {
+        let text = std::fs::read_to_string(root.join(file)).unwrap();
+        rust_syntax::outline(&text, Edition::E2024, STYLE)
+    }
+
+    /// RS4 §8, "the join": every def the outline lists in the fixture is found by `entry`, `describe` of it gives the same (file, qualname, occurrence,
+    /// kind, range) back, and the way back (`bridge` of the engine's def) is the same `Func`. The exceptions are stated, each with its reason.
+    #[test]
+    fn every_def_the_outline_lists_is_found_and_named_the_same() {
+        let (loaded, root) = policy("join_policy");
+        let files = loaded.files();
+        assert_eq!(
+            files,
+            [
+                "src/bom.rs",
+                "src/lib.rs",
+                "src/nested/deep.rs",
+                "src/nested/mod.rs",
+                "src/shapes.rs"
+            ],
+            "src/stray.rs is on disk and in no module's tree"
+        );
+        let mut joined = 0;
+        // (file, qualname) of the defs that are not entries, and of those the engine has no def for
+        let mut not_entries: Vec<(String, String)> = Vec::new();
+        let mut cfg_off: Vec<(String, String)> = Vec::new();
+        attached(&loaded, STYLE, |sem| {
+            for file in &files {
+                let outline = disk_outline(&root, file);
+                let occurrences = rust_syntax::occurrences(&outline);
+                for (def, occurrence) in outline.defs.iter().zip(occurrences) {
+                    let found = sem.entry(file, &def.qualname, occurrence);
+                    let name = (file.clone(), def.qualname.clone());
+                    // exception 1: kinds that cannot be an entry (§1)
+                    if !can_be_entry(&def.kind) {
+                        assert!(found.is_none(), "{name:?} is no entry");
+                        assert!(
+                            matches!(
+                                def.kind,
+                                DefKind::Trait
+                                    | DefKind::Module
+                                    | DefKind::Type
+                                    | DefKind::Other(_)
+                            ),
+                            "{name:?}: {:?}",
+                            def.kind
+                        );
+                        not_entries.push(name);
+                        continue;
+                    }
+                    // exception 2: code a `cfg` turns off, where the engine has no def
+                    let Some(func) = found else {
+                        cfg_off.push(name);
+                        continue;
+                    };
+                    let info = sem.describe(func);
+                    assert_eq!(
+                        (
+                            info.file.as_str(),
+                            info.qualname.as_str(),
+                            info.occurrence,
+                            &info.kind,
+                            info.range
+                        ),
+                        (
+                            file.as_str(),
+                            def.qualname.as_str(),
+                            occurrence,
+                            &def.kind,
+                            def.range
+                        ),
+                        "describe of the entry {name:?}"
+                    );
+                    // and back: the engine's def, through its owner and the outline, is the same function
+                    match sem.bridge(func.item()) {
+                        Bridged::Func(back) => assert!(back == func, "the way back of {name:?}"),
+                        Bridged::External { .. } => panic!("{name:?} came back External"),
+                        Bridged::NotInOutline => panic!("{name:?} came back NotInOutline"),
+                    }
+                    joined += 1;
+                }
+            }
+        });
+        assert_eq!(
+            cfg_off,
+            [("src/lib.rs".to_owned(), "disabled".to_owned())],
+            "the one #[cfg(any())] def is the listed exception, and no other"
+        );
+        // the traits, the modules, the type alias and the macro of the fixture
+        let names: Vec<_> = not_entries
+            .iter()
+            .map(|(file, qualname)| format!("{file}:{qualname}"))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "src/lib.rs:Writer",
+                "src/lib.rs:Make",
+                "src/lib.rs:tests",
+                "src/lib.rs:make_fn!",
+                "src/shapes.rs:Alias",
+            ],
+            "the two traits, the inline module, the macro, the type alias"
+        );
+        // every other def of the four files: 17 in lib.rs, 15 in shapes.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a byte-order mark
+        assert_eq!(joined, 39);
+    }
+
+    /// What `entry` answers `None` to, besides a def a `cfg` turns off (the join test): no file, a file no module reaches, a kind that cannot start a
+    /// graph, a def that is not there.
+    #[test]
+    fn an_entry_that_is_not_one_is_none() {
+        let (loaded, _root) = policy("entry_none");
+        attached(&loaded, STYLE, |sem| {
+            let none = |file: &str, qualname: &str, occurrence: u16| {
+                assert!(
+                    sem.entry(file, qualname, occurrence).is_none(),
+                    "{file}:{qualname}:{occurrence}"
+                );
+            };
+            // a file on disk that no `mod` reaches: it is not in `files()`
+            none("src/stray.rs", "stray", 0);
+            none("src/missing.rs", "plain", 0);
+            // a path is relative to the root, spelled with `/`
+            none("./src/lib.rs", "plain", 0);
+            none("src\\lib.rs", "plain", 0);
+            // kinds that cannot be an entry: a trait, a module, a macro, a type alias
+            none("src/lib.rs", "Writer", 0);
+            none("src/lib.rs", "tests", 0);
+            none("src/lib.rs", "make_fn!", 0);
+            none("src/shapes.rs", "Alias", 0);
+            // `#[cfg(any())]`: the engine has no def
+            none("src/lib.rs", "disabled", 0);
+            // the occurrence counts defs of the name: one `plain`, two `Rec::get`
+            none("src/lib.rs", "plain", 1);
+            none("src/shapes.rs", "Rec::get", 2);
+            none("src/lib.rs", "Plain", 0);
+            // and what is found, found
+            assert!(sem.entry("src/lib.rs", "plain", 0).is_some());
+            assert!(sem.entry("src/shapes.rs", "Rec::get", 1).is_some());
+            // a def after the byte-order mark: the engine's offsets and the outline's are the same bytes
+            assert!(sem.entry("src/bom.rs", "Bommed::method", 0).is_some());
+            // a def written inside a body, and one a derive or an `extern` block gives
+            assert!(
+                sem.entry("src/lib.rs", "with_inner::{fn}::inner", 0)
+                    .is_some()
+            );
+            assert!(sem.entry("src/shapes.rs", "foreign", 0).is_some());
+            assert!(sem.entry("src/lib.rs", "tests::a_test", 0).is_some());
+        });
+    }
+
+    /// D34, as TypeScript's `describe`: a marker names the def that owns it; a later def of the same file with the same marker is named by where it is.
+    #[test]
+    fn describe_names_a_def_by_its_marker_or_by_where_it_is() {
+        let (loaded, _root) = policy("describe");
+        attached(&loaded, STYLE, |sem| {
+            let id = |file: &str, qualname: &str, occurrence: u16| {
+                let func = sem.entry(file, qualname, occurrence).unwrap();
+                (
+                    sem.describe(func).id,
+                    sem.has_a_marker_it_does_not_own(func),
+                )
+            };
+            let path = |file: &str, qname: &str, nth: u16| StableDef::Path {
+                module: file.to_owned(),
+                qname: qname.to_owned(),
+                nth,
+            };
+            assert_eq!(
+                id("src/lib.rs", "marked", 0),
+                (StableDef::Marked("marked-one".to_owned()), false)
+            );
+            // two defs, one marker: the first owns it
+            assert_eq!(
+                id("src/lib.rs", "twin_a", 0),
+                (StableDef::Marked("twin".to_owned()), false)
+            );
+            // the second is named by where it is, and the caller is told to count it `duplicate_marker`
+            assert_eq!(
+                id("src/lib.rs", "twin_b", 0),
+                (path("src/lib.rs", "twin_b", 0), true)
+            );
+            // no marker: where it is, and not a duplicate
+            assert_eq!(
+                id("src/lib.rs", "plain", 0),
+                (path("src/lib.rs", "plain", 0), false)
+            );
+            // two defs of one qualname are told apart by the occurrence, in source order
+            assert_eq!(
+                id("src/shapes.rs", "Rec::get", 0),
+                (path("src/shapes.rs", "Rec::get", 0), false)
+            );
+            assert_eq!(
+                id("src/shapes.rs", "Rec::get", 1),
+                (path("src/shapes.rs", "Rec::get", 1), false)
+            );
+            // a file in a folder
+            assert_eq!(
+                id("src/nested/deep.rs", "Deep::new", 0),
+                (path("src/nested/deep.rs", "Deep::new", 0), false)
+            );
+        });
+    }
+
+    /// `origin.rs`'s owner for the kinds RS4 added to it: a const, a static, an ADT, an associated const, a foreign function, and a variant, which is
+    /// owned by its enum. A project def's owner holds where its **name** is, which is the outline's `name_range`.
+    #[test]
+    fn the_owner_of_every_kind_of_def_holds_the_file_and_where_its_name_is() {
+        let (loaded, root) = policy("owner_kinds");
+        attached(&loaded, STYLE, |sem| {
+            let shapes = disk_outline(&root, "src/shapes.rs");
+            let name_of = |qualname: &str| {
+                shapes
+                    .defs
+                    .iter()
+                    .find(|d| d.qualname == qualname)
+                    .unwrap_or_else(|| panic!("{qualname}"))
+                    .name_range
+            };
+            let owner_of = |qualname: &str| {
+                let func = sem.entry("src/shapes.rs", qualname, 0).unwrap();
+                (func.item(), loaded.owner_of(&sem.sema, func.item()))
+            };
+            let project = |qualname: &str| Owner::Project {
+                file: "src/shapes.rs".to_owned(),
+                name: Some(name_of(qualname)),
+            };
+            for qualname in [
+                "LIMIT", "NAME", "Pair", "Rec", "Bits", "E", "Rec::K", "Rec::mk", "foreign",
+                "limit",
+            ] {
+                assert_eq!(owner_of(qualname).1, project(qualname), "{qualname}");
+            }
+
+            // a variant is owned by its enum (and a struct or union by itself)
+            let (item, enum_owner) = owner_of("E");
+            let Item::Adt(adt @ Adt::Enum(e)) = item else {
+                panic!("E is an enum");
+            };
+            let variants = e.variants(loaded.db());
+            assert_eq!(variants.len(), 3);
+            for variant in variants {
+                let variant = ra_ap_hir::Variant::EnumVariant(variant);
+                assert!(Item::of_variant(loaded.db(), variant) == Item::Adt(adt));
+                assert_eq!(loaded.owner_of_variant(&sem.sema, variant), enum_owner);
+            }
+            let (pair, pair_owner) = owner_of("Pair");
+            let Item::Adt(Adt::Struct(pair)) = pair else {
+                panic!("Pair is a struct");
+            };
+            assert_eq!(
+                loaded.owner_of_variant(&sem.sema, ra_ap_hir::Variant::Struct(pair)),
+                pair_owner
+            );
+        });
+    }
+
+    /// Every call written in `file` that resolves to a function, as (the text of the callee, the engine's def), in source order: the part of RS4's site
+    /// walk this step needs, as `origin.rs`'s tests have it.
+    fn calls_in(sem: &Sem<'_>, file: &str) -> Vec<(String, Item)> {
+        use ra_ap_hir::{CallableKind, ModuleDef, PathResolution};
+        let (_, tree) = sem.opened(sem.open(file).unwrap());
+        let mut out = Vec::new();
+        for node in tree.syntax().descendants() {
+            let function = if let Some(call) = ast::CallExpr::cast(node.clone()) {
+                let callee = call.expr().unwrap();
+                // path first, the callable type for what has no path or whose path names a value (RS4 §4)
+                let by_path = match &callee {
+                    ast::Expr::PathExpr(path) => {
+                        path.path().and_then(|p| sem.sema.resolve_path(&p))
+                    }
+                    _ => None,
+                };
+                match by_path {
+                    Some(PathResolution::Def(ModuleDef::Function(f))) => {
+                        Some((callee.syntax().text().to_string(), f))
+                    }
+                    _ => match sem.sema.resolve_expr_as_callable(&callee).map(|c| c.kind()) {
+                        Some(CallableKind::Function(f)) => {
+                            Some((callee.syntax().text().to_string(), f))
+                        }
+                        _ => None,
+                    },
+                }
+            } else if let Some(call) = ast::MethodCallExpr::cast(node) {
+                sem.sema
+                    .resolve_method_call_fallback(&call)
+                    .and_then(|(function, _)| function.left())
+                    .map(|f| (call.name_ref().unwrap().text().to_string(), f))
+            } else {
+                None
+            };
+            if let Some((text, f)) = function {
+                out.push((text, Item::Function(f)));
+            }
+        }
+        out
+    }
+
+    /// A def the bridge does not enter says why: `External`, named by its crate, with the cause (RS4 §5). A project def a macro made is in no file
+    /// (`MacroFile`); a built-in derive's method has the trait's declaration, in `core`, as its source (`OtherCrate`); `std`'s own are `Dependency`, named
+    /// by the defining crate, from its root, without the crate's name.
+    #[test]
+    fn a_def_that_is_not_project_code_comes_back_external_with_its_cause() {
+        let (loaded, _root) = policy("bridge_external");
+        attached(&loaded, STYLE, |sem| {
+            let external = |item| match sem.bridge(item) {
+                Bridged::External {
+                    package,
+                    name,
+                    cause,
+                } => (package, name, cause),
+                Bridged::Func(func) => panic!("a Func: {:?}", sem.describe(func).qualname),
+                Bridged::NotInOutline => panic!("NotInOutline"),
+            };
+            let lib: Vec<_> = calls_in(sem, "src/lib.rs")
+                .into_iter()
+                .map(|(text, item)| (text, matches!(sem.bridge(item), Bridged::Func(_))))
+                .collect();
+            // `helper()` in `plain`, the call in `twice` and `with_inner`'s `inner()` are project code; `generated()` is not. The second `helper` is the
+            // call inside `disabled`, which is `#[cfg(any())]`: name resolution answers for it (path first), although the engine has no def of that body.
+            // A walk from a def's body never reaches it: this helper reads the whole file's text.
+            assert_eq!(
+                lib.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(),
+                ["write", "write", "helper", "inner", "helper", "generated"]
+            );
+            assert_eq!(
+                lib.iter().map(|(_, project)| *project).collect::<Vec<_>>(),
+                [true, true, true, true, true, false]
+            );
+            let generated = &calls_in(sem, "src/lib.rs")[5];
+            assert_eq!(
+                external(generated.1),
+                (
+                    "policy".to_owned(),
+                    "generated".to_owned(),
+                    Cause::MacroFile
+                )
+            );
+
+            let shapes = calls_in(sem, "src/shapes.rs");
+            let texts: Vec<_> = shapes.iter().map(|(t, _)| t.as_str()).collect();
+            assert_eq!(texts, ["limit", "Derived::default", "clone"]);
+            // a built-in derive's methods: written nowhere, and the trait's declaration in `core` is their source. Named by the type's crate, from its root
+            for (at, name) in [
+                (1, "shapes::Derived::default"),
+                (2, "shapes::Derived::clone"),
+            ] {
+                assert_eq!(
+                    external(shapes[at].1),
+                    ("policy".to_owned(), name.to_owned(), Cause::OtherCrate)
+                );
+            }
+        });
+    }
+}

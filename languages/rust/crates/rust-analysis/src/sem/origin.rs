@@ -1,82 +1,266 @@
-//! Who owns a def: project code, or external (RS3 §4). Owned data comes out; no engine type does.
+//! Who owns a def: project code, or external (RS3 §4, RS4 §5). Owned data comes out; no engine type does.
 #![cfg_attr(
     not(test),
     expect(
         dead_code,
-        reason = "RS4's call sites ask this; RS3 step 3 proves it in the tests below"
+        reason = "RS4's call sites ask this; RS3 step 3 and RS4 step 1 prove it in the tests"
     )
 )]
 
-use ra_ap_hir::{AsAssocItem, AssocItemContainer, Function, HasSource, Module, attach_db};
+use analyzer_core::text::Span;
+use ra_ap_hir::{
+    Adt, AsAssocItem, AssocItemContainer, Const, Crate, Function, HasSource, InFile, Module,
+    Semantics, Static, Variant,
+};
+use ra_ap_ide_db::RootDatabase;
+use ra_ap_syntax::{AstNode, TextRange, ast::HasName};
 
 use super::load::Loaded;
+
+/// A def that can be a function of the graph or the class of a construction (RS4 §5). A variant is not one: it is owned by, and built as, its enum.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum Item {
+    Function(Function),
+    Const(Const),
+    Static(Static),
+    Adt(Adt),
+}
+
+impl Item {
+    /// The def a variant stands for: its enum (`Enum::V(a)` builds an `Enum`), or the struct or union itself (`hir::Variant` covers all three).
+    pub(crate) fn of_variant(db: &RootDatabase, variant: Variant) -> Item {
+        Item::Adt(variant.adt(db))
+    }
+}
 
 /// Who owns a def. Everything the engine knows about a def that is not the user's own code is `External`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Owner {
-    /// Written in a file under the root, in a crate of the project: the file, relative to the root with `/`.
-    Project { file: String },
-    /// `package` is the crate's name (`alloc`, `serde`, `member`), `name` the path of the def in it (`alloc::string::String::len`).
-    External { package: String, name: String },
+    /// Written in a file under the root, in a crate of the project: the file, relative to the root with `/`, and where the def's name is in it
+    /// (`None` for a def with no name: `const _`).
+    Project { file: String, name: Option<Span> },
+    /// `package` is the crate's name (`alloc`, `serde`, `member`), `name` the path of the def **from the crate's root, the crate's own name left
+    /// out** (`string::String::len`): core draws an external as `package.name`.
+    External {
+        package: String,
+        name: String,
+        cause: Cause,
+    },
 }
 
-/// §4 as a table. `local` is `CrateOrigin::Local`: a workspace member, or a path dependency. `relative` is where the def is written: `Some(file)`
-/// only for a def that is in the text (not inside a macro expansion: that has no place in any file) and in a file under the root. The other origins
-/// (`Library`: registry and git; `Lang`: `std`, `core`, `alloc`; `Rustc`) are never project code, even when their files sit under the root (a
-/// vendored crate's do).
-fn project_file(local: bool, relative: Option<String>) -> Option<String> {
-    if local { relative } else { None }
+/// Why a def is `External` (§5). The first is the ordinary case; the other three are defs of a **local** crate that are not entered, each a body that
+/// could have been walked and was not, so each is counted (rule 8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Cause {
+    /// The crate is not local: `std`, `core`, `alloc`, a registry or git dependency.
+    Dependency,
+    /// The def is in a macro file (a `macro_rules!` made it, or an `include!` of build-script output) or has no source: it is in no file of the text.
+    MacroFile,
+    /// The def's source is in another crate's file: a built-in derive's method, whose source is the trait's declaration in `core`.
+    OtherCrate,
+    /// The def is in a file of its own crate that is not under the root: a path dependency or workspace member above or beside the root (RS3 §2).
+    OutsideRoot,
+}
+
+/// Where a def of a local crate is written, as far as the cause needs to know.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Written {
+    /// In no file: a macro file, or no source at all.
+    Nowhere,
+    /// In a file. `under_root` is the root test of RS3 §2; `own_crate` whether that file is a module of the def's own crate.
+    InFile { under_root: bool, own_crate: bool },
+}
+
+/// §4 and §5 as a table: `None` is project code, `Some` is the reason it is external. `local` is `CrateOrigin::Local`: a workspace member, or a path
+/// dependency. The other origins (`Library`: registry and git; `Lang`: `std`, `core`, `alloc`; `Rustc`) are never project code, even when their files
+/// sit under the root (a vendored crate's do).
+fn cause_of(local: bool, written: Written) -> Option<Cause> {
+    if !local {
+        return Some(Cause::Dependency);
+    }
+    match written {
+        Written::Nowhere => Some(Cause::MacroFile),
+        Written::InFile {
+            under_root: true, ..
+        } => None,
+        Written::InFile {
+            own_crate: true, ..
+        } => Some(Cause::OutsideRoot),
+        Written::InFile { .. } => Some(Cause::OtherCrate),
+    }
+}
+
+/// Where a def is declared, and where its name is: what `HasSource` says, for each kind of def, read down to what `Owner` needs.
+struct Source {
+    written: Written,
+    /// The file relative to the root, when the def is in one under it.
+    relative: Option<String>,
+    name: Option<TextRange>,
 }
 
 impl Loaded {
-    /// The owner of a function (a call's target, RS4 §3), found inside `attach_db` as every use of the engine's `hir` is.
-    pub(super) fn owner_of_function(&self, function: Function) -> Owner {
-        attach_db(self.db(), || {
-            let db = self.db();
-            let module = function.module(db);
-            // Where the def is written. `file_id()` is `None` for a macro file: the def is not in the text. A def with no source (a derived impl's
-            // methods have none) is nowhere either.
-            let relative = function
-                .source(db)
-                .and_then(|source| source.file_id.file_id())
-                .and_then(|file| self.root_relative(self.vfs().file_path(file.file_id(db))));
-            let mut path = module_path(db, module);
-            match function.as_assoc_item(db).map(|item| item.container(db)) {
-                Some(AssocItemContainer::Trait(t)) => path.push(t.name(db).as_str().to_owned()),
-                Some(AssocItemContainer::Impl(i)) => {
-                    if let Some(adt) = i.self_ty(db).as_adt() {
-                        path.push(adt.name(db).as_str().to_owned());
-                    }
-                }
-                None => {}
+    /// The owner of a def (a call's target, RS4 §3). Called inside `attach_db`, with the `Semantics` that lives there.
+    pub(super) fn owner_of(&self, sema: &Semantics<'_, RootDatabase>, item: Item) -> Owner {
+        let db = self.db();
+        let (module, source, path) = match item {
+            Item::Function(function) => {
+                let module = function.module(db);
+                let mut path = module_path(db, module);
+                push_container(
+                    db,
+                    function.as_assoc_item(db).map(|i| i.container(db)),
+                    &mut path,
+                );
+                path.push(function.name(db).as_str().to_owned());
+                (
+                    module,
+                    function.source(db).map(|s| self.source_of(sema, module, s)),
+                    path,
+                )
             }
-            path.push(function.name(db).as_str().to_owned());
-            self.owner(module, relative, path)
-        })
+            Item::Const(konst) => {
+                let module = konst.module(db);
+                let mut path = module_path(db, module);
+                push_container(
+                    db,
+                    konst.as_assoc_item(db).map(|i| i.container(db)),
+                    &mut path,
+                );
+                // `const _: () = …` has no name: the engine has none either
+                path.push(
+                    konst
+                        .name(db)
+                        .map_or_else(|| "_".to_owned(), |n| n.as_str().to_owned()),
+                );
+                (
+                    module,
+                    konst.source(db).map(|s| self.source_of(sema, module, s)),
+                    path,
+                )
+            }
+            Item::Static(stat) => {
+                let module = stat.module(db);
+                let mut path = module_path(db, module);
+                path.push(stat.name(db).as_str().to_owned());
+                (
+                    module,
+                    stat.source(db).map(|s| self.source_of(sema, module, s)),
+                    path,
+                )
+            }
+            Item::Adt(adt) => {
+                let module = adt.module(db);
+                let mut path = module_path(db, module);
+                path.push(adt.name(db).as_str().to_owned());
+                (
+                    module,
+                    adt.source(db).map(|s| self.source_of(sema, module, s)),
+                    path,
+                )
+            }
+        };
+        self.owner(module, source, path)
     }
 
-    /// `module`'s crate decides `local`; `relative` is where the def is written, under the root (`project_file`).
-    fn owner(&self, module: Module, relative: Option<String>, path: Vec<String>) -> Owner {
+    /// The owner of a function: `owner_of` for the most common def.
+    pub(super) fn owner_of_function(
+        &self,
+        sema: &Semantics<'_, RootDatabase>,
+        function: Function,
+    ) -> Owner {
+        self.owner_of(sema, Item::Function(function))
+    }
+
+    /// The owner of a variant is its enum's (a struct or union is its own).
+    pub(super) fn owner_of_variant(
+        &self,
+        sema: &Semantics<'_, RootDatabase>,
+        variant: Variant,
+    ) -> Owner {
+        self.owner_of(sema, Item::of_variant(self.db(), variant))
+    }
+
+    /// Where the def is written. `file_id()` is `None` for a macro file: the def is not in the text. A def with no source at all (a derived impl's
+    /// methods may have none) is nowhere either, which `owner` reads from the `Option`.
+    fn source_of<N: HasName>(
+        &self,
+        sema: &Semantics<'_, RootDatabase>,
+        module: Module,
+        source: InFile<N>,
+    ) -> Source {
+        let db = self.db();
+        let krate: Crate = module.krate(db);
+        let file = source.file_id.file_id().map(|file| file.file_id(db));
+        let relative = file.and_then(|file| self.root_relative(self.vfs().file_path(file)));
+        let written = match file {
+            None => Written::Nowhere,
+            Some(file) => Written::InFile {
+                under_root: relative.is_some(),
+                // only asked when it matters: a file outside the root of a local crate
+                own_crate: relative.is_none()
+                    && sema
+                        .file_to_module_defs(file)
+                        .any(|module| module.krate(db) == krate),
+            },
+        };
+        Source {
+            written,
+            relative,
+            name: source.value.name().map(|name| name.syntax().text_range()),
+        }
+    }
+
+    /// `module`'s crate decides `local`; where the def is written decides the rest (`cause_of`).
+    fn owner(&self, module: Module, source: Option<Source>, path: Vec<String>) -> Owner {
         let db = self.db();
         let krate = module.krate(db);
-        match project_file(krate.origin(db).is_local(), relative) {
-            Some(file) => Owner::Project { file },
+        let written = source.as_ref().map_or(Written::Nowhere, |s| s.written);
+        match cause_of(krate.origin(db).is_local(), written) {
             None => {
+                let source = source.expect("project code has a source");
+                Owner::Project {
+                    file: source
+                        .relative
+                        .expect("project code is in a file under the root"),
+                    name: source
+                        .name
+                        .map(|range| Span::new(range.start().into(), range.end().into())),
+                }
+            }
+            Some(cause) => {
                 // a crate with no name (a `rust-project.json` crate may have none): the engine has nothing to call it by
                 let package = krate
                     .display_name(db)
                     .map_or_else(|| "unnamed".to_owned(), |name| name.to_string());
                 Owner::External {
-                    name: format!("{package}::{}", path.join("::")),
                     package,
+                    name: path.join("::"),
+                    cause,
                 }
             }
         }
     }
 }
 
+/// The trait's or the impl's type's name, for an associated item: `String::len`, `Writer::write`. A self type that is not an ADT (`[T]`, `&T`) gives none.
+fn push_container(
+    db: &RootDatabase,
+    container: Option<AssocItemContainer>,
+    path: &mut Vec<String>,
+) {
+    match container {
+        Some(AssocItemContainer::Trait(t)) => path.push(t.name(db).as_str().to_owned()),
+        Some(AssocItemContainer::Impl(i)) => {
+            if let Some(adt) = i.self_ty(db).as_adt() {
+                path.push(adt.name(db).as_str().to_owned());
+            }
+        }
+        None => {}
+    }
+}
+
 /// The names of the modules from the crate's root down to `module`, the crate's own name left out.
-fn module_path(db: &ra_ap_ide_db::RootDatabase, module: Module) -> Vec<String> {
+fn module_path(db: &RootDatabase, module: Module) -> Vec<String> {
     let mut names: Vec<String> = module
         .path_to_root(db)
         .into_iter()
@@ -87,41 +271,54 @@ fn module_path(db: &ra_ap_ide_db::RootDatabase, module: Module) -> Vec<String> {
     names
 }
 
-// the helpers of the integration tests, which are one place for "copy a fixture under target/" (that file says `#![allow(dead_code)]`: each program
-// uses some of it). A unit test cannot `use` code from `tests/`, so the file is included by path.
-#[cfg(test)]
-#[path = "../../tests/common/mod.rs"]
-mod common;
-
 #[cfg(test)]
 mod tests {
     use std::path::Path;
 
-    use ra_ap_hir::{CallableKind, Semantics};
-    use ra_ap_syntax::{AstNode, ast};
+    use ra_ap_hir::{CallableKind, attach_db};
+    use ra_ap_syntax::ast;
 
-    use super::common;
     use super::*;
+    use crate::sem::common;
     use crate::sem::{Rung, load};
     use crate::{LoadOptions, Project, Warning};
 
     #[test]
     fn what_is_project_code_row_by_row() {
-        let file = || Some("a/b.rs".to_owned());
+        let in_file = |under_root, own_crate| Written::InFile {
+            under_root,
+            own_crate,
+        };
         // a Local crate, with the def written in a file under the root: project code
-        assert_eq!(project_file(true, file()).as_deref(), Some("a/b.rs"));
-        // a Local crate, but no such file: outside the root (a path dependency), or inside a macro expansion
-        assert_eq!(project_file(true, None), None);
+        assert_eq!(cause_of(true, in_file(true, true)), None);
+        // a Local crate, no file: a macro made it
+        assert_eq!(cause_of(true, Written::Nowhere), Some(Cause::MacroFile));
+        // a Local crate, a file of its own crate outside the root: a path dependency or a member beside the root
+        assert_eq!(
+            cause_of(true, in_file(false, true)),
+            Some(Cause::OutsideRoot)
+        );
+        // a Local crate, a file of another crate: a built-in derive's method has the trait's declaration as its source
+        assert_eq!(
+            cause_of(true, in_file(false, false)),
+            Some(Cause::OtherCrate)
+        );
         // Library, Lang and Rustc are `local == false`: external whatever else is true, a vendored crate under the root included
-        assert_eq!(project_file(false, file()), None);
-        assert_eq!(project_file(false, None), None);
+        for written in [
+            Written::Nowhere,
+            in_file(true, true),
+            in_file(false, true),
+            in_file(false, false),
+        ] {
+            assert_eq!(cause_of(false, written), Some(Cause::Dependency));
+        }
     }
 
     /// Every call written in `file` (relative to the root), as (the text of the callee's name, who owns the target), in source order. Only calls that
     /// resolve to a function: this is the part of RS4's site walk that the fixture needs.
     fn call_owners(loaded: &Loaded, file: &str) -> Vec<(String, Owner)> {
         attach_db(loaded.db(), || {
-            let sema = Semantics::new(loaded.db());
+            let sema = ra_ap_hir::Semantics::new(loaded.db());
             let (file_id, _) = loaded
                 .vfs()
                 .iter()
@@ -148,23 +345,38 @@ mod tests {
                     None
                 };
                 if let Some((text, f)) = function {
-                    out.push((text, loaded.owner_of_function(f)));
+                    out.push((text, without_name(loaded.owner_of_function(&sema, f))));
                 }
             }
             out
         })
     }
 
-    fn project(file: &str) -> Owner {
-        Owner::Project {
-            file: file.to_owned(),
+    /// The file tests compare a project def by its file; where its name is has tests of its own.
+    fn without_name(owner: Owner) -> Owner {
+        match owner {
+            Owner::Project { file, .. } => Owner::Project { file, name: None },
+            external => external,
         }
     }
 
+    fn project(file: &str) -> Owner {
+        Owner::Project {
+            file: file.to_owned(),
+            name: None,
+        }
+    }
+
+    /// An external of a crate that is not local.
     fn external(package: &str, name: &str) -> Owner {
+        external_because(package, name, Cause::Dependency)
+    }
+
+    fn external_because(package: &str, name: &str, cause: Cause) -> Owner {
         Owner::External {
             package: package.to_owned(),
             name: name.to_owned(),
+            cause,
         }
     }
 
@@ -197,19 +409,16 @@ mod tests {
                 // a def a macro made: in no file, so external, named by its own crate
                 (
                     "member::generated".to_owned(),
-                    external("member", "member::generated")
+                    external_because("member", "generated", Cause::MacroFile)
                 ),
                 // a path dependency inside the root
                 ("inside::in_inside".to_owned(), project("inside/src/lib.rs")),
                 // std: `Lang` origin, whatever the root
                 (
                     "String::new".to_owned(),
-                    external("alloc", "alloc::string::String::new")
+                    external("alloc", "string::String::new")
                 ),
-                (
-                    "len".to_owned(),
-                    external("alloc", "alloc::string::String::len")
-                ),
+                ("len".to_owned(), external("alloc", "string::String::len")),
             ]
         );
     }
@@ -227,24 +436,21 @@ mod tests {
                 // `member` is a member of the workspace and `inside` a path dependency, and both are `Local`; neither file is under the root
                 (
                     "member::in_member".to_owned(),
-                    external("member", "member::in_member")
+                    external_because("member", "in_member", Cause::OutsideRoot)
                 ),
                 (
                     "member::generated".to_owned(),
-                    external("member", "member::generated")
+                    external_because("member", "generated", Cause::MacroFile)
                 ),
                 (
                     "inside::in_inside".to_owned(),
-                    external("inside", "inside::in_inside")
+                    external_because("inside", "in_inside", Cause::OutsideRoot)
                 ),
                 (
                     "String::new".to_owned(),
-                    external("alloc", "alloc::string::String::new")
+                    external("alloc", "string::String::new")
                 ),
-                (
-                    "len".to_owned(),
-                    external("alloc", "alloc::string::String::len")
-                ),
+                ("len".to_owned(), external("alloc", "string::String::len")),
             ]
         );
     }
@@ -271,7 +477,7 @@ mod tests {
             call_owners(&on, "src/lib.rs"),
             [(
                 "generated".to_owned(),
-                external("scripts", "scripts::generated")
+                external_because("scripts", "generated", Cause::MacroFile)
             )]
         );
     }
@@ -295,7 +501,10 @@ mod tests {
         );
         assert_eq!(
             call_owners(&on, "app/src/lib.rs"),
-            [("hello".to_owned(), external("app", "app::Thing::hello"))]
+            [(
+                "hello".to_owned(),
+                external_because("app", "Thing::hello", Cause::MacroFile)
+            )]
         );
     }
 
@@ -313,12 +522,9 @@ mod tests {
             [
                 (
                     "String::new".to_owned(),
-                    external("alloc", "alloc::string::String::new")
+                    external("alloc", "string::String::new")
                 ),
-                (
-                    "len".to_owned(),
-                    external("alloc", "alloc::string::String::len")
-                ),
+                ("len".to_owned(), external("alloc", "string::String::len")),
             ],
             "member::in_member is not listed: it did not resolve"
         );
