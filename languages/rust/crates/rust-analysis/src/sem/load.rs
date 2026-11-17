@@ -7,6 +7,7 @@ use crate::manifest::{self, CrateSpec, DiskFs, Layout};
 use crate::warning::Warning;
 use crate::{LoadOptions, paths, toolchain};
 
+use ra_ap_hir::{Semantics, attach_db};
 use ra_ap_ide_db::RootDatabase;
 use ra_ap_load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace};
 use ra_ap_project_model::project_json::{ProjectJson, ProjectJsonData};
@@ -103,21 +104,28 @@ impl Loaded {
         self.manifest_unreadable.as_deref()
     }
 
-    /// The `.rs` files of the load that sit under the root, relative to it with `/`, sorted. The standard library and the registry's crates
-    /// are loaded too, and are somewhere else on disk, so the root test is what leaves them out.
+    /// The `.rs` files of the load that sit under the root and belong to some crate's module tree, relative to the root with `/`, sorted. The standard
+    /// library and the registry's crates are loaded too, and are somewhere else on disk, so the root test is what leaves them out; a file next to a
+    /// crate that no `mod` reaches (and no `#[path]` or `include!`) is left out because the engine has no module for it.
     pub(crate) fn files(&self) -> Vec<String> {
-        let mut files: Vec<String> = self
-            .vfs
-            .iter()
-            .filter_map(|(_, path)| {
-                if path.as_path()?.extension()? != "rs" {
-                    return None;
-                }
-                self.root_relative(path)
-            })
-            .collect();
-        files.sort();
-        files
+        // the engine's own answer to "which crate is this file in": a file that is no module of any crate (a stray `.rs` next to one, a fixture) has none
+        attach_db(&self.db, || {
+            let sema = Semantics::new(&self.db);
+            let mut files: Vec<String> = self
+                .vfs
+                .iter()
+                .filter_map(|(id, path)| {
+                    if path.as_path()?.extension()? != "rs" {
+                        return None;
+                    }
+                    let relative = self.root_relative(path)?;
+                    sema.file_to_module_def(id)?;
+                    Some(relative)
+                })
+                .collect();
+            files.sort();
+            files
+        })
     }
 
     /// The one place a path the engine reports becomes a path relative to the root, with `/`: `None` for a path that is not a file on disk

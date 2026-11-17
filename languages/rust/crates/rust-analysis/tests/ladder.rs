@@ -21,6 +21,8 @@ fn a_file_with_no_manifest_is_a_crate_of_one_file_and_its_mod_children() {
     let project = open(&copy, "main.rs");
 
     assert_eq!(project.manifest(), "");
+    // `stray.rs` is in the same folder and no `mod` reaches it: it is not part of the crate, so it is not a file of the project
+    assert!(copy.join("stray.rs").is_file());
     assert_eq!(project.files(), ["child.rs", "main.rs"]);
     assert_eq!(project.warnings(), [Warning::NoManifest]);
     assert_eq!(project.warnings()[0].code(), "no_manifest");

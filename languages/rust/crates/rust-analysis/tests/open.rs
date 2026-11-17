@@ -165,3 +165,19 @@ fn a_file_that_is_not_there_or_not_under_the_root_is_an_error() {
         assert_eq!(error, OpenError::NotUnderRoot, "{file}");
     }
 }
+
+/// §2: `files()` lists the files that belong to some crate's module tree. A `.rs` file next to a crate that no `mod` reaches is loaded by the engine
+/// (it is under the crate's folder) but has no module, so it is not a file of the project. (At rung 4 the same, in `ladder.rs`.)
+#[test]
+fn a_stray_rs_file_next_to_a_crate_is_not_a_project_file() {
+    let copy = copy_of_fixture("lock", "open_stray");
+    let app = copy.join("app");
+    assert!(
+        app.join("src/stray.rs").is_file(),
+        "the fixture has a stray file"
+    );
+
+    let project =
+        Project::open(&app, &app.join("src/lib.rs"), &LoadOptions::default()).expect("app loads");
+    assert_eq!(project.files(), ["src/lib.rs"]);
+}
