@@ -458,3 +458,36 @@ run. Mode a has 0 unresolved on all three, as S-RS2 found.
   (`cargo_workspace.rs` ~831, "This makes r-a still work partially when offline"). That `no_deps` is local to the project's fetch; the
   sysroot is loaded with `config.no_deps`, which stays `false`. So under `DependenciesMissing` (D37, the ladder's rung 2) `std` works,
   and **every call between the workspace's own crates is `Unresolved`**.
+
+### Old toolchains: what a load loses (step 5b, 2026-11-17)
+
+Run once by hand (`tests/toolchains.rs`, `worker_measure`) on `fixtures/measure/`: edition 2021 (cargo 1.74 cannot read 2024), a project
+method `run` reached through `Option::unwrap` and through `Vec::iter`. Two runs each; the second is shown (the first paid cold caches).
+
+| Toolchain | Loads | `std` found | `unwrap`, `iter` resolved | `run` resolved | Load |
+|---|---|---|---|---|---|
+| 1.74.1 | yes | yes | 2/2 | 2/2 | 604 ms |
+| 1.94.1 | yes | yes | 2/2 | 2/2 | 362 ms |
+| 1.98.0 | yes | yes | 2/2 | 2/2 | 889 ms |
+| 1.99.1 | yes | yes | 2/2 | 2/2 | 600 ms |
+| 1.74.1 substituted by 1.99.1 | yes | yes | 2/2 | 2/2 | 732 ms (1117 ms first) |
+
+**Nothing is lost for calls down to 1.74.1** (one small project and two `std` paths, not a broad sample). What changes below a version is
+the lockfile, and that sets the minimum: **1.82**. Below it the engine makes no copy of the lock, and cargo rewrites a stale committed
+`Cargo.lock` in place (S-RS2, "Cargo.lock"), a write into the user's tree that nothing else prevents. From 1.82 a project with a lock is
+never touched; below 1.97 a project with none gets one, said by `LockfileWritten` (D38). Substitution adds `rustup toolchain list` and one
+`cargo --version` per toolchain, about 100 to 400 ms, only when the project's toolchain is too old or not installed. 1.74.1, 1.94.1 and
+1.98.0 were uninstalled after the run.
+
+### rustup facts (`rustup 1.29.3`, found in step 5b)
+
+- **`rustup toolchain list` installs a missing toolchain** when it runs in a folder whose `rust-toolchain.toml` names one that is not
+  installed (rustup 1.28+: the directory override is resolved first). Found by doing it by hand: it started downloading 1.50.0, which was
+  stopped and removed. So `toolchain::installed` runs it from a neutral folder with `RUSTUP_AUTO_INSTALL=0`, and every `cargo` and `rustc`
+  we start sets `RUSTUP_AUTO_INSTALL=0` (`toolchain::command`). Any new `rustup` call needs the same.
+- A default that is also the active toolchain is printed `(active, default)`, not `(default)`: read the words inside the parentheses.
+- A pinned toolchain that is not installed makes `cargo --version` fail with `error: toolchain '<name>' is not installed` on stderr;
+  `toolchain::probe` reads the name from that text (English, rustup's wording: a change makes the probe `Unreadable`, and the load then
+  fails as `OpenError::Load` until step 7).
+- `RUSTUP_TOOLCHAIN` in `CargoConfig::extra_env` is left alone by the engine (`Sysroot::tool`), so one variable moves every tool, ours and
+  the engine's, to the chosen toolchain.

@@ -323,6 +323,12 @@ These are the only errors `rust-analysis` has. Everything after `open` returns `
   `NoStdSource` is asserted against what the disk has. Two `#[ignore]` tests run a worker process with the toolchain in its environment
   (`cargo test` sets `RUSTUP_TOOLCHAIN` itself): a toolchain without `rust-src` (a copy of 1.99.1 without `lib/rustlib/src`) gives
   `NoStdSource`, and **1.94.1 writes the lock and gives `LockfileWritten`** (run by the reviewer too). That is §5 option A's first run.
+- **The minimum is 1.82** (RS3 step 5b review, `ENGINE.md` "Old toolchains"): no in-project call was lost on 1.74.1, 1.94.1 or 1.98.0,
+  so the minimum is set by the lockfile, not by calls. Below 1.82 cargo rewrites a stale committed `Cargo.lock` in place; a substitution
+  to an installed toolchain from 1.82 avoids that. Not 1.97 (the redirect's line): it would substitute most users' stable toolchain on
+  every load (this machine's default is 1.94.1) to avoid a file that `LockfileWritten` already reports.
+- **`LockfileWritten` also covers a lock that existed and changed** (asked in the 5b review): with `OldToolchain` (below 1.82, nothing
+  newer installed) cargo may rewrite a stale lock, and "a lock appeared" does not see that. The lock's bytes are compared before and after.
 - **CI needs `rust-src`.** `rust-toolchain.toml` installs `rustfmt` and `clippy` only, so on CI every test that needs `std` (step 3's
   `String` rows, the offline test, all of RS4) would see no standard library. `rust-src` goes into its `components`.
 
@@ -354,7 +360,7 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 | 3 | `files`, relative paths, project code (§4) | the fixture of §4; green on Windows in CI. **Done but Windows** (457a16a; test scope 193402f; as built in §4): the Windows job has not run, nothing is pushed |
 | 4 | `skipped`, `LoadOptions`, `environment_inputs` | fixtures. **Done** (888c228; as built in §3), with two fixes asked in review: a failed build run must not fail the load, and `build_scripts_skipped` counts local packages |
 | 5a | `OpenError` and `Warning` (§6, D37), from S-RS3's texts; the warnings CI can make | §7's error and warning tests. **Done** (b9e48bf; as built in §6), with fixes asked in review: `BuildScriptsFailed`, `NoStdSource` for a sysroot nobody can find, `OpenError`'s `Display`, `rust-src` in `rust-toolchain.toml` |
-| 5b | the old-toolchain measurement and the minimum; the substitution (`ToolchainSubstituted`, `OldToolchain`); then the old toolchains are uninstalled | §7's measurement table in `ENGINE.md`; the substitution test |
+| 5b | the old-toolchain measurement and the minimum; the substitution (`ToolchainSubstituted`, `OldToolchain`); then the old toolchains are uninstalled | §7's measurement table in `ENGINE.md`; the substitution test. **Done** (21f38e6, fixes fa4b54c 6cb8dce 42b3087 59eede1 8e9d313; table and rustup facts in `ENGINE.md`). **Minimum 1.82**, set from the measurement: no call is lost down to 1.74.1, so the line is the lockfile's. One fix asked in review: a rewritten existing lock is `LockfileWritten` too |
 | 7 | the ladder's rungs 3 and 4 (§6): our own `Cargo.toml` reader into `ProjectJson`, the one-file crate; its checks first | a fixture workspace loaded with no `cargo` and no `rustc` on `PATH` and an empty `HOME`: the in-project calls of §6's row resolve, `NoToolchain` is set; a lone `.rs` file; §5's table with rung 3 |
 | 6 | `ENGINE.md`: what `sem::load` calls, the `attach_db` rule, the measured load times | reviewed |
 
