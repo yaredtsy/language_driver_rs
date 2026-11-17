@@ -140,6 +140,30 @@ arguments really give no site (the arguments are a token tree, not expressions) 
 
 The span is relative to the def's `range.start`, as core's `Site` wants. Two sites never share (start, end) and kind except `MacroBody`.
 
+**As built (RS4 step 2, 7edd537, reviewed 2026-11-17).** `sem/sites.rs`, `Sem::sites(func) -> Rc<Sites>` (list + `macro_not_expanded`), cached
+per request; the list is sorted by the span (start, end), so a callee name orders the sites (`twice(r.get()) + helper()`: `twice`, `get`,
+`helper`), and the `MacroBody` sites of one macro call keep the walk's order.
+
+- **"Lowered" is `Semantics::type_of_expr(expr).is_some()`**: a lowered expression has a type, even an unknown one; one in a disabled
+  statement, block, `let`, match arm, closure or record has none. The [check] of the cfg row above is answered with `fixtures/policy/src/cfg_off.rs`.
+  A **macro call** is never asked (the answer is `None` for a statement-position macro and for one that cannot expand, lowered or not): the
+  calls of its expansion are asked one by one.
+- **A macro that repeats an argument gives one site** (`both!(f())` → `(f(), f())`: one `f`), the first: this table's rule (one place, one
+  kind), the same as a call in a loop that runs twice. Not counted. `MacroBody` sites at one macro call stay several (several targets).
+- **`macro_not_expanded` is not counted under a `#[cfg]` of the body.** The engine gives no expansion both for a macro it does not know and
+  for one in a disabled statement (there it is the inner `format_args_nl!` of a disabled `println!` that fails), and does not say which.
+  Accepted cost: a macro that truly cannot expand inside an **enabled** `#[cfg]` statement is not counted. Over-counting every
+  `#[cfg(windows)] println!` on a Mac would be the worse lie.
+- **Known gap, for step 7** ([check] with a fixture): a call written in a project macro's body **as an argument of an external macro**
+  (`macro_rules! wrap { () => { vec![g()] } }`) has no file range, and its innermost macro is `vec!` (external), so it is dropped, with no
+  count. The rule "the innermost macro decides" must ask *whose text the call is*: map the call's name up one expansion
+  (`hir_expand`'s `InMacroFile<SyntaxToken>::upmap_once`, `files.rs:369` in 0.0.358, reached through `ra_ap_hir`'s `InFile` types); if it lands in
+  the inner macro call's arguments, the decision goes one level out (to `wrap`, a project macro: a `MacroBody` site at `wrap!`). Until then
+  the case is one row of the policy table: lost.
+- **A file range is compared with its file** (fix asked in the review): `original_range_opt` returns a `FileRange`; the site is in the file
+  only when that file is the def's own. A range in another file (a project macro defined in another module) is "no place in this body",
+  never a span by offsets alone.
+
 ## 4. Step B: the default resolver
 
 ```rust
@@ -325,7 +349,7 @@ the whole crate.
 | **the oracle** | for every function of both workspaces: every range `ide::Analysis::outgoing_calls` reports is a site of ours with the same target, except ranges inside nested items (§3). The engine's call hierarchy is the definition of "follow the engine" (D7); this test is that sentence, executable. Needs `ra_ap_ide` as a dev-dependency (not yet in `Cargo.toml`; about 2.5 min of cold build, ENGINE.md S-RS1), and a `cargo tree` check that it stays dev-only |
 | invariants and determinism | `analyzer_testkit::graph::check_invariants` on every graph; `assert_deterministic` on three |
 | the join | every def the outline lists in both workspaces is found by `sem::entry`, and `describe` of it gives the same (file, qualname, occurrence) back. The TypeScript join test (48 files, 334 defs) is the model. Stated exceptions, each listed in the test: kinds that cannot be an entry (§1), and defs in `#[cfg]`-disabled code (the fixture has one, `#[cfg(any())]`) |
-| **no `std`** | the policy workspace's plain-call and project-method rows at rung 3 (a worker with no `cargo` on `PATH`, as RS3's `worker_without_cargo`): the project edges are the same as at rung 1, `std` calls are `Unresolved`, `warning_no_toolchain: 1` and `macro_not_expanded` are in `Stats.language`. A lone file (rung 4): one entry, `warning_no_manifest: 1` |
+| **no `std`** | the policy workspace's plain-call and project-method rows at rung 3 (a worker with no `cargo` on `PATH`, as RS3's `worker_without_cargo`): **the site list of every policy def is the one of rung 1 except inside `std`'s macros** (so "lowered" does not depend on `std`), the project edges are the same as at rung 1, `std` calls are `Unresolved`, `warning_no_toolchain: 1` and `macro_not_expanded` are in `Stats.language`. A lone file (rung 4): one entry, `warning_no_manifest: 1` |
 | a real project | this repo's `core/`: every def an entry; no panic; the `Breakdown` of the whole, written into `ENGINE.md` with the date. These are the first real `open_*` numbers |
 | the wire | one policy entry through `wire` unmerged and merged, as a snapshot; `WIRE_FORMAT_VERSION` asserted |
 
@@ -334,12 +358,12 @@ the whole crate.
 | # | Do | Proof |
 |---|---|---|
 | 1 ✅ | **done** (e9e03ed, reviewed 2026-11-17). The bridge: `origin.rs` extended (const, static, ADT, variant; the name range; the three `External` causes of §5; the name without the crate), `bridge.rs` (`sem::entry`, `describe` with D34, the outline cache), one `attach_db` per request | the join test; `origin.rs`'s owner tests updated to the new name |
-| 2 | step A for plain calls, method calls, records; nested items skipped; closures tagged | a snapshot of the **site list** per policy module (no targets yet) |
+| 2 ✅ | **done** (7edd537, reviewed 2026-11-17; macros built here too, as far as §3 "As built" says). Step A for plain calls, method calls, records; nested items skipped; closures tagged | a snapshot of the **site list** per policy module (no targets yet) |
 | 3 | step B for those, path first (§4); `Callee`, `Open`, `Why`; `walk.rs`, `env.rs`, `key.rs` in final form | `sem`-level snapshots: site → `Found` + `open` |
 | 4 | `calls.rs`: `impl Lang`, `call_graph` over `graph_within` (`Entry::File` → `None`), `Project::defs_named`, `finish` (the `Stats.language` table of §2, `skipped()` and `warning_*` included), `Breakdown`; `rust-cli calls` | the first trees; invariants; determinism; a graph of a load with a warning has its `warning_<code>` |
 | 5 | constructions and `describe` for types; a struct as an entry (`Start::Construct`); an external variant named with the variant (§5) | the construction fixtures, with a marked struct, tuple struct and enum shown by name |
 | 6 | passed sites (D22) | fixtures: named, as a method path, a constructor (counted, no edge), a local (no site) |
-| 7 | macros: arguments, project macro bodies, external bodies, an external macro inside a project one, unexpanded, generated targets, built-in derives | fixtures; the counters; the two [check]s of §3 and §5 |
+| 7 | macros: what step 2 left (§3 "As built": a project macro's own call written as an external macro's argument, `upmap_once`), generated targets, built-in derives; the policy rows and counters for what step 2 built | fixtures; the counters; the two [check]s of §3 and §5 |
 | 8 | the wire and `rust-cli calls --wire [--merged]` | the wire snapshot |
 | 9 | scenarios (per-language trees, D30, one shared workspace), the oracle, no `std`, the real project | all of §8 |
 | 10 | `languages/rust/docs/policy.md`, one fixture named per row; `ENGINE.md` | reviewed |

@@ -73,6 +73,11 @@ new call into the engine adds its row in the same commit (the reviewer writes it
 | `Semantics::{new, attach_first_edition_opt, parse}`, `EditionedFileId::edition`, `SyntaxNode::{text, covering_element, ancestors}` | `bridge.rs` | a project file opened once per request from the **engine's** text (so a byte-order mark shifts both outlines alike); a file no crate has a module for gives no edition, so no entry |
 | `Semantics::to_def` on `ast::{Fn, Adt, Const, Static}` | `bridge.rs` | the outline's def → the engine's: the node whose name is exactly the outline's `name_range`; `None` in `#[cfg]`-disabled code |
 | `hir::attach_db` once per request (`sem::attached`), the `Semantics` built inside it | `bridge.rs` | S-RS2's rule, for a whole request |
+| `Semantics::expand_macro_call(&MacroCall) -> Option<InFile<SyntaxNode>>` | `bridge.rs` for `sites.rs` (RS4 step 2, 7edd537) | a macro call's expansion, walked in its place, recursively (depth ≤ 128); `None` both for an unknown macro and inside a disabled statement (RS4 §3 "As built") |
+| `Semantics::original_range_opt(&SyntaxNode) -> Option<FileRange>` | `bridge.rs` | `Some`: the node is written in a file (a macro argument), `None`: a macro's own body (S-RS2). The `FileRange`'s file must be the def's (RS4 §3) |
+| `Semantics::type_of_expr(&Expr).is_some()` | `bridge.rs` | "the engine lowered it into the body": `None` for an expression a `cfg` turns off inside an active body; never asked of a macro call |
+| `Semantics::resolve_macro_call`, `Macro::{module, source}` | `bridge.rs`, `origin.rs` | which macro a call is, and whether it is a project macro (`cause_of`, as a def) |
+| `ast::{MacroCall, CallExpr, MethodCallExpr, RecordExpr, ClosureExpr, BlockExpr::async_token, Item, Attr::simple_name}`, `SyntaxNode::preorder`, `Preorder::skip_subtree` | `sites.rs` | the walk of a body and of an expansion: nested items skipped, closures and `async` blocks numbered, `#[cfg]` read by the tree |
 | test only: `Semantics::{new, attach_first_edition_opt, parse, resolve_expr_as_callable, resolve_method_call_fallback}`, `CallableKind::Function`, `Either::left`; `ra_ap_syntax::{ast::CallExpr, ast::MethodCallExpr, AstNode}` | `origin.rs` tests | the fixture's call walk, the part of RS4's site walk RS3 needs |
 
 ## RS4: the bridge (step 1, e9e03ed, 2026-11-17)
