@@ -1146,6 +1146,11 @@ golden files of the five entries, regenerated with the CLI: trees, wires, merged
   1.5 ms. `Sem::open` took 241 ms.
 - The config host reads through the same file system, so the `include` folders are tracked; the bundled libraries are not (`bundled::wrap_fs`
   is outside the tracker).
-- **No overlay fits:** `wrapvfs::wrap` takes a `&'static dyn FS`, and `tsrs_project`'s `snapshotfs` belongs to the language server. Step 6
-  writes a small `FS` of its own in `sem`.
+- **No overlay fits:** `wrapvfs::wrap` takes a `&'static dyn FS`, and `tsrs_project`'s `snapshotfs` belongs to the language server. An
+  overlay would be a small `FS` of our own in `sem`. It is **not built**: only saved text is read, for now (D42; the design is kept in
+  `11-step6-text-and-disk.md` §10).
+- **Checked at the design's review (2026-11-17):** module resolution asks `directory_exists` of each `node_modules` folder before it looks
+  inside (`tsrs_module/src/resolver.rs:1744`), so the folders themselves are among the seen paths and can be stamped. The nearest config with
+  a syntax error is `OpenError::ConfigError` (`sem/project.rs`), so a config saved half-edited fails a rebuild: the reason a lost session
+  must come back by itself (the design's §3).
 

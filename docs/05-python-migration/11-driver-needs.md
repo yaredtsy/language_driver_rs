@@ -255,7 +255,7 @@ Text for the vnoc agent, after PY9.4 is pushed and CI is green. Nothing here is 
 |---|---|---|
 | a frontier, bounded work, `more` tokens for Python | §2: values flow, so a frontier changes answers above it | if the contract asks for it, a plan that marks every node whose value depends on an unwalked body |
 | paging (`max_children`) | core's renderer gets it in TS5 step 2; the 0.2 contract does not ask for it | when the contract does |
-| unsaved text for a call tree | `CallTreeParams` has no `text` | when the contract adds it: a file system in the sem module that answers open buffers from memory (the `System` trait, `ruff_db/src/system.rs`), and `ChangeEvent::Changed` for the path |
+| unsaved text for a call tree | `CallTreeParams` has no `text`; **D42 (owner, 2026-11-17): only saved text is analyzed, in every language, for now** | when the contract adds it: a file system in the sem module that answers open buffers from memory (the `System` trait, `ruff_db/src/system.rs`), and `ChangeEvent::Changed` for the path |
 | an iterative solver (no deep stack) | larger work; the stack size is enough for now (§6) | its own plan |
 | a cache of trees across driver restarts | the V-NOC core's job (`14-call-trees.md`); the analyzer supplies `environment_inputs` and stable ids | — |
 | letting the engine itself be cancelled (salsa's cancellation) | not needed: the check between walks is fine-grained enough, and a cancelled engine query unwinds as a panic, which would need catching | if PY9.0 shows one walk can take long |

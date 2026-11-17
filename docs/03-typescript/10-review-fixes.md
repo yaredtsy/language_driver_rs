@@ -247,7 +247,7 @@ Two ways, for that design to choose from:
 
 Either costs a program rebuild, which is what `set_text` already costs in step 6.
 
-**Decided (owner, 2026-11-17, D41): way 1**, the session checks for itself before each request. **`[check]` answered (reviewer,
+**Decided (owner, 2026-11-17, D41): way 1**, the session checks for itself before each request. **And only saved text is read, for now (D42):** `set_text`, which this section speaks of as part of step 6, is not built, so step 6 is `refresh` and `reload` alone. **`[check]` answered (reviewer,
 2026-11-17), corrected the same day:** the **program** keeps no failed lookups, but the engine's **file system** wrapper
 `tsrs_vfs::trackingvfs` records every path asked, missing ones too, and the engine's watch mode uses it (`tsrs_execute/src/watcher.rs:778`).
 Step 6 uses it the same way: [`11-step6-text-and-disk.md`](11-step6-text-and-disk.md) §2, which also has the numbers (9143 paths on V-NOC,

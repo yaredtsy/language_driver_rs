@@ -11,7 +11,7 @@ typescript
 ├── TS5  what the driver needs ──── 07-ts5-driver-needs.md   → tag typescript-v0.3.0 → V-NOC tier 3, lazy
 │     ├── row M: the module def ── 09-module-def.md
 │     ├── rows R, D, H: the fixes from the 2026-11-16 review ── 10-review-fixes.md
-│     └── step 6: unsaved text, reload, the disk ── 11-step6-text-and-disk.md
+│     └── step 6: refresh and reload: following the disk (unsaved text: not now, D42) ── 11-step6-text-and-disk.md
 └── later: context-sensitive ────── 08-later-context-sensitive.md
 ```
 
@@ -29,7 +29,7 @@ with the same code, as the TypeScript compiler does.
 | **TS3** | `Project::open(root)` | `typescript-analysis` | TS0 | a real project loads; memory returns after `drop` | M |
 | **TS4** | `call_graph(project, file, entry)` | `typescript-analysis`, `typescript-cli` | TS3, B0's solver | every scenario matches `expected.default.tree`; the policy table has a fixture per row | L |
 | | **tag `typescript-v0.2.0`** | | | | |
-| **TS5** | budget, expand, cancel, cache, unsaved text | `typescript-analysis` | TS4 | the driver's tier-3 conformance checks | M |
+| **TS5** | budget, expand, cancel, cache, following the disk | `typescript-analysis` | TS4 | the driver's tier-3 conformance checks | M |
 | | **tag `typescript-v0.3.0`** | | | | |
 | later | context sensitivity | `typescript-analysis` | TS5, and a decision | the scenarios match `expected.precise.tree` | XL |
 

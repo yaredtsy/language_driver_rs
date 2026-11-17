@@ -8,7 +8,7 @@ TS5
 ├── 3. bounded work: the frontier, `more`, paging
 ├── 4. cancel
 ├── 5. the cache
-├── 6. unsaved text and edits
+├── 6. edits: saved text now, unsaved text later
 ├── 7. steps
 └── 8. how drivers ship, and what that asks of the vnoc side
 ```
@@ -63,7 +63,8 @@ Python these were added afterwards as one painful batch.
 | clicks ＋ on a node with 300 callees | a page of children | **later (D31):** core renderer: `max_children`, `more` with the next offset. Now the node's children all come in one answer |
 | clicks away | really stop | **core** `Cancel` (built); the engine is not involved (§0) |
 | opens the same function after a restart | instant | the V-NOC core's cache; the analyzer supplies stable ids and `environment_inputs` (built in TS3). An entry is a glob or a path relative to the root, **or an absolute path** (with `/`) for a config outside the root that feeds the program (an `extends: "../base.json"`): `relative_to` keeps the engine's absolute path when the root is not its prefix. The doc comment of `Project::environment_inputs` says "relative" and no fixture has it; step 0b fixes both. Python's list has the same case (an environment outside the root). **Every entry of both drivers is written with `/`, the absolute one too** (owner, 2026-11-13; Python since `1e45633`, TypeScript asserted in its tests since `3043f52`): the V-NOC core turns a Windows watcher path into `/` once and compares strings, and never rewrites an entry. On Unix a `\` is a character of a name, so the core normalizes only on Windows; the vnoc text says so |
-| types in the file, then opens the tree | the unsaved text is used | **TypeScript**: `Session::set_text` (§6) |
+| saves the file, then opens the tree | the saved text is used | **TypeScript**: `Session::refresh` before each request (§6, D41) |
+| types in the file, then opens the tree | the unsaved text is used | **not built, for now (D42):** the tree follows a file when it is saved. The contract's request has no text in it, and here each changed text is a program rebuild (§6) |
 
 Bounding, `more`, paging and cancel are in `analyzer-core`, so Rust gets them for free and Python can adopt the same shape (M18).
 
@@ -71,7 +72,7 @@ Bounding, `more`, paging and cancel are in `analyzer-core`, so Rust gets them fo
 
 ```rust
 // typescript-analysis (TS5)
-pub struct Session { /* a Project, the caller's epoch, an edit count, the unsaved texts */ }
+pub struct Session { /* a Project, the caller's epoch, the stamps of the paths it depends on */ }
 
 impl Session {
     /// `epoch` is the caller's number for this session (the driver's start time, say): a token from another session is `Stale`.
@@ -84,12 +85,17 @@ impl Session {
     /// The render options that put `more` tokens of this session on the nodes.
     pub fn render_options(&self, page: &Page) -> RenderOptions;
 
-    /// A file has unsaved text (`None`: back to the disk). Every token made before is `Stale` after it.
-    pub fn set_text(&mut self, file: &str, text: Option<&str>) -> Result<(), OpenError>;
-    /// Something in `environment_inputs()` changed: load again.
-    pub fn reload(&mut self) -> Result<(), OpenError>;
+    /// Brings the session up to date with the disk; the driver calls it before each request (step 6, D41). Every token made before a
+    /// rebuild is `Stale` after it.
+    pub fn refresh(&mut self) -> Refreshed;
+    /// Builds the program again whatever the disk says.
+    pub fn reload(&mut self) -> Refreshed;
 }
 ```
+
+The first version of this page had `set_text(file, Option<&str>)` here, for text the editor has not saved. It is **not built, for now
+(D42)**: a tree is made from saved text only. `refresh`, `reload` and `Refreshed` are step 6's
+([`11-step6-text-and-disk.md`](11-step6-text-and-disk.md) §3).
 
 The answer is still a graph (rule 7): the driver draws it with `render(&graph, &graph.roots[0], &session.render_options(&page))` and sends the
 wire of that tree, as it does today. `call_graph` from TS4 stays, unchanged, for the CLI and the tests.
@@ -106,7 +112,7 @@ contexts once the project is warm. This is a choice, not a shortcut: keeping the
 
 > **🦀 Rust note: `&self` here, `&mut self` for edits.** `graph` and `expand` take `&self` because what they fill (`Sem`'s caches) is behind
 > `RefCell`s inside `Sem`. That is safe because `Sem` is not `Sync` (pinned by a proof since TS3): two threads can never hold `&Session` at
-> once, so the `RefCell`s are only ever touched by one thread. `set_text` and `reload` replace the program, so they take `&mut self`: the
+> once, so the `RefCell`s are only ever touched by one thread. `refresh` and `reload` replace the program, so they take `&mut self`: the
 > compiler then forbids an edit while a request still holds a borrow.
 
 ## 3. Bounded work: the frontier, `more`, paging
@@ -205,7 +211,7 @@ struct Session { project: Project, epoch: u64, edits: u64, cursors: Vec<Cursor> 
   `cursors[index]`, builds a fresh solver (about 1 ms warm, §0), runs `graph_within` from `def` with `key`, and returns the next page with new
   cursors for the nodes still cut. A real key cannot be rebuilt from text (a digest is not the key, RS5 §5), so a decoded token stops working
   the day Rust has keys. A looked-up one does not.
-- **It lives in memory and dies with the process.** A new process has a new `epoch`, so an old token is `Stale`. An edit (`set_text`,
+- **It lives in memory and dies with the process.** A new process has a new `epoch`, so an old token is `Stale`. A rebuild (`refresh`,
   `reload`) clears the table, so a token from before it is `Stale` too. On `Stale` the driver asks again by `{ file, qualname, occurrence }`,
   the same request as step 2a. The table is plain data, so it does not need the self-borrow of §2. It grows only until the next edit; a cap
   (drop the oldest, which then answer `Stale`) is enough.
@@ -254,7 +260,7 @@ half-made.
 
 | Level | Lives | Keyed by | Dropped when |
 |---|---|---|---|
-| a body's sites, the outlines, the checker's types | inside `Sem`, in memory | the program's nodes, files | the program is replaced (`set_text`, `reload`) |
+| a body's sites, the outlines, the checker's types | inside `Sem`, in memory | the program's nodes, files | the program is replaced (`refresh`, `reload`) |
 | the solver's memo | one request | `(function, key)` | the request ends |
 | rendered trees | in the V-NOC **core**, on disk | entry + `environment_inputs` hash + file hashes | the core's business |
 
@@ -263,27 +269,31 @@ edit would hold a wrong summary for `a.ts`. With no memo across requests, and ev
 gives a new program and nothing from before it is read again. The question comes back only if a later step keeps something across an edit
 (an incremental program, step 7).
 
-## 6. Unsaved text and edits
+## 6. Edits: saved text now, unsaved text later
 
-TS3's `Project` builds a program from disk. Two ways to follow the editor, the simple one first:
+TS3's `Project` builds a program from disk, and a `Session` keeps it for many requests.
 
-1. **An overlay file system (step 6).** `set_text` records the text, and the program is built again through a `tsrs_vfs` file system that
-   answers the unsaved files from memory and the rest from disk (`sem` already builds its file system from `osvfs` and `cachedvfs`). The cost
-   of the first request after an edit is about a fresh open plus a cold graph: on V-NOC about 150 ms + 40 ms (§0), **to be measured** on the
-   built thing.
-2. **`tsrs_project::Session` (step 7, only if 1 is too slow).** The layer tsrs's own language server uses (`did_open_file`,
+**Now (step 6): the session follows the disk, and only the disk** (owner, 2026-11-17, D41 and D42). The driver calls `Session::refresh`
+before each request; it compares the stamps of the paths the last build depended on and builds the program again when one changed: a source
+file saved, created or deleted, a config, a lock file. `Session::reload` forces it. The contract sends no change notification, so nothing
+else could tell the analyzer (review, 2026-11-16; the cases and the two ways that were weighed are in
+[`10-review-fixes.md`](10-review-fixes.md) §5). The cost of the first request after a save is about a fresh open plus a cold graph: on V-NOC
+about 150 ms + 40 ms (§0), **to be measured** on the built thing. **The design is
+[`11-step6-text-and-disk.md`](11-step6-text-and-disk.md).**
+
+**Text the editor has not saved is not read, for now (D42).** A tree that followed the buffer would pay that rebuild for each request made
+while the user types, and the contract's request has no text in it. When the contract asks, there are two ways, the simple one first:
+
+1. **An overlay file system.** `set_text` records the text, and the program is built again through a `tsrs_vfs` file system that
+   answers the unsaved files from memory and the rest from disk. Designed, not built: [`11-step6-text-and-disk.md`](11-step6-text-and-disk.md)
+   §10.
+2. **`tsrs_project::Session` (step 7, only if a rebuild is too slow).** The layer tsrs's own language server uses (`did_open_file`,
    `did_change_file`, `did_change_watched_files`, `snapshot()`): it rebuilds the program incrementally, so unchanged files keep their parsed
    trees. **[check]** whether it can be driven without a client connection (it depends on `tsrs_lsproto`); `tsrs_api` is a second example of
-   driving sessions from outside the server. The owner sets what "too slow" means from step 6's number.
+   driving sessions from outside the server. The owner sets what "too slow" means from step 6's number, which is the number for a **saved**
+   file too.
 
 Either way the change is inside the `sem` module: nothing in `walk.rs`, `calls.rs` or the core knows how the program was made.
-
-**A file changed on disk is not covered above** (review, 2026-11-16). `set_text` is for text the editor has not saved, and `reload` for
-`environment_inputs`. Nothing says who notices a source file that was saved, created or deleted while a `Session` is open, and the contract
-sends no change notification. Python answered this with `Project::refresh` before each request (05/11 §4, PY9.2); the rule was not carried
-over. Step 6's design must answer it: the cases, a test for each and the two ways to do it are in
-[`10-review-fixes.md`](10-review-fixes.md) §5. Until step 6 a `Session` cannot follow the disk at all, so a driver that keeps one opens it again. **The design is
-[`11-step6-text-and-disk.md`](11-step6-text-and-disk.md)** (D41: `Session::refresh` before each request).
 
 ## 7. Steps
 
@@ -306,7 +316,7 @@ Steps 1 and 2 change `core/`. The Python session works in the same repo and uses
 | M | **done (2026-11-17, steps 1 to 5: `133c6c2`, `7e4a870`, `8a997dc`, `449dfb4` + `c6dbfd7`, `5dc6ba8`; D2 `cf0eb8b`).** **(after 3c, before 3b) the module def** (owner, 2026-11-13, D32): a file's own code is an entry, the **file itself** (core `Entry::File`, by its path; no reserved qualname, no new prefix: the root's `target_id` is empty and the reader uses the file id it asked with); it owns the top-level statements and the anonymous functions there, flat. Design and the choices still open in [`09-module-def.md`](09-module-def.md): the outline unchanged; `DefKind::Module` on the root frame; no wire change, no wire bump; a namespace an entry; a class's or enum's definition code drawn in the body that declares it, which retires three counters and replaces 3b | `core/` (`Entry` only), `typescript-analysis` | row 3c's coverage test is the acceptance: the known-gap list empty, `measure_coverage` missed 0 on V-NOC and both postcss inputs; a fixture per pattern of the 461 (store, `forwardRef` component, test callback, schema callback, property-assigned function); golden function entries byte-identical, new file-entry golden entries read by hand; outline snapshots byte-identical (rule 10); **[measure]** the largest module tree |
 | 3b | **Replaced by M's step 4: the owner accepted 09 §3.3 (2026-11-17), so this row is not built.** Kept for the record: **(after M)** count the definition-time sites of a nested class** (owner, 2026-11-13): a class in a function or a namespace has its static initializers, static blocks and `extends` counted in `uncovered_class_definition_sites`, and a namespace class its computed names in `uncovered_computed_member_name_sites`. No rename, no tree change. The two `parent.is_some()` checks (`sem/uncovered.rs`) are **two rules**, not one: the def around a class in a function draws its computed names, nobody draws its definition sites; one small function per rule, named for what it decides | `typescript-analysis` | 3c's list loses the nested-class entries; `class_entry_a_class_declared_in_a_function_…` asserts the count instead of 0; policy rows reworded; golden unchanged (real projects read 0 for top-level classes) |
 | H | **done (2026-11-17, H1–H10, `506f945` .. `dc1bc9a`; H11 found, not built).** **(after M, before 6) the hardening batch** of the 2026-11-16 review: one checker handle at a time, checked in debug builds; the memory tests one at a time; `found.sort()`; `Sem::region`; `matches_a_glob` from `ENVIRONMENT_GLOBS`; a request with `occurrence` above 0; the deep-nesting test on a thread of the driver's stack size. [`10-review-fixes.md`](10-review-fixes.md) §6, §7 | `typescript-analysis` | no answer changes: golden and snapshots byte-identical; **[measure]** the smallest stack that passes the deep fixture in a release build, written in `ENGINE.md` |
-| 6 | **Designed** in [`11-step6-text-and-disk.md`](11-step6-text-and-disk.md) (2026-11-17; three choices in its §9 are the owner's). `set_text` and `reload` through an overlay file system; **and a file changed on disk** (§6, [`10-review-fixes.md`](10-review-fixes.md) §5) | the `sem` module | rename a callee in an unsaved buffer: the tree follows, `set_text(file, None)` goes back (with 2b: the old tokens are `Stale`); a callee's file rewritten on disk, a file an import names created, a callee's file deleted, a file outside the root rewritten: the tree follows each; **[measure]** the first request after an edit on V-NOC |
+| 6 | **Designed and decided** in [`11-step6-text-and-disk.md`](11-step6-text-and-disk.md) (2026-11-17; the owner's answers are its §9). **A file changed on disk**: `Session::refresh` before each request and `Session::reload`, by stamps of the paths the engine's `trackingvfs` saw (D41, [`10-review-fixes.md`](10-review-fixes.md) §5). **No `set_text`: only saved text is read, for now (D42)** | the `sem` module, `session.rs` | a callee's file rewritten on disk, a file an import names created, a callee's file deleted, a file outside the root rewritten: the tree follows each; the opened file deleted and written back, a config saved broken and fixed: the session is lost and comes back by itself; a file saved during a rebuild is caught by the next `refresh`; **[measure]** `refresh` with nothing changed, and the first request after a saved file, on V-NOC |
 | 7 | only if the owner finds step 6's number too slow: the program from `tsrs_project::Session`. **First, the free contract**: `Sem::drop` calls `free_unshared_program`, whose safety comment says the program shares nothing with another (no `update_program`); an incremental program shares its unchanged files, so the drop is redesigned before anything else in this step (review, 2026-11-16) | the `sem` module | the same tests; the memory tests; the number before and after |
 | 8 | `typescript-cli calls … --depth N --max-contexts N` (`--max-children N` and `typescript-cli expand <token>` come with 2b) | `typescript-cli` | — |
 | 9 | **tag `typescript-v0.3.0`**; **the tag notes list the policy rows changed since v0.2.0** (`git diff typescript-v0.2.0 -- languages/typescript/docs/policy.md`; as of M step 4): `anonymous` (a file is an entry, D32); `class-body`, `decorators`, `counter-computed-names`, `counter-local-decorators`, `counter-initializers` (M step 4: a class's definition code is drawn by the body that declares it; `uncovered_computed_member_name_sites` and `uncovered_local_class_decorator_sites`, which v0.2.0's `policy.md` names, are retired, so a reader of `Stats.language` stops seeing those keys); new rows `class-entry`, `counter-class-definition` (TS5 step 3, D25) and `duplicate-marker` (D34); `project-code` (D33); `any` (its reason named, wording only); the driver implements `vnoc/callTree`, `vnoc/expand` (until 2b: a `callTree` on the cut node's def), `$/cancelRequest`, `vnoc/environmentInputs`. **Every thread that calls the analyzer gets a large stack** (`std::thread::Builder::stack_size`, **32 MiB**, the number from row H, `10-review-fixes.md` §7): a stack overflow aborts the process, it is not a panic, and 2 MiB (a spawned thread's default) was seen to abort on a 10 000-term `+` chain, in `outline` too ([`10-review-fixes.md`](10-review-fixes.md) §7) | `vnoc` | the tier-3 conformance checks |

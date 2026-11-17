@@ -60,7 +60,7 @@ language_driver_rs
 │   ├── TS2  markers               reading and planning the ID comment ────────────── 04-ts2-markers.md
 │   ├── TS3  project loading       tsconfig · program · memory ────────────────────── 05-ts3-project.md
 │   ├── TS4  call graph            the walk · the default resolver · the policy ───── 06-ts4-calls.md
-│   ├── TS5  what the driver needs budget · expand · cancel · cache · unsaved text ── 07-ts5-driver-needs.md
+│   ├── TS5  what the driver needs budget · expand · cancel · cache · the disk ────── 07-ts5-driver-needs.md
 │   └── later: context-sensitive   what changes, file by file ─────────────────────── 08-later-context-sensitive.md
 │
 ├── RUST ──────────────────────────────────────────── 04-rust/
