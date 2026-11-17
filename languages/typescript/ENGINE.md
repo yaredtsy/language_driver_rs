@@ -1108,6 +1108,15 @@ One commit each (`506f945` .. `dc1bc9a`, `10-review-fixes.md` §6). None changes
   counted (`10-review-fixes.md` §6, H12). Sweep 644 nodes in 44 programs, missed 0; TypeScript 303 pass. Re-checked by the reviewer: V-NOC
   `TaskDetailPanel` unchanged; the 27 golden files byte-identical as above. Neither postcss nor V-NOC has an IIFE in those trees, so the goldens
   show that nothing else moved, not the rule.
+- **H12 (`c6835fe`).** (a) At a `new` site, a **named class expression** under parentheses and assertions that `def_of` holds is resolved to
+  that class through `classify`, and `walk::target` makes it a `Construct` through `walk::construction`, as `new C()`: `new (class N {
+  constructor() { g(); } })()` draws `N ▸ g`; `new (class M { x = g(); })()` draws `M` and counts `construct_initializer_sites` 1; an inherited
+  constructor is entered (reviewer's probe: `new (class Derived extends Base {})()` draws `Derived ▸ k`). Only under `new`. (b) The
+  `call_apply` loop of `handed_over` also counts a named function expression before `.call`/`.apply` (`uncovered_call_apply` 1; the edge to
+  `Function.call` stays); an anonymous one is not counted. Both reuse H11's lookup (`is_def_of_the_file`). Fixture `in-place`, 7 tests in
+  `tests/in_place.rs`. **Left, not scheduled:** an anonymous class under `new` is `no_declaration`, and its constructor (a top-level outline
+  def `constructor`) is drawn under no caller (`10-review-fixes.md` §8). Sweep 659 nodes in 45 programs, missed 0; TypeScript 310 pass.
+  Re-checked by the reviewer: V-NOC `TaskDetailPanel` unchanged, the 27 golden files byte-identical; no project there has the shapes.
 - **H9.** `DefMatch.owns_marker` (additive; the struct is `#[non_exhaustive]`). `typescript-cli calls … --entry b --id SAME` exits 1 with
   "no def `b` owns ID: SAME" and "`a` at 2:1 owns it, and `b` is named by where it is"; `--entry a --id SAME` works; an id that no def carries
   keeps its message. The owner is found from the outline (`owns_marker`), with no new library function.
