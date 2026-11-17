@@ -4,11 +4,20 @@
 //! Early is round 10, and the peak is read over the later rounds, not the last value: the OS takes freed pages back whenever it likes.
 
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use typescript_analysis::{Cancel, Entry, MarkerStyle, Options, Placement, Project, call_graph};
 
 /// Rounds of the graph-building loop: enough to see a leak of a megabyte a round, few enough to stay a test.
 const ROUNDS: usize = 100;
+
+/// Both tests read the **process's** memory, so one running beside the other would count the other's growth as its own (H2). Each takes this for its whole
+/// run. A test that failed holding it poisons it, and the next one goes on: the lock is for taking turns, not for a value.
+static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+
+fn one_at_a_time() -> MutexGuard<'static, ()> {
+    ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 fn rss_mb() -> f64 {
     let usage = memory_stats::memory_stats().expect("this platform reports memory");
@@ -17,6 +26,7 @@ fn rss_mb() -> f64 {
 
 #[test]
 fn opening_and_dropping_a_project_100_times_does_not_grow_the_process() {
+    let _turn = one_at_a_time();
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files");
     let mut early = 0.0;
     let mut peak: f64 = 0.0;
@@ -63,6 +73,7 @@ fn build_graphs(root: &Path, file: &str, entries: &[&str]) -> usize {
 
 #[test]
 fn opening_a_project_building_graphs_and_dropping_it_does_not_grow_the_process() {
+    let _turn = one_at_a_time();
     let tests = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let resolve = tests.join("resolve");
     let kinds = tests.join("site-kinds");
