@@ -140,3 +140,20 @@ pub fn calls_made_functions() {
     by_macro();
     by_macro();
 }
+
+macro_rules! lost_inside {
+    () => {
+        unknown_macro!()
+    };
+}
+
+/// A macro that repeats its argument meets the unknown call twice: one written call, one count (a repeated argument is one site, too).
+pub fn unknown_in_a_repeated_argument() {
+    let _pair = both!(unknown_macro!(f()));
+}
+
+/// An unknown macro in a project macro's body has no place in the file: each macro call that holds it is its own loss, so two calls count two.
+pub fn unknown_in_a_project_macros_body() {
+    lost_inside!();
+    lost_inside!();
+}

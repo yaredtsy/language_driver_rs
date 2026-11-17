@@ -474,6 +474,19 @@ fn generated_targets_derives_and_unexpanded_macros_are_counted() {
     }
 }
 
+/// One `macro_not_expanded` per written place (the rule of a repeated argument's one site): `both!(unknown!(f()))` is one lost call written once; two calls of a
+/// project macro that holds an unknown one are two losses.
+#[test]
+fn an_unexpanded_macro_is_counted_once_per_written_place() {
+    let (_copy, project) = policy("calls_unexpanded_places");
+    let file = "src/macros.rs";
+    let count =
+        |qualname: &str| graph_of(&project, file, qualname).stats.language["macro_not_expanded"];
+    assert_eq!(count("unknown_in_a_repeated_argument"), 1);
+    assert_eq!(count("unknown_in_a_project_macros_body"), 2);
+    assert_eq!(count("unknown_around_a_call"), 1);
+}
+
 /// A call written in a project macro's body as an argument of an external macro is a site at the project macro (the `upmap_once` rule): its tree has the
 /// callee, which was dropped without a count before.
 #[test]

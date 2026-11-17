@@ -40,3 +40,7 @@ derived_methods
 calls_made_functions
   Call 138..146 "by_macro"
   Call 154..162 "by_macro"
+unknown_in_a_repeated_argument
+  macro_not_expanded 1
+unknown_in_a_project_macros_body
+  macro_not_expanded 2

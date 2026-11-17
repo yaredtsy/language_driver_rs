@@ -128,6 +128,9 @@ struct Walk<'a, 'p> {
     file: u32,
     list: Vec<RawSite>,
     macro_not_expanded: u32,
+    /// Where the macro calls that could not be expanded are written in the file, so that one written place is counted once (a macro that repeats its
+    /// argument meets the same call twice).
+    unexpanded_at: HashSet<(u32, u32)>,
     /// The macro calls the walk is inside, outermost first.
     levels: Vec<Level>,
     /// Closures and `async` blocks met so far, in source order.
@@ -155,6 +158,7 @@ impl<'p> Sem<'p> {
             file: func.file(),
             list: Vec::new(),
             macro_not_expanded: 0,
+            unexpanded_at: HashSet::new(),
             levels: Vec::new(),
             closures: 0,
         };
@@ -232,7 +236,7 @@ impl Walk<'_, '_> {
             // The engine gives no expansion both for a macro it cannot expand and for one in a statement a `cfg` turns off (the inner `format_args_nl!` of a
             // disabled `println!`), and does not say which. Under a `#[cfg]` of the body it is the second, far more often: not counted. Anywhere else it
             // is a loss, counted.
-            if !cfg {
+            if !cfg && self.counts_unexpanded(call, outer.is_none()) {
                 self.macro_not_expanded += 1;
             }
             return;
@@ -258,6 +262,26 @@ impl Walk<'_, '_> {
         });
         self.node(&expanded, Some(Expansion { at, depth, cfg }), enclosing);
         self.levels.pop();
+    }
+
+    /// Whether an unexpanded macro call is a loss not yet counted. **One count per written place**: a call that has a place in the file is counted the first
+    /// time and not again (a macro that repeats its argument meets `unknown!(k())` twice, and it is one written call, as a repeated argument is one site).
+    /// A call with no place in the file, in a project macro's body, is counted every time it is met: each macro call that holds it is its own loss.
+    fn counts_unexpanded(&mut self, call: &ast::MacroCall, in_the_file: bool) -> bool {
+        let Some(path) = call.path() else {
+            return true;
+        };
+        let written = if in_the_file {
+            Some(span_of(path.syntax().text_range()))
+        } else {
+            self.sem
+                .original_range(path.syntax(), self.file)
+                .and_then(|range| self.within_def(range))
+        };
+        match written {
+            Some(range) => self.unexpanded_at.insert((range.start, range.end)),
+            None => true,
+        }
     }
 
     /// Where a call that has no place in the file is made: at the macro call whose **text** it is, when that macro is the project's (D30), else nowhere.
@@ -624,6 +648,10 @@ mod tests {
             assert_eq!(texts("unknown_in_unknown"), (vec!["g".to_owned()], 1));
             // an unknown macro in the arguments of one that expands: met in the expansion, once
             assert_eq!(texts("unknown_in_known"), (vec![], 1));
+            // one count per written place: a macro that repeats its argument meets the unknown call twice, and it is one written call; one in a project
+            // macro's body has no place in the file, and each macro call that holds it is its own loss
+            assert_eq!(texts("unknown_in_a_repeated_argument"), (vec![], 1));
+            assert_eq!(texts("unknown_in_a_project_macros_body"), (vec![], 2));
             // what the engine cannot expand is counted, and what was in its arguments is lost
             assert_eq!(texts("not_expanded"), (vec!["g".to_owned()], 1));
         });
