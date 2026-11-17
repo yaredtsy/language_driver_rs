@@ -376,13 +376,54 @@ change in core.
 Its body is the source file's statements, walked by the same `Collector` down to the next def (`body_of`, `Kind::SourceFile`): top-level calls, the calls in
 anonymous functions at the top, and hand-overs. A side effect, as in a function that declares a class: the **computed member names** of a class at the top
 are read by the module's walk, so they are drawn under the module (`top-class.ts`: one site moved from counted to drawn). The counters of a class's
-definition code are untouched (M step 4 retires them): a file entry that declares a class also counts its decorators as
-`uncovered_local_class_decorator_sites`, as any body that declares a class does.
+definition code were untouched at this step: a file entry that declared a class also counted its decorators as
+`uncovered_local_class_decorator_sites`. M step 4 (below) draws all of it and retires the counters.
 
 The coverage test enters every project file with `Entry::File` too (`Sem::project_modules`); `top-level` and `top-level-anonymous` left `KNOWN_GAPS`, and
 the per-file numbers of the table above moved from missed to drawn (`top-level.ts` 5, `iife.ts` 9, `jsx.tsx` 3, `tagged.ts` 4). A new outcome,
 `Counted("merged_defs")`, is a site whose def lost its row to another def with the same id (D34 across files): `tests/fixtures/duplicate-marker-across`.
 The sweep read 595 nodes in 42 programs before (with the new `file-entry` fixture, the test not yet entering files) and 599 in 43 after.
+
+### Definition code in the declaring body (M step 4, `449dfb4`, `c6dbfd7`)
+
+**The rule** (`09-module-def.md` §3.3, accepted 2026-11-17): code that runs when a class or an enum is **defined** belongs to the body that
+declares it. That is the module for a top-level class or enum, the function (or method) for one declared there, and the namespace for one in a
+namespace. It is drawn at its source position among that body's other sites. `Collector::collect` already stopped at a nested def (`def_of`)
+and read a class's computed member names there. At the same stop it now also calls `class_definition_code`, the one function that reads what
+runs at definition: the class's decorators and its members', the decorators of the constructor's and the methods' parameters, the `extends`
+expression, the **static** field initializers and the static blocks. `body_of`'s class arm calls the same function and then adds the
+**instance** field initializers. Those run at construction, so a construction still counts them in `uncovered_construct_initializer_sites`
+(D25); the class's own body is read only for that (`initializer_sites`), so nothing is drawn twice. At an enum's stop the walk reads each
+member's initializer. An enum entry draws nothing (`E` → `E`, pinned): its initializers are the declaring body's.
+
+**Retired** with their `Uncovered` variants, their noting (`walk::construction`, `handed.rs`) and the span functions that fed only them:
+`uncovered_class_definition_sites`, `uncovered_computed_member_name_sites`, `uncovered_local_class_decorator_sites`. They are not qualnames, so
+rule 10 does not freeze them, but `typescript-v0.2.0`'s `policy.md` names two of them, `uncovered_computed_member_name_sites` and
+`uncovered_local_class_decorator_sites` (the v0.3.0 tag notes say so); `uncovered_class_definition_sites` was added at TS5 step 3 and was in no tag. A class entry now counts only
+`uncovered_construct_initializer_sites` and the `inherited_constructor_*` notes. Policy snapshots: six lose a counter line;
+`counter-class-definition` (`newLocal ▸ make`) and `counter-local-decorators` (`declaresDecorated ▸ dec`) gain one node each. Fixture
+`definition-code`, 6 tests in `tests/definition_code.rs`.
+
+**Shapes checked by the reviewer** (a probe project, CLI, 2026-11-17). A static field arrow (`static h = () => g()`) is its own def,
+`C.h`, so `g` stays in `C.h`, not in the module. A class expression in a static initializer is defined with its class: in `deep`,
+`class L1 { static inner = class L2 { static w = d(); } }` draws `d`. Both a method that declares a class and a namespace draw that class's
+definition code. `declare class` and `const enum` draw nothing. **An anonymous class expression** (`use(class { static s = a(); x = b(); m() {} })`)
+is not a def: the walk goes through it as through an anonymous function, so the enclosing body draws `a` **and** `b`, its instance initializer
+too. The methods of such a class are defs and keep their calls. This is older than M step 4 and follows the phase-1 rule for anonymous
+functions; it is not pinned by a fixture yet.
+
+**A class handed over in a decorator.** `@UseGuards(guard)` with `guard` a function draws `guard [Passed]` in the declaring body.
+`@UseGuards(AuthGuard)` with `AuthGuard` a class draws `UseGuards`, the `Unresolved(decorator_result)` of its result, and counts
+`uncovered_class` 1, as anywhere a class is named where a value is handed over (D22 step 5).
+
+**`Breakdown`'s line** (`c6dbfd7`, no behaviour change): `Uncovered::label()` sits next to `counter()`, both exhaustive matches, and
+`Uncovered::ALL` lists the 11 kinds in the order the line prints them, held to the enum by a test. The table of labels in `Display` is gone, so
+a new kind cannot be left out of the line without a word.
+
+**Measured** (reviewer, 2026-11-17, dev profile): TypeScript 285 pass, 5 ignored. V-NOC `TaskDetailPanel` is unchanged (141 call,
+2 construct, 235 external, 86 unresolved, 18 passed, 90 contexts). The golden function entries (V-NOC `TaskDetailPanel`, postcss (a)
+`Processor.process` and `Parser.parse`, (b) `Parser.parse` and `MapGenerator.generate`) are byte-identical in tree, wire, merged wire and
+breakdowns. Their `.graph` dumps gain only `frontier: 0` (TS5 step 1) and `merged_defs: 0` (D2). `measure_coverage` is in the row 3c section.
 
 ### The proof that a `File<'p>` cannot outlive its `Sem`
 
@@ -793,7 +834,7 @@ Step 6's review found six things that the tree does not draw and nothing counted
 | `rest_element` | `const { a, ...others } = api; use(others)`: **one for each place** the rest name is handed over, when the rest object holds a member that is a project function with a body. The members are read from the type of the rest name, so a member the pattern named is not in it | a rest element is not one member: `bound_member` follows a name to the member it names, and `others` names several |
 | `assignment_destructuring` | `({ load } = api); use(load)`: one for each place the assigned variable is handed over, when the member the target takes is a project function (renamed targets and nested patterns too). Only a `=` with an object pattern on the left; the target inside the pattern is where the def is taken, not a hand-over | the variable's declaration is `let load`, with no initializer to read, and the assignment can be anywhere |
 | `construct_initializer_sites` | one for each **site** in an instance field initializer (`x = make()`, a call or an accessor in it), for each construction (`new C()`, `<C />`, `super()`) of a project class, **and of every class the construction goes through without a constructor to enter** (`init_chain`: a derived class with no constructor runs its base's initializers). Not static initializers or static blocks (they run when the class is defined), not a parameter property's default (a site of the constructor, which is drawn) | the construction draws the constructor (`init`), and the initializers are the class's own body, which is walked only when the class is the entry |
-| `local_class_decorator_sites` | one for each site that is in a decorator (the class's, a member's, a parameter's; `@factory(1)` is two) of a class **declared inside a walked body**; a class at the top of a file is not counted | the decorators run when the body does, and the body stops at a nested class (its own def) |
+| `local_class_decorator_sites` (**retired at M step 4**: drawn in the declaring function) | one for each site that is in a decorator (the class's, a member's, a parameter's; `@factory(1)` is two) of a class **declared inside a walked body**; a class at the top of a file is not counted | the decorators run when the body does, and the body stops at a nested class (its own def) |
 | `class_component_render` | one for each `<Cls />` where `Cls` is a project class with a `render` that is a project function (its own, inherited from a project class, or an arrow held by a field). A `render` declared by a package is nothing hidden: not counted; `new Cls()` is not an element | React calls `render`; nothing in the project does, and no framework rule is held |
 | `getter_result_calls` | one for each plain call, `new`, tag or JSX tag whose callee is a **getter** (`b.fn()`): the one edge is to the getter (the engine's answer, as before step 6), and what the getter returns is called by a second call that has no edge | two calls on one span: a second edge on the same span would be merged with the first by the graph |
 
@@ -812,7 +853,7 @@ Pinned in `tests/fixtures/uncovered/` (`members.ts`, `classes.tsx`, `getters.ts`
 | `class_component_render` | no class component: no `extends Component`; the one `render()` is a local function in `MermaidBlock.tsx` |
 | `getter_result_calls` | no `get x()` or `set x()` in `src/` (classes or object literals); a getter of a package called as a function (`a.b()` with `b` a getter) would be counted, and there is none |
 
-**Known and left**: the static initializers, static blocks and `extends` expression of a class declared inside a function are as hidden as its decorators, and are not counted (they are what the design note of part C asks about); `local_class_decorator_sites` counts decorators only. A rest element or an assignment target whose name is handed over in **another** body than the one that wrote the pattern (`let load; function init() { ({ load } = api); }` and `use(load)` elsewhere) is not counted: the assigned variable is looked up in the body of the assignment. An array pattern (`[a] = list`), an assignment target that is a property access (`({ load: this.load } = api)`) and a `for (… of …)` target are not followed. `getter_result_calls` counts a getter of a package like a project's; none exists on the V-NOC frontend, so whether that is noise is not measured.
+**Known and left** (closed by M step 4, which draws all of it in the declaring function): the static initializers, static blocks and `extends` expression of a class declared inside a function are as hidden as its decorators, and are not counted (they are what the design note of part C asks about); `local_class_decorator_sites` counts decorators only. A rest element or an assignment target whose name is handed over in **another** body than the one that wrote the pattern (`let load; function init() { ({ load } = api); }` and `use(load)` elsewhere) is not counted: the assigned variable is looked up in the body of the assignment. An array pattern (`[a] = list`), an assignment target that is a property access (`({ load: this.load } = api)`) and a `for (… of …)` target are not followed. `getter_result_calls` counts a getter of a package like a project's; none exists on the V-NOC frontend, so whether that is noise is not measured.
 
 ### Three more counted (TS4 step 7c)
 
@@ -822,7 +863,7 @@ The review of step 7 asked for three more shapes that no edge covers, counted an
 |---|---|---|
 | `rest_element` (extended) | `({ load, ...o } = api); use(o)`: one for each place `o` is handed over, when the members of the value that the pattern did not name include a project function. Also a rest inside a `for … of` pattern (`for (const { ...o } of xs)`), which the existing branch already counted | the variable has no initializer to read, as for an assignment target (7a) |
 | `for_of_destructuring` | `for (const { load } of xs) use(load)`: one for each place the name is handed over, when the member it stands for, looked up on the type of the pattern (the element type of `xs`), is a project function. Renames, nested patterns and `for await` too | a `for … of` pattern has no initializer, so `bound_member` follows nothing. **A call is not a hole:** `load()` resolves, the engine follows the binding to `api.load` (an edge) |
-| `computed_member_name_sites` | one for each call, `new`, tag or JSX element in a computed member name (`[key()] = …`, `[make()]() {}`) of a class **at the top of a file**, counted where the class def is walked (as the entry). A class declared in a function has its names read by that function (an edge there); an accessor in a name is not asked | `body_of(class)` never reads the member names, and no def is around a top-level class to read them |
+| `computed_member_name_sites` (**retired at M step 4**: drawn by the module) | one for each call, `new`, tag or JSX element in a computed member name (`[key()] = …`, `[make()]() {}`) of a class **at the top of a file**, counted where the class def is walked (as the entry). A class declared in a function has its names read by that function (an edge there); an accessor in a name is not asked | `body_of(class)` never reads the member names, and no def is around a top-level class to read them |
 
 Pinned in `tests/fixtures/uncovered/` (`members.ts`, `classes.tsx`; 24 rows added to the 7a tests, the expected number written before the run) and in the policy rows `counter-rest` (two entries added), `counter-for-of`, `counter-computed-names`. **Mutation-checked.** The first round left seven survivors. Four guards were redundant with each other (the dedupe of the assigned variables, the `inside_pattern` test for a rest name, the `members.is_empty()` test before `for_of_member`, the initializer and list tests of `for_of_member`, which the `for … of` test covers) and were removed; two needed a row (a rest in a `for … of` pattern is the rest element's and is not counted twice; an array pattern named like a member is not followed). **One was a bug the V-NOC run found, not the fixtures:** the guard that asks a name for its expression only when it is computed was removed as "redundant" (no row survived without it), and the whole-frontend run panicked in the engine (`Unhandled case in Node.Expression: Identifier`) on the first class with an ordinary member name; the fixtures never walked a top-level class that had one. The row `ComputedAmongPlainNames` is the proof now, and the lesson stands: a mutant that survives may mean the fixtures do not reach the code, not that the code is redundant.
 
@@ -892,11 +933,13 @@ A class taken as the entry of a request (`call_graph` on a def whose kind is `Cl
 - decorators, the `extends` expression, static field initializers, static blocks: the new `uncovered_class_definition_sites`, for a class at the top of a file (`Sem::definition_sites`: the body's sites less the instance-initializer ones). Not the base chain: a base class's definition ran when it was defined;
 - computed member names: `uncovered_computed_member_name_sites`, moved here from `handed_over`, so it is counted at each construction of a top-level class (it was counted only where the class def was walked, which was only an entry).
 
+**M step 4 retired both counters**: the body that declares the class draws these sites, and a construction counts only the instance field initializers (see "Definition code in the declaring body").
+
 `uncovered_class` is another thing: a class named where a value is handed over (`Error.captureStackTrace(this, C)`, postcss's one hit).
 
 **Measured with a throwaway probe** (the class's body sites less its instance-initializer sites, over every class of the project, 2026-11-13): V-NOC frontend 0 of 5 classes have a definition-time site, postcss `lib/` (JS only) 0 of 19, postcss with `.d.ts` 0 of 2. The probe was checked on fixtures first (`Decorated` 11, `StaticOnly` 2, `Mixed` 1, `TopDecorated` 1, 9 classes with sites in `fixtures/uncovered`), so 0 is a reading and not a blind spot. Function entries are unchanged: the V-NOC and postcss golden trees, wires and merged wires are byte-identical. A whole-project run (every def an entry, `measure_handed_over`) differs only in its `contexts` line, by exactly the number of classes (1084 -> 1079, 264 -> 245, 60 -> 58): a class is a `Construct` root now, not a context.
 
-**Known gap, not fixed here:** a class declared **inside a function or a namespace** has its definition-time sites in no tree and no counter. The def around it stops at it (`Collector::collect` reads only its computed names), and `definition_sites` is for a class at the top of a file. Its decorators have `uncovered_local_class_decorator_sites`; its static initializers, static blocks and `extends` have nothing (test `class_entry_a_class_declared_in_a_function_...`, `newLocal`).
+**Known gap, not fixed here** (closed by M step 4): a class declared **inside a function or a namespace** has its definition-time sites in no tree and no counter. The def around it stops at it (`Collector::collect` reads only its computed names), and `definition_sites` is for a class at the top of a file. Its decorators have `uncovered_local_class_decorator_sites`; its static initializers, static blocks and `extends` have nothing (test `class_entry_a_class_declared_in_a_function_...`, `newLocal`).
 
 ## TS5 step 5: cancel at every check, and the steps that cannot be stopped
 
@@ -956,17 +999,19 @@ The maximum listing is **not** the first def of its file (the first-of-file maxi
 **Swept**: every project under `tests/fixtures` and the shared scenarios in TypeScript (`scenarios/*/typescript`, six of them): 543 nodes in 37 programs (a file is scanned in the first program that holds it); 3 files no program holds are skipped (`broken-config/a.ts`, `broken-reference/elsewhere/x.ts`, `excluded-file/b.ts`). Misses: top-level 14, nested-class-definition 7, enum-member 3, namespace-level 2, top-level-anonymous 2, namespace-class-computed-name 1; the ones outside `coverage/` are `references/packages/app/src/main.ts:3`, `site-kinds/src/jsx.tsx:29`, `solution/src/main.ts:3`, `type-errors/a.ts:2` (top-level), `class-entry/src/main.ts:107` and `uncovered/src/classes.tsx:145` (nested-class-definition: the `newLocal` fixtures), `sites/src/sites.ts:109` (namespace-level). Every one is in a listed category.
 
 **Since row M** (2026-11-17; the table above is row 3c as built). The coverage test also enters every project file (`Entry::File`, M step 2,
-`7e4a870`) and every namespace (M step 3, `8a997dc`), and counts a merged def's sites as `Counted("merged_defs")` (D34 across files). The
-fixtures today:
+`7e4a870`) and every namespace (M step 3, `8a997dc`), and counts a merged def's sites as `Counted("merged_defs")` (D34 across files). After
+M step 4 (`449dfb4`) the only counted spans are `initializer_sites` (the instance initializers of a construction's chain): the
+`definition_sites`, `computed_name_sites` and `decorator_sites` spans went with their counters. The fixtures after M step 4 (each row
+predicted before the run; in brackets, after M step 3):
 
 | file | drawn | counted | excluded | missed |
 |---|---|---|---|---|
 | `top-level.ts` | 5 | 0 | 0 | none |
-| `enum.ts` | 0 | 0 | 0 | enum-member 3 |
-| `nested-class.ts` | 5 | 4 | 0 | nested-class-definition 3 |
-| `namespace-class.ts` | 4 | 2 | 0 | nested-class-definition 1 (the static field) |
+| `enum.ts` | 3 (0) | 0 | 0 | none (`enum-member` 3) |
+| `nested-class.ts` | 11 (5) | 1 (4) | 0 | none (`nested-class-definition` 3) |
+| `namespace-class.ts` | 6 (4) | 1 (2) | 0 | none (`nested-class-definition` 1) |
 | `namespace-dotted.ts` | 1 | 0 | 0 | none (`namespace A.B`: `A.B` is its own def and owns the statement) |
-| `top-class.ts` | 5 | 7 | 0 | none (`[key()]` is drawn under the module since M step 2) |
+| `top-class.ts` | 11 (5) | 1 (7) | 0 | none |
 | `defaults.ts` | 5 | 0 | 0 | none |
 | `iife.ts` | 9 | 0 | 0 | none |
 | `jsx.tsx` | 3 | 0 | 3 | none |
@@ -974,9 +1019,10 @@ fixtures today:
 | `excluded.ts` | 1 | 0 | 3 | none |
 | `ambient.d.ts` | 0 | 0 | 1 | none |
 
-`KNOWN_GAPS` holds `enum-member` and `nested-class-definition` only, both M step 4's; `top-level`, `top-level-anonymous`, `namespace-level`
-and `namespace-class-computed-name` are bug categories now. Sweep: 602 nodes in 43 programs, missed 9 (`enum-member` 3, `nested-class-definition`
-6: the four in `coverage` plus `class-entry/src/main.ts:107` and `uncovered/src/classes.tsx:145`).
+The one counted site of each class file is its instance initializer (`t = f()`, `x = f()`). **`KNOWN_GAPS` is empty**: `enum-member` and
+`nested-class-definition` are bug categories now, like `top-level`, `top-level-anonymous`, `namespace-level` and `namespace-class-computed-name`.
+Sweep: 602 nodes in 43 programs, missed 9 (M step 3) → 622 nodes in 44 programs, **missed 0**. The extra program and its 20 nodes are the
+fixture `definition-code`; the two misses outside `coverage/` (`class-entry/src/main.ts:107`, `uncovered/src/classes.tsx:145`) are drawn.
 
 `typescript-cli calls <dir> <file>` with no `--entry` is the file's own code (M step 5, `5dc6ba8`): tree, `--graph`, `--wire` (root `target_kind`
 `Module`, empty `target_qualname` and `target_id`), `--merged`; `--id` without `--entry` is a usage error.
@@ -996,6 +1042,28 @@ and `namespace-class-computed-name` are bug categories now. Sweep: 602 nodes in 
 | drawn spans the scan does not have | accessor 37, passed 153 | accessor 36, passed 17 | accessor 16, passed 4 |
 | scan + graph | 285 ms | 16 ms | 8 ms |
 
+**After M step 4** (reviewer, 2026-11-17, `measure_coverage` on the **dev** profile, so the times do not compare; same inputs, postcss (b) entered
+at `map-generator.js` because `processor.js` is not in its program):
+
+| | V-NOC frontend | postcss (a) js only | postcss (b) with .d.ts |
+|---|---|---|---|
+| files / call-like nodes | 396 / 7657 | 28 / 968 | 29 / 312 |
+| excluded by policy | 1143 | 87 | 12 |
+| drawn | **6514** (5728 + 786) | **881** (832 + 49) | **300** (277 + 23) |
+| counted | 0 | 0 | 0 |
+| **missed** | **0** | **0** | **0** |
+| drawn spans the scan does not have | accessor 37, passed 229 | accessor 36, passed 44 | accessor 16, passed 8 |
+| scan + graph (dev) | 1.47 s | 67 ms | 40 ms |
+
+Every node the table above missed is drawn now, by a file entry (M step 2), and none moved to counted. The extra passed spans are the hand-overs
+the module bodies make (`memo(function C() {…})`, a store's `create(…)`). Row M's acceptance on real projects is met.
+
+**[measure] the largest module tree** (reviewer, 2026-11-17, `typescript-cli calls <dir> <file>` for each of V-NOC's 395 project files, dev
+profile): `src/routes/Dashboard/index.tsx`, 2680 tree lines, 548 contexts, 1138 call, 2 construct, 1595 external, 703 unresolved, 98 passed,
+graph 222 ms (open 78 ms), cuts none. The file is a route: its one top-level statement is an object literal whose `element` is
+`<SocketProvider><Dashboard /></SocketProvider>`, two JSX calls of the module, so the module's tree is the whole dashboard page. The next are
+207 lines (`useWalkthroughStore.ts`, 49 contexts, 17 ms), 189 and 168. Mean 13 lines a file.
+
 Examples: V-NOC `top-level` `button.tsx:7 cva(…)`, `useVersioningStore.ts:110 create<VersioningState>()(…)`, `parseVersioningDiff.ts:4 new Set`, `versioningDiffService.ts:22 new VersioningDiffService`; `top-level-anonymous` `useVersioningStore.ts:129 set(…)` (the store's property arrows), `CreateProjectDialog.tsx:50 data.remoteUrl.trim()` (a callback of `.superRefine`); postcss (a) `tokenize.js:3 "'".charCodeAt(0)`, `container.js:428 Object.setPrototypeOf(…)`; (b) `map-generator.js:9 Boolean(…)`. **So row 3b is 0 sites on all three real projects (and `counted` is 0 because no class there has a definition-time site, as step 3 measured); the whole real gap is the top of a file, 5–10% of the nodes, and the owner's decision is whether a module's own body is something a request can start from.**
 
 **No `Uncovered` kind is a vanished call node.** The four with spans are the call nodes of this test. `ElementAccess`, `Class`, `RestElement`, `AssignmentDestructuring`, `ForOfDestructuring` and `ClassComponentRender` count a name or a hand-over, not a call node; `Bind` and `CallApply` count a function behind a call that **is** drawn (`f.bind`, `f.call`, to `Function.*`); `GetterResultCall` counts the second call of a result, the node (`b.fn()`) is drawn; `DestructuredAccessor` is a getter run with no node at all (a binding element), which a node scan cannot see by design.
@@ -1003,9 +1071,9 @@ Examples: V-NOC `top-level` `button.tsx:7 cva(…)`, `useVersioningStore.ts:110 
 **Mutants, all killed** (each run, then restored; the table check says which file):
 - `Collector` records no tagged template: `tagged.ts` reads drawn 1 and a miss in `in-named-function`; the sweep fails on the unlisted category too.
 - `resolve` gives a JSX site no target (no edge, not even `Unresolved`): `jsx.tsx` drawn 0 and two misses; the sweep fails on the unlisted category (the JSX of five fixtures).
-- `definition_sites` returns an empty list: `top-class.ts` counted 2 and 6 misses in `top-class-definition`; the sweep fails.
+- (code removed at M step 4) `definition_sites` returns an empty list: `top-class.ts` counted 2 and 6 misses in `top-class-definition`; the sweep fails.
 - an unused category on the list: `the_list_has_no_stale_entry`. `enum.ts` out of reach: the table (`src/enum.ts` read none) and the stale test.
 - the **scan** skips `NewExpression`: `nested-class.ts` drawn 4 (not 5), `top-class.ts` 3 (not 4), `top-level.ts` 4 misses (not 5): the per-file numbers catch it.
-- `walk::construction` stops noting `definition_sites`: `the_counters_say_what_the_spans_say` (`uncovered_class_definition_sites` of `Top` 0, not 6), which is why that test exists: the spans are read from `Sem`, so without it the walker could stop counting what the spans say is counted.
+- (code removed at M step 4) `walk::construction` stops noting `definition_sites`: `the_counters_say_what_the_spans_say` (`uncovered_class_definition_sites` of `Top` 0, not 6), which is why that test exists: the spans are read from `Sem`, so without it the walker could stop counting what the spans say is counted.
 
 **Time:** the four tests together 1.4 s (dev profile, optimized), the sweep being almost all of it; `measure_coverage` on V-NOC 0.8 s in the test, 285 ms of it the scan and the graph.

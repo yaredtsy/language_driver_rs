@@ -119,7 +119,7 @@ The module def's body is the file's top-level statements, walked like any body (
 - the calls in **anonymous functions** at the top (the phase-1 rule, now with an enclosing def): the 461 above, the IIFEs, `X.y = () => …`;
 - **hand-overs** at the top (D22): `export const C = memo(function C() {…})` draws the call of `memo` and `C [Passed]`.
 
-**(recommended) The same rule for the code that runs when a declaration is evaluated:** *code that runs when a class or an enum is defined
+**(accepted 2026-11-17, built at step 4, `449dfb4`) The same rule for the code that runs when a declaration is evaluated:** *code that runs when a class or an enum is defined
 belongs to the body that declares it.* That covers:
 - a class's decorators (its own, its members', its parameters'), its `extends` expression, its static field initializers and its static
   blocks;
@@ -142,6 +142,8 @@ What it does to the counters (an owner decision, it changes `policy.md`):
 - `uncovered_class_definition_sites`, `uncovered_computed_member_name_sites` and `uncovered_local_class_decorator_sites` would count what
   is now drawn, so they **retire**;
 - they are not qualnames, so rule 10 does not freeze them, but `typescript-v0.2.0`'s `policy.md` names them: say so in the tag notes.
+  (Checked at step 4: it names two, `uncovered_computed_member_name_sites` and `uncovered_local_class_decorator_sites`;
+  `uncovered_class_definition_sites` came at TS5 step 3, after that tag. The note is in `07-ts5-driver-needs.md` row 9.)
 
 ### 3.4 Flat or grouped
 
@@ -166,14 +168,16 @@ The engine makes a namespace with an identifier name a caller of its statements,
 **[check] answered (reviewer, 2026-11-16): a namespace is already an entry, and has been since TS3.** `Sem::entry` matches any def of the
 outline by qualname, of any kind, and `Collector::body_of` walks a namespace's module block (`sem/collect.rs:443`); `sem/tests.rs:430`
 pins it (`expect("Ns", &["f"])`). `typescript-cli calls tests/fixtures/coverage src/namespace-class.ts --entry N` draws `key` (the
-computed name of the class `N.C`) and `f` (the namespace's own statement), and counts `@dec` in `local class decorator sites`.
+computed name of the class `N.C`) and `f` (the namespace's own statement), and counted `@dec` in `local class decorator sites` (since step 4 it
+draws `@dec`, with the class's other definition code).
 **So row 3c's `namespace-level` and `namespace-class-computed-name` are faults of the coverage test, not gaps:** its "every def as an entry"
 is `Sem::project_defs`, which keeps `Function | Method | Class` only (`sem/mod.rs:315`), so no namespace is ever entered and
 what a namespace draws or counts is never seen. The known-gap text "a namespace is not a def a request can start from, and nothing walks
 it" is wrong. Real projects read 0 in both categories, so no measured number moves. What is left:
 - its name is the outline's, so nothing new is named;
-- it gets the definition code of what it declares (§3.3): today a class in a namespace has its computed names drawn and its decorators
-  counted there, but its static initializers, static blocks and `extends` are in no tree and no counter (`nested-class-definition`);
+- it gets the definition code of what it declares (§3.3, step 4): a class in a namespace has its computed names, decorators, static
+  initializers, static blocks and `extends` drawn there, and an enum its member initializers (before step 4 the decorators were counted and the
+  rest was in no tree and no counter, `nested-class-definition`);
 - an ambient namespace (`declare namespace`, `declare module "x"`) has no body: an empty tree, as today;
 - **[check] answered (M step 3, 2026-11-17): no gap.** A dotted namespace `namespace A.B { f(); }` is two outline defs, `A` and `A.B`; `A`
   walks nothing, `A.B` owns the statements and draws `f`. Fixture `coverage/src/namespace-dotted.ts`.
@@ -232,7 +236,11 @@ The other proofs:
    **The coverage test enters every namespace** (§3.5, a test fix: namespaces are already entries): `project_defs` keeps
    `DefKind::Namespace` too; `namespace-level` and `namespace-class-computed-name` leave the list; `nested-class-definition`'s text loses
    "a decorator of a class declared in a namespace" (it is counted); the dotted-namespace fixture. No analyzer change. Can run before step 1.
-4. **(next) Definition code in the declaring body** (§3.3, accepted 2026-11-17). How it is built (reviewer, from the code, 2026-11-17):
+4. **Built** (2026-11-17, `449dfb4` and `c6dbfd7`; reviewed, accepted). `KNOWN_GAPS` is empty; the sweep went from 602 nodes in 43 programs,
+   missed 9, to 622 in 44, missed 0; `measure_coverage` reads missed 0 on V-NOC and both postcss inputs (`ENGINE.md`, row 3c section);
+   golden function entries byte-identical; the three counters retired; `Uncovered::label()` replaces the label table. What was built,
+   and the shapes the reviewer checked: `ENGINE.md`, "Definition code in the declaring body".
+   **Definition code in the declaring body** (§3.3, accepted 2026-11-17). How it is built (reviewer, from the code, 2026-11-17):
    - **Where.** `Collector::collect` stops at a nested def (`def_of`) and, for a class, already collects its computed member names
      (`collect.rs`, "as in tsrs"). At that stop it also collects the class's **definition code**: its modifiers (decorators), its
      members' decorators, its constructor's and methods' parameter decorators, the `extends` expression, the **static** property
@@ -251,8 +259,7 @@ The other proofs:
      both become bug categories. The per-file table moves from counted and missed to drawn: predict each row before the run.
    - **Snapshots that change**: only trees of a body that declares a class or an enum with definition code, by nodes added at those
      sites; every other snapshot byte-identical. Real projects read 0 for this code (§1), so their function-entry goldens should not move.
-    the counters retire, `enum-member` and `nested-class-definition`
-   leave the list. **This replaces row 3b**, which counted what this draws. If §3.3 is not accepted, row 3b
+   **This replaces row 3b**, which counted what this draws. If §3.3 is not accepted, row 3b
    stays as written and runs here. **Also here** (review, 2026-11-16): the label table in `Breakdown`'s `Display` is a second list of the
    `Uncovered` kinds, and a key it does not know is silently not printed. This step edits it anyway: each `Uncovered` gives its label
    next to its `counter()`, and the table goes.
