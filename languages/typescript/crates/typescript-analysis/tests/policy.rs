@@ -98,7 +98,7 @@ fn render_row(row: &Row) -> String {
         let graph = call_graph(
             &project,
             file,
-            &Entry {
+            &Entry::Def {
                 qualname: entry,
                 occurrence: 0,
             },

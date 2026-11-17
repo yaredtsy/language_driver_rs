@@ -24,7 +24,7 @@ fn project() -> Project {
 }
 
 fn graph_of(entry: &str) -> Graph {
-    let entry = Entry {
+    let entry = Entry::Def {
         qualname: entry,
         occurrence: 0,
     };
@@ -196,7 +196,7 @@ fn the_outline_still_reports_the_marker_on_both() {
 #[test]
 fn a_graph_with_no_duplicate_has_no_counter_and_no_line() {
     let none = Project::open(&root().join("../three-files"), Path::new("src/main.ts")).unwrap();
-    let entry = Entry {
+    let entry = Entry::Def {
         qualname: "run",
         occurrence: 0,
     };

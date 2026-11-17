@@ -26,7 +26,7 @@ fn uncancelled(case: &Case, budget: &Budget) -> Graph {
 }
 
 fn request(session: &Session, case: &Case, budget: &Budget, cancel: &Cancel) -> Graph {
-    let entry = Entry {
+    let entry = Entry::Def {
         qualname: &case.entry,
         occurrence: 0,
     };

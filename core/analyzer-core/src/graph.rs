@@ -288,12 +288,15 @@ impl Stats {
     }
 }
 
-/// A def of one file, as the outline names it: its qualname and which of the same-named defs it is (0-based, in source order). A request
-/// names its entry this way (D20).
+/// What a request starts from: a def of one file, or the file's own code. A language answers the kinds it has and says `None` for the others.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Entry<'a> {
-    pub qualname: &'a str,
-    pub occurrence: u16,
+#[non_exhaustive]
+pub enum Entry<'a> {
+    /// A def of one file, as the outline names it: its qualname and which of the same-named defs it is (0-based, in source order). A request
+    /// names its def this way (D20).
+    Def { qualname: &'a str, occurrence: u16 },
+    /// The file's own code: what runs when the file is loaded (D32). A language that has no such code answers `None`.
+    File,
 }
 
 /// What a tree starts from.
@@ -548,5 +551,22 @@ pub(crate) mod tests {
         };
         assert_ne!(a, b);
         assert!(a < b);
+    }
+
+    #[test]
+    fn the_files_own_code_is_not_a_def() {
+        let def = Entry::Def {
+            qualname: "main",
+            occurrence: 0,
+        };
+        assert_ne!(Entry::File, def);
+        assert_eq!(Entry::File, Entry::File);
+        assert_ne!(
+            def,
+            Entry::Def {
+                qualname: "main",
+                occurrence: 1
+            }
+        );
     }
 }

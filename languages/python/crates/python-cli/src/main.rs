@@ -263,7 +263,7 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
         );
         return ExitCode::from(1);
     };
-    let entry = Entry {
+    let entry = Entry::Def {
         qualname: ask.entry,
         occurrence,
     };

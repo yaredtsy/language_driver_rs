@@ -12,7 +12,7 @@ const FILE: &str = "ids_and_classes.py";
 
 /// The first def called `qualname` in its file.
 fn first(qualname: &str) -> Entry<'_> {
-    Entry {
+    Entry::Def {
         qualname,
         occurrence: 0,
     }
@@ -60,6 +60,12 @@ fn a_cancel_fired_before_the_request_cuts_the_root_and_is_counted() {
         "{:?}",
         wire.marks
     );
+}
+
+#[test]
+fn the_files_own_code_is_not_an_entry_yet() {
+    let project = Project::open(DIR).unwrap();
+    assert!(call_graph(&project, FILE, &Entry::File, &Options::default()).is_none());
 }
 
 #[test]
@@ -181,7 +187,7 @@ fn wire_of(file: &str, qualname: &str, occurrence: u16) -> Option<python_analysi
     call_wire(
         &entries_project(),
         file,
-        &Entry {
+        &Entry::Def {
             qualname,
             occurrence,
         },
@@ -379,7 +385,7 @@ fn the_constructor_context_of_a_class_entry_is_the_one_a_construction_has() {
     let project = entries_project();
     let opts = Options::default();
     let ask = |qualname| {
-        let entry = Entry {
+        let entry = Entry::Def {
             qualname,
             occurrence: 0,
         };
@@ -451,7 +457,7 @@ fn files_are_relative_and_the_root_does_not_change_the_answer() {
     let by_absolute = Project::open(absolute.to_str().unwrap()).unwrap();
     let opts = Options::default();
     for (file, qualname, occurrence) in every_def() {
-        let entry = Entry {
+        let entry = Entry::Def {
             qualname: &qualname,
             occurrence,
         };

@@ -70,10 +70,19 @@ impl NamedDefs {
 
     /// Where the name of the def `entry` asks for starts, if the outline has that many defs with its qualname.
     fn start_of(&self, entry: &Entry<'_>) -> Option<u32> {
-        self.starts
-            .get(entry.qualname)?
-            .get(usize::from(entry.occurrence))
-            .copied()
+        match *entry {
+            Entry::Def {
+                qualname,
+                occurrence,
+            } => self
+                .starts
+                .get(qualname)?
+                .get(usize::from(occurrence))
+                .copied(),
+            // a module's top-level code is a row of Python's own, later
+            Entry::File => None,
+            _ => None,
+        }
     }
 }
 

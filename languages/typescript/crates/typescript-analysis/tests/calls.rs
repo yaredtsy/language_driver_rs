@@ -27,17 +27,17 @@ fn fixture(name: &str) -> PathBuf {
 
 fn graph_of(root: &Path, file: &str, entry: &str) -> Graph {
     let project = Project::open(root, Path::new(file)).unwrap();
-    let entry = Entry {
+    let entry = Entry::Def {
         qualname: entry,
         occurrence: 0,
     };
     call_graph(&project, file, &entry, &Options::new(STYLE), &Cancel::new())
-        .unwrap_or_else(|| panic!("no def `{}` in {file}", entry.qualname))
+        .unwrap_or_else(|| panic!("no entry {entry:?} in {file}"))
 }
 
 fn scenario_graph(program: &Path) -> Option<Graph> {
     let project = Project::open(program, Path::new("main.ts")).ok()?;
-    let entry = Entry {
+    let entry = Entry::Def {
         qualname: "main",
         occurrence: 0,
     };
@@ -204,7 +204,7 @@ fn a_cancelled_request_marks_the_entry_instead_of_inventing_edges() {
     let project = Project::open(&fixture("resolve"), Path::new("src/main.ts")).unwrap();
     let cancel = Cancel::new();
     cancel.cancel();
-    let entry = Entry {
+    let entry = Entry::Def {
         qualname: "callers",
         occurrence: 0,
     };
@@ -229,7 +229,7 @@ fn a_def_that_is_not_there_has_no_graph() {
         call_graph(
             &project,
             file,
-            &Entry {
+            &Entry::Def {
                 qualname,
                 occurrence,
             },
@@ -1517,4 +1517,19 @@ fn a_declaration_file_outside_the_root_is_named_from_the_root() {
         edges.contains(&"main | typed | external ../shared/api.d.ts typed".to_owned()),
         "{edges:#?}"
     );
+}
+
+#[test]
+fn the_files_own_code_is_not_an_entry_yet() {
+    // `Entry::File` is answered in M step 2
+    let root = fixture("three-files");
+    let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
+    let graph = call_graph(
+        &project,
+        "src/main.ts",
+        &Entry::File,
+        &Options::new(STYLE),
+        &Cancel::new(),
+    );
+    assert!(graph.is_none());
 }

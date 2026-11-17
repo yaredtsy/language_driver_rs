@@ -24,7 +24,7 @@ fn request(
     occurrence: u16,
     budget: &Budget,
 ) -> Graph {
-    let entry = Entry {
+    let entry = Entry::Def {
         qualname,
         occurrence,
     };
@@ -202,7 +202,7 @@ fn with_no_budget_a_session_gives_the_graph_call_graph_gives() {
     );
     for case in &cases {
         let session = open(case);
-        let entry = Entry {
+        let entry = Entry::Def {
             qualname: &case.entry,
             occurrence: 0,
         };

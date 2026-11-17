@@ -28,7 +28,7 @@ fn app() -> PathBuf {
 
 fn graph_in(root: &Path, entry: &str) -> Graph {
     let project = Project::open(root, Path::new("src/main.ts")).unwrap();
-    let entry = Entry {
+    let entry = Entry::Def {
         qualname: entry,
         occurrence: 0,
     };
@@ -186,7 +186,7 @@ fn files_lists_only_what_is_under_the_root() {
 
 fn entry_in(root: &Path, file: &str, qualname: &str) -> Option<Graph> {
     let project = Project::open(root, Path::new("src/main.ts")).unwrap();
-    let entry = Entry {
+    let entry = Entry::Def {
         qualname,
         occurrence: 0,
     };

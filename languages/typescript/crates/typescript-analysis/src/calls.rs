@@ -133,7 +133,15 @@ pub(crate) fn graph_within(
     cancel: &Cancel,
 ) -> Option<Graph> {
     let sem = &project.sem;
-    let func = sem.entry(file, entry.qualname, entry.occurrence, opts.marker)?;
+    let func = match *entry {
+        Entry::Def {
+            qualname,
+            occurrence,
+        } => sem.entry(file, qualname, occurrence, opts.marker)?,
+        // the file's own code has no def yet (D32, M step 2)
+        Entry::File => return None,
+        _ => return None,
+    };
     let lang = TypeScript::new(sem, opts.marker);
     let start = start_of(&lang, func);
     let mut solver = Solver::new(lang, opts.limits.clone());
@@ -489,7 +497,7 @@ mod tests {
         // as a def the edge builder missed would leave it.
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/resolve");
         let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
-        let entry = Entry {
+        let entry = Entry::Def {
             qualname: "callers",
             occurrence: 0,
         };
@@ -526,7 +534,7 @@ mod tests {
             .unwrap();
         // as if the outline and the program's tree had disagreed about this def
         project.sem.forget_node_of(func, STYLE);
-        let entry = Entry {
+        let entry = Entry::Def {
             qualname: "callers",
             occurrence: 0,
         };

@@ -46,7 +46,7 @@ fn every_def_row_of_a_graph_names_a_def_of_its_files_outline() {
         let Ok(project) = Project::open(&root, Path::new(file)) else {
             continue;
         };
-        let entry = Entry {
+        let entry = Entry::Def {
             qualname: entry,
             occurrence: 0,
         };

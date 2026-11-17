@@ -45,7 +45,7 @@ fn build_graphs(root: &Path, file: &str, entries: &[&str]) -> usize {
         let graph = call_graph(
             &project,
             file,
-            &Entry {
+            &Entry::Def {
                 qualname: entry,
                 occurrence: 0,
             },

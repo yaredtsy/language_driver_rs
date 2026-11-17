@@ -938,7 +938,7 @@ fn the_counters_say_what_the_spans_say() {
     let mut classes_with_sites = 0;
     for func in sem.project_defs(STYLE) {
         let info = sem.describe(func, STYLE);
-        let entry = Entry {
+        let entry = Entry::Def {
             qualname: &info.qualname,
             occurrence: info.occurrence,
         };

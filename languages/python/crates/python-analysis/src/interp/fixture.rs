@@ -78,7 +78,7 @@ pub(super) fn solve<'db>(
     crate::interp::solve(
         db,
         file,
-        &Entry {
+        &Entry::Def {
             qualname: &qualname,
             occurrence: 0,
         },
@@ -96,7 +96,7 @@ pub(super) fn call_tree(
     crate::interp::call_tree(
         db,
         file,
-        &Entry {
+        &Entry::Def {
             qualname: &qualname,
             occurrence: 0,
         },
@@ -114,7 +114,7 @@ pub(super) fn call_graph(
     crate::interp::call_graph(
         db,
         file,
-        &Entry {
+        &Entry::Def {
             qualname: &qualname,
             occurrence: 0,
         },
@@ -133,7 +133,7 @@ pub(super) fn call_frame(
     crate::interp::call_frame(
         db,
         file,
-        &Entry {
+        &Entry::Def {
             qualname: &qualname,
             occurrence: 0,
         },
@@ -207,7 +207,7 @@ pub(super) fn relevant_names(fixture: &str, func: &str) -> Vec<String> {
     let def = sem
         .entry(
             file,
-            &Entry {
+            &Entry::Def {
                 qualname: &qualname,
                 occurrence: 0,
             },
