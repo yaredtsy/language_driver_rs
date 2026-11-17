@@ -211,3 +211,43 @@ fn a_graph_with_no_duplicate_has_no_counter_and_no_line() {
     assert_eq!(duplicates(&graph), None);
     assert!(!breakdown(&graph).to_string().contains("owns"));
 }
+
+/// The known limit of rule 1: it reads one file. The same marker in a second file is one node, and core counts the def it dropped (D2).
+#[test]
+fn the_same_marker_in_a_second_file_is_one_node_and_is_counted() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/limits/duplicate-marker-across");
+    let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
+    let entry = Entry::Def {
+        qualname: "main",
+        occurrence: 0,
+    };
+    let graph = call_graph(
+        &project,
+        "src/main.ts",
+        &entry,
+        &Options::new(STYLE),
+        &Cancel::new(),
+    )
+    .unwrap();
+    assert_eq!(graph.stats.merged_defs, 1);
+    assert!(!graph.stats.language.contains_key("duplicate_marker"));
+    let summary = breakdown(&graph);
+    assert_eq!(summary.merged_defs, 1);
+    assert!(
+        summary
+            .to_string()
+            .contains("their calls are drawn under it): 1"),
+        "{summary}"
+    );
+    // one node for both: `b` is drawn as `a`, and each shows the other's calls (the known limit, pinned; `merged_defs` is the count)
+    let drawn = to_text(&render(
+        &graph,
+        &graph.entries[0],
+        &RenderOptions::default(),
+    ));
+    assert_eq!(drawn, "main\n  a\n    x\n    y\n  a\n    x\n    y\n");
+    // a graph with no merged def says nothing
+    let none = breakdown(&graph_of("main"));
+    assert_eq!(none.merged_defs, 0);
+    assert!(!none.to_string().contains("dropped because"));
+}

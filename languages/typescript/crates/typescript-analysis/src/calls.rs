@@ -262,6 +262,9 @@ pub struct Breakdown {
     /// Defs of the graph whose marker another def **of the same file** owns, earlier in source order (D34): each is named by where it is, as a def with
     /// no marker is, and counted once. The outline still reports the marker on both.
     pub duplicate_marker: u64,
+    /// Defs that share an id with an earlier one **across files** and were dropped by the graph (`Stats::merged_defs`, D34 rule 2): their calls are drawn under
+    /// the first. Nothing is renamed across files, because an id must not depend on what the request reaches.
+    pub merged_defs: u64,
     /// What a body hands over or calls that **no edge covers**, per occurrence, by kind (D22 step 5): `element_access` (a function handed over by `a["k"]`),
     /// `bind` (handed over bound: `f.bind(…)`, `obj.m.bind(obj)`), `call_apply` (called through `call` or `apply`), `class` (a class named where a value is handed
     /// over). Only the kinds above 0. A count, not an edge: the def is known and is not in the tree.
@@ -309,6 +312,7 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
     summary.handed_named = language(walk::NAMED_NOT_CALLED);
     summary.outside_root = language(walk::OUTSIDE_ROOT);
     summary.duplicate_marker = language(walk::DUPLICATE_MARKER);
+    summary.merged_defs = graph.stats.merged_defs;
     summary.uncovered = graph
         .stats
         .language
@@ -388,6 +392,13 @@ impl fmt::Display for Breakdown {
                 f,
                 "  defs named by where they are, because a def of the same file owns their marker: {}",
                 self.duplicate_marker
+            )?;
+        }
+        if self.merged_defs > 0 {
+            writeln!(
+                f,
+                "  defs dropped because an earlier def has their id (their calls are drawn under it): {}",
+                self.merged_defs
             )?;
         }
         if self.outside_root > 0 {

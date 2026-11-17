@@ -277,6 +277,9 @@ pub struct Stats {
     pub cuts: BTreeMap<Cut, u64>,
     /// Contexts listed and not walked because the request's budget ended there ([`Status::Frontier`]). Not a cut, so not in `cuts`.
     pub frontier: u64,
+    /// Defs that share an id with an earlier one, dropped by [`Graph::new`], so their calls are drawn under the first (in practice two defs carrying one
+    /// marker in two files, D34). A row given twice (same id, file and start) is one def and is not counted; a def given twice counts once.
+    pub merged_defs: u64,
     pub unresolved: u64,
     /// A language's own counters.
     pub language: BTreeMap<String, u64>,
@@ -349,7 +352,8 @@ impl Graph {
     /// Sorts defs, contexts and edges and drops duplicates. Entries keep the caller's order (it is the request's order).
     ///
     /// Two defs with one id (a copied function carries the same marker) keep the first by `(file, range.start)`, so the
-    /// graph does not depend on the order the rows arrived in.
+    /// graph does not depend on the order the rows arrived in. Each def dropped that is **another def** (another file or another start) is counted
+    /// in `stats.merged_defs`.
     pub fn new(
         entries: Vec<Root>,
         mut defs: Vec<DefInfo>,
@@ -357,7 +361,29 @@ impl Graph {
         mut edges: Vec<Edge>,
         stats: Stats,
     ) -> Self {
+        let mut stats = stats;
         defs.sort_by(|a, b| (&a.id, &a.file, a.range.start).cmp(&(&b.id, &b.file, b.range.start)));
+        // a dropped row is another def when its file or start differs from the row kept (and from the dropped row before it: the same def given twice)
+        let mut kept: Option<&DefInfo> = None;
+        let mut last: Option<&DefInfo> = None;
+        for row in &defs {
+            let same_def =
+                |other: &DefInfo| other.file == row.file && other.range.start == row.range.start;
+            match kept {
+                Some(first) if first.id == row.id => {
+                    if !same_def(first)
+                        && !last.is_some_and(|before| before.id == row.id && same_def(before))
+                    {
+                        stats.merged_defs += 1;
+                    }
+                    last = Some(row);
+                }
+                _ => {
+                    kept = Some(row);
+                    last = Some(row);
+                }
+            }
+        }
         defs.dedup_by(|later, first| later.id == first.id);
         contexts.sort_by(|a, b| a.id.cmp(&b.id));
         contexts.dedup_by(|a, b| a.id == b.id);
@@ -462,6 +488,71 @@ pub(crate) mod tests {
         );
         assert_eq!(g.edges_from(&cid("b")).len(), 1);
         assert!(g.edges_from(&cid("zzz")).is_empty());
+    }
+
+    fn merged(rows: Vec<DefInfo>) -> u64 {
+        Graph::new(vec![], rows, vec![], vec![], Stats::default())
+            .stats
+            .merged_defs
+    }
+
+    fn row_at(name: &str, file: &str, start: u32) -> DefInfo {
+        DefInfo::new(
+            marked(name),
+            name,
+            name,
+            0,
+            DefKind::Function,
+            file,
+            Span::new(start, start + 10),
+        )
+    }
+
+    #[test]
+    fn two_rows_with_one_id_in_two_files_are_one_merged_def() {
+        assert_eq!(
+            merged(vec![row_at("a", "x.ts", 0), row_at("a", "y.ts", 0)]),
+            1
+        );
+    }
+
+    #[test]
+    fn two_rows_with_one_id_in_one_file_at_two_starts_are_one_merged_def() {
+        assert_eq!(
+            merged(vec![row_at("a", "x.ts", 0), row_at("a", "x.ts", 40)]),
+            1
+        );
+    }
+
+    #[test]
+    fn the_same_row_given_twice_is_not_a_merged_def() {
+        assert_eq!(
+            merged(vec![row_at("a", "x.ts", 0), row_at("a", "x.ts", 0)]),
+            0
+        );
+        // a def given twice beside another def counts once
+        assert_eq!(
+            merged(vec![
+                row_at("a", "x.ts", 0),
+                row_at("a", "y.ts", 0),
+                row_at("a", "y.ts", 0),
+            ]),
+            1
+        );
+    }
+
+    #[test]
+    fn no_duplicate_merges_nothing_and_a_count_already_there_is_kept() {
+        assert_eq!(
+            merged(vec![row_at("a", "x.ts", 0), row_at("b", "x.ts", 0)]),
+            0
+        );
+        let before = Stats {
+            merged_defs: 2,
+            ..Stats::default()
+        };
+        let graph = Graph::new(vec![], vec![row_at("a", "x.ts", 0)], vec![], vec![], before);
+        assert_eq!(graph.stats.merged_defs, 2);
     }
 
     #[test]
