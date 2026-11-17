@@ -336,6 +336,12 @@ path the engine cannot be given (not UTF-8), and the engine's own `load_workspac
   (one called by its `[lib] name`), the host's `#[cfg(unix)]` or `#[cfg(windows)]` call and a `#[path]` module outside `src/`, with
   `NoToolchain`; it keeps `SystemRoot`, `TMP`, `TEMP` for Windows. Green on Windows CI (2026-11-17).
 
+**Every tool is found the way the engine finds it** (fix asked in the RS4 step 4 review, ENGINE.md "Finding a tool"): `cargo`, `rustc`
+and `rustup` by `ra_ap_toolchain::Tool::path()` (environment variable, `PATH`, `$CARGO_HOME/bin`), asked through `sem` (rule 4), never by
+the bare name. Otherwise a driver started with a short `PATH` loads with the engine's `cargo` and without `std`, and says "install
+`rust-src`". Test: a worker with `PATH` set to an empty folder and `HOME`, `CARGO_HOME`, `RUSTUP_HOME` kept loads at rung 1 with `std`
+and no warning.
+
 **How each condition is found** (S-RS3, `ENGINE.md`): `sem::load` never uses `RustLibSource::Discover` (it runs `rustup component add
 rust-src` by itself). It reads the version with `cargo --version` in the manifest's folder, finds the sysroot with `rustc --print sysroot`
 and passes it as `RustLibSource::Path` (built in step 1: the engine then looks for `lib/rustlib/src/rust/library` itself, without

@@ -100,6 +100,17 @@ Found while building it, on the policy fixture (`crates/rust-analysis/tests/fixt
 - **A file with a byte-order mark joins**: the outline is built from the engine's text of the file, whose offsets are the ones `HasSource`
   reports.
 
+## Finding a tool: the engine's rule and ours (RS4 step 4 review, 2026-11-17)
+
+The engine finds `cargo`, `rustc` and `rustup` with `ra_ap_toolchain::Tool::{Cargo, Rustc, Rustup}::path()`: the environment variable
+(`CARGO`, `RUSTC`), then `PATH`, then `$CARGO_HOME/bin` (default `~/.cargo/bin`). `toolchain::command` ran the bare name, so **only `PATH`**.
+With `~/.cargo/bin` off `PATH` (a GUI app on macOS starts with `/usr/bin:/bin:/usr/sbin:/sbin`, which is how V-NOC's desktop app may start a
+driver) the engine loaded the workspace (rung 1, its own `cargo`), and our `rustc --print sysroot` failed, so there was no `std`, plus
+`NoStdSource { toolchain: "unknown" }`, whose advice (install `rust-src`) is wrong. Measured with `rust-cli calls core
+analyzer-core/src/render.rs --entry render` (debug build): with `PATH` missing it, **11 call edges, 77 unresolved, 0 external**; with it, **22 calls,
+108 external, 0 unresolved**. Our `cargo --version` (lockfile rule, D38), `cargo locate-project` and `rustup toolchain list` (substitution)
+had the same blind spot. Rule: every tool we start is found by the engine's `Tool::path()`, so the two never disagree on which Rust there is.
+
 ## S-RS1: does it build as a dependency?
 
 ### Which version (2026-11-16)
