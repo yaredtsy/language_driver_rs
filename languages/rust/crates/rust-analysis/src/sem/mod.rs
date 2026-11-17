@@ -31,3 +31,6 @@ pub(crate) mod testing;
 
 #[cfg(test)]
 mod nostd;
+
+#[cfg(test)]
+mod realproject;
