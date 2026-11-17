@@ -130,8 +130,8 @@ impl<'a> Collector<'a> {
         if node.flags().intersects(NodeFlags::Ambient) {
             return;
         }
-        // a nested def's calls are its own, except what runs when a class or an enum is defined: that is the declaring body's (`definition_code`). As in tsrs,
-        // a nested class owns the calls in its computed member names too.
+        // a nested def's calls are its own, except two things that this body draws: what runs when a class or an enum is defined (`class_definition_code`,
+        // an enum's member initializers), and a class's computed member names (as in tsrs). They run when the declaring body does.
         if node != self.own
             && let Some(&def) = self.def_of.get(&node)
         {
@@ -387,7 +387,7 @@ impl<'a> Collector<'a> {
         }
     }
 
-    /// What runs when `class` is **defined**, which is the body that declares it that runs it: the class's decorators and its members', the decorators of the
+    /// What runs when `class` is **defined**, once for each time the body that declares it runs: the class's decorators and its members', the decorators of the
     /// parameters of its constructor and methods, the `extends` expression, the static field initializers and the static blocks. Not the instance field
     /// initializers (a construction runs them: `uncovered_construct_initializer_sites`, D25), and not the computed member names (`collect` reads them at the
     /// stop for a nested class). Both a class's own body (`body_of`) and the body that declares it (`collect`) read it here.

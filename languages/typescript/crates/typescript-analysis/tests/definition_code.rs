@@ -49,7 +49,8 @@ fn a_top_level_class_and_enum_are_drawn_under_the_module_in_source_order() {
     let graph = graph_of(&Entry::File);
     // `@dec`; `@UseGuards(guard)` (the call, and `guard` handed over: a passed edge, D22; the call of its result is unresolved, not drawn); `extends base()`;
     // `static s`; the static block; the computed name; a member's decorator; a parameter's decorator. Not `x = made()`: it runs at construction. Then the
-    // enum: `A = make()` and `C = A + make()`. Not `static handler = () => init()`: an arrow held by a field is a def of its own.
+    // enum: `A = make()` and `C = A + make()`. Not `static handler = () => init()`: an arrow held by a field is a def of its own. Last, `use(class { … })`:
+    // the call, then `static s = make()` and the instance initializer `x = made()`, which an anonymous class has no def to run at construction (below).
     assert_eq!(
         tree(&graph),
         "src/main.ts
@@ -64,6 +65,9 @@ fn a_top_level_class_and_enum_are_drawn_under_the_module_in_source_order() {
   paramDec
   make
   make
+  use
+  make
+  made
 "
     );
     // nothing of it is counted: the module does not construct `Top`
@@ -121,4 +125,33 @@ fn an_enum_entry_draws_nothing_because_its_initializers_are_the_declaring_bodys(
     let graph = graph_of(&def("E"));
     assert_eq!(tree(&graph), "E\n");
     assert_eq!(counters(&graph), []);
+}
+
+#[test]
+fn an_anonymous_class_expression_is_part_of_the_body_that_writes_it() {
+    // `use(class { static s = make(); x = made(); m() { init(); } })`: the class is no def, so the module draws `static s` and also the instance initializer
+    // `x = made()` (there is no class def to be constructed and count it), as it draws the calls in an anonymous function. The method is a def of its own.
+    let graph = graph_of(&Entry::File);
+    let edges: Vec<String> = edges_as_text(&graph, &root())
+        .into_iter()
+        .filter(|edge| edge.starts_with("src/main.ts |"))
+        .collect();
+    assert_eq!(
+        &edges[edges.len() - 3..],
+        [
+            "src/main.ts | use | call use",
+            "src/main.ts | make | call make",
+            "src/main.ts | made | call made",
+        ]
+    );
+    // nothing is counted for it, and the method's `init` is not a second one of the module's (`Top`'s static block has the only one)
+    assert_eq!(counters(&graph), []);
+    let inits = edges
+        .iter()
+        .filter(|edge| edge.contains("| init |"))
+        .count();
+    assert_eq!(inits, 1, "{edges:#?}");
+    // the method keeps its own call
+    let method = graph_of(&def("m"));
+    assert_eq!(tree(&method), "m\n  init\n");
 }

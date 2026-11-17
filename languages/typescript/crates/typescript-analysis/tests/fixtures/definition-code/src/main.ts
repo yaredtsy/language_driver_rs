@@ -60,3 +60,15 @@ export namespace N {
     A = init(),
   }
 }
+
+// an anonymous class expression is no def: its instance initializer belongs to the enclosing body, as an anonymous function's calls do; its method is a def
+function use(value: unknown) {}
+use(
+  class {
+    static s = make();
+    x = made();
+    m() {
+      init();
+    }
+  },
+);
