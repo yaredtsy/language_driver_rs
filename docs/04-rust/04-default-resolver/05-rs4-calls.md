@@ -261,8 +261,11 @@ DefInfo { id: StableDef (the marker, or the path form; D34), qualname, occurrenc
 **A def of a local crate can still be `External`, three ways**, and each is counted, because each is a body we could have walked and did
 not (rule 8). **A construction is never counted** (decided in the step 5 review, 2026-11-17): a struct, union or enum has no body,
 and Rust has no constructor function, so building one that a macro made (`Made(1)`) or one outside the root loses nothing. It is
-`External`, named, `construct: true`, and only a **call** adds to `macro_generated_target` or `outside_root`. TypeScript counts `new C()` of
-a class outside the root because a class has a constructor body (`is_outside_root_source`): the same rule, a body that was there. `Owner` today folds them into `External`; RS4 gives the bridge a way to tell them apart (a field or a variant: the coding
+`External`, named, `construct: true`, and only a **call** adds to `macro_generated_target` or `outside_root`. TypeScript counts `new Tool()` of
+a class outside the root (`tests/outside_root.rs`: `helper`, `Tool`, `Tool.run` = 3) because building a class runs code: its constructor,
+its field initializers, a base class's constructor. It decides by file (`is_outside_root_source`: a source file, never a `.d.ts`), not by
+whether this class declares a constructor. Python walks `__init__` under the class node when the MRO has one. Rust's `init` is always
+`None`: the same rule, count only where code was there to run. `Owner` today folds them into `External`; RS4 gives the bridge a way to tell them apart (a field or a variant: the coding
 session's choice, crate-private):
 
 | The def's source | Example | Edge | Counted |
