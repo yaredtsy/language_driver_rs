@@ -28,3 +28,6 @@ mod common;
 
 #[cfg(test)]
 pub(crate) mod testing;
+
+#[cfg(test)]
+mod nostd;

@@ -437,49 +437,7 @@ mod tests {
 
     use super::*;
     use crate::sem::attached;
-    use crate::sem::testing::{STYLE, disk_outline, disk_text, policy};
-
-    /// One module's site lists, as a reviewable text: every def that can be an entry, with its sites in order. A site is its kind, its span relative to the
-    /// def's start, the text there, and the closure it is in. What is lost to an expansion the engine could not make is printed too.
-    fn render(sem: &Sem<'_>, root: &Path, file: &str) -> String {
-        let text = disk_text(root, file);
-        let outline = disk_outline(root, file);
-        let mut out = String::new();
-        for (def, occurrence) in outline.defs.iter().zip(rust_syntax::occurrences(&outline)) {
-            let Some(func) = sem.entry(file, &def.qualname, occurrence) else {
-                continue;
-            };
-            out.push_str(&def.qualname);
-            if occurrence > 0 {
-                out.push_str(&format!("#{occurrence}"));
-            }
-            out.push('\n');
-            let sites = sem.sites(func);
-            for site in &sites.list {
-                let at = site.span();
-                let from = (def.range.start + at.start) as usize;
-                let to = (def.range.start + at.end) as usize;
-                out.push_str(&format!(
-                    "  {:?} {}..{} {:?}",
-                    site.kind(),
-                    at.start,
-                    at.end,
-                    &text[from..to]
-                ));
-                if let Some(closure) = site.closure() {
-                    out.push_str(&format!(" closure {closure}"));
-                }
-                out.push('\n');
-            }
-            if sites.macro_not_expanded > 0 {
-                out.push_str(&format!(
-                    "  macro_not_expanded {}\n",
-                    sites.macro_not_expanded
-                ));
-            }
-        }
-        out
-    }
+    use crate::sem::testing::{STYLE, disk_outline, disk_text, policy, render_sites};
 
     /// RS4 §9 step 2's proof: the site list of every module of the policy fixture, with no targets. Snapshots are reviewed, not just accepted.
     #[test]
@@ -489,7 +447,10 @@ mod tests {
         attached(&loaded, STYLE, |sem| {
             for file in loaded.files() {
                 let name = format!("{}.txt", file.replace('/', "__"));
-                analyzer_testkit::expect_file(&snapshots.join(name), &render(sem, &root, &file));
+                analyzer_testkit::expect_file(
+                    &snapshots.join(name),
+                    &render_sites(sem, &root, &file),
+                );
             }
         });
     }
