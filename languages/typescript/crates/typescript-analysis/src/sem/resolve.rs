@@ -166,6 +166,14 @@ impl Sem {
         {
             return (vec![self.classify(&mut checker, function, style)], facts);
         }
+        // the same for a class: `new (class N {})()` constructs the def `N`, as `new C()` does (H12 a), through `walk::construction`. Only under `new`: calling a
+        // class is an error, not a construction. An anonymous class is no def and stays unresolved.
+        if call.call.kind() == Kind::NewExpression
+            && let Some(class) =
+                self.named_class_expression_constructed_in_place(func, callee, style)
+        {
+            return (vec![self.classify(&mut checker, class, style)], facts);
+        }
         let mut declarations = self.prefer_project_bodies(declarations_of(&mut checker, callee));
         let mut unresolved_members = false;
         if declarations.is_empty()
@@ -212,8 +220,9 @@ impl Sem {
     }
 
     /// The node of a **named** function expression that `callee` is, written where it is called (H11), when the outline holds it as a def (`def_of`). `None` for
-    /// an anonymous one, which is no def, and for anything else.
-    fn named_function_expression_called_in_place(
+    /// an anonymous one, which is no def, and for anything else. Also what `.call` / `.apply` is asked on (H12 b): a named function expression there is a def that
+    /// nothing draws.
+    pub(super) fn named_function_expression_called_in_place(
         &self,
         func: Func<'_>,
         callee: P<Node>,
@@ -221,8 +230,26 @@ impl Sem {
     ) -> Option<P<Node>> {
         let function =
             function_called_in_place(callee).filter(|f| f.kind() == Kind::FunctionExpression)?;
-        let defs = self.file_defs(func.file, style)?;
-        defs.def_of.contains_key(&function).then_some(function)
+        self.is_def_of_the_file(func, function, style)
+            .then_some(function)
+    }
+
+    /// The node of a **named** class expression that `callee` is, written where it is constructed (H12 a), under the parentheses and assertions of the callee, when the
+    /// outline holds it as a def.
+    fn named_class_expression_constructed_in_place(
+        &self,
+        func: Func<'_>,
+        callee: P<Node>,
+        style: MarkerStyle<'_>,
+    ) -> Option<P<Node>> {
+        let class = unwrap_expression(callee);
+        (class.kind() == Kind::ClassExpression && self.is_def_of_the_file(func, class, style))
+            .then_some(class)
+    }
+
+    fn is_def_of_the_file(&self, func: Func<'_>, node: P<Node>, style: MarkerStyle<'_>) -> bool {
+        self.file_defs(func.file, style)
+            .is_some_and(|defs| defs.def_of.contains_key(&node))
     }
 
     /// The property accesses of a body that run an accessor, as sites: for each candidate the checker's symbol of the property is asked, and it is a site when

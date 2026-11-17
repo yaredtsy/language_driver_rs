@@ -186,10 +186,15 @@ impl Sem {
             }
         }
         for &target in &body.call_apply {
+            // a name (`f.call(x)`), or a named function expression written there (`(function w() {…}).call(x)`, H12 b): a def that no edge draws. An anonymous
+            // one is no def, and its calls are this body's.
             if !self
                 .functions_named(&mut checker, target, style)
                 .0
                 .is_empty()
+                || self
+                    .named_function_expression_called_in_place(func, target, style)
+                    .is_some()
             {
                 uncovered.push(Uncovered::CallApply);
             }
