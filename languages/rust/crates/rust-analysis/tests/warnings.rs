@@ -81,3 +81,44 @@ fn a_file_that_is_not_there_is_the_one_error() {
         .expect("no such file");
     assert_eq!(error, OpenError::NotUnderRoot);
 }
+
+/// A `build.rs` that panics fails the build run. The load succeeds, and says the build failed, with cargo's message.
+#[test]
+fn a_failed_build_is_a_warning_and_not_an_error() {
+    let copy = copy_of_fixture("broken", "warnings_broken");
+    let file = copy.join("app/src/lib.rs");
+    let project = Project::open(&copy, &file, &options_with_build_scripts())
+        .expect("a failed build still loads");
+
+    let mut expected = vec!["build_scripts_failed"];
+    if toolchain_without_rust_src(&copy).is_some() {
+        expected.push("no_std_source");
+        expected.sort_unstable();
+    }
+    assert_eq!(codes(&project), expected);
+    let Some(Warning::BuildScriptsFailed { message }) = project
+        .warnings()
+        .iter()
+        .find(|w| w.code() == "build_scripts_failed")
+    else {
+        panic!("{:?}", project.warnings());
+    };
+    assert!(!message.is_empty());
+
+    // not asked for: not run, not failed, nothing to say
+    let quiet = Project::open(&copy, &file, &LoadOptions::default()).expect("loads");
+    assert!(
+        quiet
+            .warnings()
+            .iter()
+            .all(|w| w.code() != "build_scripts_failed")
+    );
+}
+
+/// `LoadOptions` is `#[non_exhaustive]`: no struct literal outside the crate.
+#[allow(clippy::field_reassign_with_default)]
+fn options_with_build_scripts() -> LoadOptions {
+    let mut opts = LoadOptions::default();
+    opts.build_scripts = true;
+    opts
+}

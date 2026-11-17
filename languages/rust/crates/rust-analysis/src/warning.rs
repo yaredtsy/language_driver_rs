@@ -30,6 +30,9 @@ pub enum Warning {
     DependenciesMissing { message: String },
     /// Cargo wrote a `Cargo.lock` into the project, because the toolchain does not honour the redirect (§5, D38).
     LockfileWritten,
+    /// The build scripts were asked for and the build run failed (a `build.rs` that panics): loaded as if they had not run, so code they generate
+    /// and derives are not shown. `message` is cargo's.
+    BuildScriptsFailed { message: String },
     /// No `cargo`: the crate graph was read from `Cargo.toml` by this crate (the ladder, rung 3).
     NoToolchain,
     /// Cargo and this crate's reader both failed on a `Cargo.toml` (rung 4).
@@ -47,6 +50,7 @@ impl Warning {
             Warning::ToolchainSubstituted { .. } => "toolchain_substituted",
             Warning::DependenciesMissing { .. } => "dependencies_missing",
             Warning::LockfileWritten => "lockfile_written",
+            Warning::BuildScriptsFailed { .. } => "build_scripts_failed",
             Warning::NoToolchain => "no_toolchain",
             Warning::ManifestUnreadable { .. } => "manifest_unreadable",
             Warning::NoManifest => "no_manifest",
@@ -87,6 +91,10 @@ impl fmt::Display for Warning {
                 "the dependencies could not be loaded, so calls into them and between the workspace's own crates are not shown: {message}"
             ),
             Warning::LockfileWritten => write!(f, "a Cargo.lock was created in your project"),
+            Warning::BuildScriptsFailed { message } => write!(
+                f,
+                "the build scripts failed, so code they generate and derives are not shown: {message}"
+            ),
             Warning::NoToolchain => write!(
                 f,
                 "Rust is not installed: only calls that do not go through the standard library are shown"
@@ -103,21 +111,33 @@ impl fmt::Display for Warning {
     }
 }
 
-/// The warnings of a load, from the facts `sem` read: sorted by code (then by content), each once.
-pub(crate) fn collect(
-    no_std_source: Option<String>,
-    dependencies_error: Option<String>,
-    wrote_lockfile: bool,
-) -> Vec<Warning> {
+/// What `sem` read about a load that is worth a warning. All empty (`Facts::default()`) is a complete load.
+#[derive(Debug, Default)]
+pub(crate) struct Facts {
+    /// The toolchain (folder name) whose standard library source is missing.
+    pub(crate) no_std_source: Option<String>,
+    /// Cargo's message when `cargo metadata` failed and the engine went on with `--no-deps`.
+    pub(crate) dependencies_error: Option<String>,
+    /// A `Cargo.lock` appeared in a project that had none.
+    pub(crate) wrote_lockfile: bool,
+    /// The message of a build run that failed, when build scripts were asked for.
+    pub(crate) build_error: Option<String>,
+}
+
+/// The warnings of a load, from its facts: sorted by code (then by content), each once.
+pub(crate) fn collect(facts: Facts) -> Vec<Warning> {
     let mut warnings = Vec::new();
-    if let Some(toolchain) = no_std_source {
+    if let Some(toolchain) = facts.no_std_source {
         warnings.push(Warning::NoStdSource { toolchain });
     }
-    if let Some(message) = dependencies_error {
+    if let Some(message) = facts.dependencies_error {
         warnings.push(Warning::DependenciesMissing { message });
     }
-    if wrote_lockfile {
+    if facts.wrote_lockfile {
         warnings.push(Warning::LockfileWritten);
+    }
+    if let Some(message) = facts.build_error {
+        warnings.push(Warning::BuildScriptsFailed { message });
     }
     warnings.sort_by(|a, b| a.code().cmp(b.code()).then_with(|| a.cmp(b)));
     warnings.dedup();
@@ -152,6 +172,9 @@ mod tests {
                 message: "offline".into(),
             },
             Warning::LockfileWritten,
+            Warning::BuildScriptsFailed {
+                message: "boom".into(),
+            },
             Warning::NoToolchain,
             Warning::ManifestUnreadable {
                 message: "bad".into(),
@@ -160,8 +183,8 @@ mod tests {
         ];
         let mut codes: Vec<_> = all.iter().map(Warning::code).collect();
         codes.dedup();
-        // the two substitutions share a code: eight codes for nine warnings
-        assert_eq!(codes.len(), 8);
+        // the two substitutions share a code: nine codes for ten warnings
+        assert_eq!(codes.len(), 9);
         assert!(all.iter().all(|w| !w.to_string().is_empty()));
         assert_eq!(
             all[2].to_string(),
@@ -175,16 +198,33 @@ mod tests {
             Warning::LockfileWritten.to_string(),
             "a Cargo.lock was created in your project"
         );
+        assert_eq!(
+            Warning::BuildScriptsFailed {
+                message: "boom".into()
+            }
+            .to_string(),
+            "the build scripts failed, so code they generate and derives are not shown: boom"
+        );
     }
 
     #[test]
     fn warnings_are_sorted_by_code_each_once() {
-        let got = collect(Some("t".into()), Some("m".into()), true);
+        let got = collect(Facts {
+            no_std_source: Some("t".into()),
+            dependencies_error: Some("m".into()),
+            wrote_lockfile: true,
+            build_error: Some("b".into()),
+        });
         let codes: Vec<_> = got.iter().map(Warning::code).collect();
         assert_eq!(
             codes,
-            ["dependencies_missing", "lockfile_written", "no_std_source"]
+            [
+                "build_scripts_failed",
+                "dependencies_missing",
+                "lockfile_written",
+                "no_std_source"
+            ]
         );
-        assert_eq!(collect(None, None, false), []);
+        assert_eq!(collect(Facts::default()), []);
     }
 }

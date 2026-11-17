@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::paths;
 use crate::sem::{self, Loaded};
-use crate::warning::{self, Warning};
+use crate::warning::{self, Facts, Warning};
 
 /// Config, manifest and lock files whose change means "load again". Each is relative to the root, so it starts with `**/`.
 const ENVIRONMENT_GLOBS: [&str; 5] = [
@@ -71,11 +71,12 @@ impl Project {
         let name = paths::relative(&root, &manifest)
             .ok_or_else(|| OpenError::Load(format!("{}: not UTF-8", manifest.display())))?;
         let loaded = sem::load(&root, &manifest, opts).map_err(OpenError::Load)?;
-        let warnings = warning::collect(
-            loaded.no_std_source().map(str::to_owned),
-            loaded.dependencies_error().map(str::to_owned),
-            loaded.wrote_lockfile(),
-        );
+        let warnings = warning::collect(Facts {
+            no_std_source: loaded.no_std_source().map(str::to_owned),
+            dependencies_error: loaded.dependencies_error().map(str::to_owned),
+            wrote_lockfile: loaded.wrote_lockfile(),
+            build_error: loaded.build_error().map(str::to_owned),
+        });
         Ok(Project {
             loaded,
             manifest: name,

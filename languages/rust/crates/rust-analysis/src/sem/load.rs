@@ -27,7 +27,6 @@ pub(crate) struct Loaded {
     /// The caller's root (absolute, clean): `files()` lists what is under it and nothing else, wherever the workspace's own root manifest is.
     root: PathBuf,
     /// Why the build scripts did not run (or ran with an error), when they were asked for: the message of the engine's `cargo check`.
-    #[expect(dead_code, reason = "becomes a warning in RS3 step 5")]
     build_error: Option<String>,
     /// What this load left out, by name (RS3 §3). Only what was off and cut something.
     skipped: Vec<(&'static str, u64)>,
@@ -69,6 +68,10 @@ impl Loaded {
 
     pub(crate) fn dependencies_error(&self) -> Option<&str> {
         self.dependencies_error.as_deref()
+    }
+
+    pub(crate) fn build_error(&self) -> Option<&str> {
+        self.build_error.as_deref()
     }
 
     pub(crate) fn skipped(&self) -> &[(&'static str, u64)] {
