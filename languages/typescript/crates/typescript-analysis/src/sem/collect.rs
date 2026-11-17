@@ -130,7 +130,8 @@ impl<'a> Collector<'a> {
         if node.flags().intersects(NodeFlags::Ambient) {
             return;
         }
-        // a nested def's calls are its own. As in tsrs, a nested class still owns the calls in its computed member names.
+        // a nested def's calls are its own, except what runs when a class or an enum is defined: that is the declaring body's (`definition_code`). As in tsrs,
+        // a nested class owns the calls in its computed member names too.
         if node != self.own
             && let Some(&def) = self.def_of.get(&node)
         {
@@ -142,6 +143,11 @@ impl<'a> Collector<'a> {
                     {
                         self.collect(name.expression());
                     }
+                }
+                self.class_definition_code(node);
+            } else if node.kind() == Kind::EnumDeclaration {
+                for &member in node.members() {
+                    self.collect(member.initializer());
                 }
             }
             return;
@@ -381,6 +387,54 @@ impl<'a> Collector<'a> {
         }
     }
 
+    /// What runs when `class` is **defined**, which is the body that declares it that runs it: the class's decorators and its members', the decorators of the
+    /// parameters of its constructor and methods, the `extends` expression, the static field initializers and the static blocks. Not the instance field
+    /// initializers (a construction runs them: `uncovered_construct_initializer_sites`, D25), and not the computed member names (`collect` reads them at the
+    /// stop for a nested class). Both a class's own body (`body_of`) and the body that declares it (`collect`) read it here.
+    fn class_definition_code(&mut self, class: P<Node>) {
+        if let Some(modifiers) = class.modifiers() {
+            for &modifier in modifiers.nodes() {
+                self.collect(Some(modifier));
+            }
+        }
+        if let Some(heritage) = ast::get_class_extends_heritage_element(class) {
+            self.collect(heritage.expression());
+        }
+        for &member in class.members() {
+            if ast::can_have_modifiers(member)
+                && let Some(modifiers) = member.modifiers()
+            {
+                for &modifier in modifiers.nodes() {
+                    self.collect(Some(modifier));
+                }
+            }
+            // `constructor(@Inject(T) x)`, `method(@Body() b)`: the decorators of a parameter run when the class is defined, so they belong to the class
+            if matches!(
+                member.kind(),
+                Kind::Constructor | Kind::MethodDeclaration | Kind::GetAccessor | Kind::SetAccessor
+            ) {
+                for &parameter in member.parameters() {
+                    if let Some(modifiers) = parameter.modifiers() {
+                        for &modifier in modifiers.nodes() {
+                            if modifier.kind() == Kind::Decorator {
+                                self.collect(Some(modifier));
+                            }
+                        }
+                    }
+                }
+            }
+            match member.kind() {
+                Kind::PropertyDeclaration if ast::is_static(member) => {
+                    self.collect(member.initializer());
+                }
+                Kind::ClassStaticBlockDeclaration => {
+                    self.collect(Some(member.as_class_static_block_declaration().body));
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// What a def's walk starts from: the parts of the node that are its body (`tsrs_ls`'s `collect_call_sites`, with the plan's class rule).
     pub(super) fn body_of(&mut self, node: P<Node>) {
         match node.kind() {
@@ -396,47 +450,12 @@ impl<'a> Collector<'a> {
                 }
                 self.collect(node.body());
             }
+            // what runs when the class is defined, and the initializers of its instance fields, which a construction runs
             Kind::ClassDeclaration | Kind::ClassExpression => {
-                if let Some(modifiers) = node.modifiers() {
-                    for &modifier in modifiers.nodes() {
-                        self.collect(Some(modifier));
-                    }
-                }
-                if let Some(heritage) = ast::get_class_extends_heritage_element(node) {
-                    self.collect(heritage.expression());
-                }
+                self.class_definition_code(node);
                 for &member in node.members() {
-                    if ast::can_have_modifiers(member)
-                        && let Some(modifiers) = member.modifiers()
-                    {
-                        for &modifier in modifiers.nodes() {
-                            self.collect(Some(modifier));
-                        }
-                    }
-                    // `constructor(@Inject(T) x)`, `method(@Body() b)`: the decorators of a parameter run when the class is defined, so they belong to the class
-                    if matches!(
-                        member.kind(),
-                        Kind::Constructor
-                            | Kind::MethodDeclaration
-                            | Kind::GetAccessor
-                            | Kind::SetAccessor
-                    ) {
-                        for &parameter in member.parameters() {
-                            if let Some(modifiers) = parameter.modifiers() {
-                                for &modifier in modifiers.nodes() {
-                                    if modifier.kind() == Kind::Decorator {
-                                        self.collect(Some(modifier));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    match member.kind() {
-                        Kind::PropertyDeclaration => self.collect(member.initializer()),
-                        Kind::ClassStaticBlockDeclaration => {
-                            self.collect(Some(member.as_class_static_block_declaration().body));
-                        }
-                        _ => {}
+                    if member.kind() == Kind::PropertyDeclaration && !ast::is_static(member) {
+                        self.collect(member.initializer());
                     }
                 }
             }

@@ -1,4 +1,3 @@
 == Decorated
 Decorated
 edges: none
-uncovered: class_definition_sites=11

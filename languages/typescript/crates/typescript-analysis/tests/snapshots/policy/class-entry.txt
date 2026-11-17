@@ -22,7 +22,6 @@ edges: none
 == UnknownBase
 UnknownBase
 edges: none
-uncovered: class_definition_sites=1
 == Fields
 Fields
 edges: none
@@ -30,26 +29,22 @@ uncovered: construct_initializer_sites=2
 == Statics
 Statics
 edges: none
-uncovered: class_definition_sites=2
 == Decorated
 Decorated
   helper
 edges:
 Decorated.constructor | helper | call helper
-uncovered: class_definition_sites=3
 == Computed
 Computed
 edges: none
-uncovered: computed_member_name_sites=2
 == Base
 Base
   helper
 edges:
 Base.constructor | helper | call helper
-uncovered: class_definition_sites=1
 == Rich
 Rich
   helper
 edges:
 Base.constructor | helper | call helper
-uncovered: class_definition_sites=2, computed_member_name_sites=1, construct_initializer_sites=1
+uncovered: construct_initializer_sites=1

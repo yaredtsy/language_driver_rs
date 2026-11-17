@@ -1,7 +1,8 @@
 == declaresDecorated
 declaresDecorated
-edges: none
-uncovered: local_class_decorator_sites=1
+  dec
+edges:
+declaresDecorated | dec | call dec
 == declaresPlain
 declaresPlain
 edges: none

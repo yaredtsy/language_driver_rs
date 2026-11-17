@@ -1,25 +1,24 @@
 == Statics
 Statics
 edges: none
-uncovered: class_definition_sites=2
 == Decorated
 Decorated
   helper
 edges:
 Decorated.constructor | helper | call helper
-uncovered: class_definition_sites=3
 == Rich
 Rich
   helper
 edges:
 Base.constructor | helper | call helper
-uncovered: class_definition_sites=2, computed_member_name_sites=1, construct_initializer_sites=1
+uncovered: construct_initializer_sites=1
 == UnknownBase
 UnknownBase
 edges: none
-uncovered: class_definition_sites=1
 == newLocal
 newLocal
+  make
   newLocal.<locals>.Local
 edges:
+newLocal | make | call make
 newLocal | Local | construct newLocal.<locals>.Local no init

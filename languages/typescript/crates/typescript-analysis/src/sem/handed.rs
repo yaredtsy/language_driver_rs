@@ -166,18 +166,6 @@ impl Sem {
                 }
             }
         }
-        // a class declared in this body: its decorators run when the body does, and the class's own body is not a part of it
-        if let Some(defs) = self.file_defs(func.file, style) {
-            for &(def, _) in &body.nested {
-                if defs.outline.defs[def].kind == DefKind::Class {
-                    let class = Func::def(func.file, def);
-                    uncovered.extend(std::iter::repeat_n(
-                        Uncovered::LocalClassDecoratorSite,
-                        self.decorator_sites(class, style).len(),
-                    ));
-                }
-            }
-        }
         let _scope = self._region.enter();
         let mut checker = self.program.get_type_checker(&Context::default());
         // the variables an object pattern on the left of `=` assigns a def, or a rest object that holds one, to (`({ load, ...others } = api)`)

@@ -1,4 +1,5 @@
 // Sites that sit in a class's own body, which a construction does not draw (the class's instance field initializers), and the shapes around them.
+// What runs when a class is defined (decorators, `extends`, static initializers, computed names) is drawn by the body that declares the class.
 function side() {}
 function make(f?: () => void) {}
 function inner() {}
@@ -117,7 +118,7 @@ export function constructsExternal() {
   new Map();
 }
 
-// ---- 4: a decorated class declared inside a function: its decorators are in no tree of the function. One for each site of a decorator.
+// ---- 4: a decorated class declared inside a function: its decorators are drawn in that function. One edge for each site of a decorator.
 export function declaresDecorated() {
   @dec
   class Local {}
@@ -150,7 +151,7 @@ export function declaresPlain() {
     m() {}
   }
 }
-// a decorated class at the top level of the file is not inside a function: the control
+// a decorated class at the top level of the file is the module's: a construction of it counts nothing
 @dec
 export class TopDecorated {}
 export function usesTopDecorated() {
@@ -213,7 +214,7 @@ export function constructsWidget() {
   new Widget();
 }
 
-// ---- computed member names of a class at the top of a file: in no tree. One for each site.
+// ---- computed member names of a class at the top of a file: the module draws them, and a construction counts none.
 export class ComputedTop {
   [side()] = 1;
   [make()]() {}
@@ -234,7 +235,7 @@ export class ComputedAmongPlainNames {
   method() {}
   static other = 3;
 }
-// a construction does not walk the class, and the name is not in an initializer: 0
+// a construction does not walk the class, and the name is the module's: 0
 export function constructsComputed() {
   new ComputedTop();
 }

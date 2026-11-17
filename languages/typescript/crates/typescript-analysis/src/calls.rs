@@ -369,12 +369,9 @@ impl fmt::Display for Breakdown {
                     "construct_initializer_sites",
                     "construction initializer sites",
                 ),
-                ("local_class_decorator_sites", "local class decorator sites"),
                 ("class_component_render", "class component render"),
                 ("getter_result_calls", "getter result calls"),
                 ("for_of_destructuring", "for-of destructuring"),
-                ("computed_member_name_sites", "computed member name sites"),
-                ("class_definition_sites", "class definition sites"),
             ];
             let parts: Vec<String> = labels
                 .iter()
@@ -573,7 +570,7 @@ mod tests {
         assert_eq!(graph.contexts[0].status, Status::Finished);
     }
 
-    /// How each decorator site of a class resolves. No request draws a class body any more (a class is a construction: the sites are counted), so this walks
+    /// How each decorator site of a class resolves. No request draws a class body any more (a class is a construction, and its decorators are drawn where it is declared), so this walks
     /// it as a call, the way `Start::Call` of a class would, to keep what the resolver says about a decorator tested.
     #[test]
     fn the_sites_of_a_decorated_class_body_resolve_as_calls_with_a_second_call_for_a_factorys_result()
@@ -623,8 +620,9 @@ mod tests {
                 "onParameter | call onParameter",
             ]
         );
+        // the class has no instance field, so every site of its body is one of the decorators
         assert_eq!(
-            sem.definition_sites(class, STYLE).len(),
+            sem.call_sites(class, STYLE).unwrap().len(),
             from_the_class.len()
         );
     }

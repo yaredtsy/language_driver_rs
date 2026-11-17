@@ -875,20 +875,20 @@ fn uncovered_a_rest_element_or_an_assignment_target_that_takes_a_def_is_counted_
 }
 
 #[test]
-fn uncovered_the_computed_member_names_of_a_class_at_the_top_of_a_file_are_in_no_tree() {
+fn computed_names_are_drawn_by_the_declaring_body_and_a_construction_counts_none() {
     let file = "src/classes.tsx";
-    let counter = "computed_member_name_sites";
-    row_in(file, "ComputedTop", &[(counter, 2)]);
+    // the names of a class at the top of a file are the module's (M step 2), and a class entry or a `new C()` counts nothing of them (they were
+    // `computed_member_name_sites`, 2, 1, 1 and 2 before M step 4)
+    row_in(file, "ComputedTop", &[]);
     row_in(file, "ComputedNoSite", &[]);
-    // the name's site, and `make()` in the instance initializer, which a construction does not draw either
+    // `make()` in the instance initializer is what a construction runs and does not draw
     row_in(
         file,
         "ComputedWithInitializer",
-        &[(counter, 1), ("construct_initializer_sites", 1)],
+        &[("construct_initializer_sites", 1)],
     );
-    row_in(file, "ComputedAmongPlainNames", &[(counter, 1)]);
-    // a construction counts the class's names too, once for each construction (the class def is not walked)
-    row_in(file, "constructsComputed", &[(counter, 2)]);
+    row_in(file, "ComputedAmongPlainNames", &[]);
+    row_in(file, "constructsComputed", &[]);
     row_in(file, "declaresComputed", &[]);
     // the nested class as the entry: the function around it is where its names are drawn, not here
     row_in(file, "declaresComputed.<locals>.Local", &[]);
@@ -921,37 +921,66 @@ fn uncovered_a_construction_does_not_draw_the_sites_of_the_instance_field_initia
     );
     row_in(file, "constructsWrappedArrow", &[(counter, 2)]);
     row_in(file, "constructsWithConstructor", &[(counter, 1)]);
-    // static initializers and blocks run when the class is defined, not when it is constructed: not this counter, but `class_definition_sites` (2)
-    row_in(
-        file,
-        "constructsStaticOnly",
-        &[("class_definition_sites", 2)],
-    );
+    // static initializers and blocks run when the class is defined, not when it is constructed: not this counter, and since M step 4 no counter at all
+    // (`class_definition_sites`, 2, is retired: the module draws them)
+    row_in(file, "constructsStaticOnly", &[]);
     row_in(file, "constructsParameterProperty", &[]);
     row_in(file, "constructsDerivedNoConstructor", &[(counter, 2)]);
     row_in(file, "constructsDerivedConstructor", &[(counter, 2)]);
     row_in(file, "constructsGrandchild", &[(counter, 2)]);
-    // 1, not 2, of the initializers; `static s` is a definition-time site of the constructed class
-    row_in(
-        file,
-        "constructsMixed",
-        &[("class_definition_sites", 1), (counter, 1)],
-    );
+    // 1, not 2, of the initializers; `static s` is a definition-time site, drawn by the module (it was `class_definition_sites`, 1)
+    row_in(file, "constructsMixed", &[(counter, 1)]);
     row_in(file, "constructsExternal", &[]);
 }
 
 #[test]
-fn uncovered_the_decorators_of_a_class_declared_in_a_function_are_in_no_tree_of_it() {
+fn decorators_of_a_class_declared_in_a_function_are_drawn_in_that_function() {
     let file = "src/classes.tsx";
-    let counter = "local_class_decorator_sites";
-    row_in(file, "declaresDecorated", &[(counter, 1)]);
-    row_in(file, "declaresTwo", &[(counter, 2)]);
-    row_in(file, "declaresDecoratedMember", &[(counter, 1)]);
-    row_in(file, "declaresFactoryDecorated", &[(counter, 2)]);
-    row_in(file, "declaresDecoratedWithOtherSites", &[(counter, 1)]);
-    row_in(file, "declaresPlain", &[]);
-    // a decorated class at the top of a file is not inside a function, so this counter reads 0; its decorator is a definition-time site of the class
-    row_in(file, "usesTopDecorated", &[("class_definition_sites", 1)]);
+    let root = fixture("uncovered");
+    // they were `local_class_decorator_sites` (1, 2, 1, 2, 1) before M step 4: now an edge for each site, in the function that declares the class
+    for entry in [
+        "declaresDecorated",
+        "declaresTwo",
+        "declaresDecoratedMember",
+        "declaresFactoryDecorated",
+        "declaresDecoratedWithOtherSites",
+        "declaresPlain",
+    ] {
+        row_in(file, entry, &[]);
+    }
+    expect_edges(&root, file, "declaresDecorated", &["dec | call dec"]);
+    expect_edges(
+        &root,
+        file,
+        "declaresTwo",
+        &["dec | call dec", "dec | call dec"],
+    );
+    expect_edges(
+        &root,
+        file,
+        "declaresDecoratedMember",
+        &["memberDec | call memberDec"],
+    );
+    // `@factory(1)` is two sites: the call of `factory`, and the call of its result (a function type: nothing to enter)
+    expect_edges(
+        &root,
+        file,
+        "declaresFactoryDecorated",
+        &[
+            "factory | call factory",
+            "factory(1) | unresolved decorator_result",
+        ],
+    );
+    // the decorator and the static initializer, in source order
+    expect_edges(
+        &root,
+        file,
+        "declaresDecoratedWithOtherSites",
+        &["dec | call dec", "side | call side"],
+    );
+    expect_edges(&root, file, "declaresPlain", &[]);
+    // a decorated class at the top of a file is the module's: the construction of it counts nothing
+    row_in(file, "usesTopDecorated", &[]);
 }
 
 #[test]
@@ -1147,18 +1176,49 @@ fn tagged_template_the_tag_is_a_site_and_so_is_a_call_in_a_substitution() {
 }
 
 #[test]
-fn decorator_a_class_is_a_construction_so_its_decorators_are_counted_and_not_drawn() {
+fn decorator_a_class_entry_counts_no_decorator_because_the_module_draws_them() {
     let root = fixture("site-kinds");
     let file = "src/decorators.ts";
-    // the decorators of a class, of its members and of the parameters of its constructor and methods run when the class is defined: the entry draws the
-    // constructor (there is none to enter here), so no edge, and each site is counted (`@factory(1)` is two; `how each resolves` is a test of `calls.rs`)
+    // the entry draws the constructor (there is none to enter here): no edge, and since M step 4 no counter (it read `class_definition_sites` 11)
     expect_edges(&root, file, "Decorated", &[]);
     let graph = graph_of(&root, file, "Decorated");
     check_invariants(&graph);
     assert_eq!(
         breakdown(&graph).uncovered.into_iter().collect::<Vec<_>>(),
-        [("class_definition_sites".to_owned(), 11)]
+        []
     );
+    // the 11 sites are the module's, in source order (`@factory(1)` is two; `how each resolves` is a test of `calls.rs`)
+    let project = Project::open(&root, Path::new(file)).unwrap();
+    let module = call_graph(
+        &project,
+        file,
+        &Entry::File,
+        &Options::new(STYLE),
+        &Cancel::new(),
+    )
+    .unwrap();
+    check_invariants(&module);
+    let from_the_module: Vec<String> = edges_as_text(&module, &root)
+        .into_iter()
+        .filter(|edge| edge.starts_with("src/decorators.ts |"))
+        .collect();
+    assert_eq!(
+        from_the_module,
+        [
+            "src/decorators.ts | plain | call plain",
+            "src/decorators.ts | declared | call declared",
+            "src/decorators.ts | declared() | unresolved decorator_result",
+            "src/decorators.ts | inlineFactory | call inlineFactory",
+            "src/decorators.ts | inlineFactory(1) | unresolved decorator_result",
+            "src/decorators.ts | onMethod | call onMethod",
+            "src/decorators.ts | namedFactory | call namedFactory",
+            "src/decorators.ts | namedFactory(2) | call applyNamed",
+            "src/decorators.ts | parameterFactory | call parameterFactory",
+            "src/decorators.ts | parameterFactory(\"x\") | call onParameter",
+            "src/decorators.ts | onParameter | call onParameter",
+        ]
+    );
+    assert!(breakdown(&module).uncovered.is_empty());
 }
 
 #[test]
@@ -1347,7 +1407,7 @@ fn class_entries() -> Vec<ClassRow> {
             "UnknownBase",
             "UnknownBase\n",
             None,
-            vec![("class_definition_sites", 1)],
+            vec![],
             vec![("inherited_constructor_unknown", 1)],
         ),
         (
@@ -1357,45 +1417,29 @@ fn class_entries() -> Vec<ClassRow> {
             vec![("construct_initializer_sites", 2)],
             vec![],
         ),
-        (
-            "Statics",
-            "Statics\n",
-            None,
-            vec![("class_definition_sites", 2)],
-            vec![],
-        ),
+        ("Statics", "Statics\n", None, vec![], vec![]),
         // the class's decorator, a member's and a parameter's
         (
             "Decorated",
             "Decorated\n  helper\n",
             Some("Decorated.constructor"),
-            vec![("class_definition_sites", 3)],
+            vec![],
             vec![],
         ),
-        (
-            "Computed",
-            "Computed\n",
-            None,
-            vec![("computed_member_name_sites", 2)],
-            vec![],
-        ),
+        ("Computed", "Computed\n", None, vec![], vec![]),
         (
             "Base",
             "Base\n  helper\n",
             Some("Base.constructor"),
-            vec![("class_definition_sites", 1)],
+            vec![],
             vec![],
         ),
-        // `Rich`: its own two definition sites and one name, and the initializers of the chain (its `x`); `Base`'s static field ran when `Base` was defined
+        // `Rich`: only the initializers of the chain (its `x`); its definition code and `Base`'s are the module's (M step 4)
         (
             "Rich",
             "Rich\n  helper\n",
             Some("Base.constructor"),
-            vec![
-                ("class_definition_sites", 2),
-                ("computed_member_name_sites", 1),
-                ("construct_initializer_sites", 1),
-            ],
+            vec![("construct_initializer_sites", 1)],
             vec![],
         ),
     ]
@@ -1494,16 +1538,18 @@ fn class_entry_a_function_entry_is_a_call_as_before() {
 }
 
 #[test]
-fn class_entry_a_class_declared_in_a_function_has_its_definition_sites_in_no_tree_and_no_counter_yet()
- {
-    // KNOWN GAP, reported at the step-3 review and not fixed there: the function's body stops at a nested class, and `definition_sites` is for a class at the
-    // top of a file. `make()` in `static s = make()` is neither an edge nor counted.
+fn class_entry_a_class_declared_in_a_function_has_its_definition_code_in_that_functions_tree() {
+    // it was a known gap (reported at the step-3 review): `make()` in `static s = make()` was neither an edge nor counted. The function that declares the
+    // class draws it, before the construction that follows in the source.
     let root = fixture("class-entry");
     let graph = graph_of(&root, "src/main.ts", "newLocal");
     check_invariants(&graph);
     assert_eq!(
         edges_as_text(&graph, &root),
-        ["newLocal | Local | construct newLocal.<locals>.Local no init"]
+        [
+            "newLocal | make | call make",
+            "newLocal | Local | construct newLocal.<locals>.Local no init"
+        ]
     );
     assert_eq!(counters_of(&graph), (vec![], vec![]));
 }

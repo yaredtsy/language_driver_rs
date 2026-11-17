@@ -1,4 +1,5 @@
 // Each class is the entry of a request, and each `newX` constructs it once: the entry's tree and counters are what that construction draws.
+// What runs when a class is defined is the module's, not the construction's: only the instance field initializers are counted.
 function helper() {}
 function make() {}
 function init() {}
@@ -100,8 +101,7 @@ export function newRich() {
   new Rich();
 }
 
-// a class declared in a function: the function reads its computed names and its decorators are counted (`local_class_decorator_sites`); its static initializer,
-// static blocks and `extends` are in no tree and no counter yet (reported at the step-3 review, not fixed there)
+// a class declared in a function: the function draws its definition code (`make()` in the static initializer), as the module does for a top-level class
 export function newLocal() {
   class Local {
     static s = make();

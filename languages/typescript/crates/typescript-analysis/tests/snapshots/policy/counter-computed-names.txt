@@ -1,7 +1,6 @@
 == ComputedTop
 ComputedTop
 edges: none
-uncovered: computed_member_name_sites=2
 == ComputedNoSite
 ComputedNoSite
 edges: none

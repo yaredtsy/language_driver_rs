@@ -1,10 +1,10 @@
 == Body
 Body
 edges: none
-uncovered: class_definition_sites=2, construct_initializer_sites=1
+uncovered: construct_initializer_sites=1
 == makes
 makes
   Body
 edges:
 makes | Body | construct Body no init
-uncovered: class_definition_sites=2, construct_initializer_sites=1
+uncovered: construct_initializer_sites=1

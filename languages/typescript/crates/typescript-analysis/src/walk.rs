@@ -136,15 +136,6 @@ pub(crate) fn construction<'p>(
         .map(|class| lang.sem.initializer_sites(*class, lang.style).len())
         .sum();
     lang.note_uncovered(&vec![Uncovered::ConstructInitializerSite; undrawn]);
-    // what runs when the class is defined, not when it is constructed: the constructed class only, and no tree draws it (the class def is not walked)
-    lang.note_uncovered(&vec![
-        Uncovered::ClassDefinitionSite;
-        lang.sem.definition_sites(class, lang.style).len()
-    ]);
-    lang.note_uncovered(&vec![
-        Uncovered::ComputedMemberNameSite;
-        lang.sem.computed_name_sites(class, lang.style).len()
-    ]);
     if jsx && lang.sem.has_render(class, lang.style) {
         lang.note_uncovered(&[Uncovered::ClassComponentRender]);
     }

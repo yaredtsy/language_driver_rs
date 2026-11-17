@@ -31,9 +31,9 @@ const STYLE: MarkerStyle<'static> = MarkerStyle {
 // The categories of a miss, from its syntactic position.
 const TOP_LEVEL: &str = "top-level";
 const TOP_LEVEL_ANONYMOUS: &str = "top-level-anonymous";
+// A miss in one of these is a bug and not a gap: nothing on the list may name them (and the list is empty).
 const ENUM_MEMBER: &str = "enum-member";
 const NESTED_CLASS_DEFINITION: &str = "nested-class-definition";
-// A miss in one of these is a bug and not a gap: nothing on the list may name them.
 const TOP_CLASS_DEFINITION: &str = "top-class-definition";
 const TOP_CLASS_COMPUTED_NAME: &str = "top-class-computed-name";
 const NESTED_CLASS_COMPUTED_NAME: &str = "nested-class-computed-name";
@@ -45,18 +45,7 @@ const OTHER: &str = "other";
 
 /// The known gaps: (category, why nothing draws or counts it, what owns the decision). A miss in a category that is not here fails the test, and so does
 /// a category here that no fixture hits (`the_list_has_no_stale_entry`): a stale entry hides nothing, but it lies, and is removed when its gap is fixed.
-const KNOWN_GAPS: &[(&str, &str, &str)] = &[
-    (
-        ENUM_MEMBER,
-        "`enum E { A = f() }`: `body_of` says an enum has nothing to walk, and no counter is for it",
-        "TS5 row 3c: found by the test; the owner decides",
-    ),
-    (
-        NESTED_CLASS_DEFINITION,
-        "a static field initializer, a static block or the `extends` expression of a class declared in a namespace (or of one in a function): the def around it stops at the class, and `definition_sites` is for a class at the top of a file",
-        "TS5 row 3b",
-    ),
-];
+const KNOWN_GAPS: &[(&str, &str, &str)] = &[];
 
 /// A node the scan leaves out of the comparison, by the policy that says it is not a call.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -401,9 +390,8 @@ fn drawn(graph: &Graph) -> HashMap<(String, Span), Vec<&'static str>> {
 }
 
 impl Sem {
-    /// The sites the four counters report for `defs`, as the walk notes them: for a class taken as a construction, the instance initializers of each class
-    /// the construction goes through, and the definition sites and the computed names of the class (`walk::construction`); for every other def, the decorators
-    /// of the classes its body declares (`handed_over`). By file and span, with the counter's name.
+    /// The sites the counter reports for `defs`, as the walk notes them: for a class taken as a construction, the instance initializers of each class the
+    /// construction goes through (`walk::construction`). Every other site of a class is drawn by the body that declares it. By file and span, with the counter's name.
     fn counted_sites(
         &self,
         defs: &[Func<'_>],
@@ -437,18 +425,6 @@ impl Sem {
                 let (_, chain) = self.init_chain(func, STYLE);
                 for class in chain {
                     put(class, self.initializer_sites(class, STYLE), "initializer");
-                }
-                put(func, self.definition_sites(func, STYLE), "definition");
-                put(func, self.computed_name_sites(func, STYLE), "computed-name");
-            } else if let Some(body) = self.body(func, STYLE) {
-                let Some(defs) = self.file_defs(func.file, STYLE) else {
-                    continue;
-                };
-                for &(def, _) in &body.nested {
-                    if defs.outline.defs[def].kind == DefKind::Class {
-                        let class = Func::def(func.file, def);
-                        put(class, self.decorator_sites(class, STYLE), "decorator");
-                    }
                 }
             }
         }
@@ -610,11 +586,12 @@ const EXPECTED: &[Expect] = &[
         missed: &[],
     },
     Expect {
+        // the module draws the member initializers of the enums it declares (M step 4)
         file: "src/enum.ts",
-        drawn: 0,
+        drawn: 3,
         counted: 0,
         excluded: 0,
-        missed: &[(ENUM_MEMBER, 3)],
+        missed: &[],
     },
     Expect {
         file: "src/excluded.ts",
@@ -638,12 +615,12 @@ const EXPECTED: &[Expect] = &[
         missed: &[],
     },
     Expect {
-        // entering the namespace (M step 3) draws its own `f()` and the class's `[key()]`, and counts the class's decorator
+        // the namespace draws its own `f()`, the class's `[key()]`, its decorator and `static s` (M step 4); `x = f()` runs at construction and is counted
         file: "src/namespace-class.ts",
-        drawn: 4,
-        counted: 2,
+        drawn: 6,
+        counted: 1,
         excluded: 0,
-        missed: &[(NESTED_CLASS_DEFINITION, 1)],
+        missed: &[],
     },
     Expect {
         // `namespace A.B`: the outline has the def `A` (walks nothing) and the def `A.B`, which owns the statement
@@ -654,11 +631,12 @@ const EXPECTED: &[Expect] = &[
         missed: &[],
     },
     Expect {
+        // the function draws the class's definition code (M step 4): three decorators, `base()`, `static s` and the static block; `t = f()` is counted
         file: "src/nested-class.ts",
-        drawn: 5,
-        counted: 4,
+        drawn: 11,
+        counted: 1,
         excluded: 0,
-        missed: &[(NESTED_CLASS_DEFINITION, 3)],
+        missed: &[],
     },
     Expect {
         file: "src/tagged.ts",
@@ -668,10 +646,10 @@ const EXPECTED: &[Expect] = &[
         missed: &[],
     },
     Expect {
-        // `[key()] = 1` moved from counted to drawn: the module's walk draws the computed names of the classes it declares, as a function's does (M step 2)
+        // the module draws the class's definition code (M step 4; its computed name since M step 2); `t = f()` runs at construction and is counted
         file: "src/top-class.ts",
-        drawn: 5,
-        counted: 7,
+        drawn: 11,
+        counted: 1,
         excluded: 0,
         missed: &[],
     },
@@ -920,6 +898,8 @@ fn the_list_has_no_stale_entry() {
         NESTED_CLASS_COMPUTED_NAME,
         NAMESPACE_CLASS_COMPUTED_NAME,
         NAMESPACE_LEVEL,
+        ENUM_MEMBER,
+        NESTED_CLASS_DEFINITION,
         INSTANCE_INITIALIZER,
         IN_NAMED_FUNCTION,
         OTHER,
@@ -931,8 +911,8 @@ fn the_list_has_no_stale_entry() {
     }
 }
 
-/// The counters and the spans are one answer: a class taken as an entry notes, in `Stats.language`, exactly the sites its construction reports as spans, and
-/// a body notes the decorators of the classes it declares. Without it the spans could say a site is counted that no counter counts.
+/// The counter and the spans are one answer: a class taken as an entry notes, in `Stats.language`, exactly the instance initializer sites its construction
+/// reports as spans. Without it the spans could say a site is counted that no counter counts.
 #[test]
 fn the_counters_say_what_the_spans_say() {
     use analyzer_core::graph::Entry;
@@ -963,36 +943,13 @@ fn the_counters_say_what_the_spans_say() {
                 .iter()
                 .map(|c| sem.initializer_sites(*c, STYLE).len())
                 .sum();
-            let spans = [
-                ("uncovered_construct_initializer_sites", initializers),
-                (
-                    "uncovered_class_definition_sites",
-                    sem.definition_sites(func, STYLE).len(),
-                ),
-                (
-                    "uncovered_computed_member_name_sites",
-                    sem.computed_name_sites(func, STYLE).len(),
-                ),
-            ];
-            for (key, want) in spans {
-                assert_eq!(counter(&graph, key), want, "{key} of {}", info.qualname);
-            }
-            classes_with_sites += usize::from(spans.iter().any(|(_, n)| *n > 0));
-        } else if let Some(body) = sem.body(func, STYLE) {
-            let defs = sem.file_defs(func.file, STYLE).unwrap();
-            let decorators: usize = body
-                .nested
-                .iter()
-                .filter(|(def, _)| defs.outline.defs[*def].kind == DefKind::Class)
-                .map(|&(def, _)| sem.decorator_sites(Func::def(func.file, def), STYLE).len())
-                .sum();
-            // a function that constructs a local class counts its decorators once, as a construction counts the class's other sites
             assert_eq!(
-                counter(&graph, "uncovered_local_class_decorator_sites"),
-                decorators,
-                "decorators of {}",
+                counter(&graph, "uncovered_construct_initializer_sites"),
+                initializers,
+                "initializers of {}",
                 info.qualname
             );
+            classes_with_sites += usize::from(initializers > 0);
         }
     }
     assert!(
