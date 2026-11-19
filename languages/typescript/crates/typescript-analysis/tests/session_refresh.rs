@@ -1,4 +1,4 @@
-//! `Session::refresh` and `Session::reload` (`docs/03-typescript/11-step6-text-and-disk.md` §7, cases 1 to 12 and 14; case 13, a file rewritten during a rebuild,
+//! `Session::refresh` and `Session::reload` (`docs/03-typescript/11-step6-text-and-disk.md` §7, cases 1 to 12 and 14 to 16; case 13, a file rewritten during a rebuild,
 //! needs a hook inside the crate and is `session.rs`'s own test).
 //!
 //! **Written before it was run.** Each test writes a small project to a folder of its own, asks, changes the disk, and asks again. Every expected list is in
@@ -9,8 +9,7 @@
 //! relied on the modified time alone would fail now and then. The one case that rests on a folder's modified time alone (a file created that nothing
 //! imports, case 5) waits a moment first.
 //!
-//! The folders are all made once, before any test asks for one: a session stamps the folders **above** its project too, so a folder created beside it by
-//! a test running in parallel would move a stamp and fail a "nothing changed" for nothing.
+//! The folders are all made once, before any test asks for one.
 
 mod common;
 
@@ -24,7 +23,7 @@ use typescript_analysis::{
 };
 
 /// One folder per test.
-const CASES: [&str; 14] = [
+const CASES: [&str; 16] = [
     "rewrite",
     "created",
     "deleted",
@@ -39,6 +38,8 @@ const CASES: [&str; 14] = [
     "reload",
     "lock",
     "reload-lost",
+    "parent-folder",
+    "hoisted",
 ];
 
 fn folder(case: &str) -> PathBuf {
@@ -475,5 +476,57 @@ fn an_install_that_rewrites_the_lock_file_beside_node_modules_is_seen_by_refresh
     assert!(refreshed.reopened);
     assert_eq!(refreshed.lost, None);
     assert_eq!(edges(&session), lines(&PKG_AFTER));
+    assert_as_fresh_as_open(&session, &root);
+}
+
+// 15
+#[test]
+fn a_folder_created_beside_the_project_is_no_change() {
+    let case = folder("parent-folder");
+    let root = case.join("app");
+    write(&root, "tsconfig.json", TSCONFIG);
+    write(&root, "src/main.ts", MAIN);
+    write(&root, "src/lib.ts", LIB);
+    let mut session = open(&root);
+    let before = graph(&session);
+
+    // the root's parent is a directory above the root: its modified time moves with every entry made in it (a home folder's, all day), and it is not stamped
+    let_the_clock_move();
+    std::fs::create_dir_all(case.join("elsewhere")).unwrap();
+    let refreshed = session.refresh();
+    assert!(!refreshed.reopened);
+    assert_eq!(refreshed.lost, None);
+    assert_eq!(graph(&session), before);
+}
+
+// 16
+#[test]
+fn a_package_installed_in_the_parents_node_modules_is_seen() {
+    let case = folder("hoisted");
+    let root = case.join("app");
+    write(&root, "tsconfig.json", TSCONFIG);
+    write(
+        &root,
+        "src/main.ts",
+        "import { ext } from \"pkg\";\nexport function main() {\n  ext();\n}\n",
+    );
+    let mut session = open(&root);
+    assert_eq!(edges(&session), lines(&["main | ext | unresolved"]));
+
+    // a monorepo's hoisted install: the package lands in the node_modules above the root, a folder the first build asked about and found missing
+    write(
+        &case,
+        "node_modules/pkg/package.json",
+        r#"{ "name": "pkg", "version": "1.0.0", "types": "index.d.ts" }"#,
+    );
+    write(
+        &case,
+        "node_modules/pkg/index.d.ts",
+        "export declare function ext(): void;\n",
+    );
+    let refreshed = session.refresh();
+    assert!(refreshed.reopened);
+    assert_eq!(refreshed.lost, None);
+    assert_eq!(edges(&session), lines(&["main | ext | external pkg ext"]));
     assert_as_fresh_as_open(&session, &root);
 }

@@ -773,29 +773,61 @@ fn root_and_file(root: &Path, file: &Path) -> Vec<String> {
     paths
 }
 
-/// The paths of `Sem::open_tracked`: what the tracker `seen`, less what is inside a `node_modules` folder, with the files an install rewrites beside each
-/// `node_modules` folder, then the configs, the root and the file.
+/// The paths of `Sem::open_tracked`: what the tracker `seen`, less what is inside a `node_modules` folder and the directories above the root, with the files
+/// an install rewrites beside each `node_modules` folder that exists, then the configs, the root and the file (`docs/03-typescript/11-step6-text-and-disk.md` §4).
 fn stamp_paths(
     root: &Path,
     file: &Path,
     seen: Vec<String>,
     config_inputs: &BTreeSet<String>,
 ) -> Vec<String> {
+    let root_path = to_engine_path(root);
     let mut paths = BTreeSet::new();
     for path in seen {
-        // 8057 of the 9143 paths of a real frontend are under `node_modules` (`docs/03-typescript/11-step6-text-and-disk.md` §2)
-        if path.contains("/node_modules/") {
+        // 8057 of the 9143 paths of a real frontend are under `node_modules` (§2). The folder stands for them, so the list does not depend on the engine
+        // having asked for the folder itself first.
+        if let Some(at) = path.find(NODE_MODULES_INSIDE) {
+            paths.insert(path[..at + NODE_MODULES.len()].to_owned());
             continue;
         }
-        if let Some(beside) = path.strip_suffix("/node_modules") {
-            paths.extend(crate::exact_environment_names().map(|name| format!("{beside}/{name}")));
+        // The engine asks for a `package.json` in every folder up to `/`, so each folder above the root is seen, and a home folder's modified time moves all
+        // day. What matters up there is asked for by its own path (`package.json`, `node_modules`) and keeps its own stamp.
+        if is_directory_above(&root_path, &path) {
+            continue;
         }
         paths.insert(path);
     }
+    // the names an install rewrites, beside a `node_modules` that is there: the engine asks for a `node_modules` in every folder it resolves a package
+    // from, and most are not there (a folder that appears later changes its own stamp, and the rebuild lists the names beside it)
+    let beside: Vec<String> = paths
+        .iter()
+        .filter_map(|path| {
+            let beside = path.strip_suffix(NODE_MODULES)?;
+            Path::new(path.as_str()).is_dir().then_some(beside)
+        })
+        .flat_map(|beside| {
+            crate::exact_environment_names().map(move |name| format!("{beside}/{name}"))
+        })
+        .collect();
+    paths.extend(beside);
     paths.extend(config_inputs.iter().cloned());
-    paths.insert(to_engine_path(root));
+    paths.insert(root_path);
     paths.insert(to_engine_path(file));
     paths.into_iter().collect()
+}
+
+const NODE_MODULES: &str = "/node_modules";
+const NODE_MODULES_INSIDE: &str = "/node_modules/";
+
+/// Whether `path` is a directory strictly above `root`, told from the text alone (both are engine paths, absolute, with `/`): the root's path starts with
+/// it and a `/`, or it is the root of the file system (`/`, or a drive such as `c:/`). No call to the disk.
+fn is_directory_above(root: &str, path: &str) -> bool {
+    let file_system_root = path == "/"
+        || matches!(path.as_bytes(), [letter, b':', b'/'] if letter.is_ascii_alphabetic());
+    file_system_root
+        || root
+            .strip_prefix(path)
+            .is_some_and(|rest| rest.starts_with('/'))
 }
 
 #[cfg(test)]

@@ -891,3 +891,56 @@ fn the_seen_paths_after_a_call_graph_are_the_seen_paths_after_open() {
         );
     }
 }
+
+/// `stamp_paths` on a seen list written by hand, one line for each rule of the design (§5). `case` has a `node_modules` folder; the root, `case/app`, has none.
+#[test]
+fn the_stamped_paths_leave_out_the_directories_above_the_root_and_what_is_inside_node_modules() {
+    let case = crate::scratch::scratch("stamp-paths");
+    let root = case.join("app");
+    std::fs::create_dir_all(case.join("node_modules/pkg")).unwrap();
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let at = |relative: &str| to_engine_path(&case.join(relative));
+    let main = at("app/src/main.ts");
+    let config = at("app/tsconfig.json");
+    let seen = vec![
+        // rule 1: directories above the root are out, a file asked for there stays
+        to_engine_path(&case),
+        to_engine_path(case.parent().unwrap()),
+        "/".to_owned(),
+        at("package.json"),
+        // the root and what is under it stay
+        at("app"),
+        at("app/src"),
+        main.clone(),
+        // rule 2: a path inside a `node_modules` is out, its outermost folder is in, the folder above the root as well, though nobody asked for it itself
+        at("node_modules/pkg/index.d.ts"),
+        at("node_modules/pkg/node_modules/deep/index.d.ts"),
+        at("app/node_modules/gone/index.d.ts"),
+    ];
+    let inputs = BTreeSet::from([config.clone()]);
+    let paths = stamp_paths(&root, Path::new(&main), seen, &inputs);
+
+    // rule 3: the names an install rewrites, beside the `node_modules` that exists (`case/`), and none beside the one that does not (`case/app/`)
+    let mut expected = vec![
+        at("app"),
+        at("app/src"),
+        main,
+        config,
+        at("app/node_modules"),
+        at("node_modules"),
+    ];
+    for name in [
+        "jsconfig.json",
+        "package.json",
+        "package-lock.json",
+        "npm-shrinkwrap.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "bun.lock",
+        "bun.lockb",
+    ] {
+        expected.push(at(name));
+    }
+    expected.sort();
+    assert_eq!(paths, expected);
+}

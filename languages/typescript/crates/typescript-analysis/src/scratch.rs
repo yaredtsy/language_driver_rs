@@ -1,14 +1,19 @@
 //! Folders the in-crate tests write projects to (`CARGO_TARGET_TMPDIR` does not exist for unit tests, so the temp dir).
 //!
-//! A session stamps every directory the build looked in, and the directories **above** the project are among them (`sem` `Tracker`): a folder created beside the
-//! project, in one of them, moves its stamp. Tests run in parallel, so a test that makes its folder while another waits for "nothing changed" would fail it
-//! for nothing. The folders are therefore all made once, together, before any test asks for one, and a test only empties its own.
+//! The folders are all made once, together, before any test asks for one, and a test only empties its own: tests run in parallel, and none of them creates or
+//! removes a folder beside another's. (A session does not stamp the directories above its project, so this is a habit and no longer a need.)
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// Every folder a test may ask `scratch` for.
-const NAMES: [&str; 4] = ["seen-paths", "stamps", "during-a-build", "lost-no-rebuild"];
+const NAMES: [&str; 5] = [
+    "seen-paths",
+    "stamps",
+    "during-a-build",
+    "lost-no-rebuild",
+    "stamp-paths",
+];
 
 /// The folder of `name`, empty, and canonical (the OS may spell the temp dir through a link, `/var` is `/private/var` on macOS, and the engine's paths are the
 /// canonical ones).

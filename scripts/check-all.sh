@@ -36,9 +36,20 @@ none "a personal path (rule 6)" \
 # to write (fs::write, File::create, OpenOptions) and for uuid. Allowed: *-cli (they are the program); tests, which write their own scratch
 # folders (in a crate's src, only its test-only scratch.rs, the one file its unit tests write through); and analyzer-testkit, a dev-dependency
 # whose ANALYZER_BLESS switch writes expected files for a person to review.
+# The scratch.rs exemption holds only for a crate whose lib.rs has `#[cfg(test)]` on the line directly above `mod scratch;`.
 lib_src=(core/analyzer-core/src languages/*/crates/*/src)
+exempt=$(mktemp)
+for scratch in core/analyzer-core/src/scratch.rs languages/*/crates/*/src/scratch.rs; do
+  [ -e "$scratch" ] || continue
+  if awk 'prev == "#[cfg(test)]" && $0 == "mod scratch;" { found = 1 } { prev = $0 } END { exit !found }' "$(dirname "$scratch")/lib.rs"; then
+    echo "$scratch:" >> "$exempt"
+  else
+    bad "$scratch is not gated: its lib.rs needs #[cfg(test)] on the line directly above \`mod scratch;\` (rule 2)"
+  fi
+done
 none "a way to write a file, or uuid, in a library (rule 2)" \
-  "$(rs -E 'fs::write|File::create|OpenOptions|uuid' "${lib_src[@]}" | grep -v -- '-cli/' | grep -v '/src/scratch\.rs:' || true)"
+  "$(rs -E 'fs::write|File::create|OpenOptions|uuid' "${lib_src[@]}" | grep -v -- '-cli/' | grep -vF -f "$exempt" || true)"
+rm -f "$exempt"
 
 # one lint style: every language's [workspace.lints] block equals the template's, except the value of unsafe_code and comments
 lints() { awk '/^\[workspace\.lints/{p=1} /^\[profile/{p=0} p' "$1" | grep -v -e '^#' -e '^unsafe_code'; }
