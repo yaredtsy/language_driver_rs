@@ -24,6 +24,7 @@ fn is_entry_kind(kind: &DefKind) -> bool {
 
 #[test]
 fn every_def_of_core_is_an_entry_and_the_whole_is_counted() {
+    let _load = crate::sem::common::one_load();
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
     let project = Project::open(
         &repo,

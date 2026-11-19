@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn a_body_is_its_sites_each_with_its_one_callee_and_the_one_key() {
-        let (loaded, _root) = policy("walk_body");
+        let (loaded, _root) = policy();
         attached(&loaded, STYLE, |sem| {
             let f = sem.entry("src/calls.rs", "closures", 0).unwrap();
             let body = read(sem, f, &Env, &Cancel::new());
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn a_cancelled_body_says_so_and_keeps_what_it_read() {
-        let (loaded, _root) = policy("walk_cancel");
+        let (loaded, _root) = policy();
         attached(&loaded, STYLE, |sem| {
             let f = sem.entry("src/calls.rs", "plain_calls", 0).unwrap();
             let cancel = Cancel::new();

@@ -86,6 +86,7 @@ fn the_policy_workspace_without_std() {
 #[test]
 #[ignore = "run by the_policy_workspace_without_std"]
 fn worker_policy_without_std() {
+    let _load = crate::sem::common::one_load();
     if std::env::var_os("RS_WORKER").is_none() {
         return;
     }

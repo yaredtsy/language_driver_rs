@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use rust_analysis::{LoadOptions, OpenError, Project, Warning};
 
 mod common;
-use common::{copy_of_fixture, rs_files, snapshot};
+use common::{copy_of_fixture, one_load, rs_files, snapshot};
 
 /// This repo: it has no `Cargo.toml` of its own and holds five workspaces (the test below opens two: `languages/typescript/` is left out on purpose). Written with `..` on purpose, as a caller writes a path.
 fn repo() -> PathBuf {
@@ -21,6 +21,7 @@ fn locks(repo: &Path) -> Vec<Vec<u8>> {
 
 #[test]
 fn the_right_one_of_five_workspaces_is_chosen() {
+    let _load = one_load();
     let repo = repo();
     let before = locks(&repo);
     // (the file as the caller writes it, the manifest found, the folders that hold project files). The Rust workspace has a path dependency on
@@ -77,6 +78,7 @@ fn the_right_one_of_five_workspaces_is_chosen() {
 
 #[test]
 fn a_file_in_a_member_finds_the_members_manifest_and_the_workspaces_files() {
+    let _load = one_load();
     let core = repo().join("core");
     let lock = core.join("Cargo.lock");
     let before = std::fs::read(&lock).unwrap();
@@ -107,6 +109,7 @@ fn a_file_in_a_member_finds_the_members_manifest_and_the_workspaces_files() {
 
 #[test]
 fn a_workspace_root_above_the_root_is_loaded_and_is_not_project_code() {
+    let _load = one_load();
     let copy = copy_of_fixture("above", "above");
     let before = snapshot(&copy);
     let member = copy.join("member");
@@ -138,6 +141,7 @@ fn a_workspace_root_above_the_root_is_loaded_and_is_not_project_code() {
 
 #[test]
 fn a_file_with_no_cargo_toml_up_to_the_root_loads_alone() {
+    let _load = one_load();
     // under target/, so a Cargo.toml exists above the root (languages/rust/Cargo.toml): the root is what stops the climb, and the file stands alone
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("no_manifest");
     let _ = std::fs::remove_dir_all(&root);
@@ -153,6 +157,7 @@ fn a_file_with_no_cargo_toml_up_to_the_root_loads_alone() {
 
 #[test]
 fn a_file_that_is_not_there_or_not_under_the_root_is_an_error() {
+    let _load = one_load();
     let core = repo().join("core");
     for file in [
         "analyzer-core/src/no_such_file.rs",
@@ -170,6 +175,7 @@ fn a_file_that_is_not_there_or_not_under_the_root_is_an_error() {
 /// (it is under the crate's folder) but has no module, so it is not a file of the project. (At rung 4 the same, in `ladder.rs`.)
 #[test]
 fn a_stray_rs_file_next_to_a_crate_is_not_a_project_file() {
+    let _load = one_load();
     let copy = copy_of_fixture("lock", "open_stray");
     let app = copy.join("app");
     assert!(

@@ -9,7 +9,7 @@ use std::sync::{Mutex, MutexGuard};
 use rust_analysis::{LoadOptions, Project};
 
 mod common;
-use common::{copy_of_fixture, snapshot};
+use common::{copy_of_fixture, one_load, snapshot};
 
 /// The two tests run in one process, so they share a process id and a temporary folder: while one has its redirect, the other must not look for
 /// leftovers. Each holds this for its whole length. (A test that panics poisons the mutex; the next one takes it anyway.)
@@ -54,6 +54,7 @@ fn assert_no_redirect_left() {
 
 #[test]
 fn a_project_with_no_lock_gets_none() {
+    let _load = one_load();
     let _one = one_at_a_time();
     let copy = copy_of_fixture("lock", "lock_none");
     assert_toolchain_honours_the_redirect(&copy.join("app"));
@@ -82,6 +83,7 @@ fn a_project_with_no_lock_gets_none() {
 
 #[test]
 fn a_stale_lock_is_left_as_it_is() {
+    let _load = one_load();
     let _one = one_at_a_time();
     let copy = copy_of_fixture("lock", "lock_stale");
     let app = copy.join("app");

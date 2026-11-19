@@ -442,7 +442,7 @@ mod tests {
     /// RS4 §9 step 2's proof: the site list of every module of the policy fixture, with no targets. Snapshots are reviewed, not just accepted.
     #[test]
     fn the_site_list_of_every_policy_module() {
-        let (loaded, root) = policy("sites_snapshots");
+        let (loaded, root) = policy();
         let snapshots = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/sites");
         attached(&loaded, STYLE, |sem| {
             for file in loaded.files() {
@@ -482,7 +482,7 @@ mod tests {
     /// is not a loss either. Name resolution answers there, so the sites are taken from what the engine lowered, not from the text.
     #[test]
     fn a_disabled_statement_block_or_arm_in_an_active_body_gives_no_site() {
-        let (loaded, root) = policy("sites_cfg");
+        let (loaded, root) = policy();
         attached(&loaded, STYLE, |sem| {
             let file = "src/cfg_off.rs";
             let sites = |qualname: &str| site_texts(sem, &root, file, qualname);
@@ -507,7 +507,7 @@ mod tests {
     /// §3's table, row by row, in the one place a reader looks for it: what is a site and what is not, with the closure each is in.
     #[test]
     fn the_rows_of_the_table() {
-        let (loaded, root) = policy("sites_rows");
+        let (loaded, root) = policy();
         attached(&loaded, STYLE, |sem| {
             let calls = |qualname: &str| site_texts(sem, &root, "src/calls.rs", qualname).0;
             // a unit struct and a unit variant named as values are no call; a tuple struct, a tuple variant and a record are
@@ -551,7 +551,7 @@ mod tests {
     /// outermost one written in the file); a call from an external macro's body, even one inside a project macro, is never a site.
     #[test]
     fn macros_are_expanded_and_the_innermost_one_decides() {
-        let (loaded, root) = policy("sites_macros");
+        let (loaded, root) = policy();
         attached(&loaded, STYLE, |sem| {
             let kinds = |qualname: &str| {
                 let func = sem.entry("src/macros.rs", qualname, 0).unwrap();
@@ -620,7 +620,7 @@ mod tests {
 
     #[test]
     fn the_sites_of_a_def_are_made_once_per_request() {
-        let (loaded, _root) = policy("sites_cache");
+        let (loaded, _root) = policy();
         attached(&loaded, STYLE, |sem| {
             let func = sem.entry("src/calls.rs", "plain_calls", 0).unwrap();
             assert!(Rc::ptr_eq(&sem.sites(func), &sem.sites(func)));
@@ -631,7 +631,7 @@ mod tests {
     /// struct and a unit variant are not; and a hand-over in a statement a `cfg` turns off is none either.
     #[test]
     fn what_is_handed_over() {
-        let (loaded, root) = policy("sites_passed");
+        let (loaded, root) = policy();
         attached(&loaded, STYLE, |sem| {
             let passed = |file: &str, qualname: &str| -> Vec<String> {
                 let (texts, _) = site_texts(sem, &root, file, qualname);

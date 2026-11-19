@@ -6,7 +6,7 @@ use std::path::Path;
 use rust_analysis::{LoadOptions, Project, Warning};
 
 mod common;
-use common::copy_of_fixture;
+use common::{copy_of_fixture, one_load};
 
 fn open(root: &Path, file: &str) -> Project {
     Project::open(root, Path::new(file), &LoadOptions::default())
@@ -16,6 +16,7 @@ fn open(root: &Path, file: &str) -> Project {
 /// Rung 4: no `Cargo.toml` between the file and the root. The file is the root of a crate, and `mod child;` finds `child.rs` beside it.
 #[test]
 fn a_file_with_no_manifest_is_a_crate_of_one_file_and_its_mod_children() {
+    let _load = one_load();
     // the copy is under target/: `languages/rust/Cargo.toml` exists above, and the root is what stops the climb
     let copy = copy_of_fixture("lone", "ladder_lone");
     let project = open(&copy, "main.rs");
@@ -39,6 +40,7 @@ fn a_file_with_no_manifest_is_a_crate_of_one_file_and_its_mod_children() {
 /// Rung 4 again: a `Cargo.toml` that is not TOML. Cargo cannot read it, our reader cannot either, and the file stands alone with the reason said.
 #[test]
 fn a_manifest_nobody_can_read_leaves_the_file_alone_with_the_reason() {
+    let _load = one_load();
     let copy = copy_of_fixture("broken_manifest", "ladder_broken");
     let project = open(&copy, "src/lib.rs");
 
@@ -60,6 +62,7 @@ fn a_manifest_nobody_can_read_leaves_the_file_alone_with_the_reason() {
 /// no source to load, so it is counted, and the load says that cargo failed and why.
 #[test]
 fn a_manifest_only_cargo_refuses_is_read_by_the_reader_and_said() {
+    let _load = one_load();
     let copy = copy_of_fixture("cargo_fails", "ladder_cargo_fails");
     let project = open(&copy, "src/lib.rs");
 

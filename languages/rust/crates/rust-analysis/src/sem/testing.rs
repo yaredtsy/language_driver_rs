@@ -1,6 +1,7 @@
 //! What the unit tests of `sem` share: the policy fixture, loaded, and the outline of one of its files read from disk.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use analyzer_core::edit::{MarkerStyle, Placement};
 use analyzer_core::outline::Outline;
@@ -16,18 +17,49 @@ pub(crate) const STYLE: MarkerStyle<'static> = MarkerStyle {
     placement: Placement::Docstring,
 };
 
-/// A fresh copy of `fixtures/policy/` under `target/`, loaded as cargo's workspace of one package. Its root is the copy.
-pub(crate) fn policy(name: &str) -> (Loaded, PathBuf) {
-    workspace("policy", name)
+/// The policy fixture, loaded as cargo's workspace of one package, once for the whole test program and used by one test at a time (see
+/// `common::one_load` for why). Its root is the copy it was loaded from, which no test writes to.
+pub(crate) fn policy() -> (MutexGuard<'static, Loaded>, PathBuf) {
+    static POLICY: OnceLock<Fixture> = OnceLock::new();
+    shared(&POLICY, "policy")
 }
 
-/// A fresh copy of `fixtures/<fixture>/` under `target/` (`policy`, `context`), loaded as cargo's workspace of one package. Its root is the copy.
-pub(crate) fn workspace(fixture: &str, name: &str) -> (Loaded, PathBuf) {
-    let copy = crate::paths::absolute(&common::copy_of_fixture(fixture, name)).unwrap();
-    let manifest = copy.join("Cargo.toml");
-    let loaded = load(&copy, Some(&manifest), &manifest, &LoadOptions::default())
-        .unwrap_or_else(|e| panic!("the {fixture} fixture loads: {e}"));
-    (loaded, copy)
+/// The context fixture, shared the same way.
+pub(crate) fn context() -> (MutexGuard<'static, Loaded>, PathBuf) {
+    static CONTEXT: OnceLock<Fixture> = OnceLock::new();
+    shared(&CONTEXT, "context")
+}
+
+struct Fixture {
+    root: PathBuf,
+    loaded: Mutex<Loaded>,
+}
+
+fn shared(
+    cell: &'static OnceLock<Fixture>,
+    fixture: &str,
+) -> (MutexGuard<'static, Loaded>, PathBuf) {
+    let fixture = cell.get_or_init(|| {
+        let root = crate::paths::absolute(&common::copy_of_fixture(
+            fixture,
+            &format!("shared_{fixture}"),
+        ))
+        .unwrap();
+        let manifest = root.join("Cargo.toml");
+        let loaded = load(&root, Some(&manifest), &manifest, &LoadOptions::default())
+            .unwrap_or_else(|e| panic!("the {fixture} fixture loads: {e}"));
+        Fixture {
+            root,
+            loaded: Mutex::new(loaded),
+        }
+    });
+    (
+        fixture
+            .loaded
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner),
+        fixture.root.clone(),
+    )
 }
 
 /// The text of a file on disk, as it is: a byte-order mark stays, and the engine's offsets and the outline's count it.

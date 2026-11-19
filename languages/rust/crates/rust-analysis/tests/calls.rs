@@ -1,7 +1,8 @@
 //! `call_graph` through the public API (RS4 §8, §9 step 4): the first trees of the policy workspace, the invariants and determinism of its graphs, the
 //! entries that are `None`, and what a load that could not do as asked says in the graph's `Stats.language`.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use analyzer_testkit::graph::{assert_deterministic, check_invariants};
 use rust_analysis::{
@@ -10,7 +11,10 @@ use rust_analysis::{
 };
 
 mod common;
-use common::{POLICY_ENTRIES as ENTRIES, copy_of_fixture, frozen_open_counts, open_counts_of};
+use common::{
+    POLICY_ENTRIES as ENTRIES, copy_of_fixture, frozen_open_counts, one_load, open_counts_of,
+    shared,
+};
 
 fn options() -> Options {
     Options::new(MarkerStyle::docstring("ID"))
@@ -33,10 +37,12 @@ fn graph(project: &Project, file: &str, qualname: &str, occurrence: u16) -> Opti
     )
 }
 
-fn policy(name: &str) -> (PathBuf, Project) {
-    let copy = copy_of_fixture("policy", name);
-    let project = open(&copy, "src/lib.rs");
-    (copy, project)
+/// The policy workspace, loaded once for this test program and used by one test at a time (`common::one_load` says why). No test writes to it.
+fn policy() -> MutexGuard<'static, Project> {
+    static POLICY: OnceLock<Mutex<Project>> = OnceLock::new();
+    shared(&POLICY, || {
+        open(&copy_of_fixture("policy", "calls_shared"), "src/lib.rs")
+    })
 }
 
 fn text(graph: &Graph) -> String {
@@ -46,7 +52,7 @@ fn text(graph: &Graph) -> String {
 /// The first trees, each with its breakdown, as one reviewed snapshot. The invariants hold for every graph, and the same request gives the same graph.
 #[test]
 fn the_first_trees_of_the_policy_workspace() {
-    let (_copy, project) = policy("calls_trees");
+    let project = policy();
     let mut out = String::new();
     for (file, qualname, occurrence) in ENTRIES {
         let graph = graph(&project, file, qualname, occurrence)
@@ -63,7 +69,7 @@ fn the_first_trees_of_the_policy_workspace() {
 /// D44 changes what a required trait method is, not how open it is: every entry has the `open_*` counts it had before (`frozen_open_counts`).
 #[test]
 fn every_open_count_of_the_policy_workspace_is_what_it_was_before_d44() {
-    let (_copy, project) = policy("calls_open_counts");
+    let project = policy();
     let frozen = frozen_open_counts("policy");
     assert_eq!(frozen.len(), ENTRIES.len());
     for ((file, qualname, occurrence), (entry, counts)) in ENTRIES.into_iter().zip(frozen) {
@@ -75,7 +81,7 @@ fn every_open_count_of_the_policy_workspace_is_what_it_was_before_d44() {
 
 #[test]
 fn the_same_request_gives_the_same_graph() {
-    let (_copy, project) = policy("calls_deterministic");
+    let project = policy();
     for (file, qualname, occurrence) in [
         ("src/calls.rs", "closures", 0),
         ("src/dispatch.rs", "impl_return_of_a_parameter", 0),
@@ -89,7 +95,7 @@ fn the_same_request_gives_the_same_graph() {
 /// turns off, an occurrence that is not there, and `Entry::File` (nothing runs at the top of a Rust file).
 #[test]
 fn what_is_not_an_entry_is_none() {
-    let (_copy, project) = policy("calls_none");
+    let project = policy();
     let none = |file: &str, qualname: &str, occurrence: u16| {
         assert!(
             graph(&project, file, qualname, occurrence).is_none(),
@@ -122,7 +128,7 @@ fn what_is_not_an_entry_is_none() {
 /// `defs_named`: a qualname is not unique (D15), and the list is what a tool shows. `None` for a file the load does not hold.
 #[test]
 fn defs_named_lists_the_matches_and_picks_none() {
-    let (_copy, project) = policy("calls_defs_named");
+    let project = policy();
     let style = MarkerStyle::docstring("ID");
     let found = project
         .defs_named("src/shapes.rs", "Rec::get", style)
@@ -153,6 +159,7 @@ fn defs_named_lists_the_matches_and_picks_none() {
 /// The load's warnings and what it skipped are in the graph's `Stats.language`, as counts, and the breakdown says them first.
 #[test]
 fn a_graph_of_a_warned_load_carries_its_warning() {
+    let _load = one_load();
     // cargo refuses the manifest, our reader reads it: no `std`, no dependencies, and the layout the reader could not follow is counted
     let copy = copy_of_fixture("cargo_fails", "calls_cargo_fails");
     let project = open(&copy, "src/lib.rs");
@@ -199,6 +206,7 @@ fn a_graph_of_a_warned_load_carries_its_warning() {
 /// call), and a def a macro made (`macro_generated_target`). The tree names them and does not enter them.
 #[test]
 fn a_call_into_a_local_crate_that_is_not_entered_is_counted() {
+    let _load = one_load();
     let copy = copy_of_fixture("owner", "calls_owner");
     // the root is the package `app`: `member` (a workspace member) and `inside` (a path dependency) are local crates whose files are not under it
     let project = open(&copy.join("ws/app"), "src/lib.rs");
@@ -227,7 +235,7 @@ fn a_call_into_a_local_crate_that_is_not_entered_is_counted() {
 /// (named by its marker when it has one), and there is no context and no edge: the same node a construction is as a callee.
 #[test]
 fn a_struct_as_an_entry_is_a_construction_shown_by_name() {
-    let (_copy, project) = policy("calls_struct_entry");
+    let project = policy();
     let file = "src/constructions.rs";
     for (qualname, kind, id) in [
         (
@@ -274,7 +282,7 @@ fn a_struct_as_an_entry_is_a_construction_shown_by_name() {
 /// `Option` and one `Result` (the merged wire counts a repeated name as one target).
 #[test]
 fn a_variant_is_its_enum_when_it_is_ours_and_named_when_it_is_not() {
-    let (_copy, project) = policy("calls_variants");
+    let project = policy();
     let file = "src/constructions.rs";
     let graph = graph_of(&project, file, "build_variants");
     let built: Vec<_> = graph
@@ -320,7 +328,7 @@ fn a_variant_is_its_enum_when_it_is_ours_and_named_when_it_is_not() {
 /// macro made is external and named, and `macro_generated_target` counts only the **calls** to what a macro made.
 #[test]
 fn constructing_what_a_macro_made_is_not_a_body_left_unwalked() {
-    let (_copy, project) = policy("calls_generated_construction");
+    let project = policy();
     let built = graph_of(&project, "src/constructions.rs", "build_generated");
     assert_eq!(breakdown(&built).externals, 1);
     assert!(!built.stats.language.contains_key("macro_generated_target"));
@@ -333,7 +341,7 @@ fn constructing_what_a_macro_made_is_not_a_body_left_unwalked() {
 /// what is handed over has no edge and is counted. A def both called and passed has both edges, at their own sites.
 #[test]
 fn what_is_handed_over_is_a_passed_edge_or_a_count() {
-    let (_copy, project) = policy("calls_passed");
+    let project = policy();
     let file = "src/passed.rs";
     let edges = |graph: &Graph| -> Vec<(u32, bool)> {
         graph
@@ -417,7 +425,7 @@ fn what_is_handed_over_is_a_passed_edge_or_a_count() {
 /// counted `macro_generated_target` once per call; an unexpandable macro is `macro_not_expanded` once and loses what is in its arguments.
 #[test]
 fn generated_targets_derives_and_unexpanded_macros_are_counted() {
-    let (_copy, project) = policy("calls_macro_counters");
+    let project = policy();
     let file = "src/macros.rs";
     // two calls to `by_macro`, made by a project macro
     let graph = graph_of(&project, file, "calls_made_functions");
@@ -448,7 +456,7 @@ fn generated_targets_derives_and_unexpanded_macros_are_counted() {
 /// project macro that holds an unknown one are two losses.
 #[test]
 fn an_unexpanded_macro_is_counted_once_per_written_place() {
-    let (_copy, project) = policy("calls_unexpanded_places");
+    let project = policy();
     let file = "src/macros.rs";
     let count =
         |qualname: &str| graph_of(&project, file, qualname).stats.language["macro_not_expanded"];
@@ -461,7 +469,7 @@ fn an_unexpanded_macro_is_counted_once_per_written_place() {
 /// callee, which was dropped without a count before.
 #[test]
 fn a_project_macros_call_inside_an_external_macro_is_in_the_tree() {
-    let (_copy, project) = policy("calls_macro_in_macro");
+    let project = policy();
     let file = "src/macros.rs";
     for qualname in [
         "project_macro_around_external",
@@ -479,7 +487,7 @@ fn a_project_macros_call_inside_an_external_macro_is_in_the_tree() {
 /// A graph of a complete load has no `warning_*` and no `*_skipped`: the keys are absent when 0.
 #[test]
 fn a_clean_load_adds_nothing() {
-    let (_copy, project) = policy("calls_clean");
+    let project = policy();
     let graph = graph(&project, "src/calls.rs", "plain_calls", 0).unwrap();
     assert!(
         graph

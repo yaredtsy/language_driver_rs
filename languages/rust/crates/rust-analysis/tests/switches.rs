@@ -4,7 +4,7 @@
 use rust_analysis::{LoadOptions, Project};
 
 mod common;
-use common::{copy_of_fixture, snapshot};
+use common::{copy_of_fixture, one_load, snapshot};
 
 /// `LoadOptions` is `#[non_exhaustive]`: no struct literal outside the crate.
 #[allow(clippy::field_reassign_with_default)]
@@ -32,6 +32,7 @@ fn both_switches_are_off_by_default() {
 /// The `derive` fixture has a package with a `build.rs` and a proc-macro crate; `scripts` has a `build.rs`; `lock` has neither.
 #[test]
 fn what_the_switches_leave_out_is_counted_by_name() {
+    let _load = one_load();
     let derive = copy_of_fixture("derive", "switches_derive");
     let open_derive = |opts: &LoadOptions| {
         Project::open(&derive, &derive.join("app/src/lib.rs"), opts).expect("derive loads")
@@ -74,6 +75,7 @@ fn what_the_switches_leave_out_is_counted_by_name() {
 
 #[test]
 fn the_environment_is_the_globs_then_the_exact_files_outside_the_root() {
+    let _load = one_load();
     // root = a member folder of a workspace above it, and that workspace has a sibling: three manifests are outside the root
     let copy = copy_of_fixture("above", "switches_above");
     let member = copy.join("member");
@@ -90,6 +92,7 @@ fn the_environment_is_the_globs_then_the_exact_files_outside_the_root() {
 
 #[test]
 fn build_rs_is_watched_when_build_scripts_ran() {
+    let _load = one_load();
     let scripts = copy_of_fixture("scripts", "switches_env");
     let open = |opts: &LoadOptions| {
         Project::open(&scripts, &scripts.join("src/lib.rs"), opts)
@@ -111,6 +114,7 @@ fn build_rs_is_watched_when_build_scripts_ran() {
 /// a `Cargo.lock` into the project (RS3 §5, D38: the lock redirect covers it).
 #[test]
 fn a_build_run_writes_only_under_target() {
+    let _load = one_load();
     let copy = copy_of_fixture("derive", "switches_writes");
     let outside_target = |dir: &std::path::Path| {
         let mut files = snapshot(dir);
@@ -137,6 +141,7 @@ fn a_build_run_writes_only_under_target() {
 /// counters say what was cut, the proc macro's too when it was asked for (its dylib is made by the same run).
 #[test]
 fn a_build_that_fails_is_not_a_failed_load() {
+    let _load = one_load();
     let copy = copy_of_fixture("broken", "switches_broken");
     let open = |opts: &LoadOptions| {
         Project::open(&copy, &copy.join("app/src/lib.rs"), opts)
@@ -160,6 +165,7 @@ fn a_build_that_fails_is_not_a_failed_load() {
 /// the workspace folder and has one.
 #[test]
 fn a_path_dependencys_build_script_is_counted() {
+    let _load = one_load();
     let copy = copy_of_fixture("pathdep", "switches_pathdep");
     let app = copy.join("ws/app");
     let project =

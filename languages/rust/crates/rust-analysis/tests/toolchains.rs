@@ -16,7 +16,7 @@ use std::process::Command;
 use rust_analysis::{LoadOptions, Project, Warning, Why};
 
 mod common;
-use common::copy_of_fixture;
+use common::{copy_of_fixture, one_load};
 
 /// Runs the worker `name` of this program with `RUSTUP_TOOLCHAIN=toolchain` (or with none: `cargo test` sets it, and it beats a
 /// `rust-toolchain.toml`), and fails with its output when it fails. `CARGO` and `RUSTC` stay as `cargo test` sets them (the toolchain's own binaries, not
@@ -63,6 +63,7 @@ fn a_toolchain_without_rust_src_loads_with_a_warning() {
 #[test]
 #[ignore = "run by a_toolchain_without_rust_src_loads_with_a_warning"]
 fn worker_without_rust_src() {
+    let _load = one_load();
     if !is_worker() {
         return;
     }
@@ -88,6 +89,7 @@ fn a_toolchain_that_ignores_the_redirect_writes_a_lock_and_says_so() {
 #[test]
 #[ignore = "run by a_toolchain_that_ignores_the_redirect_writes_a_lock_and_says_so"]
 fn worker_lockfile_written() {
+    let _load = one_load();
     if !is_worker() {
         return;
     }
@@ -138,6 +140,7 @@ fn a_toolchain_that_is_not_installed_is_replaced_by_the_default_and_nothing_is_i
 #[test]
 #[ignore = "run by a_toolchain_that_is_not_installed_is_replaced_by_the_default_and_nothing_is_installed"]
 fn worker_not_installed() {
+    let _load = one_load();
     if !is_worker() {
         return;
     }
@@ -184,6 +187,7 @@ fn a_toolchain_below_the_minimum_is_replaced_by_a_newer_one() {
 #[test]
 #[ignore = "run by a_toolchain_below_the_minimum_is_replaced_by_a_newer_one"]
 fn worker_too_old() {
+    let _load = one_load();
     if !is_worker() {
         return;
     }

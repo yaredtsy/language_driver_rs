@@ -523,7 +523,7 @@ mod tests {
 
     #[test]
     fn what_every_site_of_every_policy_module_reaches() {
-        let (loaded, root) = policy("callee_snapshots");
+        let (loaded, root) = policy();
         let snapshots = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/callees");
         attached(&loaded, STYLE, |sem| {
             for file in loaded.files() {
@@ -537,7 +537,7 @@ mod tests {
     /// are not open (a concrete type, an impl's method, what the engine sees through).
     #[test]
     fn open_row_by_row() {
-        let (loaded, _root) = policy("callee_open");
+        let (loaded, _root) = policy();
         attached(&loaded, STYLE, |sem| {
             let opens = |file: &str, qualname: &str| -> Vec<Option<Open>> {
                 let func = sem.entry(file, qualname, 0).unwrap();
@@ -610,7 +610,7 @@ mod tests {
     /// method, an impl's method and `std`'s trait method are what they were. Written before the run.
     #[test]
     fn a_required_trait_method_is_unresolved_and_nothing_else_moves() {
-        let (loaded, _root) = policy("callee_required");
+        let (loaded, _root) = policy();
         attached(&loaded, STYLE, |sem| {
             let answers = |file: &str, qualname: &str| -> Vec<String> {
                 let func = sem.entry(file, qualname, 0).unwrap();
@@ -698,7 +698,7 @@ mod tests {
     /// reason for each way a site has no target.
     #[test]
     fn found_kinds() {
-        let (loaded, _root) = policy("callee_found");
+        let (loaded, _root) = policy();
         attached(&loaded, STYLE, |sem| {
             let first = |file: &str, qualname: &str| {
                 let func = sem.entry(file, qualname, 0).unwrap();
@@ -750,7 +750,7 @@ mod tests {
     /// without arguments, a built-in derive's, and a free function. Impls on builtin types and the several trait impls of one type must not share a name.
     #[test]
     fn external_names_follow_the_table() {
-        let (loaded, _root) = policy("callee_names");
+        let (loaded, _root) = policy();
         attached(&loaded, STYLE, |sem| {
             let externals = |file: &str, qualname: &str| -> Vec<String> {
                 let func = sem.entry(file, qualname, 0).unwrap();

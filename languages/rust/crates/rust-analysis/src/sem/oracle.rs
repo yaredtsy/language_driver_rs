@@ -238,7 +238,7 @@ fn is_required_trait_method(
 
 #[test]
 fn the_engines_call_hierarchy_agrees_with_our_sites_on_the_policy_workspace() {
-    let (loaded, root) = super::testing::policy("oracle_policy");
+    let (loaded, root) = super::testing::policy();
     let tally = compare(&loaded, &root);
     // The count of each class is pinned: a fixture that adds a row of a class changes it on purpose, and a new kind of difference is not counted, it fails
     // in `compare`. The spike's "10 differences" were the three classes the plan named; the nested items, which it called allowed, make 13.
@@ -264,7 +264,7 @@ fn the_engines_call_hierarchy_agrees_with_our_sites_on_the_policy_workspace() {
 /// `Holder::run`), and no other class.
 #[test]
 fn the_engines_call_hierarchy_agrees_with_our_sites_on_the_context_workspace() {
-    let (loaded, root) = super::testing::workspace("context", "oracle_context");
+    let (loaded, root) = super::testing::context();
     let tally = compare(&loaded, &root);
     assert_eq!(
         (

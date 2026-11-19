@@ -10,7 +10,7 @@ use rust_analysis::{
 };
 
 mod common;
-use common::{copy_of_fixture, tmp_root};
+use common::{copy_of_fixture, one_load, tmp_root};
 
 fn open(root: &Path, file: &str) -> Project {
     Project::open(root, Path::new(file), &LoadOptions::default()).expect("the fixture loads")
@@ -54,6 +54,7 @@ fn json(frame: &Frame) -> String {
 /// is named with the caller's prefix and a def named by where it is is not.
 #[test]
 fn a_policy_entry_through_the_wire_unmerged_and_merged() {
+    let _load = one_load();
     assert_eq!(
         WIRE_FORMAT_VERSION, 2,
         "the format the snapshots were written for"

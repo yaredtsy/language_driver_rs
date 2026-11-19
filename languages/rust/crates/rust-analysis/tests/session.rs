@@ -7,6 +7,7 @@
 //! once in each.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use analyzer_testkit::graph::check_invariants;
 use rust_analysis::{
@@ -15,7 +16,7 @@ use rust_analysis::{
 };
 
 mod common;
-use common::{CONTEXT_ENTRIES, POLICY_ENTRIES, copy_of_fixture};
+use common::{CONTEXT_ENTRIES, POLICY_ENTRIES, copy_of_fixture, shared};
 
 fn options() -> Options {
     Options::new(MarkerStyle::docstring("ID"))
@@ -58,7 +59,14 @@ fn policy_entries() -> Vec<(&'static str, &'static str, u16)> {
     entries
 }
 
-fn cases() -> Vec<Case> {
+/// The two workspaces, opened once for this test program and used by one test at a time (`common::one_load` says why). The policy one is first. No test
+/// writes to them.
+fn cases() -> MutexGuard<'static, Vec<Case>> {
+    static CASES: OnceLock<Mutex<Vec<Case>>> = OnceLock::new();
+    shared(&CASES, open_cases)
+}
+
+fn open_cases() -> Vec<Case> {
     vec![
         open("policy", "policy", policy_entries()),
         open(
@@ -244,7 +252,7 @@ fn unbounded(session: &Session, entry: (&str, &str, u16)) -> Node {
 #[test]
 fn with_no_budget_a_session_gives_the_graph_call_graph_gives() {
     let mut asked = 0;
-    for case in cases() {
+    for case in cases().iter() {
         for &(file, qualname, occurrence) in &case.entries {
             let entry = Entry::Def {
                 qualname,
@@ -275,7 +283,8 @@ fn with_no_budget_a_session_gives_the_graph_call_graph_gives() {
 #[test]
 fn a_budget_changes_the_graph() {
     // the check above is empty if a session ignores its budget: `recurse_a` has a callee, and at depth 0 nothing of it is walked
-    let case = open("budget", "policy", Vec::new());
+    let cases = cases();
+    let case = &cases[0];
     let none = request(
         &case.session,
         "src/calls.rs",
@@ -308,7 +317,7 @@ fn a_budget_changes_the_graph() {
 fn a_request_for_each_cut_def_stitches_to_the_tree_of_one_request_with_no_budget() {
     let mut redrawn: Vec<String> = Vec::new();
     let mut frontier_at = [0u32; 3];
-    for case in cases() {
+    for case in cases().iter() {
         for &(file, qualname, occurrence) in &case.entries {
             let entry = (file, qualname, occurrence);
             let name = format!("{} {file}:{qualname}", case.name);
@@ -366,7 +375,8 @@ fn a_request_for_each_cut_def_stitches_to_the_tree_of_one_request_with_no_budget
 fn without_the_ancestor_rule_a_cycle_is_never_finished() {
     // the recursion exception is needed, not a courtesy: `recurse_a` cut at `recurse_b`, `recurse_b` asked for alone draws `recurse_a` expanded, which is
     // cut again
-    let case = open("cycle", "policy", Vec::new());
+    let cases = cases();
+    let case = &cases[0];
     let entry = ("src/calls.rs", "recurse_a", 0);
     let budget = Budget::new(Some(1), None);
     let error = stitched(&case.session, entry, &budget, false).unwrap_err();

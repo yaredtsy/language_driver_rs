@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 /// Every file under `dir` with its text (lossy: all of them are text, and a failed comparison is then readable), by path relative to `dir`
 /// with `/`.
@@ -187,4 +188,24 @@ pub(crate) fn open_counts_of(open: &BTreeMap<String, u64>) -> String {
         .map(|(kind, count)| format!("{kind} {count}"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+static OWN_LOAD: Mutex<()> = Mutex::new(());
+
+/// Taken first by a test that loads a project of its own, and held to its end: one such load at a time in a test program. A load of the engine reads the
+/// standard library, which is most of what it costs (about 500 MB), and the test harness runs as many tests at once as the machine has cores, so eight
+/// loads at once were 5 GB. The tests that ask the same of one fixture share a load instead (`shared`).
+pub(crate) fn one_load() -> MutexGuard<'static, ()> {
+    OWN_LOAD.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The one `T` of a test program that every test asking for it uses, made by `make` the first time and used by one test at a time (a failed test does not
+/// poison it for the others). The cell is the caller's, a `static` of its own type.
+pub(crate) fn shared<T>(
+    cell: &'static OnceLock<Mutex<T>>,
+    make: impl FnOnce() -> T,
+) -> MutexGuard<'static, T> {
+    cell.get_or_init(|| Mutex::new(make()))
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
 }

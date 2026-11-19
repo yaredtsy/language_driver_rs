@@ -445,6 +445,7 @@ mod tests {
     /// has a function a `macro_rules!` makes. `app::run` calls each of them, a `String` function and a `String` method.
     #[test]
     fn owners_row_by_row_with_the_root_over_the_whole_fixture() {
+        let _load = crate::sem::common::one_load();
         let copy = common::copy_of_fixture("owner", "owner_whole");
         let loaded = open(&copy, &copy.join("ws/app/Cargo.toml"));
         let owners = call_owners(&loaded, "ws/app/src/lib.rs");
@@ -476,6 +477,7 @@ mod tests {
 
     #[test]
     fn a_path_dependency_outside_the_root_is_external() {
+        let _load = crate::sem::common::one_load();
         let copy = common::copy_of_fixture("owner", "owner_app");
         let app = copy.join("ws/app");
         let loaded = open(&app, &app.join("Cargo.toml"));
@@ -509,6 +511,7 @@ mod tests {
     /// §3, build scripts: what a `build.rs` writes into `OUT_DIR` and the crate `include!`s is not there while they are off, and is there when on.
     #[test]
     fn a_build_script_adds_the_code_it_writes_only_when_asked() {
+        let _load = crate::sem::common::one_load();
         let copy = common::copy_of_fixture("scripts", "scripts_effect");
         let manifest = copy.join("Cargo.toml");
 
@@ -536,6 +539,7 @@ mod tests {
     /// §3, proc macros: `#[derive(Hello)]` gives `Thing::hello`, which a call finds only when the proc-macro server ran.
     #[test]
     fn a_derive_expands_only_when_asked() {
+        let _load = crate::sem::common::one_load();
         let copy = common::copy_of_fixture("derive", "derive_effect");
         let manifest = copy.join("app/Cargo.toml");
 
@@ -562,6 +566,7 @@ mod tests {
     /// ENGINE.md, S-RS3: a load that went on with `--no-deps` keeps `std` and loses every call between the workspace's own crates.
     #[test]
     fn without_dependencies_std_resolves_and_a_call_into_a_sibling_member_does_not() {
+        let _load = crate::sem::common::one_load();
         let copy = common::copy_of_fixture("offline", "offline_effect");
         let loaded = open(&copy, &copy.join("app/Cargo.toml"));
         assert!(
@@ -587,6 +592,7 @@ mod tests {
     #[test]
     #[ignore = "by hand: RS_WORKER=1 RUSTUP_TOOLCHAIN=<toolchain> cargo test ... worker_measure -- --ignored --nocapture"]
     fn worker_measure() {
+        let _load = crate::sem::common::one_load();
         if std::env::var_os("RS_WORKER").is_none() {
             return;
         }
@@ -632,6 +638,7 @@ mod tests {
     /// Rung 4: a file with no manifest is a crate of its own, and a call into its `mod` child resolves.
     #[test]
     fn a_lone_file_resolves_a_call_into_its_mod_child() {
+        let _load = crate::sem::common::one_load();
         let copy = common::copy_of_fixture("lone", "origin_lone");
         let root = crate::paths::absolute(&copy).unwrap();
         let loaded = load(&root, None, &root.join("main.rs"), &LoadOptions::default())
@@ -693,6 +700,7 @@ mod tests {
     #[test]
     #[ignore = "run by with_cargo_off_the_path_the_engines_rule_finds_it_and_std_resolves"]
     fn worker_empty_path() {
+        let _load = crate::sem::common::one_load();
         if std::env::var_os("RS_WORKER").is_none() {
             return;
         }
@@ -757,6 +765,7 @@ mod tests {
     #[test]
     #[ignore = "run by without_cargo_the_readers_crate_graph_resolves_the_projects_own_calls"]
     fn worker_without_cargo() {
+        let _load = crate::sem::common::one_load();
         if std::env::var_os("RS_WORKER").is_none() {
             return;
         }

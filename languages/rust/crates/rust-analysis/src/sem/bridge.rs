@@ -517,7 +517,7 @@ mod tests {
     /// kind, range) back, and the way back (`bridge` of the engine's def) is the same `Func`. The exceptions are stated, each with its reason.
     #[test]
     fn every_def_the_outline_lists_is_found_and_named_the_same() {
-        let (loaded, root) = policy("join_policy");
+        let (loaded, root) = policy();
         let files = loaded.files();
         assert_eq!(
             files,
@@ -644,7 +644,7 @@ mod tests {
     /// outline lists is found by `entry`, `describe` of it gives the same (file, qualname, occurrence, kind, range) back, and the way back is the same `Func`.
     #[test]
     fn every_def_of_the_context_workspace_is_found_and_named_the_same() {
-        let (loaded, root) = crate::sem::testing::workspace("context", "join_context");
+        let (loaded, root) = crate::sem::testing::context();
         let mut joined = 0;
         attached(&loaded, STYLE, |sem| {
             for file in loaded.files() {
@@ -692,7 +692,7 @@ mod tests {
     /// graph, a def that is not there.
     #[test]
     fn an_entry_that_is_not_one_is_none() {
-        let (loaded, _root) = policy("entry_none");
+        let (loaded, _root) = policy();
         attached(&loaded, STYLE, |sem| {
             let none = |file: &str, qualname: &str, occurrence: u16| {
                 assert!(
@@ -735,7 +735,7 @@ mod tests {
     /// D34, as TypeScript's `describe`: a marker names the def that owns it; a later def of the same file with the same marker is named by where it is.
     #[test]
     fn describe_names_a_def_by_its_marker_or_by_where_it_is() {
-        let (loaded, _root) = policy("describe");
+        let (loaded, _root) = policy();
         attached(&loaded, STYLE, |sem| {
             let id = |file: &str, qualname: &str, occurrence: u16| {
                 let func = sem.entry(file, qualname, occurrence).unwrap();
@@ -789,7 +789,7 @@ mod tests {
     /// owned by its enum. A project def's owner holds where its **name** is, which is the outline's `name_range`.
     #[test]
     fn the_owner_of_every_kind_of_def_holds_the_file_and_where_its_name_is() {
-        let (loaded, root) = policy("owner_kinds");
+        let (loaded, root) = policy();
         attached(&loaded, STYLE, |sem| {
             let shapes = disk_outline(&root, "src/shapes.rs");
             let name_of = |qualname: &str| {
@@ -885,7 +885,7 @@ mod tests {
     /// by the defining crate, from its root, without the crate's name.
     #[test]
     fn a_def_that_is_not_project_code_comes_back_external_with_its_cause() {
-        let (loaded, _root) = policy("bridge_external");
+        let (loaded, _root) = policy();
         attached(&loaded, STYLE, |sem| {
             let external = |item| match sem.bridge(item) {
                 Bridged::External {

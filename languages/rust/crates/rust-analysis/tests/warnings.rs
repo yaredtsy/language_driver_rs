@@ -7,7 +7,7 @@ use std::process::Command;
 use rust_analysis::{LoadOptions, OpenError, Project, Warning};
 
 mod common;
-use common::copy_of_fixture;
+use common::{copy_of_fixture, one_load};
 
 /// The folder name of the sysroot the project's toolchain has, when its standard library source is missing; `None` when the source is there.
 /// Read the way a user would: `rustc --print sysroot` in the folder, and the source where rustup puts it (or `RUST_SRC_PATH`).
@@ -32,6 +32,7 @@ fn codes(project: &Project) -> Vec<&'static str> {
 /// reads from the disk, so it checks the right thing on both (CI's `rust-toolchain.toml` has no `rust-src`; a developer's usually has).
 #[test]
 fn a_missing_rust_src_is_a_warning_and_a_complete_toolchain_is_silent() {
+    let _load = one_load();
     let copy = copy_of_fixture("lock", "warnings_lock");
     let app = copy.join("app");
     let project =
@@ -49,6 +50,7 @@ fn a_missing_rust_src_is_a_warning_and_a_complete_toolchain_is_silent() {
 /// dependencies. The load succeeds, and says so.
 #[test]
 fn an_unfetchable_dependency_is_a_warning_and_not_an_error() {
+    let _load = one_load();
     let copy = copy_of_fixture("offline", "warnings_offline");
     let project = Project::open(&copy, &copy.join("app/src/lib.rs"), &LoadOptions::default())
         .expect("a load without dependencies is still a load");
@@ -75,6 +77,7 @@ fn an_unfetchable_dependency_is_a_warning_and_not_an_error() {
 
 #[test]
 fn a_file_that_is_not_there_is_the_one_error() {
+    let _load = one_load();
     let copy = copy_of_fixture("lock", "warnings_missing");
     let error = Project::open(&copy, Path::new("app/src/nope.rs"), &LoadOptions::default())
         .err()
@@ -85,6 +88,7 @@ fn a_file_that_is_not_there_is_the_one_error() {
 /// A `build.rs` that panics fails the build run. The load succeeds, and says the build failed, with cargo's message.
 #[test]
 fn a_failed_build_is_a_warning_and_not_an_error() {
+    let _load = one_load();
     let copy = copy_of_fixture("broken", "warnings_broken");
     let file = copy.join("app/src/lib.rs");
     let project = Project::open(&copy, &file, &options_with_build_scripts())
