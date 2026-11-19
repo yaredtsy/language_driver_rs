@@ -1181,3 +1181,38 @@ with nothing changed 3.6 to 10 ms (40 calls, half a second apart, none rebuilt).
 `node_modules` took in the design's probe: step 2's measurement counts the stamped paths by kind (the lock-file names beside every
 `node_modules` the engine asked for, most of them missing, are the first suspect). `TaskDetailPanel` is unchanged: 141 call, 2 construct,
 235 external, 86 unresolved, 18 passed, 90 contexts.
+
+## TS5 step 6 as measured, and the sweep on four projects (reviewer, 2026-11-19)
+
+All in the dev profile (`opt-level = 1`, dependencies 3), on the reviewer's machine, with other builds running: read the times as
+upper bounds. Run with the commands in `tests/session_refresh.rs`, `src/sem/tests.rs` (`measure_*`) and `tests/sweep.rs`.
+
+**Step 6 on V-NOC** (`TaskDetailPanel`'s program; `716d33a`, `2b0ba62`):
+
+| What | Number |
+|---|---|
+| stamped paths | 1,101 (405 files, 127 directories, 569 missing); 112 `node_modules` folders listed, 2 exist, 16 lock-file names beside them |
+| seen paths after open | 9,145, of them 8,059 under `node_modules` (2,213 files that exist); stamping those 2,213 takes 3.5 ms, all 8,059 9.9 ms |
+| seen paths after every def walked | 55 more than after open, **all under `node_modules`** (`@xyflow/system` lookups); the stamped list is equal before and after, so a walk adds nothing a session must watch. The small project of commit 1 added none |
+| `refresh`, nothing changed (200 calls) | least 1.09 ms, median 1.25 ms, greatest 7.7 ms (3.6 to 10 ms before step 1b) |
+| `reload`; first graph (cold); second graph (warm) | 106 ms; 79 ms; 1.5 ms (482 edges): the first answer after a saved file is about 185 ms |
+
+`TaskDetailPanel` unchanged: 141 call, 2 construct, 235 external, 86 unresolved, 18 passed, 90 contexts. Its 86 split (B2): a
+parameter 19, a call's result 64, `this` 0, other 3.
+
+**The sweep, depth 1** (every def of every file of `Project::files()`, one graph each; `937e0a3`). Memory is the process's resident
+size. The last four columns are `function_typed_value` by origin:
+
+| Project | Files | Defs | Open | Memory after open / after all | All graphs | `decl_not_in_outline` | parameter | call result | `this` | other |
+|---|---|---|---|---|---|---|---|---|---|---|
+| V-NOC frontend | 395 | 1,476 | 0.50 s | 102 / 124 MB | 0.79 s | 0 | 177 | 799 | 7 | 52 |
+| a private codebase on the owner's machine (no config, no packages) | 1,803 | 13,772 | 0.25 s | 114 / 158 MB | 3.8 s | 0 | 1,981 | 1,007 | 144 | 999 |
+| TypeScript 5.9.3, `src/compiler` (its `tsconfig.json`) | 77 | 12,059 | 0.13 s | 70 / 76 MB | 2.1 s | 0 | 2,252 | 1,616 | 17 | 3,398 |
+| vscode `src` at `59a929a7` (no packages) | 11,841 | 203,738 | 2.5 s | 397 / 272 MB | 443 s | **6, in 4 entries (H15)** | 39,813 | 20,876 | 70,118 | 18,118 |
+
+- **H14 stops two of the four**: the private codebase and vscode panic at `a[Symbol.iterator]()`. Their rows were taken with that
+  one name read patched out by hand in the reviewer's checkout and restored after (`git checkout`); nothing else differed.
+- **`any_or_untyped` is large where no package is installed** (17,620 in the private codebase, 14,912 in vscode): a bare checkout's
+  imports are `any`. Their unresolved counts say less than V-NOC's.
+- **H16:** vscode's slowest entries take 2 to 3.6 s for 5 to 20 contexts; the mean is 2.2 ms.
+- TypeScript's `main` branch is the Go port now; 5.9.3 is the last TypeScript source of the compiler.

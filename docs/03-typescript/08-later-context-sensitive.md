@@ -121,4 +121,17 @@ split by what holds the function (a parameter or prop, a binding made from a cal
 **Decided (D43, 2026-11-19):** the design of C3 is written after that split has been counted on the wider corpus
 ([`10-review-fixes.md`](10-review-fixes.md) §6.1), not before.
 
+**The split, counted (2026-11-19, the sweep at depth 1; `languages/typescript/ENGINE.md`, "TS5 step 6 as measured"):**
+
+| Project | `function_typed_value` | a parameter (C3) | a call's result (C4) | `this` (C5) | other |
+|---|---|---|---|---|---|
+| V-NOC frontend (hooks, stores) | 1,035 | 17% | 77% | 1% | 5% |
+| a private codebase (a CLI, React terminal UI) | 4,131 | 48% | 24% | 3% | 24% |
+| TypeScript's compiler (closures in one big function) | 7,283 | 31% | 22% | 0% | 47% |
+| vscode (classes, services, events) | 148,925 | 27% | 14% | 47% | 12% |
+
+No step of §3 answers most of every project: parameters lead in one, a call's result in one, `this` in one. "Other" is large in the
+compiler because its functions are closures inside `createTypeChecker` that hold each other; what holds them is a local `const` or
+`let`, not a call. C3 is not the obvious first step it looked like; the design starts from these four columns.
+
 Next: [`../04-rust/README.md`](../04-rust/README.md)

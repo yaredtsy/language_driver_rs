@@ -1,7 +1,7 @@
 # TS5 step 6: a reload, and the disk
 
-Status: **design, decided; step 1 built** (`d3b394e`, reviewed 2026-11-19: accepted, with three changes to the list of stamped paths
-still to build, §8 step 1b). Written by the reviewer, 2026-11-17, and revised the same day after its review. It answers row 6 of
+Status: **built** (`d3b394e` step 1, `716d33a` step 1b, `2b0ba62` step 2; reviewed 2026-11-19, accepted; the numbers are in
+`languages/typescript/ENGINE.md`, "TS5 step 6 as measured"). Written by the reviewer, 2026-11-17, and revised the same day after its review. It answers row 6 of
 [`07-ts5-driver-needs.md`](07-ts5-driver-needs.md) §7 and D41 (an open `Session` follows the disk by itself, before each request;
 [`10-review-fixes.md`](10-review-fixes.md) §5). **Text the editor has not saved is not read, for now (D42):** `set_text` and the overlay are
 not built, and what was designed for them is kept in §10. The `[check]` and `[measure]` marked **[ran]** were run on the pinned tsrs

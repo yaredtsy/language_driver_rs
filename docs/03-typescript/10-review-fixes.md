@@ -282,14 +282,14 @@ only).
 | H9 | **built, `d727c8e`.** **the warning of D34, where a person sees it.** `DefMatch` gains `owns_marker: bool` (additive: it is `#[non_exhaustive]`, `lib.rs:373`, checked), so a driver can say "this def carries `ID: SAME`, but `a` at line N owns it" without parsing the file again. `typescript-cli calls … --id X` picks the def that **owns** `X` (its id is `X`); a carrier that does not own it is not picked by `--id`, and the CLI prints which def owns it. The tree does not change | `tests/duplicate_marker.rs`: `defs_named` reports `owns_marker` for both; a CLI test of `--entry b --id SAME` (the message names `a` and its line) |
 | H11 | **built, `6c1dfc4` (D40; reviewed, accepted).** **(found at H10, 2026-11-17; decided by the owner the same day as recommended, D40) a named function expression called in place is not entered.** `(function named() { h(); })()`: the outline makes `named` a def (the engine's rule: a function expression with a name), so the enclosing body stops at it, and the call is `Unresolved` (since H10 `anonymous_function_called`, a reason that is wrong for it: the function has a name and a def). So `h` is drawn in no tree but `named`'s own, which only a request for `named` reaches; the coverage sweep cannot see it because it enters every def. The engine gives no answer either: its call hierarchy takes the callee, a `ParenthesizedExpression`, which is no declaration and has no symbol, and drops the call (`tsrs_ls/src/callhierarchy.rs:936`). **Recommended:** when the callee, under parentheses, assertions and `!`/`void`, is a function expression that `def_of` holds, the edge is `Call` to that def: the callee is the def's own node, so it is not a guess (rule 8), and it is what the row `nested` says for a named function (it appears where it is called). An anonymous one stays `anonymous_function_called`. Where it is common: UMD and bundler wrappers (`(function webpackUniversalModuleDefinition(root, factory) {…})(this, …)`) | `file-entry/src/iife-forms.ts`: the named case is a `Call` to `named` and the module's tree shows `named ▸ h`; the four anonymous ones unchanged; V-NOC and postcss goldens unchanged unless they hold a named IIFE (say which) |
 | H12 | **built, `c6835fe` (reviewed, accepted; (a) decided by the owner, D40 extended).** **(found at H11's review, 2026-11-17) two more defs written in place and reached without a direct call.** (a) `new (class Named { constructor() { g(); } })()`: the class expression is a def, and the `new` is `Unresolved(no_declaration)`, so the constructor's `g` is drawn under no caller (found by the coding session). (b) `(function wrapped() { g(); }).call(this)` and `.apply`: the site resolves to the external `Function.call`, and `wrapped`'s `g` is in no tree under the caller and **in no counter**. `uncovered_call_apply` counts a name before `.call`, not a function written there, so this is a rule 8 gap. Anonymous forms are fine: their calls are the enclosing body's. **Recommended:** (a) is D40 for a class: when the class expression of a `new`, under parentheses and assertions, is a def, the site is a `Construct` through `walk::construction`, like `new C()`. This is the owner's call (D40 names function expressions only). (b) is counted in `uncovered_call_apply`, as a name is, with no new decision (D22 step 5: call/apply is counted, not drawn) | a fixture for each, (a) in both forms, `new (class N {})()` and `new (class {})()`; V-NOC and postcss goldens unchanged |
-| H13 | **found by the owner, 2026-11-19; decided (D43: `Unresolved(function_typed_value)`, no new def); not built.** a call that resolves to a **method or accessor signature in a type literal** (`type Ops = { m(): void }`), or to an accessor signature of an interface, panics in a debug build and is `Unresolved(decl_not_in_outline)` in a release build. §6.1 | §6.1 (c): one fixture per declaration kind |
-| H14 | **found by the owner, 2026-11-19; not built.** a library method with a computed name (`a[Symbol.iterator]()`) panics inside the engine (`Node.Text` on a `ComputedPropertyName`), in any build: `classify` reads the external's name with a panicking accessor. §6.2 | §6.2 (c), and the check of (b) |
+| H13 | **built** (655faea rule and no panic, 53422f3 the split, 937e0a3 the sweep; reviewed 2026-11-19, accepted). **found by the owner, 2026-11-19; decided (D43: `Unresolved(function_typed_value)`, no new def).** a call that resolves to a **method or accessor signature in a type literal** (`type Ops = { m(): void }`), or to an accessor signature of an interface, panics in a debug build and is `Unresolved(decl_not_in_outline)` in a release build. §6.1 | §6.1 (c): one fixture per declaration kind |
+| H14 | **found by the owner, 2026-11-19; not built; the fix revised at the review (§6.2: typed views, one name spelling shared with the outline, clippy bans).** a library method with a computed name (`a[Symbol.iterator]()`) panics inside the engine (`Node.Text` on a `ComputedPropertyName`), in any build: `classify` reads the external's name with a panicking accessor. §6.2 | §6.2 (c), and the check of (b) |
 
 **Rust note (H1).** A `std::sync::Mutex` locked twice by one thread does not return: the documentation leaves it at "will not return
 (it might panic or deadlock)". There is no error to catch, and `Cancel` is never checked, because the thread is waiting inside `lock`.
 A `Cell<bool>` costs one byte and turns the wait into a message with a line number, in the builds the tests run.
 
-### 6.1 H13: a method signature in a type literal (found by the owner, 2026-11-19; decided, D43; not built)
+### 6.1 H13: a method signature in a type literal (found by the owner, 2026-11-19; decided, D43; built, reviewed 2026-11-19)
 
 **What happened.** The owner ran the debug `typescript-cli calls` on a real file and it panicked:
 `the engine's declaration in …/fsOperations.ts is not a def of the outline` (`sem/resolve.rs:488`). The file declares
@@ -393,18 +393,44 @@ handle: `text`, `expression`, `initializer`, `arguments`, `tag_name`, `children`
 (24 in `ast.rs`). `typescript-analysis` calls these about 80 times. Most calls are guarded by a kind check written beside them, and
 this one was not: a guard by hand at each call is the rule that failed.
 
-**The fix.**
+**The fix, revised after the review of 2026-11-19** (the first version, a wrapper file and a grep, guarded each call by hand again).
 
-- **(a)** The name of an external declaration, and every name read from a node (`resolve.rs` `classify` and `qualified_name`,
-  `handed.rs`, `collect.rs`), goes through one function in `sem` that answers for every kind a name can be: identifier, private
-  identifier, string and numeric literal (as the outline spells them), and **a computed name as it is written** (`[Symbol.iterator]`,
-  so `Array.[Symbol.iterator]`, the outline's spelling of the same thing in project code), and `None` for anything else.
-- **(b)** The engine's panicking accessors are called in **one file** of `sem` only, each behind a check of the node's kind that
-  answers `None` where the engine would panic; every other file calls those. `scripts/check-all.sh --static` fails when one of the
-  listed accessor names is called anywhere else in `typescript-analysis/src`. Then a new call cannot skip the guard.
-- **(c)** Fixtures: a library method with a computed name, called (`[Symbol.iterator]`, `[Symbol.asyncIterator]`, `[Symbol.dispose]`),
-  and the same in a `.d.ts` of the project and in a file outside the root.
-- **(d)** The sweep of H13 (d) runs on the owner's private codebase, where this was found, before the next real project.
+- **(a) Typed views, the kind checked once.** A module of `sem` (`sem/view/`) holds a view for each kind of node the analysis reads
+  (`MethodDecl`, `CallExpr`, `PropertyAccess`, …): `View::cast(node) -> Option<View>` checks the kind once, and every accessor of a
+  view is total, because the type it lives on says which kinds the engine's accessor handles. This is the rust-analyzer pattern: an
+  untyped tree underneath, typed views on top.
+- **(b) One spelling of a name, shared with the outline.** `typescript-syntax` already spells a member's name from its written text
+  (`outline.rs` `name_text`: `[Symbol.iterator]` as written, a string that is an identifier without its quotes). It exports that
+  rule, and `sem` spells every name it builds (an external's, `qualified_name`'s) by calling it on the name's text. One
+  implementation, so rule 10 holds by construction: `Array.[Symbol.iterator]` is spelled as `K.[Symbol.iterator]` already is. Not a
+  structural rendering: the names already stored are the written text.
+- **(c) The risky methods banned by type, not by grep.** `clippy.toml` of `typescript-analysis` lists the engine's panicking accessors
+  under `disallowed-methods` (paths of `tsrs_ast::ast::Node`, so `text` of another type is not matched); only `sem/view/` allows them.
+  Clippy runs with `-D warnings`, so a new raw call fails the build. Banning the type `Node` itself outside the views is the end state
+  (step H17), not this step.
+- **(d) A walk that proves the views total.** A test walks every node of every bundled library file and of the fixtures, tries every
+  cast, and on success calls every accessor. It is the drift check of the next engine bump too: when tsrs stops handling a kind a
+  view lets through, this test panics before a user does.
+- **(e) A guard that answers `None` is counted.** A trial cast that fails is normal and silent. An accessor that met a kind it does
+  not handle where the code expected one is a missing edge: counted in `Stats.language` as `engine_kind_unhandled`, failed on by the
+  tests' helper and by the sweep, as `decl_not_in_outline` is.
+- **(f) Fixtures:** a library method with a computed name, called (`[Symbol.iterator]`, `[Symbol.asyncIterator]`, `[Symbol.dispose]`),
+  the same in a `.d.ts` of the project and in a file outside the root.
+
+**Not here, and why.** A separate boundary crate that alone depends on tsrs (Cargo would enforce it) was weighed: the checker hands
+back raw nodes too, so that crate would own all of `sem` (6,127 lines). The views give the same guarantee inside `sem` once H17 bans
+the raw type. An engine panic deep inside tsrs is not ours to catch (a caught panic can leave the engine's arena half written): the
+driver runs the analyzer in a process it supervises, so one panic costs one request. That belongs to the driver contract (`vnoc`).
+
+### 6.3 H15, H16, H17 (found by the reviewer's sweeps, 2026-11-19; not built)
+
+- **H15: four vscode test files count `decl_not_in_outline`**, each at a construction `new class extends mock<I>() { }` (`mock`
+  returns `Ctor<T>`, an interface with a construct signature), e.g. `vs/editor/contrib/suggest/test/browser/wordDistance.test.ts`
+  line 68, at vscode `59a929a7`. Not reproduced in a small file by the reviewer (five shapes tried); reduce it from the real file.
+- **H16: some single entries of vscode take 2 to 3.6 s** for 5 to 20 contexts (`AITextSearchHeadingImpl.fileCount` 3.2 s with 5),
+  while the median entry takes about 2 ms. A cost that grows with the project, not the entry: find it (a profile of one such entry).
+- **H17: the type `Node` only in `sem/view/`.** `disallowed-types` for the engine's node outside the views; 112 signatures of `sem`
+  name `P<Node>` today. After H14, as its own step: a mechanical change of every signature, with no answer changing.
 
 ## 7. The stack
 
