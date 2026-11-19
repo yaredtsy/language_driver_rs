@@ -130,7 +130,7 @@ A file whose bytes are not UTF-8 gets `change_file(id, None)`, as it had no text
 | an environment input (`Project::environment_inputs()`) | a glob (`**/Cargo.toml`, ...) is resolved at the load to the name in the project root and in each package root under it, **missing ones kept** (so a `rust-toolchain.toml` created is seen), plus any file of that name the `Vfs` holds in the project; an exact absolute path (a manifest outside the root) as it is | a reload |
 | the file the session was opened from | its own stamp, kept when missing | appearing or vanishing is a reload (a session is not loaded around a file that is not there: §3 point 2); a save is an ordinary `.rs` save |
 | a `.rs` file created or deleted | deleted: its stamp goes from present to missing; created: found by listing a changed folder | at a target path (`should_refresh_for_change`, `sem/targets.rs`, copied with its plain `ends_with`; `additional_paths` empty, the input stamps cover those names) a reload, else the fast path |
-| **a package created under the root (4b, found at the step 4 review)** | the folders from the project root down to each package root are stamped too; a new folder found in one is walked (with `target/` and `.git` left out) for an input file | a reload. Without it, a crate added under `members = ["crates/*"]` (no root manifest edit) was missed by `refresh` and found by `reload` (probed 2026-11-19) |
+| **a package created under the root (4b, found at the step 4 review; 4c)** | the folders from the project root down to each package root are stamped too; a new folder found in one is walked (with `target/` and `.git` left out) for an input file | a reload. Without it, a crate added under `members = ["crates/*"]` (no root manifest edit) was missed by `refresh` and found by `reload` (probed 2026-11-19). **4c (found at the 4b review):** only a sub-folder that is **new** is walked. 4b walked every sub-folder that was not stamped, so a folder that was there at the load and is no package's (a `vendor/` crate, a `fuzz/` crate the workspace excludes) was walked whenever the root changed, and its `Cargo.toml` made every file created at the root (`notes.md`) a reload (probed). A scout keeps the names of its sub-folders as they were at its last look; a name it did not have is new |
 
 A reload starts a cold database: the next request costs what the first did (3 s on `core/`, 6 s on the bigger workspace), and the one
 after is warm again.
@@ -139,8 +139,8 @@ after is warm again.
 system's clock tick is not seen (APFS and ext4 keep nanoseconds, so in practice a person cannot do it; FAT keeps two seconds). The tests
 change a file's length.
 
-**For the owner, at RS5's design:** point 2 is TypeScript's answer (D41 b) carried over. A reload is seconds here, 241 ms there; say if
-Rust should keep its old database when a reload fails.
+**Answered (D46, owner, 2026-11-19):** point 2 is TypeScript's answer (D41 b) carried over: a reload that fails drops the old database.
+A driver may offer a manual re-sync through the public `Session::reload()`.
 
 ## 4. Cancel
 
@@ -154,6 +154,22 @@ If it is not enough: the engine's own way is a second thread that requests cance
 `Cancelled::catch` (S-RS2 finds the public form). `sem` would own that; nothing outside it changes. Not built until the measurement asks.
 
 A cancelled request returns what it has, marked `Incomplete`; cut summaries are not memoized (the solver already does this).
+
+**Measured in step 5 (e25d4d5, reviewed 2026-11-19; `sem::cancel::measure_cancel`, numbers in `ENGINE.md`).** Warm, no single engine
+call is long: the longest `sites(f)` after the first body is 35 ms and the longest `resolve` 5.5 ms, so the flag between sites is enough.
+**Cold, two stretches have no look at the flag:** `Sem::entry` (2.3 s on `core/`, 7.2 s on `core/` + `languages/typescript/`: turning the
+entry's syntax into an engine def builds the crate's name resolution, and std's with it) and the first body (0.67 s, 1.3 s: inference
+with nothing warm). A cancel set 100 ms into a cold first request is honoured 2.0 s and 4.9 s later. Nothing checked before `Sem::entry`:
+the doc was silent there.
+
+**Decided (reviewer, 2026-11-19; the owner may say no): the cold cost moves into the load, and no engine-side cancel is built.** After
+every load (`open` and each reload) `sem` primes the project's own crates (`ide_db::prime_caches::parallel_prime_caches` scoped to the
+local crates, or our own walk of their def maps: step 5b measures both and keeps the cheaper one that brings a cold-database
+`Sem::entry` under 100 ms), and the request looks at the flag before `Sem::entry` too. The first tree costs the same in total; what
+changes is the contract a driver gets, the same as TypeScript's: **`open` and `reload` are the slow calls, not cancellable; a request
+is fast and is.** What the first body still costs after priming is written down, and engine-side cancel (a request on a clone of the
+database in `Cancelled::catch`, the clone's owner calling `trigger_cancellation`) is built only if a real project leaves more than about
+a second there.
 
 ## 5. The memo
 
@@ -180,7 +196,8 @@ dropped first (§3 point 4). `refresh` does the same by itself when the stamp of
 | 2 | `Session::open / graph` (**done, ac0c34b, reviewed 2026-11-19**) | with `Budget::default()` a session's graph is `call_graph`'s, for every entry of the policy and context workspaces; a budget changes the graph (depth 0, `max_contexts`); at `max_depth` 1, 2 and 3, replacing each frontier node by the tree of a new request for its def gives the unbounded tree (48, 4 and 1 frontier nodes over all entries), with the ancestor rule (a def on the path above is a `Recursive` leaf), which a test shows is needed. The entries cover every scenario's shape (straight line, two callers, a method, a construction, an external call, direct and mutual recursion) |
 | 3 | **done, 22e8412, reviewed 2026-11-19** (the numbers: `ENGINE.md`, "RS5 step 3"). `refresh`, the fast path: the stamps (in the `Session`, §3 point 1), a saved file applied to the database, a created or deleted file applied with the roots partitioned again (§3's table, the rows with no reload). No `set_text` (D42); no reload yet | TypeScript step 6's cases: the callee's file rewritten (the graph follows; without `refresh` it does not, pinned); a file a `mod` names created (and the `mod` line saved in the same refresh); a callee's file deleted; nothing changed (the graph byte-identical, and the `Vfs` sees no change); a file saved between the stamp and the read is read again by the next `refresh`; no folder above the root is stamped; `Session: Send`. **[measure]** on `core/` and on one bigger workspace: `refresh` with nothing changed (the files and folders stamped, the time), one saved file (the time, and the next request's), the first and a second request for the same entry |
 | 4 | **done, 63e7509, reviewed 2026-11-19; 4b (new packages under the root) asked**. `reload`; `refresh` reloading when an environment input changed or a target file was created or deleted (§3's table); `lost` | add a dependency to a fixture's `Cargo.toml` between two requests: `refresh` reloads; `src/bin/new.rs` created: a reload, and its defs found; a `Cargo.toml` saved with a syntax error, then fixed (a warning, then clean: D37); the opened file deleted, then written back (`lost`, then back by itself); the old database dropped before the new one is built; a file saved while `open` or a reload ran is read by the re-read of §3 point 3 (a test hook between the load and the stamps). **[measure]** a reload's time and the database's footprint on a real workspace |
-| 5 | the cancel measurement of §4, written in `ENGINE.md`; engine-side cancel only if it asks | the number |
+| 5 | **done, e25d4d5, reviewed 2026-11-19.** The cancel measurement of §4, written in `ENGINE.md`; engine-side cancel only if it asks | the number: warm under 40 ms, cold `Sem::entry` 2.3–7.2 s unchecked (§4) |
+| 5b | prime the local crates after every load; a look at the flag before `Sem::entry` (§4's decision) | a cold-database first request's `Sem::entry` under 100 ms, the open's added time and footprint on `core/` (and the bigger workspace by the reviewer); a cancel set before a request is honoured before `Sem::entry`; every test green |
 | 6 | `rust-cli calls --depth --max-nodes`, and an interactive `expand` | by hand |
 | | **tag `rust-v0.3.0`** | tier-3 conformance in the driver (`vnoc`) |
 

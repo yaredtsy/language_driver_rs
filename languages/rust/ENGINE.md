@@ -704,3 +704,24 @@ loaded it with `ProjectWorkspace::load_inline`, sysroot `None`.
 | `reload()` | 1.67 s | 1.40 s |
 | databases alive at once | at most 1 | at most 1 |
 | peak footprint | 0.53 GB | 1.0–1.1 GB |
+
+## RS5 steps 4b and 5: new packages, cancel (7e5dda3, e25d4d5, reviewed 2026-11-19)
+
+- **Re-run:** the Rust workspace 218 passed, 0 failed, 14 ignored (`-j2`, `--test-threads=2`).
+- **4b found wanting by a probe:** a workspace with `members = ["crates/*"]`, `exclude = ["vendor"]` and a `vendor/x/Cargo.toml` there
+  before the open: creating `notes.md`, `todo.txt`, `more.md` at the root gave `reopened: true` three times. Every unstamped sub-folder
+  of a changed scout was walked as if new. Fix 4c (RS5 §3's table).
+- **Cancel, measured** (`sem::cancel::measure_cancel`, cold first request, the test process under `/usr/bin/time -l`):
+
+| | `core/`, entry `wire` | `core/` + `languages/typescript/`, entry `Session::graph` |
+|---|---|---|
+| open | 1.0 s | 2.3 s |
+| cold first request | 3.0 s, 30 contexts | 9.0 s, 199 contexts |
+| `Sem::entry` (no look at the flag) | 2.31 s | 7.17 s |
+| first body `sites(f)` | 0.67 s | 1.34 s |
+| longest other `sites(f)` / `resolve` | 8.2 ms / 5.1 ms | 35 ms / 5.5 ms |
+| flag at 100 ms / 500 ms / 1 s: returned after | 1.96 s / 1.99 s / 1.34 s | 4.90 s / 4.05 s / 3.76 s |
+| graph after a cancel | `Incomplete`, 1 of 1 contexts | the same |
+| peak footprint | 0.52 GB | 0.98 GB |
+
+  Decided (RS5 §4): prime the local crates after every load and look at the flag before `Sem::entry` (step 5b); no engine-side cancel.
