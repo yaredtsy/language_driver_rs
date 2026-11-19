@@ -3,8 +3,10 @@
 mod bridge;
 mod load;
 mod origin;
+mod refresh;
 mod resolve;
 mod sites;
+mod stamps;
 mod tool;
 
 #[expect(
@@ -18,6 +20,7 @@ pub(crate) use origin::{Cause, Item, Owner};
 #[expect(unused_imports, reason = "RS4's calls.rs uses them (step 4)")]
 pub(crate) use resolve::{Callee, Found, Open, Reason};
 pub(crate) use sites::RawSite;
+pub(crate) use stamps::Stamps;
 pub(crate) use tool::path as tool_path;
 
 // the helpers of the integration tests, which are one place for "copy a fixture under target/" (that file says `#![allow(dead_code)]`: each program

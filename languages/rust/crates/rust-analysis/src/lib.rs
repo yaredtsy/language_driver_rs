@@ -22,5 +22,5 @@ pub use analyzer_core::wire::{Frame, LineSpan, Sources, WireOptions, WireStyle, 
 pub use calls::{Breakdown, Options, breakdown, call_graph};
 pub use project::{DefMatch, LoadOptions, OpenError, Project};
 pub use rust_syntax::{DefKind, MarkerStyle, Placement, Span};
-pub use session::Session;
+pub use session::{Refreshed, Session};
 pub use warning::{Warning, Why};

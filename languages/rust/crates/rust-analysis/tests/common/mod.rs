@@ -66,6 +66,12 @@ pub(crate) fn copy_of_fixture(fixture: &str, name: &str) -> PathBuf {
     to
 }
 
+/// Writes `text` to `path`, making the folders above it: a test saving a file (library code never writes one, rule 2).
+pub(crate) fn write(path: &Path, text: &str) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, text).unwrap();
+}
+
 /// Every `.rs` file under `dir`, relative to `base` with `/`, found by walking the disk (not through the engine), skipping `target/`.
 pub(crate) fn rs_files(base: &Path, dir: &Path, out: &mut Vec<String>) {
     for entry in std::fs::read_dir(dir).unwrap() {

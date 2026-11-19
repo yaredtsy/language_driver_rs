@@ -10,18 +10,42 @@ use crate::{LoadOptions, paths, toolchain};
 
 use ra_ap_hir::{Semantics, attach_db};
 use ra_ap_ide_db::RootDatabase;
-use ra_ap_load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace};
+use ra_ap_load_cargo::{
+    LoadCargoConfig, ProcMacroServerChoice, ProjectFolders, SourceRootConfig, load_workspace,
+};
 use ra_ap_project_model::project_json::{ProjectJson, ProjectJsonData};
 use ra_ap_project_model::{
     CargoConfig, ProjectManifest, ProjectWorkspace, ProjectWorkspaceKind, RustLibSource,
     TargetDirectoryConfig, TargetKind,
 };
+use ra_ap_vfs::loader::Entry;
 use ra_ap_vfs::{AbsPathBuf, Vfs, VfsPath};
+
+/// What the load was told to read, kept because `load_workspace` builds it and does not give it back: a later look at the disk (`refresh.rs`) needs both.
+pub(super) struct Folders {
+    /// Which file sets are the project's and which a dependency's or the sysroot's, and the roots a set of files is split into.
+    pub(super) roots: SourceRootConfig,
+    /// The folders the load listed, each with its extensions, the roots it includes and what it leaves out (`target/`).
+    pub(super) listed: Vec<Entry>,
+}
+
+impl Folders {
+    /// What the engine's own load makes of `workspace`. Built from a borrow, before `load_workspace` takes the workspace and from the same workspace it
+    /// loads, so the two agree.
+    fn of(workspace: &ProjectWorkspace) -> Folders {
+        let folders = ProjectFolders::new(std::slice::from_ref(workspace), &[], None);
+        Folders {
+            roots: folders.source_root_config,
+            listed: folders.load,
+        }
+    }
+}
 
 /// A loaded workspace: the engine's database and the table of its files. It owns both, so dropping it frees everything.
 pub(crate) struct Loaded {
     db: RootDatabase,
     vfs: Vfs,
+    folders: Folders,
     /// Cargo wrote the project's `Cargo.lock`: the project had none and has one now, or its lock changed (the toolchain does not honour the redirect,
     /// §5 option A).
     wrote_lockfile: bool,
@@ -65,10 +89,17 @@ pub(crate) enum Rung {
 
 impl Loaded {
     /// The engine's database and files for a load that has nothing to say yet: every warning fact is empty. The caller fills what it knows.
-    fn from_engine(db: RootDatabase, vfs: Vfs, root: &Path, rung: Rung) -> Loaded {
+    fn from_engine(
+        db: RootDatabase,
+        vfs: Vfs,
+        folders: Folders,
+        root: &Path,
+        rung: Rung,
+    ) -> Loaded {
         Loaded {
             db,
             vfs,
+            folders,
             wrote_lockfile: false,
             no_std_source: None,
             dependencies_error: None,
@@ -169,6 +200,19 @@ impl Loaded {
 
     pub(super) fn vfs(&self) -> &Vfs {
         &self.vfs
+    }
+
+    pub(super) fn folders(&self) -> &Folders {
+        &self.folders
+    }
+
+    pub(super) fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// The engine's database and files to write to, with what the load was told to read: what `refresh.rs` needs to follow the disk.
+    pub(super) fn follow(&mut self) -> (&mut RootDatabase, &mut Vfs, &Folders, &Path) {
+        (&mut self.db, &mut self.vfs, &self.folders, &self.root)
     }
 }
 
@@ -352,9 +396,10 @@ fn load_json(
         num_worker_threads: 1,
         proc_macro_processes: 0,
     };
+    let folders = Folders::of(&workspace);
     let (db, vfs, _no_client) =
         load_workspace(workspace, &config.extra_env, &switches).map_err(|e| format!("{e:#}"))?;
-    Ok(Loaded::from_engine(db, vfs, root, rung))
+    Ok(Loaded::from_engine(db, vfs, folders, root, rung))
 }
 
 /// Loads the Cargo workspace of `manifest` (absolute, clean, inside `root`) with std and `cfg(test)` on. Build scripts, proc macros and cache
@@ -478,10 +523,12 @@ fn load_cargo(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<Loaded
         // a pool of none has no process to ask
         proc_macro_processes: usize::from(proc_macros_ran),
     };
+    // after the build scripts: their output folders are roots too
+    let folders = Folders::of(&workspace);
     // each proc macro the database knows holds the server's pool (an `Arc`), so the client may be dropped here
     let (db, vfs, _proc_macro_client) =
         load_workspace(workspace, &config.extra_env, &switches).map_err(|e| format!("{e:#}"))?;
-    let mut loaded = Loaded::from_engine(db, vfs, root, Rung::Cargo);
+    let mut loaded = Loaded::from_engine(db, vfs, folders, root, Rung::Cargo);
     loaded.wrote_lockfile =
         lock_written(lock_before.as_deref(), std::fs::read(&lock).ok().as_deref());
     loaded.no_std_source = no_std_source;
