@@ -29,7 +29,11 @@ fn open(name: &str) -> (PathBuf, Session) {
 }
 
 fn open_file(name: &str, file: &str) -> (PathBuf, Session) {
-    let root = copy_of_fixture("refresh", name);
+    open_in("refresh", name, file)
+}
+
+fn open_in(fixture: &str, name: &str, file: &str) -> (PathBuf, Session) {
+    let root = copy_of_fixture(fixture, name);
     let session = Session::open(
         &root,
         Path::new(file),
@@ -347,6 +351,61 @@ fn the_opened_file_deleted_loses_the_session_and_writing_it_back_finds_it() {
         assert!(ask(&session).is_some());
         assert_eq!(session.refresh().lost, None);
     }
+}
+
+const MEMBER_MANIFEST: &str =
+    "[package]\nname = \"b\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n";
+
+/// Fix 4b. A workspace with `members = ["crates/*"]` gains `crates/b` (its manifest and `src/lib.rs`), and the root manifest is not touched: `refresh`
+/// loads again, and the new crate's file is part of the project. (It was found only by `reload`.)
+#[test]
+fn a_package_created_under_the_root_reloads() {
+    let _load = one_load();
+    let (root, mut session) = open_in("members", "refresh_new_member", "crates/a/src/lib.rs");
+    assert!(files(&session).contains(&"crates/a/src/lib.rs".to_owned()));
+    assert!(!files(&session).contains(&"crates/b/src/lib.rs".to_owned()));
+
+    write(&root, "crates/b/Cargo.toml", MEMBER_MANIFEST);
+    write(&root, "crates/b/src/lib.rs", "pub fn b() {}\n");
+    let refreshed = session.refresh();
+    assert!(refreshed.reopened, "a package was created under the root");
+    assert_eq!(refreshed.lost, None);
+    let files = files(&session);
+    assert!(
+        files.contains(&"crates/b/src/lib.rs".to_owned()),
+        "{files:?}"
+    );
+    assert!(
+        files.contains(&"crates/a/src/lib.rs".to_owned()),
+        "{files:?}"
+    );
+    assert!(!session.refresh().reopened, "and then nothing moved");
+}
+
+/// A new folder under `crates/` that holds no manifest is no reload, however deep it goes. A manifest created in it afterwards is one: the folder was
+/// watched from the moment it was walked.
+#[test]
+fn a_new_folder_without_a_manifest_is_no_reload_until_it_gets_one() {
+    let _load = one_load();
+    let (root, mut session) = open_in(
+        "members",
+        "refresh_new_folder_member",
+        "crates/a/src/lib.rs",
+    );
+
+    write(&root, "crates/notes/readme.md", "not a crate\n");
+    write(&root, "crates/notes/deeper/data.txt", "data\n");
+    assert!(!session.refresh().reopened, "no manifest anywhere in it");
+    assert!(!files(&session).iter().any(|file| file.contains("notes")));
+
+    write(
+        &root,
+        "crates/notes/Cargo.toml",
+        &MEMBER_MANIFEST.replace("\"b\"", "\"notes\""),
+    );
+    write(&root, "crates/notes/src/lib.rs", "pub fn notes() {}\n");
+    assert!(session.refresh().reopened, "it has a manifest now");
+    assert!(files(&session).contains(&"crates/notes/src/lib.rs".to_owned()));
 }
 
 /// A session moves to a worker thread (RS5 §2), so it must be `Send`: checked when this compiles.

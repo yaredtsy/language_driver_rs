@@ -77,6 +77,18 @@ impl Loaded {
             watch_folders(&mut stamps, dir.as_ref(), &includes, self.root());
         }
         files.sort();
+        // the folders from the project root down to each package root: a package created in one of them is seen when the folder changes
+        let root = self.root();
+        for dir in std::iter::once(root.to_path_buf()).chain(package_roots(folders, root)) {
+            for above in dir.ancestors() {
+                if paths::relative(root, above).is_none() {
+                    break;
+                }
+                if let Some(text) = paths::engine_text(above) {
+                    stamps.add_scout(&text);
+                }
+            }
+        }
         (stamps, files)
     }
 
@@ -100,12 +112,7 @@ impl Loaded {
             .collect();
 
         let mut dirs: Vec<PathBuf> = vec![root.to_path_buf()];
-        dirs.extend(
-            includes(folders)
-                .into_iter()
-                .filter(|include| paths::relative(root, Path::new(include)).is_some())
-                .map(PathBuf::from),
-        );
+        dirs.extend(package_roots(folders, root));
         for dir in &dirs {
             for suffix in &suffixes {
                 found.extend(paths::engine_text(&dir.join(suffix)));
@@ -140,8 +147,14 @@ impl Loaded {
     /// up in the roots); a file that is not UTF-8 has no text, as after the load. **Stamp first, read second**: every stamp here is taken before the
     /// bytes it describes are read, so a file saved in between has a newer stamp than the one kept, and the next look reads it again.
     ///
-    /// An input that moved, or a created or deleted `.rs` file where cargo finds a target by itself, is `Disk::Reload`: nothing is read.
-    pub(crate) fn follow_disk(&mut self, known: &Stamps, now: &mut Stamps) -> Disk {
+    /// An input that moved, a created or deleted `.rs` file where cargo finds a target by itself, or a package created below the root (a new folder, under
+    /// one on the way to a package root, that holds an input file), is `Disk::Reload`: nothing is read.
+    pub(crate) fn follow_disk(
+        &mut self,
+        known: &Stamps,
+        now: &mut Stamps,
+        inputs: &[String],
+    ) -> Disk {
         let moved: Vec<String> = known
             .iter()
             .filter(|&(path, stamp)| now.get(path) != Some(stamp))
@@ -149,6 +162,18 @@ impl Loaded {
             .collect();
         if moved.iter().any(|path| known.is_input(path)) {
             return Disk::Reload;
+        }
+
+        // a folder on the way from the root to a package root changed: a package may have been created in it
+        let suffixes: Vec<&str> = inputs
+            .iter()
+            .filter_map(|input| input.strip_prefix("**/"))
+            .collect();
+        let mut scouted: HashSet<PathBuf> = HashSet::new();
+        for dir in moved.iter().filter(|path| known.is_scout(path)) {
+            if scout_folder(dir, &suffixes, now, &mut scouted) {
+                return Disk::Reload;
+            }
         }
 
         let (db, vfs, folders, _) = self.follow();
@@ -186,7 +211,8 @@ impl Loaded {
                 let Ok(meta) = std::fs::metadata(&path) else {
                     continue;
                 };
-                if now.contains(&text) {
+                // what the last look knew is left to its own stamp (not `now`: scouting above stamped the new folders it walked, and they are listed here)
+                if known.contains(&text) {
                     continue;
                 }
                 if meta.is_dir() {
@@ -283,6 +309,110 @@ fn includes(folders: &Folders) -> Vec<String> {
         .collect()
 }
 
+/// The package roots under the project root: the folders the load listed for the project's own packages (not a dependency's or the sysroot's), as paths,
+/// leaving out what is under a `target/` or `.git`.
+fn package_roots(folders: &Folders, root: &Path) -> Vec<PathBuf> {
+    includes(folders)
+        .into_iter()
+        .filter(|include| {
+            paths::relative(root, Path::new(include)).is_some_and(|below| {
+                !below
+                    .split('/')
+                    .any(|name| name == "target" || name == ".git")
+            })
+        })
+        .filter(|include| {
+            AbsPathBuf::try_from(include.as_str())
+                .is_ok_and(|abs| !folders.roots.path_is_library(&VfsPath::from(abs)))
+        })
+        .map(PathBuf::from)
+        .collect()
+}
+
+/// Whether `text` (engine text) is a file the load reads as an environment input: its path ends with the name a glob of the inputs gives (`Cargo.toml`,
+/// `.cargo/config.toml`).
+fn is_input_file(text: &str, suffixes: &[&str]) -> bool {
+    suffixes
+        .iter()
+        .any(|suffix| text.ends_with(&format!("/{suffix}")))
+}
+
+/// A folder on the way from the root to a package root changed. Whether a file in it is an input, or a folder in it that was not watched holds one
+/// below it (`holds_input`). A folder that is not watched is a new one: it is stamped now, before it is looked in, so a later change in it is seen.
+fn scout_folder(
+    dir: &str,
+    suffixes: &[&str],
+    now: &mut Stamps,
+    visited: &mut HashSet<PathBuf>,
+) -> bool {
+    #[cfg(test)]
+    SCOUTED.with(|n| n.set(n.get() + 1));
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let Some(text) = paths::engine_text(&entry.path()) else {
+            continue;
+        };
+        let Ok(meta) = std::fs::metadata(entry.path()) else {
+            continue;
+        };
+        if meta.is_dir() {
+            if !skipped_folder(&entry.file_name()) && !now.contains(&text) {
+                let cycle =
+                    std::fs::canonicalize(entry.path()).is_ok_and(|real| !visited.insert(real));
+                if !cycle && holds_input(&text, suffixes, now, visited) {
+                    return true;
+                }
+            }
+        } else if is_input_file(&text, suffixes) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether `dir` (a folder that was not watched) or any folder below it holds an input file. Every folder walked is stamped as a scout, before it is read.
+fn holds_input(
+    dir: &str,
+    suffixes: &[&str],
+    now: &mut Stamps,
+    visited: &mut HashSet<PathBuf>,
+) -> bool {
+    let mut to_walk = vec![dir.to_owned()];
+    while let Some(dir) = to_walk.pop() {
+        now.add_scout(&dir);
+        #[cfg(test)]
+        SCOUTED.with(|n| n.set(n.get() + 1));
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Some(text) = paths::engine_text(&entry.path()) else {
+                continue;
+            };
+            let Ok(meta) = std::fs::metadata(entry.path()) else {
+                continue;
+            };
+            if meta.is_dir() {
+                let cycle =
+                    std::fs::canonicalize(entry.path()).is_ok_and(|real| !visited.insert(real));
+                if !skipped_folder(&entry.file_name()) && !cycle {
+                    to_walk.push(text);
+                }
+            } else if is_input_file(&text, suffixes) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// The folders no package is looked for in: the build's output and the version control's.
+fn skipped_folder(name: &std::ffi::OsStr) -> bool {
+    name == "target" || name == ".git"
+}
+
 /// Stamps `dir` and the folders above it, up to the package root (the deepest include root that holds `dir`) and no higher than the project root: for a
 /// folder inside the root, the nearer of the two; for one outside it (a workspace member above, a path dependency beside) the package root, and with
 /// none, the folder alone. A folder already stamped has its folders above it stamped too, so the climb stops there.
@@ -349,6 +479,8 @@ thread_local! {
     /// was applied" reads them before and after.
     pub(crate) static READS: Cell<u32> = const { Cell::new(0) };
     pub(crate) static APPLIES: Cell<u32> = const { Cell::new(0) };
+    /// How many folders were read looking for a new package (`scout_folder`, `holds_input`): a refresh with nothing changed must leave it alone.
+    pub(crate) static SCOUTED: Cell<u32> = const { Cell::new(0) };
     /// A test hook, run once by the next `apply`, after the reads: a file saved here is saved after the database was given the old text, and the stamp
     /// kept for it is the one taken before. Nothing else can land a change there.
     static AFTER_READ: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
@@ -693,6 +825,44 @@ mod tests {
         let second = session.refresh();
         assert!(!second.reopened, "a source file saved is no reload");
         assert!(calls_second(&session), "the next look read it");
+    }
+
+    fn scouted() -> u32 {
+        SCOUTED.with(Cell::get)
+    }
+
+    /// Nothing changed in a workspace with members: no reload and no folder read looking for a package. A new folder under `crates/` is read (and is no
+    /// reload when it holds no manifest).
+    #[test]
+    fn nothing_changed_walks_no_folder_and_a_new_folder_is_walked_once() {
+        let _load = one_load();
+        let root = copy_of_fixture("members", "refresh_scout_counts");
+        let mut session = open(&root, "crates/a/src/lib.rs");
+        let crates =
+            crate::paths::engine_text(&crate::paths::absolute(&root).unwrap().join("crates"))
+                .unwrap();
+        assert!(
+            session.stamps().is_scout(&crates),
+            "`crates/`, between the root and a package root, is a scout"
+        );
+
+        let (made_before, scouted_before) = (made(), scouted());
+        for _ in 0..3 {
+            assert!(!session.refresh().reopened);
+        }
+        assert_eq!(
+            scouted(),
+            scouted_before,
+            "nothing moved: no folder was walked"
+        );
+        assert_eq!(made(), made_before);
+
+        write(&root.join("crates/notes/readme.md"), "not a crate\n");
+        assert!(!session.refresh().reopened);
+        assert!(scouted() > scouted_before, "the new folder was walked");
+        let walked = scouted();
+        assert!(!session.refresh().reopened);
+        assert_eq!(scouted(), walked, "and it is not walked again");
     }
 
     /// Copies `from` to a folder of the tests' scratch space (no `target/` and no `.git`): what is measured is saved to, and a measurement must not touch

@@ -89,8 +89,12 @@ impl Session {
         if let Some(project) = self.project.as_mut() {
             // the file the session was opened from is created or gone: no workspace is loaded around a file that is not there
             let opened_moved = self.stamps.existence_moved(&now, &opened(&self.file));
+            let inputs = project.environment_inputs();
             if !opened_moved
-                && let Disk::Applied = project.loaded_mut().follow_disk(&self.stamps, &mut now)
+                && let Disk::Applied =
+                    project
+                        .loaded_mut()
+                        .follow_disk(&self.stamps, &mut now, &inputs)
             {
                 self.stamps = now;
                 return self.report(false);

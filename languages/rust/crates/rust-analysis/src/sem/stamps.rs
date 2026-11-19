@@ -44,9 +44,11 @@ impl Stamp {
 
 /// The paths a session watches, each with its stamp, sorted by path (rule 9), no path twice.
 ///
-/// Three kinds of path, by what happens to them:
+/// Kinds of path, by what happens to them:
 /// - a **watched** path (a project `.rs` file, a folder above one): when it is gone, it is forgotten, and its folder says when it comes back;
 /// - a **kept** path (an environment input, the file the session was opened from): stamped as missing and kept, so that its creation is seen;
+/// - a **scout** (a folder from the project root down to a package root: when it changes, its new folders are walked for an input, because a package
+///   created there is a crate the load did not know);
 /// - an **input** (kept, and the engine reads it to build the crate graph: a manifest, a lock, a toolchain or cargo config file, a `build.rs` when
 ///   build scripts ran): when it changes the workspace is loaded again.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -54,6 +56,7 @@ pub(crate) struct Stamps {
     seen: BTreeMap<String, Stamp>,
     kept: BTreeSet<String>,
     inputs: BTreeSet<String>,
+    scouts: BTreeSet<String>,
 }
 
 impl Stamps {
@@ -74,6 +77,16 @@ impl Stamps {
     pub(super) fn add_input(&mut self, path: &str) {
         self.add_kept(path);
         self.inputs.insert(path.to_owned());
+    }
+
+    /// Like `add`, and a change of the folder is a reason to look in it for a new package.
+    pub(super) fn add_scout(&mut self, path: &str) {
+        self.add(path);
+        self.scouts.insert(path.to_owned());
+    }
+
+    pub(super) fn is_scout(&self, path: &str) -> bool {
+        self.scouts.contains(path)
     }
 
     pub(super) fn get(&self, path: &str) -> Option<Stamp> {
@@ -100,6 +113,8 @@ impl Stamps {
         let kept = &self.kept;
         self.seen
             .retain(|path, stamp| *stamp != Stamp::Missing || kept.contains(path));
+        let seen = &self.seen;
+        self.scouts.retain(|path| seen.contains_key(path));
     }
 
     /// The same paths, stamped again now: what the disk says at this moment.
@@ -112,6 +127,7 @@ impl Stamps {
                 .collect(),
             kept: self.kept.clone(),
             inputs: self.inputs.clone(),
+            scouts: self.scouts.clone(),
         }
     }
 
