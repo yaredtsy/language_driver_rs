@@ -35,6 +35,9 @@ mod common;
 pub(crate) mod testing;
 
 #[cfg(test)]
+mod cancel;
+
+#[cfg(test)]
 mod nostd;
 
 #[cfg(test)]

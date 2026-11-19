@@ -516,12 +516,13 @@ fn run_after_read() {
 mod tests {
     //! What needs a hook or a counter inside `sem` (the rest of RS5 step 3 is in `tests/refresh.rs`, which sees only the public API), and the measures.
 
-    use std::path::{Path, PathBuf};
-    use std::time::{Duration, Instant};
+    use std::path::Path;
+    use std::time::Duration;
 
     use super::*;
     use crate::sem::common::{copy_of_fixture, one_load, write};
     use crate::sem::load::alive;
+    use crate::sem::testing::{copy_of_workspace, measured, open_measured, peak_footprint, timed};
     use crate::{Budget, Cancel, Entry, LoadOptions, MarkerStyle, Options, RenderOptions, Session};
 
     fn open(root: &Path, file: &str) -> Session {
@@ -865,52 +866,6 @@ mod tests {
         assert_eq!(scouted(), walked, "and it is not walked again");
     }
 
-    /// Copies `from` to a folder of the tests' scratch space (no `target/` and no `.git`): what is measured is saved to, and a measurement must not touch
-    /// the repo.
-    fn copy_of_workspace(from: &Path, name: &str) -> PathBuf {
-        let to = crate::sem::common::tmp_root().join(name);
-        let _ = std::fs::remove_dir_all(&to);
-        fn copy(from: &Path, to: &Path) {
-            std::fs::create_dir_all(to).unwrap();
-            for entry in std::fs::read_dir(from).unwrap() {
-                let entry = entry.unwrap();
-                if entry.file_name() == "target" || entry.file_name() == ".git" {
-                    continue;
-                }
-                let target = to.join(entry.file_name());
-                if entry.path().is_dir() {
-                    copy(&entry.path(), &target);
-                } else {
-                    std::fs::copy(entry.path(), &target).unwrap();
-                }
-            }
-        }
-        copy(from, &to);
-        crate::paths::absolute(&to).unwrap()
-    }
-
-    fn timed<R>(f: impl FnOnce() -> R) -> (R, Duration) {
-        let started = Instant::now();
-        let result = f();
-        (result, started.elapsed())
-    }
-
-    /// The process's peak physical footprint, from `vmmap -summary` (macOS): what the machine counts, which `ps`'s RSS leaves out (compressed memory).
-    fn peak_footprint() -> String {
-        let pid = std::process::id().to_string();
-        match std::process::Command::new("vmmap")
-            .args(["-summary", &pid])
-            .output()
-        {
-            Ok(out) => String::from_utf8_lossy(&out.stdout)
-                .lines()
-                .filter(|line| line.contains("Physical footprint"))
-                .collect::<Vec<_>>()
-                .join(" | "),
-            Err(_) => "no `vmmap` here".to_owned(),
-        }
-    }
-
     /// RS5 steps 3 and 4 `[measure]`, on a copy of a workspace: what a refresh costs when nothing changed (and how many files and folders it stamps), when
     /// one file was saved, and what the request after it costs; the first and second request for one entry; and what a reload costs, the next request
     /// after it, and the process's peak footprint. Printed, to be written into `ENGINE.md`.
@@ -928,32 +883,10 @@ mod tests {
     #[ignore = "a measurement: run by hand with --ignored --nocapture"]
     fn measure_refresh_and_reload() {
         let _load = one_load();
-        let var =
-            |name: &str, default: &str| std::env::var(name).unwrap_or_else(|_| default.to_owned());
-        let from = std::env::var("RS_MEASURE_ROOT").map_or_else(
-            |_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../core"),
-            PathBuf::from,
-        );
-        let open_file = var("RS_MEASURE_FILE", "analyzer-core/src/lib.rs");
-        let entry = var("RS_MEASURE_ENTRY", "analyzer-core/src/wire.rs::wire");
-        let (file, qualname) = entry
-            .split_once("::")
-            .expect("RS_MEASURE_ENTRY is <file>::<qualname>");
-        let root = copy_of_workspace(&from, "refresh_measure");
-
-        let (mut session, opened) = timed(|| open(&root, &open_file));
-        let project = session.project().expect("a project");
-        println!("MEASURE root {}", from.display());
-        for warning in project.warnings() {
-            println!("MEASURE warning {}: {warning}", warning.code());
-        }
-        let rung = project.loaded().rung();
-        assert_eq!(
-            rung,
-            crate::sem::Rung::Cargo,
-            "the load fell down the ladder ({rung:?}, warnings {:?}): its numbers are not a workspace's",
-            project.warnings()
-        );
+        let measured = measured();
+        let (file, qualname) = (measured.file.as_str(), measured.qualname.as_str());
+        let root = copy_of_workspace(&measured.from, "refresh_measure");
+        let (mut session, opened) = open_measured(&root, &measured.open_file);
         let (files, folders) = session.stamps().counts();
         println!(
             "MEASURE open {opened:?}; stamped {files} paths that are files and {folders} folders"

@@ -95,6 +95,8 @@ impl<'p> Lang for Rust<'_, 'p> {
     }
 
     fn walk(&mut self, f: Self::Func, _key: &Self::Key, cancel: &Cancel) -> Summary<Self> {
+        #[cfg(test)]
+        walk::probe::walk(self.sem, f);
         walk::body(self, f, &Env, cancel)
     }
 }
@@ -134,7 +136,11 @@ pub(crate) fn graph_within(
     };
     // one `attach_db` for the whole request; the `Sem` is built inside it and never kept
     attached(project.loaded(), opts.marker, |sem| {
+        #[cfg(test)]
+        walk::probe::mark("the engine attached, the Sem built");
         let func = sem.entry(file, qualname, occurrence)?;
+        #[cfg(test)]
+        walk::probe::mark("the entry found (Sem::entry)");
         let lang = Rust::new(sem);
         let start = start_of(func);
         let mut solver = Solver::new(lang, opts.limits.clone());

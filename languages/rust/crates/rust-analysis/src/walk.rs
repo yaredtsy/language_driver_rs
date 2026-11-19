@@ -35,19 +35,31 @@ pub(crate) struct Body<'p> {
 
 /// Read `f`'s body once: its sites, each with what it reaches, in `sem`'s terms.
 pub(crate) fn read<'p>(sem: &Sem<'p>, f: Func<'p>, env: &Env, cancel: &Cancel) -> Body<'p> {
+    #[cfg(test)]
+    let started = std::time::Instant::now();
     let found = sem.sites(f);
+    #[cfg(test)]
+    probe::sites(started.elapsed());
     let mut sites = Vec::with_capacity(found.list.len());
     for site in &found.list {
-        if cancel.is_cancelled() {
+        let cancelled = cancel.is_cancelled();
+        #[cfg(test)]
+        probe::check();
+        if cancelled {
             return Body {
                 sites,
                 macro_not_expanded: found.macro_not_expanded,
                 cut: true,
             };
         }
+        #[cfg(test)]
+        let started = std::time::Instant::now();
+        let callees = resolve(sem, f, site, env);
+        #[cfg(test)]
+        probe::resolve(started.elapsed(), site.span());
         sites.push(Resolved {
             raw: site.clone(),
-            callees: resolve(sem, f, site, env),
+            callees,
         });
     }
     Body {
@@ -246,6 +258,140 @@ mod tests {
             let body = read(sem, f, &Env, &cancel);
             assert!(body.cut);
             assert!(body.sites.is_empty());
+        });
+    }
+}
+
+/// What RS5 §4's measurement needs to see inside a request: how long each engine call between two looks at the cancel takes, and when the looks are. It is
+/// off (a test turns it on with `start`) and costs nothing when off; it is compiled only into the tests.
+#[cfg(test)]
+pub(crate) mod probe {
+    use std::cell::RefCell;
+    use std::time::{Duration, Instant};
+
+    use analyzer_core::graph::Site;
+
+    use crate::sem::{Func, Sem};
+
+    /// One timed engine call: `sem.sites(f)` or one `resolve`.
+    pub(crate) struct Call {
+        pub(crate) took: Duration,
+        /// The def whose body was being read, and its file.
+        pub(crate) def: String,
+        pub(crate) file: String,
+        /// For a `resolve`: the site, relative to the def.
+        pub(crate) site: Option<Site>,
+    }
+
+    /// A place where the request looks at its cancel: when, and what was being read after it.
+    pub(crate) struct Check {
+        pub(crate) at: Instant,
+        pub(crate) def: String,
+        pub(crate) file: String,
+    }
+
+    #[derive(Default)]
+    pub(crate) struct Log {
+        pub(crate) sites: Vec<Call>,
+        pub(crate) resolves: Vec<Call>,
+        pub(crate) checks: Vec<Check>,
+        /// Places in the request that are not looks at the cancel, to say where a stretch between two looks goes.
+        pub(crate) marks: Vec<(Instant, &'static str)>,
+        current: (String, String),
+    }
+
+    thread_local! {
+        static LOG: RefCell<Option<Log>> = const { RefCell::new(None) };
+    }
+
+    fn with(f: impl FnOnce(&mut Log)) {
+        LOG.with(|log| {
+            if let Some(log) = log.borrow_mut().as_mut() {
+                f(log);
+            }
+        });
+    }
+
+    /// Turns the probe on, with the start of the request as the first place the cancel is looked at.
+    pub(crate) fn start() {
+        let log = Log {
+            checks: vec![Check {
+                at: Instant::now(),
+                def: "the start of the request".to_owned(),
+                file: String::new(),
+            }],
+            current: ("the first body".to_owned(), String::new()),
+            ..Log::default()
+        };
+        LOG.with(|slot| *slot.borrow_mut() = Some(log));
+    }
+
+    /// Turns it off, with the end of the request as the last place.
+    pub(crate) fn finish() -> Log {
+        let mut log = LOG
+            .with(|slot| slot.borrow_mut().take())
+            .unwrap_or_default();
+        log.checks.push(Check {
+            at: Instant::now(),
+            def: "the end of the request".to_owned(),
+            file: String::new(),
+        });
+        log
+    }
+
+    /// The solver is about to walk `f`: it has just looked at the cancel, and what follows is `f`'s body.
+    pub(crate) fn walk<'p>(sem: &Sem<'p>, f: Func<'p>) {
+        let at = Instant::now();
+        if LOG.with(|log| log.borrow().is_none()) {
+            return;
+        }
+        let info = sem.describe(f);
+        with(|log| {
+            log.current = (info.qname.clone(), info.file.clone());
+            log.checks.push(Check {
+                at,
+                def: info.qname,
+                file: info.file,
+            });
+        });
+    }
+
+    /// A place in the request, for the report: not a look at the cancel.
+    pub(crate) fn mark(what: &'static str) {
+        let at = Instant::now();
+        with(|log| log.marks.push((at, what)));
+    }
+
+    /// The walk looked at the cancel.
+    pub(crate) fn check() {
+        let at = Instant::now();
+        with(|log| {
+            let (def, file) = log.current.clone();
+            log.checks.push(Check { at, def, file });
+        });
+    }
+
+    pub(crate) fn sites(took: Duration) {
+        with(|log| {
+            let (def, file) = log.current.clone();
+            log.sites.push(Call {
+                took,
+                def,
+                file,
+                site: None,
+            });
+        });
+    }
+
+    pub(crate) fn resolve(took: Duration, site: Site) {
+        with(|log| {
+            let (def, file) = log.current.clone();
+            log.resolves.push(Call {
+                took,
+                def,
+                file,
+                site: Some(site),
+            });
         });
     }
 }
