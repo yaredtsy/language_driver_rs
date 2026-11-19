@@ -283,6 +283,7 @@ only).
 | H11 | **built, `6c1dfc4` (D40; reviewed, accepted).** **(found at H10, 2026-11-17; decided by the owner the same day as recommended, D40) a named function expression called in place is not entered.** `(function named() { h(); })()`: the outline makes `named` a def (the engine's rule: a function expression with a name), so the enclosing body stops at it, and the call is `Unresolved` (since H10 `anonymous_function_called`, a reason that is wrong for it: the function has a name and a def). So `h` is drawn in no tree but `named`'s own, which only a request for `named` reaches; the coverage sweep cannot see it because it enters every def. The engine gives no answer either: its call hierarchy takes the callee, a `ParenthesizedExpression`, which is no declaration and has no symbol, and drops the call (`tsrs_ls/src/callhierarchy.rs:936`). **Recommended:** when the callee, under parentheses, assertions and `!`/`void`, is a function expression that `def_of` holds, the edge is `Call` to that def: the callee is the def's own node, so it is not a guess (rule 8), and it is what the row `nested` says for a named function (it appears where it is called). An anonymous one stays `anonymous_function_called`. Where it is common: UMD and bundler wrappers (`(function webpackUniversalModuleDefinition(root, factory) {…})(this, …)`) | `file-entry/src/iife-forms.ts`: the named case is a `Call` to `named` and the module's tree shows `named ▸ h`; the four anonymous ones unchanged; V-NOC and postcss goldens unchanged unless they hold a named IIFE (say which) |
 | H12 | **built, `c6835fe` (reviewed, accepted; (a) decided by the owner, D40 extended).** **(found at H11's review, 2026-11-17) two more defs written in place and reached without a direct call.** (a) `new (class Named { constructor() { g(); } })()`: the class expression is a def, and the `new` is `Unresolved(no_declaration)`, so the constructor's `g` is drawn under no caller (found by the coding session). (b) `(function wrapped() { g(); }).call(this)` and `.apply`: the site resolves to the external `Function.call`, and `wrapped`'s `g` is in no tree under the caller and **in no counter**. `uncovered_call_apply` counts a name before `.call`, not a function written there, so this is a rule 8 gap. Anonymous forms are fine: their calls are the enclosing body's. **Recommended:** (a) is D40 for a class: when the class expression of a `new`, under parentheses and assertions, is a def, the site is a `Construct` through `walk::construction`, like `new C()`. This is the owner's call (D40 names function expressions only). (b) is counted in `uncovered_call_apply`, as a name is, with no new decision (D22 step 5: call/apply is counted, not drawn) | a fixture for each, (a) in both forms, `new (class N {})()` and `new (class {})()`; V-NOC and postcss goldens unchanged |
 | H13 | **found by the owner, 2026-11-19; decided (D43: `Unresolved(function_typed_value)`, no new def); not built.** a call that resolves to a **method or accessor signature in a type literal** (`type Ops = { m(): void }`), or to an accessor signature of an interface, panics in a debug build and is `Unresolved(decl_not_in_outline)` in a release build. §6.1 | §6.1 (c): one fixture per declaration kind |
+| H14 | **found by the owner, 2026-11-19; not built.** a library method with a computed name (`a[Symbol.iterator]()`) panics inside the engine (`Node.Text` on a `ComputedPropertyName`), in any build: `classify` reads the external's name with a panicking accessor. §6.2 | §6.2 (c), and the check of (b) |
 
 **Rust note (H1).** A `std::sync::Mutex` locked twice by one thread does not return: the documentation leaves it at "will not return
 (it might panic or deadlock)". There is no error to catch, and `Cancel` is never checked, because the thread is waiting inside `lock`.
@@ -376,6 +377,34 @@ which stays; their sum is the total. The split is by the **leftmost name of the 
 
 It is what says, per project, how much each step of the context layer would answer; the design of C3 waits for it. On V-NOC's
 `TaskDetailPanel` the count by hand ([`08`](08-later-context-sensitive.md) §5) expects about 19, 59, 0 and 8.
+
+### 6.2 H14: a computed name panics inside the engine (found by the owner, 2026-11-19; not built)
+
+**What happened.** `Unhandled case in Node.Text: ComputedPropertyName` (`tsrs_ast/src/ast.rs:875`), on a real file. **Run by the
+reviewer:** `a[Symbol.iterator]()` on an array, `g[Symbol.asyncIterator]()`, `m[Symbol.iterator]()` on a `Map` all panic (debug CLI;
+the panic is the engine's own, so a release build panics too). The frame in our code is `Sem::classify`, naming an `External`: the
+library declares `[Symbol.iterator](): …`, and `name().text()` is asked of a computed name. A computed name in **project** code does
+not panic (the outline names it `K.[Symbol.iterator]`).
+
+**Why no test found it.** No fixture calls a library method whose name is computed, and neither real project does.
+
+**Why it is wider than one line.** Many of the engine's node accessors end in `_ => panic!("Unhandled case …")` for a kind they do not
+handle: `text`, `expression`, `initializer`, `arguments`, `tag_name`, `children`, `statements`, `members`, `class_name` among them
+(24 in `ast.rs`). `typescript-analysis` calls these about 80 times. Most calls are guarded by a kind check written beside them, and
+this one was not: a guard by hand at each call is the rule that failed.
+
+**The fix.**
+
+- **(a)** The name of an external declaration, and every name read from a node (`resolve.rs` `classify` and `qualified_name`,
+  `handed.rs`, `collect.rs`), goes through one function in `sem` that answers for every kind a name can be: identifier, private
+  identifier, string and numeric literal (as the outline spells them), and **a computed name as it is written** (`[Symbol.iterator]`,
+  so `Array.[Symbol.iterator]`, the outline's spelling of the same thing in project code), and `None` for anything else.
+- **(b)** The engine's panicking accessors are called in **one file** of `sem` only, each behind a check of the node's kind that
+  answers `None` where the engine would panic; every other file calls those. `scripts/check-all.sh --static` fails when one of the
+  listed accessor names is called anywhere else in `typescript-analysis/src`. Then a new call cannot skip the guard.
+- **(c)** Fixtures: a library method with a computed name, called (`[Symbol.iterator]`, `[Symbol.asyncIterator]`, `[Symbol.dispose]`),
+  and the same in a `.d.ts` of the project and in a file outside the root.
+- **(d)** The sweep of H13 (d) runs on the owner's private codebase, where this was found, before the next real project.
 
 ## 7. The stack
 
