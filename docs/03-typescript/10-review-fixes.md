@@ -287,6 +287,7 @@ only).
 | H15 | **built** (ae59938; reviewed 2026-11-19). An anonymous class written directly as the callee of `new` counted `decl_not_in_outline` at the top of a file and drew a false `Call` to the enclosing def inside one (§6.3) | fixture `anonymous-in-place` |
 | H16 | **closed, no code**: vscode's slow entries are the machine's swap (§6.3) | — |
 | H17 | **not built**: the type `Node` only in `sem/view/` (§6.3) | — |
+| H18 | **found by the owner, 2026-11-19; not built.** the renderer's 100,000-node limit cuts the tree of a complete graph (`runAgent`: 1,974 contexts, 100,000 lines, `[Cut]` on the root) while the breakdown says `cuts: none`; the merged wire is merged from the cut tree. §6.4 | (a) with row 8; (b) the owner's |
 
 **Rust note (H1).** A `std::sync::Mutex` locked twice by one thread does not return: the documentation leaves it at "will not return
 (it might panic or deadlock)". There is no error to catch, and `Cancel` is never checked, because the thread is waiting inside `lock`.
@@ -446,6 +447,32 @@ driver runs the analyzer in a process it supervises, so one panic costs one requ
   name `P<Node>` today. After H14, as its own step: a mechanical change of every signature, with no answer changing. **Not built.**
   H14 built views **by capability** (`HasExpression`, `CallOrNew`, `Members`, `NameToken`, …: ten views, one cast serving several
   kinds) rather than one per node kind; H17 needs a view for every kind that sem holds, so it may add views by kind.
+
+### 6.4 H18: the renderer's node limit cuts a complete graph, and nothing says so (found by the owner, 2026-11-19; not built)
+
+**What happened.** `scripts/ts-try.sh calls` on the private codebase, entry `runAgent`: the tree starts `runAgent [Cut]`,
+`getAgentModel [Cut]`, while the breakdown says `cuts: none`. **Run by the reviewer:** the graph is complete (1,974 contexts, no
+frontier, no solver cut). The text tree is 100,000 lines and 25 levels deep, and 8 nodes are marked `Cut`.
+
+**Why.** A tree draws a shared function again under every caller, so 1,974 functions called from many places expand to far more than
+100,000 nodes. `RenderOptions::default()` (`core/analyzer-core/src/render.rs:90`) stops at `max_nodes: 100_000`, and every node
+whose children were not all drawn is marked `Cut`; the root is one of them. `cuts: none` is `Stats.cuts`, the solver's, which knows
+nothing of the renderer. Rule 8 says every limit that cuts is marked **and counted**: this one is marked only.
+
+**It reaches the product's output.** The wire is `graph → render → Node → wire`, merged on request, so the merged wire of `runAgent`
+is merged from the cut tree: 6,614 nodes, 8 of them `cut`, 24 MB (the unmerged wire is 377 MB). A def that only appears past the
+100,000th node is missing from the merged view, though the graph has it.
+
+**The fix, proposed:**
+
+- **(a) Say it** (with TS5 row 8, small): the CLI prints, under the breakdown, `tree: cut by the renderer at N nodes (--max-nodes);
+  the graph is complete` whenever the renderer cut, and a flag `--max-nodes N` sets the limit. The render already returns the tree;
+  the count of nodes it could not draw is the number to print.
+- **(b) The merged wire from the graph, not from a cut tree** (core, both languages, the owner's decision): merging collapses a
+  repeated subtree into one node with a `call_count`, so the merged view can be built from the graph by counting paths, without
+  expanding the tree first. Then the merged view of a complete graph is never cut. Python's merge is the reference to read first
+  (`docs/05-python-migration/04-the-wire.md`). A driver that asks with a depth budget (V-NOC's tier 3) rarely meets the limit; a
+  whole-tree request on a big entry always will.
 
 ## 7. The stack
 
