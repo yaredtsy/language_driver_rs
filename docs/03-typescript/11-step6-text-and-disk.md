@@ -1,6 +1,7 @@
 # TS5 step 6: a reload, and the disk
 
-Status: **design, decided, not built** (reviewer, 2026-11-17; revised the same day after its review). It answers row 6 of
+Status: **design, decided; step 1 built** (`d3b394e`, reviewed 2026-11-19: accepted, with three changes to the list of stamped paths
+still to build, §8 step 1b). Written by the reviewer, 2026-11-17, and revised the same day after its review. It answers row 6 of
 [`07-ts5-driver-needs.md`](07-ts5-driver-needs.md) §7 and D41 (an open `Session` follows the disk by itself, before each request;
 [`10-review-fixes.md`](10-review-fixes.md) §5). **Text the editor has not saved is not read, for now (D42):** `set_text` and the overlay are
 not built, and what was designed for them is kept in §10. The `[check]` and `[measure]` marked **[ran]** were run on the pinned tsrs
@@ -119,11 +120,17 @@ osvfs::fs()                      the disk
 **`Sem::open_tracked(root, file) -> (Result<Sem, OpenError>, Vec<String>)`** is `Sem::open` with the tracker in the stack, and it returns
 the paths to stamp **even when the build fails**. `Sem::open` becomes `open_tracked` with the list dropped. The list is:
 
-1. `seen_files()`, sorted (rule 9), without the paths under a `node_modules` folder (a path with a `/node_modules/` segment; the
-   `node_modules` folder itself stays);
-2. the stamp paths of §5: the lock files beside each `node_modules` folder, and every config file of `config_files()`;
+1. `seen_files()`, sorted (rule 9), without two kinds of path:
+   - the paths under a `node_modules` folder (a path with a `/node_modules/` segment). The folder itself stays, and when a path is
+     dropped its outermost `node_modules` folder is put in the list, so the list does not depend on the engine having asked for the
+     folder by itself first;
+   - **the directories strictly above the root** (§5). A file the engine asked for in one of them stays (`package.json`), and so does
+     a `node_modules` folder there.
+2. the stamp paths of §5: beside each `node_modules` folder of the list **that exists**, the file names `ENVIRONMENT_GLOBS` spells in
+   full (the lock files, and `package.json` and `jsconfig.json` with them: one list of names, not two); and every config file the
+   owner search read (the absolute paths behind `config_files()`), a broken one too;
 3. always, the root and the file the session was opened from. A build that fails before it reads anything (`NoSuchFile`, `OutsideRoot`)
-   still gives these two, so the session sees the file come back.
+   still gives these two, so the session sees the file come back. They are canonical when they can be made so, else as they were given.
 
 **A stamp** is what `std::fs::metadata` says of a path (it follows symlinks, as the engine's `realpath` does):
 
@@ -178,6 +185,8 @@ one rebuild too many, never a stale program. Only a path seen for the first time
 |---|---|
 | A rebuild opens from the same `root` and `file` as `Session::open`, never from a file found again | the config is found from that file; a different file could pick a different config (a solution's child) |
 | The stamp skips paths under `node_modules` and stamps, instead, each `node_modules` folder the program looked into **and the lock files beside it** (`package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock`, `bun.lockb`, the names `ENVIRONMENT_GLOBS` has) | 8057 of V-NOC's 9143 paths are there and cost 12 of the 14 ms. An install rewrites a lock file and adds or removes folders in `node_modules` (§6, §9 a) |
+| A directory strictly above the root is not stamped; a file or a `node_modules` folder the engine asked for there is | The engine asks about every folder up to `/` (a `package.json` in each), so they are all seen. A folder's modified time moves whenever anything is created in it, and a home folder moves all day: on the reviewer's machine twice in 30 seconds (a shell's cache file, a tool's settings file), each one a rebuild of a project that did not change. What matters above the root is asked for by its own path (`package.json`, `node_modules`) and keeps its own stamp |
+| The lock-file names are stamped only beside a `node_modules` folder that exists | the engine asks for a `node_modules` in every folder it resolves a package from, and most are not there; a folder that appears later changes its own stamp, and the rebuild then lists the names beside it |
 | Every config file of `config_files()` is stamped, even one outside the root | an `extends` target outside the root changes the options; the tracker sees it read, this makes it explicit |
 | A failed rebuild leaves the session with no program (`lost`) | an old program answers from text that is no longer there; `None` is what rule 8 allows, a stale tree is not (§9 b) |
 | The stamps live in the `Session`, and a failed build gives its paths too | a lost session must see the disk come right again (§3); stamps inside the program would be gone with it |
@@ -204,6 +213,11 @@ Each is written in `ENGINE.md` with the test that pins it.
   and NTFS) read as no change. Python has the same limit.
 - **A spurious rebuild** when an editor writes a temporary file beside a source file: the folder's modified time moves. It costs one rebuild
   and gives the same answers.
+- **A file created above the root that only the config's `include` would find** (`"include": ["../*"]`, and nothing imports the file) is
+  not seen by `refresh`, because the directories above the root are not stamped (§5); `reload` sees it. Project code is under the root
+  (D33), so such a file could only add global declarations.
+- **A file rewritten in place inside a package** does not move the package folder's modified time, which is why stamping the
+  `node_modules` folders alone cannot see the first limit above.
 - **The file the session was opened from is deleted:** the session is lost until the file is back (§3). The driver opens a new `Session`
   from another file if it wants one sooner.
 
@@ -228,10 +242,22 @@ Each case first asks, then changes, then asks again; the expected tree is writte
 | 12 | after any rebuild | the graph is byte-identical to a fresh `Session::open` on the same disk |
 | 13 | the callee's file is rewritten **during** a rebuild | that `refresh` may give either tree; the next `refresh` has `reopened` true and the new tree |
 | 14 | case 8's edit, and the lock file beside that `node_modules` is rewritten (what an install does) | `refresh`: `reopened` true and the new answer |
+| 15 | a folder is created beside the project, in the root's parent | `refresh`: `reopened` false (a directory above the root is not stamped) |
+| 16 | `main` imports a package that is nowhere; then it is installed in the **parent's** `node_modules` (a monorepo's hoisted install) | `Unresolved` first; after `refresh`, `reopened` true and an `External` of the package |
 
 Case 13 needs the change to land between the build and the stamps, so it is an in-crate test with a test-only hook in `sem` that
 `open_tracked` calls once the program is bound (as the `def_without_node` test's hook, `sem/mod.rs`). With rule (2) of §4 taken out, the
 second `refresh` says "nothing changed": that is the mutant the test must kill.
+
+**As built** (`d3b394e`): cases 1–12 and 14 are `tests/session_refresh.rs`, with two tests of `reload` (it rebuilds when no stamp moved;
+a lost session whose file is back). Case 13 is in `session.rs`, beside a test that counts builds (a second test-only hook, `BUILDS`): a
+session lost for good builds once, then nothing on three more `refresh`, and `reload` builds. The in-crate tests write their projects
+through one test-only file, `src/scratch.rs`, which is the only file `scripts/check-all.sh` leaves out of rule 2 in a library's `src`.
+A rewrite in a test changes the file's length, so no test rests on the clock's resolution; case 5, told by a folder's time alone, waits
+50 ms first. An `Unresolved` edge is asserted without its reason: the reasons are the policy table's.
+
+**The mutants, run by the coding session and undone:** stamps taken after the build → case 13 fails; stamps lost with the program →
+cases 10 and 11 and the count-of-builds test fail; no lock names beside `node_modules` → case 14 fails.
 
 Also: the memory test gains a loop of "rewrite a file, `refresh`, `graph`" (50 rounds) whose resident memory stays bounded, as TS3's
 open/drop loop does. A unit test in `sem` checks that the seen paths after a call graph are the seen paths after open (the probe's answer,
@@ -251,6 +277,11 @@ One commit each, a stop for review after each.
 
 1. **The stamps, `refresh` and `reload`** (cases 1–14, the seen-paths unit test). `Sem::open_tracked` with `trackingvfs` and a fresh
    `cachedvfs` per build, `Stamp`, `Stamps`; `Session::refresh` and `reload`, `Refreshed`, `project()` as an `Option`.
+   **Built, `d3b394e`, accepted** (328 pass, 5 ignored; V-NOC `TaskDetailPanel` unchanged).
+
+   1b. **The list of stamped paths, after the review** (cases 15 and 16): no directory strictly above the root; the outermost
+   `node_modules` folder of a dropped path; the lock-file names only beside a `node_modules` that exists. As built, step 1 stamps every
+   folder up to `/`, so a file created in the home folder rebuilds the project.
 2. **The memory loop and the measurements.** No CLI change: `typescript-cli calls` is one request and needs no `refresh`.
 
 ## 9. Decided

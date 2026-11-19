@@ -1154,3 +1154,30 @@ golden files of the five entries, regenerated with the CLI: trees, wires, merged
   a syntax error is `OpenError::ConfigError` (`sem/project.rs`), so a config saved half-edited fails a rebuild: the reason a lost session
   must come back by itself (the design's §3).
 
+
+## TS5 step 6, commit 1 as built: the tracker and the stamps (`d3b394e`, reviewed 2026-11-19)
+
+- **The tracker's handle.** `sem::tracked_fs()` makes `Arc<trackingvfs::FS<cachedvfs::FS<&'static dyn FS>>>` and puts a clone of the `Arc`
+  inside `bundled::wrap_fs(…)`: an `Arc<T>` of a file system is itself a file system (`FS` is implemented for it), so the clone goes into
+  the stack and the original stays in `Sem::open_tracked`. `seen_files()` is read after the build returns, so it is there when the build
+  fails. The cache is made for each build.
+- **What a small project asks for** (two source files, one failed import, a `tsconfig.json`, no `node_modules`; the list was printed
+  once by the reviewer): 29 paths. 3 files (the config and the two sources); 10 directories: the root, `src`, and **the 8 directories
+  above the root, `/` included**; 16 that do not exist: a `package.json` in each of the 10 directories, and 6 lookups of the failed
+  import (`gone`, `.ts`, `.tsx`, `.d.ts`, `.js`, `.jsx`).
+- **No `node_modules` path is asked for** in that project: nothing imports a package, and no `node_modules/@types` folder is looked for
+  either. With an import of a package, the `node_modules` folder is among the seen paths (cases 8 and 14 rest on it).
+- **A walk adds no path:** the seen paths after a call graph are the seen paths after open (`sem/tests.rs`, kept as a test).
+- **Spelling:** the engine's paths are absolute, with `/`, and canonical (`/private/var/…` on macOS), and `std::fs::metadata` takes them
+  as they are.
+- **A file rewritten in place inside a package does not move the folder's modified time**, so a stamp on `node_modules` and its lock
+  files cannot see a package edited by hand (case 8; `reload` does).
+- **The directories above the root must not be stamped** (found at the review; the design's §5, step 1b). The home folder's modified time
+  moved twice within 30 seconds while the review ran (`.zcompdump`, `.claude.json`), and each move would rebuild a project that did not
+  change.
+
+**Measured by the reviewer on V-NOC** (dev profile, the machine not quiet; a throwaway test, deleted): `Session::open` 351 ms; `refresh`
+with nothing changed 3.6 to 10 ms (40 calls, half a second apart, none rebuilt). That is above the 1.5 ms the stamps outside
+`node_modules` took in the design's probe: step 2's measurement counts the stamped paths by kind (the lock-file names beside every
+`node_modules` the engine asked for, most of them missing, are the first suspect). `TaskDetailPanel` is unchanged: 141 call, 2 construct,
+235 external, 86 unresolved, 18 passed, 90 contexts.
