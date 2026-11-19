@@ -1,0 +1,390 @@
+{
+  "target_qname": "main",
+  "target_id": "",
+  "target_file": "main.ts",
+  "target_qualname": "main",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "main.ts",
+          "qname": "main",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "read_json",
+      "target_id": "",
+      "target_file": "main.ts",
+      "target_qualname": "read_json",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          37,
+          3
+        ],
+        "end": [
+          37,
+          12
+        ]
+      },
+      "call_site_file": "main.ts",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "main.ts",
+              "qname": "read_json",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": [
+        {
+          "target_qname": "JsonWriter",
+          "target_id": "",
+          "target_file": "main.ts",
+          "target_qualname": "JsonWriter",
+          "target_occurrence": 0,
+          "target_kind": "Class",
+          "call_count": 0,
+          "call_site": {
+            "start": [
+              27,
+              17
+            ],
+            "end": [
+              27,
+              27
+            ]
+          },
+          "call_site_file": "main.ts",
+          "contexts": [],
+          "children": []
+        },
+        {
+          "target_qname": "emit",
+          "target_id": "",
+          "target_file": "main.ts",
+          "target_qualname": "emit",
+          "target_occurrence": 0,
+          "target_kind": "Function",
+          "call_count": 0,
+          "call_site": {
+            "start": [
+              28,
+              3
+            ],
+            "end": [
+              28,
+              7
+            ]
+          },
+          "call_site_file": "main.ts",
+          "contexts": [
+            {
+              "func": {
+                "Path": {
+                  "module": "main.ts",
+                  "qname": "emit",
+                  "nth": 0
+                }
+              },
+              "digest": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "children": [
+            {
+              "target_qname": "Writer.write",
+              "target_id": "",
+              "target_file": "main.ts",
+              "target_qualname": "Writer.write",
+              "target_occurrence": 0,
+              "target_kind": "Method",
+              "call_count": 0,
+              "call_site": {
+                "start": [
+                  23,
+                  3
+                ],
+                "end": [
+                  23,
+                  10
+                ]
+              },
+              "call_site_file": "main.ts",
+              "contexts": [
+                {
+                  "func": {
+                    "Path": {
+                      "module": "main.ts",
+                      "qname": "Writer.write",
+                      "nth": 0
+                    }
+                  },
+                  "digest": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              ],
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "target_qname": "read_csv",
+      "target_id": "",
+      "target_file": "main.ts",
+      "target_qualname": "read_csv",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          38,
+          3
+        ],
+        "end": [
+          38,
+          11
+        ]
+      },
+      "call_site_file": "main.ts",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "main.ts",
+              "qname": "read_csv",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": [
+        {
+          "target_qname": "CsvWriter",
+          "target_id": "",
+          "target_file": "main.ts",
+          "target_qualname": "CsvWriter",
+          "target_occurrence": 0,
+          "target_kind": "Class",
+          "call_count": 0,
+          "call_site": {
+            "start": [
+              32,
+              17
+            ],
+            "end": [
+              32,
+              26
+            ]
+          },
+          "call_site_file": "main.ts",
+          "contexts": [],
+          "children": []
+        },
+        {
+          "target_qname": "emit",
+          "target_id": "",
+          "target_file": "main.ts",
+          "target_qualname": "emit",
+          "target_occurrence": 0,
+          "target_kind": "Function",
+          "call_count": 0,
+          "call_site": {
+            "start": [
+              33,
+              3
+            ],
+            "end": [
+              33,
+              7
+            ]
+          },
+          "call_site_file": "main.ts",
+          "contexts": [
+            {
+              "func": {
+                "Path": {
+                  "module": "main.ts",
+                  "qname": "emit",
+                  "nth": 0
+                }
+              },
+              "digest": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "children": [
+            {
+              "target_qname": "Writer.write",
+              "target_id": "",
+              "target_file": "main.ts",
+              "target_qualname": "Writer.write",
+              "target_occurrence": 0,
+              "target_kind": "Method",
+              "call_count": 0,
+              "call_site": {
+                "start": [
+                  23,
+                  3
+                ],
+                "end": [
+                  23,
+                  10
+                ]
+              },
+              "call_site_file": "main.ts",
+              "contexts": [
+                {
+                  "func": {
+                    "Path": {
+                      "module": "main.ts",
+                      "qname": "Writer.write",
+                      "nth": 0
+                    }
+                  },
+                  "digest": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              ],
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
