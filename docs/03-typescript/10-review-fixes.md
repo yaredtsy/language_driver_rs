@@ -321,8 +321,15 @@ in a type literal (under an alias or not), or to a `get`/`set` signature in a ty
 
 The reviewer had first chosen a def for the alias's members (`FsOperations.existsSync`, as an interface's). The owner's two reasons
 against it: such a def would stand where the context layer is meant to put the function that was really passed, and a def with no body
-is an empty node, which the product has no kind of node for. An `interface`'s method signature stays the def it is (policy row
-`interface`): changing that removes a kind of def, a decision of its own (rule 10).
+is an empty node, which the product has no kind of node for.
+
+**Extended the same day (owner): an interface's method signature and an abstract method do not resolve either.** `w.write()` with
+`w: Writer` is `Unresolved(function_typed_value)`, no longer a `Call` to the leaf `Writer.write`; policy row `interface` changes to
+that, and its snapshot (`tests/snapshots/policy/interface.txt`) with it. The outline does not change: `Writer`, `Writer.write` and
+`B.m` (abstract) stay defs, so a marker on them keeps its place (rule 10). A union receiver whose member is an interface counts that
+member as `union_receiver` as before, with the members that are classes still targets. Still a leaf: a method of a `declare class` and
+a `declare function` in project code (ambient declarations with no body anywhere in the project). On V-NOC's `TaskDetailPanel` no call
+lands on a body-less def (counted from the graph), so its golden tree is expected not to move.
 
 **(b) No panic on a user's code, in any build.** The `debug_assert!` at `resolve.rs:488` goes; the count stays. The tests keep their
 tripwire another way: the helper every graph test goes through fails when `decl_not_in_outline` is counted and the test did not say it
