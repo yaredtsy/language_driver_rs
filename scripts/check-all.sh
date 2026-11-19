@@ -25,8 +25,10 @@ none "an engine is named outside the sem module (rule 4)" \
   "$(rs_files -E "$engine" "${crates[@]}" | grep -vE '/src/sem(\.rs|/.+\.rs)$' | grep -v '^languages/python/crates/python-analysis/src/interp/' || true)"
 none "core names an engine (rule 5)" "$(rs -E "$engine" core)"
 
-# rule 1: no product words in code
-none "a product word in code (rule 1)" "$(rs -iE 'v-?noc|FileID|Schema/' core "${crates[@]}")"
+# rule 1: no product words in code. `FileID` is the product's spelling and is matched as written (D47): the engines' own `FileId`, `EditionedFileId` and
+# `HirFileId` are not it. `v-noc` and `Schema/` ignore case.
+none "a product word in code (rule 1)" \
+  "$(rs -iE 'v-?noc|Schema/' core "${crates[@]}"; rs -E 'FileID' core "${crates[@]}")"
 
 # rule 6: no personal paths. The pattern is written in two pieces so this file does not match itself.
 none "a personal path (rule 6)" \
