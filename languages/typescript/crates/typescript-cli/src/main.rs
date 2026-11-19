@@ -7,7 +7,7 @@
 //!   the call tree under a def, then the breakdown of the graph (edges by kind, unresolved edges by reason). `--depth` and `--max-contexts` are a
 //!   [`Budget`] (whole numbers, 0 and up): a def past it is listed and not walked, drawn `[Cut]`, and counted in the `frontier` line; `--depth 0` is the
 //!   entry alone, on the frontier. Asking again for a cut def as the entry continues from there. `--max-nodes N` (1 and up) is the renderer's limit on the
-//!   tree and the `--wire` (default 100 000, and not a budget: the graph is complete); when it cut, a line after the breakdown says so. A qualname is not unique in a file (D15): when it
+//!   tree and the `--wire` (default 100 000, and not a budget: the graph is complete); when it cut, a `cuts in the tree` line of the breakdown says so. A qualname is not unique in a file (D15): when it
 //!   matches several defs they are listed and the exit code is 2, never the first one picked; `--id` names the one that carries that marker. With no
 //!   `--entry` the entry is the file's own code (the module, D32), and `--id` is a usage error: it picks among defs, and a file is one. `--wire` prints
 //!   the wire (D17) instead of the tree, as JSON alone on stdout, with the prefixes the caller gives for the ids of functions and classes.
@@ -230,12 +230,12 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
     if renderer_cut {
         let graph_cut = graph.stats.frontier > 0 || !graph.stats.cuts.is_empty();
         summary.push_str(&format!(
-            "tree: cut by the renderer at {} nodes (--max-nodes); the graph {}\n",
+            "  cuts in the tree: at {} nodes (--max-nodes); the graph {}\n",
             render_options.max_nodes,
             if graph_cut {
                 "has its own cuts, above"
             } else {
-                "itself is complete"
+                "is complete"
             }
         ));
     }

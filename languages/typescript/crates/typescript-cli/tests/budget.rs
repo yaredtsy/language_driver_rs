@@ -60,7 +60,7 @@ fn tree_output(
         format!("  frontier: {frontier} (contexts the budget stopped at: listed, not walked)\n")
     };
     format!(
-        "{tree}\nbreakdown:\n  edges: {calls} call, {constructs} construct, 0 external, 0 unresolved\n  contexts {contexts}, bodies walked {walked}, summaries reused 0\n  cuts: none\n{frontier}"
+        "{tree}\nbreakdown:\n  edges: {calls} call, {constructs} construct, 0 external, 0 unresolved\n  contexts {contexts}, bodies walked {walked}, summaries reused 0\n  cuts in the graph: none\n{frontier}"
     )
 }
 
@@ -292,7 +292,7 @@ fn the_help_text_names_both_flags() {
 
 /// The line after the breakdown when the renderer cut.
 fn renderer_line(nodes: u32, graph: &str) -> String {
-    format!("tree: cut by the renderer at {nodes} nodes (--max-nodes); the graph {graph}\n")
+    format!("  cuts in the tree: at {nodes} nodes (--max-nodes); the graph {graph}\n")
 }
 
 #[test]
@@ -302,7 +302,7 @@ fn a_tree_wider_than_max_nodes_is_cut_there_and_a_line_says_so() {
     assert_eq!(
         stdout(&out),
         tree_output("main [Cut]\n  fetch\n    parse\n", 4, 0, 5, 5, 0)
-            + &renderer_line(3, "itself is complete")
+            + &renderer_line(3, "is complete")
     );
     let out = calls("straight-line", &["--max-nodes", "4"]);
     assert_eq!(
@@ -314,12 +314,12 @@ fn a_tree_wider_than_max_nodes_is_cut_there_and_a_line_says_so() {
             5,
             5,
             0
-        ) + &renderer_line(4, "itself is complete")
+        ) + &renderer_line(4, "is complete")
     );
     let out = calls("straight-line", &["--max-nodes", "1"]);
     assert_eq!(
         stdout(&out),
-        tree_output("main [Cut]\n", 4, 0, 5, 5, 0) + &renderer_line(1, "itself is complete")
+        tree_output("main [Cut]\n", 4, 0, 5, 5, 0) + &renderer_line(1, "is complete")
     );
 }
 
@@ -357,7 +357,7 @@ fn the_wire_honours_max_nodes_merged_or_not() {
         assert_eq!(children[0]["target_qname"], "fetch");
         assert_eq!(children[0]["children"].as_array().unwrap().len(), 1);
         assert!(
-            stderr(&out).ends_with(&renderer_line(3, "itself is complete")),
+            stderr(&out).ends_with(&renderer_line(3, "is complete")),
             "{flags:?}: {}",
             stderr(&out)
         );

@@ -131,7 +131,7 @@ fn calls_prints_the_tree_and_then_the_breakdown() {
 breakdown:
   edges: 4 call, 0 construct, 0 external, 0 unresolved
   contexts 5, bodies walked 5, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 "
     );
 }

@@ -467,14 +467,14 @@ impl fmt::Display for Breakdown {
             self.contexts, self.walks, self.reuse_hits
         )?;
         if self.cuts.is_empty() {
-            writeln!(f, "  cuts: none")
+            writeln!(f, "  cuts in the graph: none")
         } else {
             let cuts: Vec<String> = self
                 .cuts
                 .iter()
                 .map(|(cut, count)| format!("{cut} {count}"))
                 .collect();
-            writeln!(f, "  cuts: {}", cuts.join(", "))
+            writeln!(f, "  cuts in the graph: {}", cuts.join(", "))
         }
     }
 }
