@@ -283,7 +283,10 @@ only).
 | H11 | **built, `6c1dfc4` (D40; reviewed, accepted).** **(found at H10, 2026-11-17; decided by the owner the same day as recommended, D40) a named function expression called in place is not entered.** `(function named() { h(); })()`: the outline makes `named` a def (the engine's rule: a function expression with a name), so the enclosing body stops at it, and the call is `Unresolved` (since H10 `anonymous_function_called`, a reason that is wrong for it: the function has a name and a def). So `h` is drawn in no tree but `named`'s own, which only a request for `named` reaches; the coverage sweep cannot see it because it enters every def. The engine gives no answer either: its call hierarchy takes the callee, a `ParenthesizedExpression`, which is no declaration and has no symbol, and drops the call (`tsrs_ls/src/callhierarchy.rs:936`). **Recommended:** when the callee, under parentheses, assertions and `!`/`void`, is a function expression that `def_of` holds, the edge is `Call` to that def: the callee is the def's own node, so it is not a guess (rule 8), and it is what the row `nested` says for a named function (it appears where it is called). An anonymous one stays `anonymous_function_called`. Where it is common: UMD and bundler wrappers (`(function webpackUniversalModuleDefinition(root, factory) {…})(this, …)`) | `file-entry/src/iife-forms.ts`: the named case is a `Call` to `named` and the module's tree shows `named ▸ h`; the four anonymous ones unchanged; V-NOC and postcss goldens unchanged unless they hold a named IIFE (say which) |
 | H12 | **built, `c6835fe` (reviewed, accepted; (a) decided by the owner, D40 extended).** **(found at H11's review, 2026-11-17) two more defs written in place and reached without a direct call.** (a) `new (class Named { constructor() { g(); } })()`: the class expression is a def, and the `new` is `Unresolved(no_declaration)`, so the constructor's `g` is drawn under no caller (found by the coding session). (b) `(function wrapped() { g(); }).call(this)` and `.apply`: the site resolves to the external `Function.call`, and `wrapped`'s `g` is in no tree under the caller and **in no counter**. `uncovered_call_apply` counts a name before `.call`, not a function written there, so this is a rule 8 gap. Anonymous forms are fine: their calls are the enclosing body's. **Recommended:** (a) is D40 for a class: when the class expression of a `new`, under parentheses and assertions, is a def, the site is a `Construct` through `walk::construction`, like `new C()`. This is the owner's call (D40 names function expressions only). (b) is counted in `uncovered_call_apply`, as a name is, with no new decision (D22 step 5: call/apply is counted, not drawn) | a fixture for each, (a) in both forms, `new (class N {})()` and `new (class {})()`; V-NOC and postcss goldens unchanged |
 | H13 | **built** (655faea rule and no panic, 53422f3 the split, 937e0a3 the sweep; reviewed 2026-11-19, accepted). **found by the owner, 2026-11-19; decided (D43: `Unresolved(function_typed_value)`, no new def).** a call that resolves to a **method or accessor signature in a type literal** (`type Ops = { m(): void }`), or to an accessor signature of an interface, panics in a debug build and is `Unresolved(decl_not_in_outline)` in a release build. §6.1 | §6.1 (c): one fixture per declaration kind |
-| H14 | **found by the owner, 2026-11-19; not built; the fix revised at the review (§6.2: typed views, one name spelling shared with the outline, clippy bans).** a library method with a computed name (`a[Symbol.iterator]()`) panics inside the engine (`Node.Text` on a `ComputedPropertyName`), in any build: `classify` reads the external's name with a panicking accessor. §6.2 | §6.2 (c), and the check of (b) |
+| H14 | **built** (733e26c; reviewed 2026-11-19, accepted). **found by the owner, 2026-11-19; the fix revised at the review (§6.2: typed views, one name spelling shared with the outline, clippy bans).** a library method with a computed name (`a[Symbol.iterator]()`) panics inside the engine (`Node.Text` on a `ComputedPropertyName`), in any build: `classify` reads the external's name with a panicking accessor. §6.2 | §6.2 (c), and the check of (b) |
+| H15 | **built** (ae59938; reviewed 2026-11-19). An anonymous class written directly as the callee of `new` counted `decl_not_in_outline` at the top of a file and drew a false `Call` to the enclosing def inside one (§6.3) | fixture `anonymous-in-place` |
+| H16 | **closed, no code**: vscode's slow entries are the machine's swap (§6.3) | — |
+| H17 | **not built**: the type `Node` only in `sem/view/` (§6.3) | — |
 
 **Rust note (H1).** A `std::sync::Mutex` locked twice by one thread does not return: the documentation leaves it at "will not return
 (it might panic or deadlock)". There is no error to catch, and `Cancel` is never checked, because the thread is waiting inside `lock`.
@@ -378,7 +381,7 @@ which stays; their sum is the total. The split is by the **leftmost name of the 
 It is what says, per project, how much each step of the context layer would answer; the design of C3 waits for it. On V-NOC's
 `TaskDetailPanel` the count by hand ([`08`](08-later-context-sensitive.md) §5) expects about 19, 59, 0 and 8.
 
-### 6.2 H14: a computed name panics inside the engine (found by the owner, 2026-11-19; not built)
+### 6.2 H14: a computed name panics inside the engine (found by the owner, 2026-11-19; built, 733e26c, reviewed 2026-11-19)
 
 **What happened.** `Unhandled case in Node.Text: ComputedPropertyName` (`tsrs_ast/src/ast.rs:875`), on a real file. **Run by the
 reviewer:** `a[Symbol.iterator]()` on an array, `g[Symbol.asyncIterator]()`, `m[Symbol.iterator]()` on a `Map` all panic (debug CLI;
@@ -422,15 +425,27 @@ back raw nodes too, so that crate would own all of `sem` (6,127 lines). The view
 the raw type. An engine panic deep inside tsrs is not ours to catch (a caught panic can leave the engine's arena half written): the
 driver runs the analyzer in a process it supervises, so one panic costs one request. That belongs to the driver contract (`vnoc`).
 
-### 6.3 H15, H16, H17 (found by the reviewer's sweeps, 2026-11-19; not built)
+### 6.3 H15, H16, H17 (found by the reviewer's sweeps, 2026-11-19)
 
 - **H15: four vscode test files count `decl_not_in_outline`**, each at a construction `new class extends mock<I>() { }` (`mock`
   returns `Ctor<T>`, an interface with a construct signature), e.g. `vs/editor/contrib/suggest/test/browser/wordDistance.test.ts`
   line 68, at vscode `59a929a7`. Not reproduced in a small file by the reviewer (five shapes tried); reduce it from the real file.
+  **Built** (ae59938; reviewed 2026-11-19). The shape is an anonymous class written **directly** as the callee of `new` (no
+  parentheses): the engine's call hierarchy takes it for a possible declaration and searches up, and answers the first declaration
+  above it, the **file** at the top of a callback (the four counts) or, inside a def, that def: a **false `Call`** to the enclosing
+  def, which no count showed (the reviewer's five shapes were all of that kind). Now it answers what its parenthesized spelling did:
+  `no_declaration` for a class, `anonymous_function_called` for a function (`new function () {}()`). No new rule.
 - **H16: some single entries of vscode take 2 to 3.6 s** for 5 to 20 contexts (`AITextSearchHeadingImpl.fileCount` 3.2 s with 5),
   while the median entry takes about 2 ms. A cost that grows with the project, not the entry: find it (a profile of one such entry).
+  **Closed: the machine, not the code** (measured by the coder, 2026-11-19; no commit). Each named entry alone, in the same build:
+  `connect` 30 ms, `fileCount` 5 ms, `buildRecentlyOpenedList` 34 ms at depth 1. The same sweep binary on the same input ran 45 s
+  (slowest entry 186 ms) and then 355 s (slowest 6 s): the machine has 8 GB of memory, and 5 to 5.4 GB of swap was in use during the
+  slow runs. The counter `uncovered_construct_initializer_sites` is 1.4% of a sweep. A sweep's times on this machine are only
+  comparable when the swap is low.
 - **H17: the type `Node` only in `sem/view/`.** `disallowed-types` for the engine's node outside the views; 112 signatures of `sem`
-  name `P<Node>` today. After H14, as its own step: a mechanical change of every signature, with no answer changing.
+  name `P<Node>` today. After H14, as its own step: a mechanical change of every signature, with no answer changing. **Not built.**
+  H14 built views **by capability** (`HasExpression`, `CallOrNew`, `Members`, `NameToken`, …: ten views, one cast serving several
+  kinds) rather than one per node kind; H17 needs a view for every kind that sem holds, so it may add views by kind.
 
 ## 7. The stack
 

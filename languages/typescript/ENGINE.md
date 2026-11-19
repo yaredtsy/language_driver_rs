@@ -1216,3 +1216,40 @@ size. The last four columns are `function_typed_value` by origin:
   imports are `any`. Their unresolved counts say less than V-NOC's.
 - **H16:** vscode's slowest entries take 2 to 3.6 s for 5 to 20 contexts; the mean is 2.2 ms.
 - TypeScript's `main` branch is the Go port now; 5.9.3 is the last TypeScript source of the compiler.
+
+## H14, H15, H16 as built and measured (733e26c, ae59938; reviewed 2026-11-19)
+
+**The engine's accessors that panic** on a kind they do not handle (`_ => panic!("Unhandled case in Node.…")` in
+`tsrs_ast/src/ast.rs` at the pin), as the coder read them: `text`, `expression`, `raw_text`, `set_expression`, `argument_list` /
+`arguments`, `type_argument_list` / `type_arguments`, `type_parameter_list` / `type_parameters`, `member_list` / `members`,
+`statement_list` / `statements`, `initializer`, `set_initializer`, `tag_name`, `comment_list` / `comments`, `label`, `attributes`,
+`children`, `module_specifier`, `import_clause`, `statement`, `property_list` / `properties`, `element_list` / `elements`,
+`question_dot_token`, `type_expression`, `class_name`, `set_type`. `get_declaration_from_name` does **not** panic. Free functions of
+`ast::` that panic (`get_first_identifier`, `entity_name_to_string`, …) are not called by `sem`. `SourceFile::text` is another method
+and cannot panic.
+
+- **Banned by path:** `crates/typescript-analysis/clippy.toml`, `disallowed-methods` with paths `tsrs_ast::Node::<name>`; clippy
+  matches inherent methods of `Node` by that path (shown: one raw `callee.expression()` put back failed `-D warnings`). Only
+  `sem/view/` allows them.
+- **Ten views, by capability** (`HasExpression`, `Wrapper`, `CallOrNew`, `Initialized`, `Members`, `Statements`, `Elements`,
+  `Properties`, `JsxTag`, `NameToken`); 70 raw calls moved to them.
+- **The totality walk** (`sem/view/tests.rs`): 196,624 nodes (every bundled library and 35 fixture projects), every cast tried and
+  every accessor called, and every kind of every view met at least once; 0.6 s in the dev profile, an ordinary test. It is the check
+  to run first at an engine bump.
+- **Names:** `typescript_syntax::spell_name` (moved from the outline, one implementation) spells every name built for output. A
+  property **looked up** by name uses the token's value instead (`NameToken::value`): a key `"a-b"` is looked up as `a-b`.
+
+**H15:** an anonymous class written directly as the callee of `new` was answered by the engine's call hierarchy with the first
+declaration above it. In vscode that was the file in 4 entries, and a false `Call` to the enclosing def in many more:
+`no_declaration` went from 1,875 to 5,496 over vscode's sweep when they were corrected.
+
+**The sweep at the new code** (depth 1, dev profile; swap 6 to 7 GB of 8 GB RAM during the vscode run):
+
+| Project | Defs | Open | Memory after open / after all | All graphs | `decl_not_in_outline` | `engine_kind_unhandled` | `signature_passed` |
+|---|---|---|---|---|---|---|---|
+| V-NOC frontend | 1,476 | 0.18 s | 115 / 137 MB | 0.41 s | 0 | 0 | 0 |
+| the private codebase | 13,772 | 0.22 s | 144 / 119 MB | 4.0 s | 0 | 0 | 63 |
+| TypeScript 5.9.3 `src/compiler` | 12,059 | 0.05 s | 69 / 106 MB | 1.0 s | 0 | 0 | 218 |
+| vscode `src` (`59a929a7`) | 203,738 | 2.6 s | 431 / 347 MB | 37 s (443 s the first time: H16) | 0 | 0 | 1,287 |
+
+None of the four panics. V-NOC `TaskDetailPanel` unchanged (141 / 2 / 235 / 86 / 18, 90 contexts).
