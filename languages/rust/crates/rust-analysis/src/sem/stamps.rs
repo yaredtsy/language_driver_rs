@@ -42,13 +42,42 @@ impl Stamp {
     }
 }
 
+/// The names in a folder at one look: its sub-folders and its files.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct Names {
+    pub(super) folders: BTreeSet<String>,
+    pub(super) files: BTreeSet<String>,
+}
+
+/// The names in `path` (a symlink to a folder counts as a folder, as the load's walk follows it), whatever they are: `target/` and `.git` too.
+pub(super) fn names_in(path: &str) -> Names {
+    let mut names = Names::default();
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return names;
+    };
+    for entry in entries.flatten() {
+        let (Ok(name), Ok(meta)) = (
+            entry.file_name().into_string(),
+            std::fs::metadata(entry.path()),
+        ) else {
+            continue;
+        };
+        if meta.is_dir() {
+            names.folders.insert(name);
+        } else {
+            names.files.insert(name);
+        }
+    }
+    names
+}
+
 /// The paths a session watches, each with its stamp, sorted by path (rule 9), no path twice.
 ///
 /// Kinds of path, by what happens to them:
 /// - a **watched** path (a project `.rs` file, a folder above one): when it is gone, it is forgotten, and its folder says when it comes back;
 /// - a **kept** path (an environment input, the file the session was opened from): stamped as missing and kept, so that its creation is seen;
-/// - a **scout** (a folder from the project root down to a package root: when it changes, its new folders are walked for an input, because a package
-///   created there is a crate the load did not know);
+/// - a **scout** (a folder from the project root down to a package root: when it changes, its **new** sub-folders are walked for an input, because a
+///   package created there is a crate the load did not know; a sub-folder is new when its name was not there at the scout's last look);
 /// - an **input** (kept, and the engine reads it to build the crate graph: a manifest, a lock, a toolchain or cargo config file, a `build.rs` when
 ///   build scripts ran): when it changes the workspace is loaded again.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -56,7 +85,9 @@ pub(crate) struct Stamps {
     seen: BTreeMap<String, Stamp>,
     kept: BTreeSet<String>,
     inputs: BTreeSet<String>,
-    scouts: BTreeSet<String>,
+    /// Each scout, with the names in it as they were at its last look; `None` when they could not be taken steadily (the folder moved while they were
+    /// read), and every sub-folder and file then counts as new at the next look.
+    scouts: BTreeMap<String, Option<Names>>,
 }
 
 impl Stamps {
@@ -79,14 +110,33 @@ impl Stamps {
         self.inputs.insert(path.to_owned());
     }
 
-    /// Like `add`, and a change of the folder is a reason to look in it for a new package.
+    /// Like `add`, and a change of the folder is a reason to look in it for a new package. The names of its sub-folders are taken after its stamp. A scout
+    /// that is already one keeps what it has.
     pub(super) fn add_scout(&mut self, path: &str) {
         self.add(path);
-        self.scouts.insert(path.to_owned());
+        if !self.scouts.contains_key(path) {
+            self.scouts.insert(path.to_owned(), None);
+            self.record_names(path, names_in(path));
+        }
     }
 
     pub(super) fn is_scout(&self, path: &str) -> bool {
-        self.scouts.contains(path)
+        self.scouts.contains_key(path)
+    }
+
+    /// The names in the scout `path` at its last look, if they were taken steadily.
+    pub(super) fn names_at_last_look(&self, path: &str) -> Option<&Names> {
+        self.scouts.get(path)?.as_ref()
+    }
+
+    /// `names` are what is in the scout `path`, listed after its stamp was taken. They are kept if the folder has not moved since (nothing was
+    /// created between the stamp and the listing); if it has, the names may include an entry the stamp does not account for, so none are kept and the next
+    /// look treats every sub-folder and file as new.
+    pub(super) fn record_names(&mut self, path: &str, names: Names) {
+        let steady = self.seen.get(path) == Some(&Stamp::of(path));
+        if let Some(slot) = self.scouts.get_mut(path) {
+            *slot = steady.then_some(names);
+        }
     }
 
     pub(super) fn get(&self, path: &str) -> Option<Stamp> {
@@ -114,7 +164,7 @@ impl Stamps {
         self.seen
             .retain(|path, stamp| *stamp != Stamp::Missing || kept.contains(path));
         let seen = &self.seen;
-        self.scouts.retain(|path| seen.contains_key(path));
+        self.scouts.retain(|path, _| seen.contains_key(path));
     }
 
     /// The same paths, stamped again now: what the disk says at this moment.
@@ -141,10 +191,17 @@ impl Stamps {
     /// before: a file saved while the load ran then differs from it at the next look, and the next look reads it again. Stamping it after the load would
     /// describe the new text while the database may hold the old, and nothing would notice. A path `before` did not have is new, and keeps the stamp
     /// it has.
+    ///
+    /// A scout `before` already had keeps its names with its stamp: they are what its stamp accounts for.
     pub(super) fn keeping(mut self, before: &Stamps) -> Stamps {
         for (path, stamp) in &mut self.seen {
             if let Some(old) = before.seen.get(path) {
                 *stamp = *old;
+            }
+        }
+        for (path, names) in &mut self.scouts {
+            if let Some(old) = before.scouts.get(path) {
+                names.clone_from(old);
             }
         }
         self

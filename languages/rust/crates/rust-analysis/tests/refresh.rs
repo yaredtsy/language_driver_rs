@@ -408,6 +408,56 @@ fn a_new_folder_without_a_manifest_is_no_reload_until_it_gets_one() {
     assert!(files(&session).contains(&"crates/notes/src/lib.rs".to_owned()));
 }
 
+/// Fix 4c. The workspace excludes `vendor/`, and `vendor/x` has a manifest and was there before the open. Files created at the root are no reload: the root
+/// changed, but `vendor` is not a new folder, and a folder that was there is not walked.
+#[test]
+fn files_created_at_the_root_are_no_reload_with_an_excluded_crate_beside() {
+    let _load = one_load();
+    let (root, mut session) = open_in("members", "refresh_root_files", "crates/a/src/lib.rs");
+
+    for name in ["notes.md", "todo.txt", "data.json"] {
+        write(&root, name, "not a crate\n");
+        let refreshed = session.refresh();
+        assert!(!refreshed.reopened, "{name} at the root");
+        assert_eq!(refreshed.lost, None);
+    }
+}
+
+/// Fix 4c, the other half: a crate created under `crates/` is a new folder of a scout, and still reloads, with `vendor/x` there.
+#[test]
+fn a_crate_created_under_crates_still_reloads_with_an_excluded_crate_beside() {
+    let _load = one_load();
+    let (root, mut session) = open_in(
+        "members",
+        "refresh_member_with_vendor",
+        "crates/a/src/lib.rs",
+    );
+
+    write(&root, "notes.md", "first something at the root\n");
+    assert!(!session.refresh().reopened);
+    write(&root, "crates/b/Cargo.toml", MEMBER_MANIFEST);
+    write(&root, "crates/b/src/lib.rs", "pub fn b() {}\n");
+    assert!(session.refresh().reopened);
+    assert!(files(&session).contains(&"crates/b/src/lib.rs".to_owned()));
+    // and it settles: the new package is no new folder the next time
+    write(&root, "notes.md", "something again, longer\n");
+    assert!(!session.refresh().reopened);
+}
+
+/// Fix 4c, the third case: a folder created inside `vendor/` is no reload either. `vendor` is no scout (no package root is under it), so nothing there is
+/// looked at, even a manifest.
+#[test]
+fn a_new_folder_inside_vendor_is_no_reload() {
+    let _load = one_load();
+    let (root, mut session) = open_in("members", "refresh_inside_vendor", "crates/a/src/lib.rs");
+
+    write(&root, "vendor/y/Cargo.toml", MEMBER_MANIFEST);
+    write(&root, "vendor/y/src/lib.rs", "pub fn y() {}\n");
+    assert!(!session.refresh().reopened, "`vendor` is not watched");
+    write(&root, "vendor/x/more/Cargo.toml", MEMBER_MANIFEST);
+    assert!(!session.refresh().reopened);
+}
+
 /// A session moves to a worker thread (RS5 §2), so it must be `Send`: checked when this compiles.
 #[test]
 fn a_session_is_send() {

@@ -10,6 +10,7 @@
 //! graph; this module only detects them.
 
 use std::collections::{BTreeSet, HashSet};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use ra_ap_ide_db::{ChangeWithProcMacros, RootDatabase};
@@ -17,7 +18,7 @@ use ra_ap_vfs::loader::Entry;
 use ra_ap_vfs::{AbsPath, AbsPathBuf, Change, ChangeKind, Vfs, VfsPath};
 
 use super::load::{Folders, Loaded};
-use super::stamps::{Stamp, Stamps};
+use super::stamps::{Names, Stamp, Stamps};
 use super::targets::should_refresh_for_change;
 use crate::paths;
 
@@ -337,8 +338,11 @@ fn is_input_file(text: &str, suffixes: &[&str]) -> bool {
         .any(|suffix| text.ends_with(&format!("/{suffix}")))
 }
 
-/// A folder on the way from the root to a package root changed. Whether a file in it is an input, or a folder in it that was not watched holds one
-/// below it (`holds_input`). A folder that is not watched is a new one: it is stamped now, before it is looked in, so a later change in it is seen.
+/// A folder on the way from the root to a package root changed. Whether a **new** file in it is an input, or a **new** sub-folder of it holds one below
+/// it (`holds_input`). New is a name the folder did not have at its last look, and that no stamp accounts for (a package the load knows is stamped): a folder
+/// that was there before and is no package's (`vendor/`, a crate the workspace excludes), or a manifest that was there before (the workspace's own, in the
+/// root), is left alone however often the folder changes. A folder walked is stamped now, before it is looked in, so a later change in it is seen. The names
+/// are taken again for the next look.
 fn scout_folder(
     dir: &str,
     suffixes: &[&str],
@@ -350,6 +354,8 @@ fn scout_folder(
     let Ok(entries) = std::fs::read_dir(dir) else {
         return false;
     };
+    let before = now.names_at_last_look(dir).cloned();
+    let mut names = Names::default();
     for entry in entries.flatten() {
         let Some(text) = paths::engine_text(&entry.path()) else {
             continue;
@@ -357,18 +363,37 @@ fn scout_folder(
         let Ok(meta) = std::fs::metadata(entry.path()) else {
             continue;
         };
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        let is_new = |known: fn(&Names) -> &BTreeSet<String>| {
+            before
+                .as_ref()
+                .is_none_or(|before| !known(before).contains(&name))
+        };
         if meta.is_dir() {
-            if !skipped_folder(&entry.file_name()) && !now.contains(&text) {
+            names.folders.insert(name.clone());
+            if is_new(|names| &names.folders)
+                && !skipped_folder(OsStr::new(&name))
+                && !now.contains(&text)
+            {
                 let cycle =
                     std::fs::canonicalize(entry.path()).is_ok_and(|real| !visited.insert(real));
                 if !cycle && holds_input(&text, suffixes, now, visited) {
                     return true;
                 }
             }
-        } else if is_input_file(&text, suffixes) {
-            return true;
+        } else {
+            names.files.insert(name.clone());
+            if is_new(|names| &names.files)
+                && !now.contains(&text)
+                && is_input_file(&text, suffixes)
+            {
+                return true;
+            }
         }
     }
+    now.record_names(dir, names);
     false
 }
 
@@ -830,6 +855,35 @@ mod tests {
 
     fn scouted() -> u32 {
         SCOUTED.with(Cell::get)
+    }
+
+    /// The root changes (a file is created in it) while `vendor/x`, with a manifest, was there before the open: the root is read, once, and nothing is
+    /// walked. (4b walked every sub-folder no stamp accounted for, `vendor/x` among them, and reloaded.)
+    #[test]
+    fn a_change_at_the_root_reads_the_root_and_walks_no_old_folder() {
+        let _load = one_load();
+        let root = copy_of_fixture("members", "refresh_scout_old_folders");
+        let mut session = open(&root, "crates/a/src/lib.rs");
+
+        let before = scouted();
+        write(&root.join("notes.md"), "not a crate\n");
+        assert!(!session.refresh().reopened);
+        assert_eq!(
+            scouted(),
+            before + 1,
+            "the root was read, and nothing below it"
+        );
+
+        // a name the root did not have is new, and is walked
+        write(&root.join("fresh/readme.md"), "a new folder\n");
+        let before = scouted();
+        assert!(!session.refresh().reopened);
+        assert_eq!(scouted(), before + 2, "the root, and the new folder");
+        // and it is known afterwards
+        write(&root.join("more-notes.md"), "not a crate either\n");
+        let before = scouted();
+        assert!(!session.refresh().reopened);
+        assert_eq!(scouted(), before + 1, "the root only");
     }
 
     /// Nothing changed in a workspace with members: no reload and no folder read looking for a package. A new folder under `crates/` is read (and is no
