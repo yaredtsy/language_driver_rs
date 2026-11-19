@@ -138,6 +138,14 @@ pub(crate) fn graph_within(
     attached(project.loaded(), opts.marker, |sem| {
         #[cfg(test)]
         walk::probe::mark("the engine attached, the Sem built");
+        // `Sem::entry` cannot be interrupted, so the flag is looked at before it: a request cancelled before it starts costs nothing. There is no graph
+        // to give (no entry to root it at), so the answer is `None`, as for a def that is not there
+        let cancelled = cancel.is_cancelled();
+        #[cfg(test)]
+        walk::probe::check();
+        if cancelled {
+            return None;
+        }
         let func = sem.entry(file, qualname, occurrence)?;
         #[cfg(test)]
         walk::probe::mark("the entry found (Sem::entry)");

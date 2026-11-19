@@ -55,6 +55,101 @@ fn print_longest(what: &str, calls: &[Call]) {
     }
 }
 
+fn fixture_session(name: &str) -> Session {
+    let root = super::common::copy_of_fixture("refresh", name);
+    Session::open(
+        &root,
+        std::path::Path::new("src/lib.rs"),
+        &crate::LoadOptions::default(),
+        crate::Options::new(super::testing::STYLE),
+    )
+    .expect("the fixture loads")
+}
+
+fn marked(log: &probe::Log, what: &str) -> bool {
+    log.marks.iter().any(|(_, mark)| *mark == what)
+}
+
+const ENTRY_FOUND: &str = "the entry found (Sem::entry)";
+
+/// A cancel set before the request returns before `Sem::entry`: nothing is looked up, and the answer is `None`. (An uncancelled request does reach it.)
+#[test]
+fn a_cancel_set_before_a_request_returns_before_the_entry_is_looked_up() {
+    let _load = one_load();
+    let session = fixture_session("cancel_before_entry");
+    let entry = Entry::Def {
+        qualname: "entry",
+        occurrence: 0,
+    };
+
+    probe::start();
+    let graph = session.graph("src/lib.rs", &entry, &Budget::default(), &Cancel::new());
+    let log = probe::finish();
+    assert!(graph.is_some());
+    assert!(
+        marked(&log, ENTRY_FOUND),
+        "an uncancelled request finds its entry"
+    );
+
+    let cancel = Cancel::new();
+    cancel.cancel();
+    probe::start();
+    let graph = session.graph("src/lib.rs", &entry, &Budget::default(), &cancel);
+    let log = probe::finish();
+    assert!(graph.is_none(), "cancelled before it started: no graph");
+    assert!(!marked(&log, ENTRY_FOUND), "`Sem::entry` was not called");
+    assert_eq!(
+        log.checks.len(),
+        3,
+        "the start, the look before the entry, the end"
+    );
+    assert!(
+        log.sites.is_empty() && log.resolves.is_empty(),
+        "no body was read"
+    );
+}
+
+/// The look before `Sem::entry` is the request's first: a cancel that fires on its first check stops there, and one that fires on its second lets the entry
+/// be found and stops the solver at its own first look, with a graph that says so. (Core's `Cancel::after_checks`: a cancel at each point, with no timing.)
+#[test]
+fn the_first_look_is_before_the_entry_and_the_second_is_the_solvers() {
+    let _load = one_load();
+    let session = fixture_session("cancel_first_looks");
+    let entry = Entry::Def {
+        qualname: "entry",
+        occurrence: 0,
+    };
+
+    probe::start();
+    let first = session.graph(
+        "src/lib.rs",
+        &entry,
+        &Budget::default(),
+        &Cancel::after_checks(1),
+    );
+    let log = probe::finish();
+    assert!(first.is_none());
+    assert!(!marked(&log, ENTRY_FOUND));
+
+    probe::start();
+    let second = session
+        .graph(
+            "src/lib.rs",
+            &entry,
+            &Budget::default(),
+            &Cancel::after_checks(2),
+        )
+        .expect("the entry was found");
+    let log = probe::finish();
+    assert!(marked(&log, ENTRY_FOUND));
+    assert!(
+        log.sites.is_empty(),
+        "the solver stopped before the first body"
+    );
+    assert_eq!(incomplete(&second), second.contexts.len());
+    assert!(!second.contexts.is_empty());
+}
+
 #[test]
 #[ignore = "a measurement: run by hand with --ignored --nocapture"]
 fn measure_cancel() {
@@ -64,8 +159,13 @@ fn measure_cancel() {
     let root = copy_of_workspace(&measured.from, "cancel_measure");
 
     // the engine calls of a cold first request, one by one
+    println!("MEASURE footprint before the open: {}", peak_footprint());
     let (session, opened) = open_measured(&root, &measured.open_file);
-    println!("MEASURE open {opened:?}; request for `{qualname}` in {file}");
+    println!(
+        "MEASURE open (the load, the stamps and the priming of {:?}): {opened:?}; request for `{qualname}` in {file}",
+        session.project().unwrap().loaded().primed()
+    );
+    println!("MEASURE footprint after the open: {}", peak_footprint());
     probe::start();
     let (graph, request) = timed(|| ask(&session, file, qualname, &Cancel::new()));
     let log = probe::finish();
@@ -73,6 +173,10 @@ fn measure_cancel() {
         "MEASURE cold first request: {request:?}, {} contexts, {} incomplete",
         graph.contexts.len(),
         incomplete(&graph)
+    );
+    println!(
+        "MEASURE footprint after the cold first request: {}",
+        peak_footprint()
     );
     print_longest("sites(f)", &log.sites);
     print_longest("resolve", &log.resolves);

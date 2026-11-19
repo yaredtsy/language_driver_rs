@@ -74,6 +74,8 @@ pub(crate) struct Loaded {
     skipped: Vec<(&'static str, u64)>,
     /// Manifests (and the lock) that fed the load and sit outside the root, as engine text: no glob relative to the root covers them.
     outside_inputs: Vec<String>,
+    /// The names of the crates `prime` made ready, sorted.
+    primed: Vec<String>,
     /// Declared last: dropped after the database (fields drop in order), so a count of one means one database.
     #[cfg(test)]
     _alive: alive::Alive,
@@ -149,6 +151,7 @@ impl Loaded {
             build_error: None,
             skipped: Vec::new(),
             outside_inputs: Vec::new(),
+            primed: Vec::new(),
             #[cfg(test)]
             _alive: alive::Alive::new(),
         }
@@ -238,6 +241,16 @@ impl Loaded {
 
     pub(super) fn vfs(&self) -> &Vfs {
         &self.vfs
+    }
+
+    pub(super) fn set_primed(&mut self, primed: Vec<String>) {
+        self.primed = primed;
+    }
+
+    /// The crates `prime` made ready: the project's own, by name.
+    #[cfg(test)]
+    pub(crate) fn primed(&self) -> &[String] {
+        &self.primed
     }
 
     pub(super) fn folders(&self) -> &Folders {

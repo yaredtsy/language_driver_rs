@@ -58,6 +58,7 @@ impl Session {
         let file = paths::absolute_in(&root, file);
         let mut project = Project::open(&root, &file, load)?;
         let stamps = project.watch(&Stamps::default(), &opened(&file));
+        project.prime();
         Ok(Session {
             root,
             file,
@@ -117,6 +118,7 @@ impl Session {
             Ok(mut project) => {
                 // a path the session knew keeps the stamp from before the load; a new one is stamped now and read once more
                 self.stamps = project.watch(&before, &opened(&self.file));
+                project.prime();
                 self.project = Some(project);
                 self.lost = None;
                 self.report(true)
@@ -140,8 +142,8 @@ impl Session {
 
     /// One request: the graph under `entry`, a def in `file` (relative to the root), walked no further than `budget`. A context past the budget is
     /// listed and not walked (`Status::Frontier`), and its node is drawn `Mark::Cut`: asking for that def as a new entry continues from there. `None`
-    /// when there is no such def (see [`call_graph`](crate::call_graph)), and while the session has no project. With `Budget::default()` it is
-    /// `call_graph`'s graph.
+    /// when there is no such def (see [`call_graph`](crate::call_graph)), while the session has no project, and when `cancel` was already set when the
+    /// request started (nothing was read). With `Budget::default()` it is `call_graph`'s graph.
     pub fn graph(
         &self,
         file: &str,

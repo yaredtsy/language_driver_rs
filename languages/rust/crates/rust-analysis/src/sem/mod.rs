@@ -3,6 +3,7 @@
 mod bridge;
 mod load;
 mod origin;
+mod prime;
 mod refresh;
 mod resolve;
 mod sites;

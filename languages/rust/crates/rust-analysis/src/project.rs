@@ -183,6 +183,12 @@ impl Project {
         self.loaded.watch(&inputs, opened, before)
     }
 
+    /// Makes the project's own crates ready (`sem::Loaded::prime`): the cost of the engine's first look at them moves here, out of the first request. A
+    /// session calls it after every load.
+    pub(crate) fn prime(&mut self) {
+        self.loaded.prime();
+    }
+
     /// The engine's load, to write to: a session follows the disk with it (`refresh`), and nothing else changes a loaded project.
     pub(crate) fn loaded_mut(&mut self) -> &mut Loaded {
         &mut self.loaded
