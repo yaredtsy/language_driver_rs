@@ -530,3 +530,68 @@ fn a_package_installed_in_the_parents_node_modules_is_seen() {
     assert_eq!(edges(&session), lines(&["main | ext | external pkg ext"]));
     assert_as_fresh_as_open(&session, &root);
 }
+
+/// The project the two measurements below read: `TS_REFRESH_ROOT=<dir> TS_REFRESH_FILE=<a file of it> TS_REFRESH_ENTRY=<qualname in that file>`. They only read it.
+/// The ones that need the tracker or the stamps are in `src/sem/tests.rs` (`measure_*`, the same two variables).
+fn real_session() -> (Session, String, String) {
+    let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("set {name}"));
+    let (file, entry) = (var("TS_REFRESH_FILE"), var("TS_REFRESH_ENTRY"));
+    let session = Session::open(
+        Path::new(&var("TS_REFRESH_ROOT")),
+        Path::new(&file),
+        Options::new(STYLE),
+    )
+    .unwrap_or_else(|error| panic!("the project does not open: {error:?}"));
+    (session, file, entry)
+}
+
+fn graph_of(session: &Session, file: &str, entry: &str) -> usize {
+    let entry = Entry::Def {
+        qualname: entry,
+        occurrence: 0,
+    };
+    let graph = session
+        .graph(file, &entry, &Budget::default(), &Cancel::new())
+        .expect("the entry is a def of the file");
+    graph.edges.len()
+}
+
+/// (b) `cargo test --release -p typescript-analysis --test session_refresh measure_refresh_with_nothing_changed -- --ignored --nocapture`, with the three
+/// variables. 200 calls of `refresh` on a project that did not change: the stamps, and nothing else.
+#[test]
+#[ignore = "a measurement on a real project, driven by TS_REFRESH_ROOT, TS_REFRESH_FILE and TS_REFRESH_ENTRY"]
+fn measure_refresh_with_nothing_changed() {
+    let (mut session, _, _) = real_session();
+    let mut times = Vec::new();
+    for _ in 0..200 {
+        let started = std::time::Instant::now();
+        let refreshed = session.refresh();
+        times.push(started.elapsed());
+        assert!(!refreshed.reopened, "the project changed while measuring");
+    }
+    times.sort();
+    eprintln!(
+        "refresh, nothing changed, {} calls: least {:?}, median {:?}, greatest {:?}",
+        times.len(),
+        times[0],
+        times[times.len() / 2],
+        times[times.len() - 1]
+    );
+}
+
+/// (c) The same command with `measure_reload_and_the_first_graph`: what a saved file costs the next request. `reload` (the stamps and the build), the first
+/// graph of the entry (cold: nothing is known of the new program), and a second one (warm).
+#[test]
+#[ignore = "a measurement on a real project, driven by TS_REFRESH_ROOT, TS_REFRESH_FILE and TS_REFRESH_ENTRY"]
+fn measure_reload_and_the_first_graph() {
+    let (mut session, file, entry) = real_session();
+    let started = std::time::Instant::now();
+    let reloaded = session.reload();
+    eprintln!("reload: {:?}", started.elapsed());
+    assert!(reloaded.reopened, "{reloaded:?}");
+    for which in ["first graph (cold)", "second graph (warm)"] {
+        let started = std::time::Instant::now();
+        let edges = graph_of(&session, &file, &entry);
+        eprintln!("{which}: {:?}, {edges} edges", started.elapsed());
+    }
+}

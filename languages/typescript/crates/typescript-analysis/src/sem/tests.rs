@@ -944,3 +944,182 @@ fn the_stamped_paths_leave_out_the_directories_above_the_root_and_what_is_inside
     expected.sort();
     assert_eq!(paths, expected);
 }
+
+// The measurements of step 6 on a real project (`docs/03-typescript/11-step6-text-and-disk.md` §7). They only read the project, print with `eprintln`, and assert nothing about the
+// numbers. `TS_REFRESH_ROOT=<dir> TS_REFRESH_FILE=<a file of it> cargo test --release -p typescript-analysis --lib measure_ -- --ignored --nocapture --test-threads=1`
+// runs them all; `tests/session_refresh.rs` has the two that need no tracker (`TS_REFRESH_ENTRY` as well).
+
+/// The root and the file of the project to measure, canonical as `Sem::open_tracked` makes them.
+fn real_project() -> (PathBuf, PathBuf) {
+    let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("set {name}"));
+    let root = PathBuf::from(var("TS_REFRESH_ROOT"))
+        .canonicalize()
+        .expect("TS_REFRESH_ROOT is a folder");
+    let file = root
+        .join(var("TS_REFRESH_FILE"))
+        .canonicalize()
+        .expect("TS_REFRESH_FILE is a file of the root");
+    (root, file)
+}
+
+/// How many of `paths` are a file, a directory, and not there.
+fn kinds(paths: &[String]) -> (usize, usize, usize) {
+    use super::stamps::Stamp;
+    let mut counts = (0, 0, 0);
+    for path in paths {
+        match Stamp::of(path) {
+            Stamp::File { .. } => counts.0 += 1,
+            Stamp::Dir { .. } => counts.1 += 1,
+            Stamp::Missing => counts.2 += 1,
+        }
+    }
+    counts
+}
+
+/// (a) The list a session stamps: how many, of what kind, and how many `node_modules` folders it holds.
+#[test]
+#[ignore = "a measurement on a real project, driven by TS_REFRESH_ROOT and TS_REFRESH_FILE"]
+fn measure_the_stamped_paths() {
+    let (root, file) = real_project();
+    let (built, paths) = Sem::open_tracked(&root, &file);
+    built.expect("the project opens");
+    let (files, dirs, missing) = kinds(&paths);
+    eprintln!(
+        "stamped paths: {} ({files} files, {dirs} directories, {missing} missing)",
+        paths.len()
+    );
+    let folders: Vec<&String> = paths
+        .iter()
+        .filter(|path| path.ends_with(NODE_MODULES))
+        .collect();
+    let existing: Vec<&&String> = folders
+        .iter()
+        .filter(|path| Path::new(path.as_str()).is_dir())
+        .collect();
+    eprintln!(
+        "node_modules folders in the list: {} ({} exist, {} missing)",
+        folders.len(),
+        existing.len(),
+        folders.len() - existing.len()
+    );
+    let names: BTreeSet<&str> = paths.iter().map(String::as_str).collect();
+    let beside: Vec<String> = existing
+        .iter()
+        .filter_map(|path| path.strip_suffix(NODE_MODULES))
+        .flat_map(|beside| {
+            crate::exact_environment_names().map(move |name| format!("{beside}/{name}"))
+        })
+        .collect();
+    let listed = beside
+        .iter()
+        .filter(|name| names.contains(name.as_str()))
+        .count();
+    let there = beside
+        .iter()
+        .filter(|name| Path::new(name).is_file())
+        .count();
+    eprintln!(
+        "names beside the existing folders: {listed} listed ({there} of them exist as files)"
+    );
+}
+
+/// (d) The paths seen after every def of the project has been walked, against the paths seen after open: the probe of §2, on every def and not on one entry.
+#[test]
+#[ignore = "a measurement on a real project, driven by TS_REFRESH_ROOT and TS_REFRESH_FILE"]
+fn measure_the_seen_paths_after_every_def() {
+    use crate::calls::{TypeScript, start_of};
+    use analyzer_core::solve::{Budget, Cancel, Limits, Solver};
+
+    let (root, file) = real_project();
+    let (tracker, fs) = tracked_fs();
+    let mut inputs = BTreeSet::new();
+    let sem = Sem::build(&root, &file, fs, &mut inputs).expect("the project opens");
+    let after_open = seen(&tracker);
+    let style = MarkerStyle::docstring("ID");
+    let defs = sem.project_defs(style);
+    let lang = TypeScript::new(&sem, style);
+    let entries: Vec<_> = defs.iter().map(|&func| start_of(&lang, func)).collect();
+    let mut solver = Solver::new(lang, Limits::new(u32::MAX, None));
+    let started = std::time::Instant::now();
+    solver.graph_within(&entries, &Budget::default(), &Cancel::new());
+    let walked = started.elapsed();
+    let after_all = seen(&tracker);
+    eprintln!(
+        "defs {}, all walked in {walked:?}; seen after open {}, after every def {}",
+        entries.len(),
+        after_open.len(),
+        after_all.len()
+    );
+    if after_all == after_open {
+        eprintln!("the seen paths are equal");
+    } else {
+        let known: BTreeSet<&String> = after_open.iter().collect();
+        let new: Vec<&String> = after_all
+            .iter()
+            .filter(|path| !known.contains(path))
+            .collect();
+        let gone = after_open.len() + new.len() - after_all.len();
+        eprintln!(
+            "the seen paths DIFFER: {} new, {gone} no longer there; the first 20 new:",
+            new.len()
+        );
+        for path in new.iter().take(20) {
+            eprintln!("  {path}");
+        }
+        let stamped = |seen: &[String]| stamp_paths(&root, &file, seen.to_vec(), &inputs);
+        eprintln!(
+            "the stamped lists are {}",
+            if stamped(&after_open) == stamped(&after_all) {
+                "equal"
+            } else {
+                "DIFFERENT"
+            }
+        );
+    }
+}
+
+/// (e) Of the seen paths under `node_modules` after open: how many are files that exist, and what it costs to stamp those (the price of the middle way of §6).
+#[test]
+#[ignore = "a measurement on a real project, driven by TS_REFRESH_ROOT and TS_REFRESH_FILE"]
+fn measure_the_seen_files_under_node_modules() {
+    use super::stamps::Stamp;
+
+    let (root, file) = real_project();
+    let (tracker, fs) = tracked_fs();
+    let mut inputs = BTreeSet::new();
+    let _sem = Sem::build(&root, &file, fs, &mut inputs).expect("the project opens");
+    let after_open = seen(&tracker);
+    let under: Vec<String> = after_open
+        .iter()
+        .filter(|path| path.contains(NODE_MODULES_INSIDE))
+        .cloned()
+        .collect();
+    let (files, dirs, missing) = kinds(&under);
+    eprintln!(
+        "seen after open {}; under node_modules {} ({files} files that exist, {dirs} directories, {missing} missing)",
+        after_open.len(),
+        under.len()
+    );
+    let existing: Vec<&String> = under
+        .iter()
+        .filter(|path| matches!(Stamp::of(path), Stamp::File { .. }))
+        .collect();
+    let started = std::time::Instant::now();
+    for path in &existing {
+        std::hint::black_box(Stamp::of(path));
+    }
+    eprintln!(
+        "stamping the {} files that exist: {:?}",
+        existing.len(),
+        started.elapsed()
+    );
+    let started = std::time::Instant::now();
+    for path in &under {
+        std::hint::black_box(Stamp::of(path));
+    }
+    eprintln!(
+        "stamping all {} paths under node_modules: {:?}",
+        under.len(),
+        started.elapsed()
+    );
+}

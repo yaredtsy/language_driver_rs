@@ -6,7 +6,9 @@
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use typescript_analysis::{Cancel, Entry, MarkerStyle, Options, Placement, Project, call_graph};
+use typescript_analysis::{
+    Budget, Cancel, Entry, MarkerStyle, Options, Placement, Project, Session, call_graph,
+};
 
 /// Rounds of the graph-building loop: enough to see a leak of a megabyte a round, few enough to stay a test.
 const ROUNDS: usize = 100;
@@ -101,5 +103,80 @@ fn opening_a_project_building_graphs_and_dropping_it_does_not_grow_the_process()
     assert!(
         peak - early < 30.0,
         "memory grew from {early:.1} MB (round 10) to a peak of {peak:.1} MB (rounds 11 to {ROUNDS})"
+    );
+}
+
+/// A file rewritten, a `refresh` that builds the program again, and a graph, 50 times on a project the test writes. Each rewrite changes the file's length
+/// (no round rests on the clock's resolution), and the callee alternates, so a round that did not read the new text shows. A program the session kept after a
+/// rebuild would show as growth.
+#[test]
+fn rewriting_a_file_refreshing_and_building_a_graph_50_times_does_not_grow_the_process() {
+    let _turn = one_at_a_time();
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("memory-refresh");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let write = |relative: &str, text: &str| std::fs::write(root.join(relative), text).unwrap();
+    write(
+        "tsconfig.json",
+        r#"{ "compilerOptions": { "strict": true }, "include": ["src"] }"#,
+    );
+    write(
+        "src/main.ts",
+        "import { callee } from \"./lib\";\nexport function main() {\n  callee();\n}\n",
+    );
+    // `lib.ts` of round `n`: `callee` calls `second` on an odd round and `first` on an even one, and the file is `2n` characters longer than the text it
+    // has before, so no two rounds have the same length
+    let lib = |round: usize| {
+        let calls = if round % 2 == 1 { "second" } else { "first" };
+        format!(
+            "export function callee() {{\n  {calls}();\n}}\nexport function first() {{}}\nexport function second() {{}}\n// {}\n",
+            "x".repeat(2 * round)
+        )
+    };
+    write("src/lib.ts", &lib(0));
+    let mut session = Session::open(
+        &root,
+        Path::new("src/main.ts"),
+        Options::new(MarkerStyle {
+            label: "ID",
+            placement: Placement::Docstring,
+        }),
+    )
+    .unwrap();
+
+    let mut early = 0.0;
+    let mut peak: f64 = 0.0;
+    for round in 1..=50 {
+        write("src/lib.ts", &lib(round));
+        let refreshed = session.refresh();
+        assert!(refreshed.reopened, "round {round}: the file was rewritten");
+        assert_eq!(refreshed.lost, None, "round {round}");
+        let entry = Entry::Def {
+            qualname: "main",
+            occurrence: 0,
+        };
+        let graph = session
+            .graph("src/main.ts", &entry, &Budget::default(), &Cancel::new())
+            .unwrap_or_else(|| panic!("round {round}: no graph"));
+        let callee: Vec<&str> = graph
+            .defs
+            .iter()
+            .map(|def| def.qname.as_str())
+            .filter(|name| *name == "first" || *name == "second")
+            .collect();
+        let wanted = if round % 2 == 1 { "second" } else { "first" };
+        assert_eq!(
+            callee,
+            [wanted],
+            "round {round}: the graph must follow the text"
+        );
+        if round == 10 {
+            early = rss_mb();
+        } else if round > 10 {
+            peak = peak.max(rss_mb());
+        }
+    }
+    assert!(
+        peak - early < 30.0,
+        "memory grew from {early:.1} MB (round 10) to a peak of {peak:.1} MB (rounds 11 to 50)"
     );
 }
