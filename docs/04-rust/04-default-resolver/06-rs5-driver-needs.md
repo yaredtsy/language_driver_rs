@@ -108,8 +108,8 @@ A file whose bytes are not UTF-8 gets `change_file(id, None)`, as it had no text
 1. **The stamps live in the `Session`, beside the project**, not inside it, so a session whose reload failed still knows what to watch.
 2. **A failed reload leaves the session with no project (`lost`). Every `refresh` says so while it lasts, and the session comes back by
    itself** when a stamp changes. Here that is rare: by D37 a missing or broken manifest is a warning on a load that still succeeds, so
-   only `NotUnderRoot` (the opened file is gone) and `Load` lose a session. **[check]** that a `Cargo.toml` saved with a syntax error
-   reloads with a warning, and that fixing it reloads clean.
+   only `NotUnderRoot` (the opened file is gone) and `Load` lose a session. Checked (step 4, a test): a `Cargo.toml` saved with a syntax
+   error reloads with a warning (`cargo_failed`, by D37's reader), and fixing it reloads clean.
 3. **Stamp first, read second.** `refresh` takes a file's stamp and then reads its text. A file saved between the two has a newer stamp
    than the one kept, so the next `refresh` reads it again. The other order would keep the new stamp with the old text, and nothing would
    notice. For a reload, a path already known keeps the stamp taken before it.
@@ -120,8 +120,20 @@ A file whose bytes are not UTF-8 gets `change_file(id, None)`, as it had no text
    So after a load, each newly stamped file is read again and handed to the `Vfs`, which compares the bytes: identical (the usual case)
    costs a read and a hash and applies nothing; different is one `apply_change`. Step 4, for `open` and for a reload alike.
    TypeScript's `Stamps::of_all` has the same gap (told to its reviewer; not ours to change).
-4. **The old database is dropped before a reload builds the new one**, so the peak is one database and not two. **[measure]** the
-   database's size on a real workspace in step 4.
+4. **The old database is dropped before a reload builds the new one**, so the peak is one database and not two. Measured
+   (step 4, `ENGINE.md`): at most one database alive through two reloads; 1.0 GB peak on `core/` + `languages/typescript/`.
+
+**What makes `refresh` reload, as built in step 4 (63e7509) and fixed in 4b:**
+
+| Watched | How | A change means |
+|---|---|---|
+| an environment input (`Project::environment_inputs()`) | a glob (`**/Cargo.toml`, ...) is resolved at the load to the name in the project root and in each package root under it, **missing ones kept** (so a `rust-toolchain.toml` created is seen), plus any file of that name the `Vfs` holds in the project; an exact absolute path (a manifest outside the root) as it is | a reload |
+| the file the session was opened from | its own stamp, kept when missing | appearing or vanishing is a reload (a session is not loaded around a file that is not there: §3 point 2); a save is an ordinary `.rs` save |
+| a `.rs` file created or deleted | deleted: its stamp goes from present to missing; created: found by listing a changed folder | at a target path (`should_refresh_for_change`, `sem/targets.rs`, copied with its plain `ends_with`; `additional_paths` empty, the input stamps cover those names) a reload, else the fast path |
+| **a package created under the root (4b, found at the step 4 review)** | the folders from the project root down to each package root are stamped too; a new folder found in one is walked (with `target/` and `.git` left out) for an input file | a reload. Without it, a crate added under `members = ["crates/*"]` (no root manifest edit) was missed by `refresh` and found by `reload` (probed 2026-11-19) |
+
+A reload starts a cold database: the next request costs what the first did (3 s on `core/`, 6 s on the bigger workspace), and the one
+after is warm again.
 
 **Known limit, as TypeScript's:** a stamp is the length and the modified time, so a file rewritten with the same length within the file
 system's clock tick is not seen (APFS and ext4 keep nanoseconds, so in practice a person cannot do it; FAT keeps two seconds). The tests
@@ -167,7 +179,7 @@ dropped first (§3 point 4). `refresh` does the same by itself when the stamp of
 | 1 | ~~core: `Budget`, the frontier, a frontier node `Cut`~~ | **done by TS5 steps 1 and 2a**; tokens and paging wait for TS5 2b (D31) |
 | 2 | `Session::open / graph` (**done, ac0c34b, reviewed 2026-11-19**) | with `Budget::default()` a session's graph is `call_graph`'s, for every entry of the policy and context workspaces; a budget changes the graph (depth 0, `max_contexts`); at `max_depth` 1, 2 and 3, replacing each frontier node by the tree of a new request for its def gives the unbounded tree (48, 4 and 1 frontier nodes over all entries), with the ancestor rule (a def on the path above is a `Recursive` leaf), which a test shows is needed. The entries cover every scenario's shape (straight line, two callers, a method, a construction, an external call, direct and mutual recursion) |
 | 3 | **done, 22e8412, reviewed 2026-11-19** (the numbers: `ENGINE.md`, "RS5 step 3"). `refresh`, the fast path: the stamps (in the `Session`, §3 point 1), a saved file applied to the database, a created or deleted file applied with the roots partitioned again (§3's table, the rows with no reload). No `set_text` (D42); no reload yet | TypeScript step 6's cases: the callee's file rewritten (the graph follows; without `refresh` it does not, pinned); a file a `mod` names created (and the `mod` line saved in the same refresh); a callee's file deleted; nothing changed (the graph byte-identical, and the `Vfs` sees no change); a file saved between the stamp and the read is read again by the next `refresh`; no folder above the root is stamped; `Session: Send`. **[measure]** on `core/` and on one bigger workspace: `refresh` with nothing changed (the files and folders stamped, the time), one saved file (the time, and the next request's), the first and a second request for the same entry |
-| 4 | `reload`; `refresh` reloading when an environment input changed or a target file was created or deleted (§3's table); `lost` | add a dependency to a fixture's `Cargo.toml` between two requests: `refresh` reloads; `src/bin/new.rs` created: a reload, and its defs found; a `Cargo.toml` saved with a syntax error, then fixed (a warning, then clean: D37); the opened file deleted, then written back (`lost`, then back by itself); the old database dropped before the new one is built; a file saved while `open` or a reload ran is read by the re-read of §3 point 3 (a test hook between the load and the stamps). **[measure]** a reload's time and the database's footprint on a real workspace |
+| 4 | **done, 63e7509, reviewed 2026-11-19; 4b (new packages under the root) asked**. `reload`; `refresh` reloading when an environment input changed or a target file was created or deleted (§3's table); `lost` | add a dependency to a fixture's `Cargo.toml` between two requests: `refresh` reloads; `src/bin/new.rs` created: a reload, and its defs found; a `Cargo.toml` saved with a syntax error, then fixed (a warning, then clean: D37); the opened file deleted, then written back (`lost`, then back by itself); the old database dropped before the new one is built; a file saved while `open` or a reload ran is read by the re-read of §3 point 3 (a test hook between the load and the stamps). **[measure]** a reload's time and the database's footprint on a real workspace |
 | 5 | the cancel measurement of §4, written in `ENGINE.md`; engine-side cancel only if it asks | the number |
 | 6 | `rust-cli calls --depth --max-nodes`, and an interactive `expand` | by hand |
 | | **tag `rust-v0.3.0`** | tier-3 conformance in the driver (`vnoc`) |

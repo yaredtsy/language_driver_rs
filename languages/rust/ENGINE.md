@@ -684,3 +684,23 @@ loaded it with `ProjectWorkspace::load_inline`, sysroot `None`.
   beside it) and loads by D37's own reader, with no std and no dependencies: 28 MB, a 105 ms first request, and no error, only a
   warning the measurement did not print. A measurement prints the load's warnings and refuses a fallback rung.
 - **Found:** a file saved while the load ran was missed (stamps taken after the load); the rule is RS5 §3 point 3's re-read, step 4.
+
+## RS5 step 4: reload, `lost`, what makes `refresh` reload (63e7509, reviewed 2026-11-19)
+
+- **Re-run:** the Rust workspace 215 passed, 0 failed, 13 ignored; `tests/refresh.rs` 10 passed. The measurement's refusal of a fallback
+  rung, which the coder could not run, works: a copy of `languages/typescript/` alone fails with "the load fell down the ladder (Reader)".
+- **Found by a probe:** a workspace with `members = ["crates/*"]` gaining `crates/b/` (its `Cargo.toml` and `src/lib.rs`, the root
+  manifest untouched): `refresh` said `reopened: false` and the file list kept one crate; `reload` found both. Fix 4b (RS5 §3's table).
+- **Measured** (`sem::refresh::tests::measure_refresh_and_reload`, `RS_MEASURE_ROOT`/`_FILE`/`_ENTRY`, the test process under
+  `/usr/bin/time -l`):
+
+| | `core/` (28 file paths, 4 folders) | `core/` + `languages/typescript/` (100 file paths, 16 folders) |
+|---|---|---|
+| open | 1.4 s | 1.35 s |
+| first / second request | 3.3 s / 15 ms | 7.1 s / 218 ms |
+| `refresh`, nothing changed (50 runs) | 36 µs mean, 105 µs worst | 180 µs mean, 334 µs worst (a first run had one 117 ms stall; not reproduced) |
+| one saved file, first / second | refresh 4.5 ms, next request 19 ms / 0.17 ms, 25 ms | 42 ms, 365 ms / 0.39 ms, 208 ms |
+| reload by `refresh` (a manifest saved) | 1.28 s, next request 2.9 s, then 17 ms | 1.55 s, next request 6.3 s, then 185 ms |
+| `reload()` | 1.67 s | 1.40 s |
+| databases alive at once | at most 1 | at most 1 |
+| peak footprint | 0.53 GB | 1.0–1.1 GB |
