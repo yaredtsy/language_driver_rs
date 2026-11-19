@@ -282,10 +282,65 @@ only).
 | H9 | **built, `d727c8e`.** **the warning of D34, where a person sees it.** `DefMatch` gains `owns_marker: bool` (additive: it is `#[non_exhaustive]`, `lib.rs:373`, checked), so a driver can say "this def carries `ID: SAME`, but `a` at line N owns it" without parsing the file again. `typescript-cli calls … --id X` picks the def that **owns** `X` (its id is `X`); a carrier that does not own it is not picked by `--id`, and the CLI prints which def owns it. The tree does not change | `tests/duplicate_marker.rs`: `defs_named` reports `owns_marker` for both; a CLI test of `--entry b --id SAME` (the message names `a` and its line) |
 | H11 | **built, `6c1dfc4` (D40; reviewed, accepted).** **(found at H10, 2026-11-17; decided by the owner the same day as recommended, D40) a named function expression called in place is not entered.** `(function named() { h(); })()`: the outline makes `named` a def (the engine's rule: a function expression with a name), so the enclosing body stops at it, and the call is `Unresolved` (since H10 `anonymous_function_called`, a reason that is wrong for it: the function has a name and a def). So `h` is drawn in no tree but `named`'s own, which only a request for `named` reaches; the coverage sweep cannot see it because it enters every def. The engine gives no answer either: its call hierarchy takes the callee, a `ParenthesizedExpression`, which is no declaration and has no symbol, and drops the call (`tsrs_ls/src/callhierarchy.rs:936`). **Recommended:** when the callee, under parentheses, assertions and `!`/`void`, is a function expression that `def_of` holds, the edge is `Call` to that def: the callee is the def's own node, so it is not a guess (rule 8), and it is what the row `nested` says for a named function (it appears where it is called). An anonymous one stays `anonymous_function_called`. Where it is common: UMD and bundler wrappers (`(function webpackUniversalModuleDefinition(root, factory) {…})(this, …)`) | `file-entry/src/iife-forms.ts`: the named case is a `Call` to `named` and the module's tree shows `named ▸ h`; the four anonymous ones unchanged; V-NOC and postcss goldens unchanged unless they hold a named IIFE (say which) |
 | H12 | **built, `c6835fe` (reviewed, accepted; (a) decided by the owner, D40 extended).** **(found at H11's review, 2026-11-17) two more defs written in place and reached without a direct call.** (a) `new (class Named { constructor() { g(); } })()`: the class expression is a def, and the `new` is `Unresolved(no_declaration)`, so the constructor's `g` is drawn under no caller (found by the coding session). (b) `(function wrapped() { g(); }).call(this)` and `.apply`: the site resolves to the external `Function.call`, and `wrapped`'s `g` is in no tree under the caller and **in no counter**. `uncovered_call_apply` counts a name before `.call`, not a function written there, so this is a rule 8 gap. Anonymous forms are fine: their calls are the enclosing body's. **Recommended:** (a) is D40 for a class: when the class expression of a `new`, under parentheses and assertions, is a def, the site is a `Construct` through `walk::construction`, like `new C()`. This is the owner's call (D40 names function expressions only). (b) is counted in `uncovered_call_apply`, as a name is, with no new decision (D22 step 5: call/apply is counted, not drawn) | a fixture for each, (a) in both forms, `new (class N {})()` and `new (class {})()`; V-NOC and postcss goldens unchanged |
+| H13 | **found by the owner, 2026-11-19; not built; (a) needs the owner.** a call that resolves to a **method or accessor signature in a type literal** (`type Ops = { m(): void }`), or to an accessor signature of an interface, panics in a debug build and is `Unresolved(decl_not_in_outline)` in a release build: the outline has no def for it. §6.1 | §6.1 (c): one fixture per declaration kind |
 
 **Rust note (H1).** A `std::sync::Mutex` locked twice by one thread does not return: the documentation leaves it at "will not return
 (it might panic or deadlock)". There is no error to catch, and `Cancel` is never checked, because the thread is waiting inside `lock`.
 A `Cell<bool>` costs one byte and turns the wait into a message with a line number, in the builds the tests run.
+
+### 6.1 H13: a method signature in a type literal (found by the owner, 2026-11-19; not built)
+
+**What happened.** The owner ran the debug `typescript-cli calls` on a real file and it panicked:
+`the engine's declaration in …/fsOperations.ts is not a def of the outline` (`sem/resolve.rs:488`). The file declares
+`type FsOperations = { existsSync(path: string): boolean; … }` and calls `fs.existsSync(p)` on a value of that type.
+
+**Why.** Two rules must agree on what a def is: the engine's (the declaration a call resolves to) and the outline's (what
+`typescript-syntax` lists). For this call the engine answers the **method signature inside the type literal**. The outline lists the alias
+(`Type FsOperations`) and nothing inside it. The line that panicked is a `debug_assert!` put there for exactly this disagreement: a debug
+build stops, a release build counts the call as `Unresolved` with the reason `decl_not_in_outline` (read from the code, not run in release).
+
+**Run by the reviewer** (debug CLI, 28 throwaway one-call projects, each a neighbour of the owner's case):
+
+| The call resolves to | Answer today |
+|---|---|
+| a method signature of an **interface** (`interface Ops { m(): void }`) | a def, `Ops.m` (policy row `interface`) |
+| a property of function type (`{ m: () => void }`), a call or construct signature, a function type alias | `Unresolved(function_typed_value)` (D16) |
+| an abstract method, a method of a `declare class`, an interface in `declare global` | a def |
+| an index signature, `Record<string, () => void>` | `Unresolved(no_declaration)` |
+| **a method signature in a type literal**: under an alias, a parameter's type, a nested member, a return type, a generic argument, a `declare const`, a class property's type, a constraint (`T extends { m(): void }`), an intersection, through `Pick`, optional (`m?()`), with overloads, called as a template tag | **panic** (16 of the 28) |
+| **an accessor signature**: `get v(): number` or `set v(x)` in a type literal, **and in an interface** | **panic** |
+
+**Why no test found it.** The tests come from two lists: the policy table, whose rows were written from the kinds of call *site* and of
+callee expression, and the sweep over two real projects. The table has the interface's method and the function-typed property, the two
+neighbours, and no row for the same member written in a type literal. Neither V-NOC nor postcss calls through one (the whole-project runs
+of both are debug builds and never stopped). Nothing listed the kinds of *declaration* the engine can answer with.
+
+**(a) The rule, for the owner.** Recommended:
+
+- a type alias whose type **is** an object type (`type Ops = { … }`): its method and accessor signatures are defs, named as an
+  interface's are (`FsOperations.existsSync`, Method). Such an alias is an interface in all but the keyword, and its members carry
+  JSDoc as an interface's do. Rule 10 allows it: a kind of def is added, no existing name changes;
+- a type literal anywhere else (a parameter's type, a nested member, a return type, a part of an intersection): it has no name of its
+  own, so the call is `Unresolved(function_typed_value)`, as the same member written `m: () => void` already is (D16);
+- an accessor signature of an interface: a def, as its method signature is (`G.v`), and as a class's accessor is.
+
+The other choice is `function_typed_value` for every one of them. It is simpler, and on the owner's file it gives some thirty
+`Unresolved` lines for calls whose names are written in the file.
+
+**(b) No panic on a user's code, in any build.** The `debug_assert!` at `resolve.rs:488` goes; the count stays. The tests keep their
+tripwire another way: the helper every graph test goes through fails when `decl_not_in_outline` is counted and the test did not say it
+expects it. Rule 8 ("never fail") then holds in a debug build too. `[check]` the two other `debug_assert!` of `sem` (`resolve.rs:141`,
+`mod.rs:854`) for whether a user's text alone can reach them; they look like checks of our own code, which may stay.
+
+**(c) A grid by declaration.** One policy fixture for each row of the table above (the 28 cases), each with its expected answer, and
+`policy.md` gains the rows. The list to fill is the engine's own: every node kind that can carry a signature (function, method,
+constructor, accessor, function expression, arrow, method signature, call signature, construct signature, index signature, function
+type, constructor type, JSDoc callback) against every place it can be written (class, class expression, interface, type literal,
+object literal, namespace, `declare`).
+
+**(d) A sweep anyone can point at a project.** An `#[ignore]` test driven by a variable (as `TS_STITCH_*`): the graph of every def of
+every file of `Project::files()`, the total breakdown printed, a failure when `decl_not_in_outline` is not 0. The reviewer runs it on
+each new real project before the owner tries it.
 
 ## 7. The stack
 
