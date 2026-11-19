@@ -5,7 +5,7 @@
 //!   the answer is often that the file is not in the program the config describes.
 //! - `calls <dir> <file> [--entry <qualname> [--id <marker>]] [--depth N] [--max-contexts N] [--max-nodes N] [--graph | --wire [--merged] [--function-prefix P] [--class-prefix P]] [--timing]`:
 //!   the call tree under a def, then the breakdown of the graph (edges by kind, unresolved edges by reason). `--depth` and `--max-contexts` are a
-//!   [`Budget`] (whole numbers, 0 and up): a def past it is listed and not walked, drawn `[Cut]`, and counted in the `frontier` line; `--depth 0` is the
+//!   [`Budget`] (whole numbers, 0 and up): a def past it is listed and not walked, drawn `[Cut]`, and counted in the `cuts in the graph` line of the breakdown; `--depth 0` is the
 //!   entry alone, on the frontier. Asking again for a cut def as the entry continues from there. `--max-nodes N` (1 and up) is the renderer's limit on the
 //!   tree and the `--wire` (default 100 000, and not a budget: the graph is complete); when it cut, a `cuts in the tree` line of the breakdown says so. A qualname is not unique in a file (D15): when it
 //!   matches several defs they are listed and the exit code is 2, never the first one picked; `--id` names the one that carries that marker. With no
@@ -25,7 +25,7 @@ use typescript_syntax::{Dialect, MarkerStyle, outline};
 const USAGE: &str = "usage: typescript-cli outline <file> [--label <label>]
        typescript-cli files <dir> <file>
        typescript-cli calls <dir> <file> [--entry <qualname> [--id <marker>]] [--depth <n>] [--max-contexts <n>] [--max-nodes <n>] [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--timing] [--label <label>]
-  --depth and --max-contexts are the solver's budget: a def past it is listed and not walked, drawn [Cut] and counted in the frontier line.
+  --depth and --max-contexts are the solver's budget: a def past it is listed and not walked, drawn [Cut] and counted in the breakdown's `cuts in the graph` line.
   --max-nodes is the renderer's limit on the tree or the wire (default 100000): the graph is complete, and a line says when the drawing was cut.";
 
 /// Remove `--name value` from `args` and return the value.
@@ -218,15 +218,9 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
             }
         );
     }
-    // `Breakdown` has no field for the frontier or the renderer's cut (they would be fields of `typescript-analysis`), so their lines are added here, after
-    // the breakdown and only when there is one: a request with no budget and a tree that fits prints what it did.
+    // `Breakdown` has no field for the renderer's cut (it is the drawing's, not the graph's), so its line is added here, right after the breakdown's
+    // `cuts in the graph` line, which is its last: said only when there is one, so a tree that fits prints what it did.
     let mut summary = breakdown(&graph).to_string();
-    if graph.stats.frontier > 0 {
-        summary.push_str(&format!(
-            "  frontier: {} (contexts the budget stopped at: listed, not walked)\n",
-            graph.stats.frontier
-        ));
-    }
     if renderer_cut {
         let graph_cut = graph.stats.frontier > 0 || !graph.stats.cuts.is_empty();
         summary.push_str(&format!(

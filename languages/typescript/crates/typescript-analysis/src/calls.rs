@@ -295,6 +295,9 @@ pub struct Breakdown {
     pub reuse_hits: u64,
     /// Cuts by the name of the limit.
     pub cuts: BTreeMap<String, u64>,
+    /// Contexts the request's budget stopped at (`Stats::frontier`): listed and not walked. Not in `cuts`, which are the solver's limits; the `cuts in the
+    /// graph` line says both.
+    pub frontier: u64,
 }
 
 /// Count the edges of `graph` by kind, and the unresolved ones by reason.
@@ -303,6 +306,7 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
         contexts: graph.stats.contexts,
         walks: graph.stats.walks,
         reuse_hits: graph.stats.reuse_hits,
+        frontier: graph.stats.frontier,
         cuts: graph
             .stats
             .cuts
@@ -466,15 +470,26 @@ impl fmt::Display for Breakdown {
             "  contexts {}, bodies walked {}, summaries reused {}",
             self.contexts, self.walks, self.reuse_hits
         )?;
-        if self.cuts.is_empty() {
-            writeln!(f, "  cuts in the graph: none")
-        } else {
-            let cuts: Vec<String> = self
+        // the budget's stop first, then the solver's limits: the line says "none" only when neither cut anything
+        let mut cuts: Vec<String> = Vec::new();
+        if self.frontier > 0 {
+            cuts.push(format!(
+                "the budget stopped at {} (listed, not walked)",
+                self.frontier
+            ));
+        }
+        if !self.cuts.is_empty() {
+            let limits: Vec<String> = self
                 .cuts
                 .iter()
                 .map(|(cut, count)| format!("{cut} {count}"))
                 .collect();
-            writeln!(f, "  cuts in the graph: {}", cuts.join(", "))
+            cuts.push(limits.join(", "));
+        }
+        if cuts.is_empty() {
+            writeln!(f, "  cuts in the graph: none")
+        } else {
+            writeln!(f, "  cuts in the graph: {}", cuts.join("; "))
         }
     }
 }
@@ -643,6 +658,33 @@ mod tests {
         );
         let quiet = breakdown(&Graph::default()).to_string();
         assert!(!quiet.contains("signatures handed over") && !quiet.contains("accessors do not"));
+    }
+
+    /// The `cuts in the graph` line says what stopped the request: the budget (the frontier), the solver's limits, both, or neither. "none" only when neither did.
+    #[test]
+    fn the_cuts_line_says_the_frontier_and_the_solvers_limits() {
+        let line = |frontier: u64, solver: bool| {
+            let mut graph = Graph::default();
+            graph.stats.frontier = frontier;
+            if solver {
+                graph
+                    .stats
+                    .cuts
+                    .insert(analyzer_core::graph::Cut::MaxContexts, 2);
+            }
+            let said = breakdown(&graph).to_string();
+            said.lines().last().unwrap().to_owned()
+        };
+        assert_eq!(line(0, false), "  cuts in the graph: none");
+        assert_eq!(
+            line(3, false),
+            "  cuts in the graph: the budget stopped at 3 (listed, not walked)"
+        );
+        assert_eq!(line(0, true), "  cuts in the graph: MaxContexts 2");
+        assert_eq!(
+            line(3, true),
+            "  cuts in the graph: the budget stopped at 3 (listed, not walked); MaxContexts 2"
+        );
     }
 
     #[test]
