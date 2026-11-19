@@ -480,8 +480,9 @@ the graph itself is complete`. Its whole tree is larger than **2,000,000** nodes
 contexts: a limit does not fix it, which is the case for (b).
 
 **The two cuts named apart** (41dd2d3, reviewed 2026-11-19): the breakdown says `cuts in the graph: none` (the solver's,
-`Stats.cuts`) and, only when the renderer cut, `cuts in the tree: at N nodes (--max-nodes); the graph is complete`. A frontier is
-not yet in the first line (`frontier: N` is a line of the CLI's own): the next commit puts it there.
+`Stats.cuts`) and, only when the renderer cut, `cuts in the tree: at N nodes (--max-nodes); the graph is complete`. Since 06fbab8
+(reviewed 2026-11-19) the first line says the budget's frontier too (`cuts in the graph: the budget stopped at N (listed, not
+walked)`), from a new field `Breakdown.frontier`, and the CLI's own `frontier:` line is gone.
 
 ## 7. The stack
 
