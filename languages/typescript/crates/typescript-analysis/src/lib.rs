@@ -3,6 +3,8 @@
 mod calls;
 mod env;
 mod key;
+#[cfg(test)]
+mod scratch;
 mod sem;
 mod session;
 mod walk;
@@ -18,7 +20,7 @@ pub use analyzer_core::render::{Mark, Node, RenderOptions, render, to_text};
 pub use analyzer_core::solve::{Budget, Cancel, Limits};
 pub use analyzer_core::wire::{Frame, LineSpan, Sources, WireOptions, WireStyle, merge, wire};
 pub use calls::{Breakdown, Options, breakdown, call_graph};
-pub use session::Session;
+pub use session::{Refreshed, Session};
 pub use typescript_syntax::{DefKind, MarkerStyle, Placement, Span};
 
 /// Config, package and lock files whose change means "load again". The last two are bun's text and binary lock files.
@@ -33,6 +35,15 @@ const ENVIRONMENT_GLOBS: [&str; 9] = [
     "**/bun.lock",
     "**/bun.lockb",
 ];
+
+/// The file names `ENVIRONMENT_GLOBS` spells in full (the ones with no `*`): `package.json`, `jsconfig.json` and the lock files. Beside each `node_modules` folder
+/// a program looked into, a session stamps these, so an install that rewrites one is seen though nothing under `node_modules` is stamped.
+fn exact_environment_names() -> impl Iterator<Item = &'static str> {
+    ENVIRONMENT_GLOBS
+        .iter()
+        .filter_map(|glob| glob.strip_prefix("**/"))
+        .filter(|name| !name.contains('*'))
+}
 
 /// Whether `ENVIRONMENT_GLOBS` already covers the file at `path`. Only the file name matters, for a path under the root: every glob starts with
 /// `**/`. A path that is absolute is outside the root (`environment_inputs` entries are relative where they can be), and a glob relative to the
@@ -70,6 +81,15 @@ impl Project {
         Ok(Project {
             sem: sem::Sem::open(root, file)?,
         })
+    }
+
+    /// `open`, and the paths a [`Session`] stamps to know the program is out of date (`Sem::open_tracked`), given when the build fails too.
+    pub(crate) fn open_tracked(
+        root: &Path,
+        file: &Path,
+    ) -> (Result<Project, OpenError>, Vec<String>) {
+        let (built, paths) = sem::Sem::open_tracked(root, file);
+        (built.map(|sem| Project { sem }), paths)
     }
 
     /// The project's own code, relative to the root with `/`, sorted: source code under the root (D33). Left out: `node_modules`, declaration files

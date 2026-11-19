@@ -28,7 +28,7 @@ use tsrs_core::{
     CompilerOptions, JsxEmit, ModuleKind, ModuleResolutionKind, P, ScriptTarget, Tristate, tspath,
 };
 use tsrs_tsoptions::{ParseConfigHost, ParsedCommandLine};
-use tsrs_vfs::{FS, bundled, cachedvfs, osvfs};
+use tsrs_vfs::{FS, bundled, cachedvfs, osvfs, trackingvfs};
 
 use typescript_syntax::{Def, DefKind, Dialect, MarkerStyle, Outline, Placement, Span};
 
@@ -44,6 +44,7 @@ mod project;
 /// private module there, so it cannot be called: S-TS3 in `ENGINE.md`), which is what "follow the engine" (D7) means for a call: from the callee
 /// expression, a declaration that is itself callable, else the declaration of the symbol the checker finds there, once.
 mod resolve;
+mod stamps;
 #[cfg(test)]
 mod tests;
 mod uncovered;
@@ -55,6 +56,7 @@ use project::{
     under_root,
 };
 pub(crate) use resolve::{Init, Resolved};
+pub(crate) use stamps::Stamps;
 pub(crate) use uncovered::Uncovered;
 
 /// First chunk of the region a program lives in: the 1 MB `tsrs_lint` uses for one program.
@@ -246,20 +248,53 @@ impl Sem {
     /// `file` is relative to `root`, or absolute, and must be under `root` once `..` is resolved (`OpenError::OutsideRoot` otherwise: D33). A program that loads
     /// with type errors is not an error.
     pub fn open(root: &Path, file: &Path) -> Result<Sem, OpenError> {
-        let root = root.canonicalize().map_err(|_| OpenError::NoSuchFile)?;
-        let file = root
-            .join(file)
-            .canonicalize()
-            .map_err(|_| OpenError::NoSuchFile)?;
+        Sem::open_tracked(root, file).0
+    }
+
+    /// `open`, and the paths a later look must stamp to know the program is out of date (`docs/03-typescript/11-step6-text-and-disk.md` §4), sorted, with
+    /// no path twice, in the engine's spelling. They are given when the build **fails** too, so a session that lost its program still knows what to watch:
+    ///
+    /// - every path the build asked the file system about, a path that is not there included (a failed import), without the paths under a `node_modules`
+    ///   folder (the folder itself stays, and beside each one the names `ENVIRONMENT_GLOBS` spells in full: the lock files of an install);
+    /// - every config file the owner search read, a broken one too;
+    /// - the root and the file. A build that fails before anything is read (`NoSuchFile`, `OutsideRoot`) still has these two, spelled as they were given
+    ///   when they could not be made canonical.
+    pub(crate) fn open_tracked(root: &Path, file: &Path) -> (Result<Sem, OpenError>, Vec<String>) {
+        #[cfg(test)]
+        BUILDS.with(|builds| builds.set(builds.get() + 1));
+        let Ok(canonical_root) = root.canonicalize() else {
+            return (Err(OpenError::NoSuchFile), root_and_file(root, file));
+        };
+        let Ok(canonical_file) = canonical_root.join(file).canonicalize() else {
+            return (
+                Err(OpenError::NoSuchFile),
+                root_and_file(&canonical_root, file),
+            );
+        };
+        let (root, file) = (canonical_root, canonical_file);
         if !file.is_file() {
-            return Err(OpenError::NoSuchFile);
+            return (Err(OpenError::NoSuchFile), root_and_file(&root, &file));
         }
         // `join` and `canonicalize` have resolved any `..`; the rule is the analysis's own (`relative_path`), so open and the walk agree on "under"
         if under_root(&to_engine_path(&root), &to_engine_path(&file)).is_none() {
-            return Err(OpenError::OutsideRoot);
+            return (Err(OpenError::OutsideRoot), root_and_file(&root, &file));
         }
+        let (tracker, fs) = tracked_fs();
+        let mut config_inputs = BTreeSet::new();
+        let built = Sem::build(&root, &file, fs, &mut config_inputs);
+        let paths = stamp_paths(&root, &file, tracker.seen_files(), &config_inputs);
+        (built, paths)
+    }
+
+    /// The part of `open_tracked` that can fail after the paths are known to be a file under the root. Every config it reads goes into `config_inputs`.
+    fn build(
+        root: &Path,
+        file: &Path,
+        fs: Arc<dyn FS>,
+        config_inputs: &mut BTreeSet<String>,
+    ) -> Result<Sem, OpenError> {
+        let root = root.to_path_buf();
         let cwd = to_engine_path(&root);
-        let fs: Arc<dyn FS> = Arc::new(bundled::wrap_fs(cachedvfs::from(osvfs::fs())));
         let config_host = ConfigHost {
             fs: Arc::clone(&fs),
             cwd: cwd.clone(),
@@ -267,11 +302,10 @@ impl Sem {
 
         let region = Region::new_scratch(CHUNK);
         let loaders = Arc::new(ProgramRegions::default());
-        let mut config_inputs = BTreeSet::new();
         let (program, config_name) = {
             let _scope = region.enter();
             let mut skipped = Vec::new();
-            let owner = find_owner(&root, &file, &config_host, &mut config_inputs, &mut skipped)?;
+            let owner = find_owner(&root, file, &config_host, config_inputs, &mut skipped)?;
             let (config_name, mut config) = match owner {
                 Owner::Config(name, config) => (Some(name), *config),
                 Owner::NoneHolds(name) => {
@@ -280,7 +314,7 @@ impl Sem {
                         skipped,
                     });
                 }
-                Owner::NoConfig => (None, inferred_config(&file, &config_host)),
+                Owner::NoConfig => (None, inferred_config(file, &config_host)),
             };
             // One checker answers every question, so the same project gives the same answers in the same order (rule 9). Not
             // `single_threaded`: that also loads files one at a time, 3.5 times slower on a 1,500-file program (ENGINE.md).
@@ -311,6 +345,8 @@ impl Sem {
             program.bind_source_files();
             (program, config_name)
         };
+        #[cfg(test)]
+        run_after_bind();
 
         let config_files = config_inputs
             .iter()
@@ -329,11 +365,7 @@ impl Sem {
             _loaders: loaders,
             region,
         };
-        if sem
-            .program
-            .get_source_file(&to_engine_path(&file))
-            .is_none()
-        {
+        if sem.program.get_source_file(&to_engine_path(file)).is_none() {
             return Err(OpenError::NotInProject {
                 config: match &config_name {
                     Some(name) => relative_to(&sem.root, name),
@@ -718,6 +750,74 @@ impl Sem {
             return Some(BUNDLED_LIBS.into());
         }
         package_in_node_modules(file.node.file_name())
+    }
+}
+
+/// The disk as the engine sees it, and what asks of it.
+type Tracker = trackingvfs::FS<cachedvfs::FS<&'static dyn FS>>;
+
+/// The file system of one build, inside out: the disk, a cache made for this build alone (one kept across builds would answer the old text), the tracker, and
+/// the bundled libraries outside it. The tracker is given back as well, in a handle of its own, so what it saw can be read after the build, whatever came of it.
+fn tracked_fs() -> (Arc<Tracker>, Arc<dyn FS>) {
+    let tracker = Arc::new(trackingvfs::FS::new(cachedvfs::from(osvfs::fs())));
+    let fs: Arc<dyn FS> = Arc::new(bundled::wrap_fs(Arc::clone(&tracker)));
+    (tracker, fs)
+}
+
+/// The root and the file of a build that failed before it read anything, as they were given: `file` is under `root` unless it is absolute. The OS takes
+/// them the way the engine spells them.
+fn root_and_file(root: &Path, file: &Path) -> Vec<String> {
+    let mut paths = vec![to_engine_path(root), to_engine_path(&root.join(file))];
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+/// The paths of `Sem::open_tracked`: what the tracker `seen`, less what is inside a `node_modules` folder, with the files an install rewrites beside each
+/// `node_modules` folder, then the configs, the root and the file.
+fn stamp_paths(
+    root: &Path,
+    file: &Path,
+    seen: Vec<String>,
+    config_inputs: &BTreeSet<String>,
+) -> Vec<String> {
+    let mut paths = BTreeSet::new();
+    for path in seen {
+        // 8057 of the 9143 paths of a real frontend are under `node_modules` (`docs/03-typescript/11-step6-text-and-disk.md` §2)
+        if path.contains("/node_modules/") {
+            continue;
+        }
+        if let Some(beside) = path.strip_suffix("/node_modules") {
+            paths.extend(crate::exact_environment_names().map(|name| format!("{beside}/{name}")));
+        }
+        paths.insert(path);
+    }
+    paths.extend(config_inputs.iter().cloned());
+    paths.insert(to_engine_path(root));
+    paths.insert(to_engine_path(file));
+    paths.into_iter().collect()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many times `open_tracked` ran on this thread: a test that says "nothing was built" reads it before and after.
+    pub(crate) static BUILDS: Cell<u32> = const { Cell::new(0) };
+    /// A test hook, run once on this thread by the next `open_tracked` that gets as far as having a bound program, before it returns: a file rewritten
+    /// here is rewritten **during** a build (case 13 of `session_refresh`). This is how it runs; nothing else can land a change between the build and
+    /// what `Session` does with its stamps.
+    static AFTER_BIND: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+}
+
+/// Sets the hook `AFTER_BIND` for the next build on this thread.
+#[cfg(test)]
+pub(crate) fn after_the_next_bind(hook: impl FnOnce() + 'static) {
+    AFTER_BIND.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+}
+
+#[cfg(test)]
+fn run_after_bind() {
+    if let Some(hook) = AFTER_BIND.with(|slot| slot.borrow_mut().take()) {
+        hook();
     }
 }
 

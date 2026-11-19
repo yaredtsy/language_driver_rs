@@ -34,10 +34,11 @@ none "a personal path (rule 6)" \
 
 # rule 2: a library never writes a file and never invents an ID: the check reads library code, the src folders, and looks for every way
 # to write (fs::write, File::create, OpenOptions) and for uuid. Allowed: *-cli (they are the program); tests, which write their own scratch
-# folders; and analyzer-testkit, a dev-dependency whose ANALYZER_BLESS switch writes expected files for a person to review.
+# folders (in a crate's src, only its test-only scratch.rs, the one file its unit tests write through); and analyzer-testkit, a dev-dependency
+# whose ANALYZER_BLESS switch writes expected files for a person to review.
 lib_src=(core/analyzer-core/src languages/*/crates/*/src)
 none "a way to write a file, or uuid, in a library (rule 2)" \
-  "$(rs -E 'fs::write|File::create|OpenOptions|uuid' "${lib_src[@]}" | grep -v -- '-cli/' || true)"
+  "$(rs -E 'fs::write|File::create|OpenOptions|uuid' "${lib_src[@]}" | grep -v -- '-cli/' | grep -v '/src/scratch\.rs:' || true)"
 
 # one lint style: every language's [workspace.lints] block equals the template's, except the value of unsafe_code and comments
 lints() { awk '/^\[workspace\.lints/{p=1} /^\[profile/{p=0} p' "$1" | grep -v -e '^#' -e '^unsafe_code'; }

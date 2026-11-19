@@ -209,7 +209,7 @@ fn sweep(case: &Case, budget: &Budget) -> Sweep {
             let frame = wire(
                 &graph,
                 &graph.entries[0],
-                session.project(),
+                session.project().unwrap(),
                 &WireOptions::new(WireStyle::default(), merged, RenderOptions::default()),
             );
             assert!(
@@ -299,7 +299,7 @@ fn a_deadline_that_has_passed_cuts_with_its_own_reason() {
     let wired = wire(
         &graph,
         &graph.entries[0],
-        session.project(),
+        session.project().unwrap(),
         &WireOptions::new(WireStyle::default(), false, RenderOptions::default()),
     );
     assert_eq!(frames_with_mark(&wired, "incomplete"), 1);

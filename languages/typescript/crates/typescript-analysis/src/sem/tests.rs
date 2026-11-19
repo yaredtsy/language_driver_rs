@@ -834,3 +834,60 @@ fn a_file_on_another_drive_stays_absolute_with_slashes() {
         "D:/shared/lib.ts"
     );
 }
+
+/// What the tracker has seen so far, sorted.
+fn seen(tracker: &Tracker) -> Vec<String> {
+    let mut seen = tracker.seen_files();
+    seen.sort();
+    seen
+}
+
+/// The probe of `docs/03-typescript/11-step6-text-and-disk.md` §2, kept as a test: walking a def reads nothing the build did not already ask for, so the
+/// paths a build gives are the paths the program depends on, now and after any request. A failed import's lookups are among them (that is how a file
+/// created later is noticed), and so is a folder the config's `include` lists (a file created in it).
+#[test]
+fn the_seen_paths_after_a_call_graph_are_the_seen_paths_after_open() {
+    use crate::{Entry, Options, Project, call_graph};
+    use analyzer_core::solve::Cancel;
+
+    let root = crate::scratch::scratch("seen-paths");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    crate::scratch::write(
+        root.join("tsconfig.json"),
+        r#"{ "compilerOptions": { "strict": true }, "include": ["src"] }"#,
+    );
+    crate::scratch::write(
+        root.join("src/main.ts"),
+        "import { helper } from \"./util\";\nimport { gone } from \"./gone\";\nexport function main() {\n  helper();\n  gone();\n}\n",
+    );
+    crate::scratch::write(root.join("src/util.ts"), "export function helper() {}\n");
+
+    let (tracker, fs) = tracked_fs();
+    let mut inputs = BTreeSet::new();
+    let sem = Sem::build(&root, &root.join("src/main.ts"), fs, &mut inputs).unwrap();
+    let after_open = seen(&tracker);
+    let project = Project { sem };
+    let entry = Entry::Def {
+        qualname: "main",
+        occurrence: 0,
+    };
+    let options = Options::new(MarkerStyle::docstring("ID"));
+    call_graph(&project, "src/main.ts", &entry, &options, &Cancel::new()).expect("main is there");
+    assert_eq!(seen(&tracker), after_open);
+
+    let at = |relative: &str| to_engine_path(&root.join(relative));
+    for expected in [
+        at("src"),
+        at("src/main.ts"),
+        at("src/util.ts"),
+        at("tsconfig.json"),
+        at("src/gone.ts"),
+        at("src/gone.tsx"),
+        at("src/gone.d.ts"),
+    ] {
+        assert!(
+            after_open.contains(&expected),
+            "{expected} is not among {after_open:#?}"
+        );
+    }
+}
