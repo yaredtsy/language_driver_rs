@@ -288,7 +288,7 @@ only).
 | H16 | **closed, no code**: vscode's slow entries are the machine's swap (§6.3) | — |
 | H17 | **not built**: the type `Node` only in `sem/view/` (§6.3) | — |
 | H18 | **found by the owner, 2026-11-19; (a) built (520770f), (b) the owner's.** the renderer's 100,000-node limit cuts the tree of a complete graph (`runAgent`: 1,974 contexts, 100,000 lines, `[Cut]` on the root) while the breakdown says `cuts: none`; the merged wire is merged from the cut tree. §6.4 | (a) with row 8; (b) the owner's |
-| H19 | **found at row 8's review, 2026-11-19; not built.** `tests/threads.rs` (`opening_on_one_thread_and_dropping_on_another_100_times_does_not_grow_the_process`) reads the whole process's resident memory while other tests of its binary run: it passes at the default thread count (3 runs by the reviewer) and fails at `--test-threads=2` (34 → 78 MB against a limit of 30). The memory tests of `tests/memory.rs` already take one lock for this (H2); this one does not | take the same kind of lock in `threads.rs` |
+| H19 | **built** (8995425; reviewed 2026-11-19: three runs at `--test-threads=2` pass). **found at row 8's review, 2026-11-19.** `tests/threads.rs` (`opening_on_one_thread_and_dropping_on_another_100_times_does_not_grow_the_process`) reads the whole process's resident memory while other tests of its binary run: it passes at the default thread count (3 runs by the reviewer) and fails at `--test-threads=2` (34 → 78 MB against a limit of 30). The memory tests of `tests/memory.rs` already take one lock for this (H2); this one does not | take the same kind of lock in `threads.rs` |
 
 **Rust note (H1).** A `std::sync::Mutex` locked twice by one thread does not return: the documentation leaves it at "will not return
 (it might panic or deadlock)". There is no error to catch, and `Cancel` is never checked, because the thread is waiting inside `lock`.
@@ -478,6 +478,10 @@ is merged from the cut tree: 6,614 nodes, 8 of them `cut`, 24 MB (the unmerged w
 **(a) as built** (520770f, reviewed 2026-11-19): `runAgent` now ends with `tree: cut by the renderer at 100000 nodes (--max-nodes);
 the graph itself is complete`. Its whole tree is larger than **2,000,000** nodes (still cut at `--max-nodes 2000000`), from 1,974
 contexts: a limit does not fix it, which is the case for (b).
+
+**The two cuts named apart** (41dd2d3, reviewed 2026-11-19): the breakdown says `cuts in the graph: none` (the solver's,
+`Stats.cuts`) and, only when the renderer cut, `cuts in the tree: at N nodes (--max-nodes); the graph is complete`. A frontier is
+not yet in the first line (`frontier: N` is a line of the CLI's own): the next commit puts it there.
 
 ## 7. The stack
 
