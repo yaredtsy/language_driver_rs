@@ -1,36 +1,40 @@
 Step::twice
-  MethodCall "step" -> Def src/dispatch.rs:Step::step open=self_in_trait
-  MethodCall "step" -> Def src/dispatch.rs:Step::step open=self_in_trait
+  MethodCall "step" -> Unknown function_typed_value open=self_in_trait
+  MethodCall "step" -> Unknown function_typed_value open=self_in_trait
 Step::pair
-  Call "Self::fresh" -> Def src/dispatch.rs:Step::fresh open=self_in_trait
-  Call "Self::fresh" -> Def src/dispatch.rs:Step::fresh open=self_in_trait
+  Call "Self::fresh" -> Unknown function_typed_value open=self_in_trait
+  Call "Self::fresh" -> Unknown function_typed_value open=self_in_trait
 make_generic
   Call "W::default" -> External core default::Default::default open=type_param
 concrete
   MethodCall "write" -> Def src/lib.rs:<Json as Writer>::write
   MethodCall "twice" -> Def src/lib.rs:Writer::twice
 generic_by_reference
-  MethodCall "write" -> Def src/lib.rs:Writer::write open=type_param
+  MethodCall "write" -> Unknown function_typed_value open=type_param
 generic_by_value
-  MethodCall "write" -> Def src/lib.rs:Writer::write open=type_param
+  MethodCall "write" -> Unknown function_typed_value open=type_param
 dyn_reference
-  MethodCall "write" -> Def src/lib.rs:Writer::write open=dyn
+  MethodCall "write" -> Unknown function_typed_value open=dyn
 boxed_dyn
-  MethodCall "write" -> Def src/lib.rs:Writer::write open=dyn
+  MethodCall "write" -> Unknown function_typed_value open=dyn
 impl_argument
-  MethodCall "write" -> Def src/lib.rs:Writer::write open=impl_trait
+  MethodCall "write" -> Unknown function_typed_value open=impl_trait
+default_method_through_dyn
+  MethodCall "twice" -> Def src/lib.rs:Writer::twice open=dyn
+default_method_through_a_parameter
+  MethodCall "twice" -> Def src/lib.rs:Writer::twice open=type_param
 impl_return
   Call "make_writer" -> Def src/dispatch.rs:make_writer
   MethodCall "write" -> Def src/lib.rs:<Json as Writer>::write
 impl_return_of_a_parameter
   Call "make_generic::<W>" -> Def src/dispatch.rs:make_generic
-  MethodCall "write" -> Def src/lib.rs:Writer::write open=opaque
+  MethodCall "write" -> Unknown function_typed_value open=opaque
 static_through_a_parameter
-  Call "W::make" -> Def src/lib.rs:Make::make open=type_param
+  Call "W::make" -> Unknown function_typed_value open=type_param
 qualified_concrete
   Call "<Json as Make>::make" -> Def src/lib.rs:<Json as Make>::make
 qualified_through_a_parameter
-  Call "<W as Make>::make" -> Def src/lib.rs:Make::make open=type_param
+  Call "<W as Make>::make" -> Unknown function_typed_value open=type_param
 closure_value
   Call "f" -> Unknown function_typed_value open=closure
 fn_pointer
@@ -49,9 +53,9 @@ unknown_method
 projection_receiver
   MethodCall "next" -> External core iter::traits::iterator::Iterator::next open=type_param
   MethodCall "unwrap" -> External core option::Option::unwrap
-  MethodCall "write" -> Def src/lib.rs:Writer::write open=projection
+  MethodCall "write" -> Unknown function_typed_value open=projection
 trait_path_through_a_parameter
-  Call "Writer::write" -> Def src/lib.rs:Writer::write open=type_param
+  Call "Writer::write" -> Unknown function_typed_value open=type_param
 trait_path_on_a_concrete_type
   Call "Writer::write" -> Def src/lib.rs:<Json as Writer>::write
 trait_path_through_an_iterator

@@ -10,7 +10,7 @@ use rust_analysis::{
 };
 
 mod common;
-use common::{POLICY_ENTRIES as ENTRIES, copy_of_fixture};
+use common::{POLICY_ENTRIES as ENTRIES, copy_of_fixture, frozen_open_counts, open_counts_of};
 
 fn options() -> Options {
     Options::new(MarkerStyle::docstring("ID"))
@@ -58,6 +58,19 @@ fn the_first_trees_of_the_policy_workspace() {
     }
     let snapshot = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/trees/policy.txt");
     analyzer_testkit::expect_file(&snapshot, &out);
+}
+
+/// D44 changes what a required trait method is, not how open it is: every entry has the `open_*` counts it had before (`frozen_open_counts`).
+#[test]
+fn every_open_count_of_the_policy_workspace_is_what_it_was_before_d44() {
+    let (_copy, project) = policy("calls_open_counts");
+    let frozen = frozen_open_counts("policy");
+    assert_eq!(frozen.len(), ENTRIES.len());
+    for ((file, qualname, occurrence), (entry, counts)) in ENTRIES.into_iter().zip(frozen) {
+        assert_eq!(entry, format!("{file} {qualname}"));
+        let graph = graph(&project, file, qualname, occurrence).unwrap();
+        assert_eq!(open_counts_of(&breakdown(&graph).open), counts, "{entry}");
+    }
 }
 
 #[test]
@@ -389,9 +402,14 @@ fn what_is_handed_over_is_a_passed_edge_or_a_count() {
     assert!(!graph.stats.language.contains_key("external_passed"));
     assert_eq!(breakdown(&graph).reasons["function_typed_value"], 2);
 
-    // through a type parameter: a passed edge to the trait's declaration, and its answer is open
+    // through a type parameter, a trait's required method (D44): a hand-over is not a call, so no edge at all (not a passed one, not an unresolved one),
+    // counted `signature_passed`; its answer is still open
     let graph = graph_of(&project, file, "through_a_parameter");
-    assert!(graph.edges.iter().any(|edge| edge.passed));
+    assert!(!graph.edges.iter().any(|edge| edge.passed));
+    let summary = breakdown(&graph);
+    assert_eq!((summary.passed, summary.unresolved), (0, 0));
+    assert_eq!(summary.signature_passed, 1);
+    assert_eq!(graph.stats.language["signature_passed"], 1);
     assert_eq!(graph.stats.language["open_type_param"], 1);
 }
 

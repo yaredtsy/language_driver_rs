@@ -2,27 +2,28 @@
 both
   from_json
     emit
-      Writer::write
   from_csv
     emit
-      Writer::write
 
 breakdown:
-  edges: 5 call, 0 construct, 0 external, 0 unresolved
+  edges: 4 call, 0 construct, 0 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
   open (the answer is a family of defs), by why:
     type_param: 1
-  contexts 5, bodies walked 5, summaries reused 0
+  contexts 4, bodies walked 4, summaries reused 0
   cuts: none
 
 === src/generic.rs emit
 emit
-  Writer::write
 
 breakdown:
-  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  edges: 0 call, 0 construct, 0 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
   open (the answer is a family of defs), by why:
     type_param: 1
-  contexts 2, bodies walked 2, summaries reused 0
+  contexts 1, bodies walked 1, summaries reused 0
   cuts: none
 
 === src/callback.rs use_callbacks
@@ -69,39 +70,41 @@ breakdown:
 
 === src/dyn_local.rs dyn_in_a_local
 dyn_in_a_local
-  Writer::write
 
 breakdown:
-  edges: 1 call, 0 construct, 2 external, 0 unresolved
+  edges: 0 call, 0 construct, 2 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
   open (the answer is a family of defs), by why:
     dyn: 1
-  contexts 2, bodies walked 2, summaries reused 0
+  contexts 1, bodies walked 1, summaries reused 0
   cuts: none
 
 === src/dyn_param.rs call_dyn
 call_dyn
   dyn_parameter
-    Writer::write
   dyn_parameter
-    Writer::write
 
 breakdown:
-  edges: 3 call, 0 construct, 0 external, 0 unresolved
+  edges: 2 call, 0 construct, 0 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
   open (the answer is a family of defs), by why:
     dyn: 1
-  contexts 3, bodies walked 3, summaries reused 0
+  contexts 2, bodies walked 2, summaries reused 0
   cuts: none
 
 === src/factory.rs use_factory
 use_factory
   make
-  Writer::write
 
 breakdown:
-  edges: 2 call, 0 construct, 2 external, 0 unresolved
+  edges: 1 call, 0 construct, 2 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
   open (the answer is a family of defs), by why:
     dyn: 1
-  contexts 3, bodies walked 3, summaries reused 0
+  contexts 2, bodies walked 2, summaries reused 0
   cuts: none
 
 === src/factory.rs use_impl_factory
@@ -119,24 +122,26 @@ use_holder
   Holder::new
     Holder
   Holder::run
-    Writer::write
 
 breakdown:
-  edges: 3 call, 1 construct, 1 external, 0 unresolved
+  edges: 2 call, 1 construct, 1 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
   open (the answer is a family of defs), by why:
     dyn: 1
-  contexts 4, bodies walked 4, summaries reused 0
+  contexts 3, bodies walked 3, summaries reused 0
   cuts: none
 
 === src/holder.rs Holder::run
 Holder::run
-  Writer::write
 
 breakdown:
-  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  edges: 0 call, 0 construct, 0 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
   open (the answer is a family of defs), by why:
     dyn: 1
-  contexts 2, bodies walked 2, summaries reused 0
+  contexts 1, bodies walked 1, summaries reused 0
   cuts: none
 
 === src/holder.rs Holder
@@ -150,28 +155,29 @@ breakdown:
 === src/recursive.rs start
 start
   countdown
-    Writer::write
     countdown [Recursive]
   countdown
-    Writer::write
     countdown [Recursive]
 
 breakdown:
-  edges: 4 call, 0 construct, 0 external, 0 unresolved
+  edges: 3 call, 0 construct, 0 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
   open (the answer is a family of defs), by why:
     type_param: 1
-  contexts 3, bodies walked 3, summaries reused 0
+  contexts 2, bodies walked 2, summaries reused 0
   cuts: none
 
 === src/recursive.rs countdown
 countdown
-  Writer::write
   countdown [Recursive]
 
 breakdown:
-  edges: 2 call, 0 construct, 0 external, 0 unresolved
+  edges: 1 call, 0 construct, 0 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
   open (the answer is a family of defs), by why:
     type_param: 1
-  contexts 2, bodies walked 2, summaries reused 0
+  contexts 1, bodies walked 1, summaries reused 0
   cuts: none
 

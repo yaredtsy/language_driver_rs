@@ -10,7 +10,7 @@ use rust_analysis::{
 };
 
 mod common;
-use common::{CONTEXT_ENTRIES as ENTRIES, copy_of_fixture};
+use common::{CONTEXT_ENTRIES as ENTRIES, copy_of_fixture, frozen_open_counts, open_counts_of};
 
 fn graph(project: &Project, file: &str, qualname: &str) -> Graph {
     call_graph(
@@ -50,4 +50,22 @@ fn the_layer_one_trees_and_open_counts_of_the_context_workspace() {
     analyzer_testkit::expect_file(&snapshot, &out);
     // the same request, the same graph
     assert_deterministic(|| graph(&project, "src/generic.rs", "both"));
+}
+
+/// D44 changes what a required trait method is, not how open it is: every entry has the `open_*` counts it had before (`frozen_open_counts`).
+#[test]
+fn every_open_count_of_the_context_workspace_is_what_it_was_before_d44() {
+    let copy = copy_of_fixture("context", "context_open_counts");
+    let project = Project::open(&copy, Path::new("src/lib.rs"), &LoadOptions::default())
+        .expect("the fixture loads");
+    let frozen = frozen_open_counts("context");
+    assert_eq!(frozen.len(), ENTRIES.len());
+    for ((file, qualname), (entry, counts)) in ENTRIES.into_iter().zip(frozen) {
+        assert_eq!(entry, format!("{file} {qualname}"));
+        assert_eq!(
+            open_counts_of(&breakdown(&graph(&project, file, qualname)).open),
+            counts,
+            "{entry}"
+        );
+    }
 }

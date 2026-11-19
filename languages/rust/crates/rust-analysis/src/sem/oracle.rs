@@ -1,5 +1,5 @@
 //! RS4 §8, "the oracle": the engine's own call hierarchy (`ide::Analysis::outgoing_calls`) as the definition of "follow the engine" (D7), executable. For
-//! every function (and const and static) of a workspace, every range it reports is a site of ours with the same target, **except four classes**, each
+//! every function (and const and static) of a workspace, every range it reports is a site of ours with the same target, **except five classes**, each
 //! recognised by a rule and not by a position, and each counted: any other difference fails.
 //!
 //! 1. **a nested item**: the oracle walks every descendant of a body, a nested `fn`'s too; ours are the nested def's own sites (§3).
@@ -8,6 +8,9 @@
 //!    where the oracle's target is the macro call or the derive in a file of the project (§5).
 //! 4. **an impl's method of the oracle's trait function**: the oracle takes the callable type, the trait's declaration; we take the path first, and name
 //!    resolution answers the impl (`Writer::write(&json)`, `<Json as Make>::make()`, §4 rule 3).
+//!
+//! 5. **a required trait method** (D44): ours is `Unresolved(function_typed_value)` with an open kind, where the oracle's target is a trait's function of the
+//!    project with no body, at the same range: the declaration stands for whatever implements it, and the site says so instead of naming it.
 //!
 //! The oracle reports calls and method calls only: a record, a hand-over and a macro's arguments are ours alone, so what it reports is a subset of ours.
 
@@ -18,7 +21,7 @@ use ra_ap_hir::{AsAssocItem, AssocItemContainer};
 use ra_ap_ide::{AnalysisHost, CallHierarchyConfig, FilePosition, RaFixtureConfig};
 use ra_ap_syntax::TextSize;
 
-use super::resolve::Found;
+use super::resolve::{Found, Reason};
 use super::testing::{STYLE, disk_outline};
 use super::{Item, Loaded, attached};
 
@@ -31,10 +34,11 @@ struct Tally {
     tuple_variant: usize,
     generated_target: usize,
     trait_method: usize,
+    required_method: usize,
 }
 
 /// Ask the oracle about every function, const and static of every file of `loaded`, and compare each answer with our sites. Panics, naming the range, on a
-/// difference that is not one of the four classes.
+/// difference that is not one of the five classes.
 fn compare(loaded: &Loaded, root: &Path) -> Tally {
     let host = AnalysisHost::with_database(loaded.db().clone());
     let analysis = host.analysis();
@@ -151,8 +155,20 @@ fn compare(loaded: &Loaded, root: &Path) -> Tally {
                             {
                                 tally.trait_method += 1;
                             }
+                            // 5. a required method of a trait of the project: ours is unresolved, with the open kind that says why
+                            Found::Unknown(Reason::FunctionTypedValue)
+                                if callee.open.is_some()
+                                    && is_required_trait_method(
+                                        sem,
+                                        loaded,
+                                        nav_file.as_deref(),
+                                        focus,
+                                    ) =>
+                            {
+                                tally.required_method += 1;
+                            }
                             other => panic!(
-                                "{at}: not one of the four classes (ours {}, the oracle's file {nav_file:?} {focus:?} {:?})",
+                                "{at}: not one of the five classes (ours {}, the oracle's file {nav_file:?} {focus:?} {:?})",
                                 match other {
                                     Found::Def(_) => "Def",
                                     Found::Construct(_) => "Construct",
@@ -200,6 +216,26 @@ fn is_impl_of_their_trait_method<'p>(
     }
 }
 
+/// Whether the oracle's target (a file and the range of its name) is a function declared in a trait of the project that has no body.
+fn is_required_trait_method(
+    sem: &super::Sem<'_>,
+    loaded: &Loaded,
+    nav_file: Option<&str>,
+    focus: Option<(u32, u32)>,
+) -> bool {
+    let (Some(nav_file), Some((from, to))) = (nav_file, focus) else {
+        return false;
+    };
+    let db = loaded.db();
+    let Some(theirs) = sem.function_at(nav_file, analyzer_core::text::Span::new(from, to)) else {
+        return false;
+    };
+    let Some(item) = theirs.as_assoc_item(db) else {
+        return false;
+    };
+    matches!(item.container(db), AssocItemContainer::Trait(_)) && !theirs.has_body(db)
+}
+
 #[test]
 fn the_engines_call_hierarchy_agrees_with_our_sites_on_the_policy_workspace() {
     let (loaded, root) = super::testing::policy("oracle_policy");
@@ -211,17 +247,21 @@ fn the_engines_call_hierarchy_agrees_with_our_sites_on_the_policy_workspace() {
             tally.nested_item,
             tally.tuple_variant,
             tally.generated_target,
-            tally.trait_method
+            tally.trait_method,
+            tally.required_method
         ),
-        // `nested_items`' three, `E::V` and `Shape::Pair`, `Made`, `generated`, `by_macro` twice and a derive's `clone` twice, and `<Json as Make>::make()` and
-        // `Writer::write(&json)`
-        (3, 2, 6, 2)
+        // `nested_items`' three, `E::V` and `Shape::Pair`, `Made`, `generated`, `by_macro` twice and a derive's `clone` twice, `<Json as Make>::make()` and
+        // `Writer::write(&json)`, and 17 required methods (D44): ten in `dispatch.rs` (`write` through a reference, a value, `dyn`, `Box<dyn>`, `impl Writer`,
+        // an opaque return, a projection and `Writer::write(w)`; `W::make()` and `<W as Make>::make()`), `Step::twice` and `Step::pair` twice each,
+        // `Writer::twice` twice, `Declared::defaulted` once
+        (3, 2, 6, 2, 17)
     );
     assert!(tally.same > 100, "{tally:?}");
 }
 
 /// The context workspace: generics, callbacks and trait objects. The oracle takes the callable type, which for a method through a type parameter or a `dyn`
-/// is the trait's declaration, as ours is: no difference of any class but the same target.
+/// is the trait's declaration: ours is that site unresolved (D44), six of them (`emit`, `countdown`, `dyn_parameter`, `dyn_in_a_local`, `use_factory`,
+/// `Holder::run`), and no other class.
 #[test]
 fn the_engines_call_hierarchy_agrees_with_our_sites_on_the_context_workspace() {
     let (loaded, root) = super::testing::workspace("context", "oracle_context");
@@ -231,10 +271,11 @@ fn the_engines_call_hierarchy_agrees_with_our_sites_on_the_context_workspace() {
             tally.nested_item,
             tally.tuple_variant,
             tally.generated_target,
-            tally.trait_method
+            tally.trait_method,
+            tally.required_method
         ),
-        (0, 0, 0, 0),
-        "none of the four classes: {tally:?}"
+        (0, 0, 0, 0, 6),
+        "only the required methods: {tally:?}"
     );
     assert!(tally.same >= 20, "{tally:?}");
 }

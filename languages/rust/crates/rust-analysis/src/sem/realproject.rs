@@ -9,7 +9,7 @@ use analyzer_core::outline::DefKind;
 use analyzer_testkit::graph::check_invariants;
 
 use super::testing::STYLE;
-use super::{Found, attached};
+use super::{Found, Reason, attached};
 use crate::env::Env;
 use crate::{Cancel, Entry, LoadOptions, MarkerStyle, Options, Project, call_graph};
 
@@ -103,6 +103,10 @@ fn every_def_of_core_is_an_entry_and_the_whole_is_counted() {
                                     bump(&format!("external_cause_{cause:?}"));
                                 }
                             }
+                            // a trait's required method handed over: no edge, as the walk counts it (D44)
+                            Found::Unknown(Reason::FunctionTypedValue) if passed => {
+                                bump("signature_passed")
+                            }
                             Found::Unknown(reason) => {
                                 bump(&format!("unresolved_{}", reason.counter()))
                             }
@@ -132,6 +136,7 @@ fn every_def_of_core_is_an_entry_and_the_whole_is_counted() {
         "externals",
         "external_passed",
         "constructor_passed",
+        "signature_passed",
     ]
     .iter()
     .map(|key| count(key))

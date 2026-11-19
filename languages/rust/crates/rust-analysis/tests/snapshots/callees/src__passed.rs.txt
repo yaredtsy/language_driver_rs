@@ -54,7 +54,7 @@ locals
 through_a_parameter
   MethodCall "into_iter" -> External alloc vec::<Vec<T, A> as IntoIterator>::into_iter
   MethodCall "map" -> External core iter::traits::iterator::Iterator::map
-  Passed "W::build" -> Def src/passed.rs:Build::build open=type_param
+  Passed "W::build" -> Unknown function_typed_value open=type_param
   MethodCall "count" -> External core iter::traits::iterator::Iterator::count
 generated_handed_over
   Call "spawn" -> Def src/passed.rs:spawn

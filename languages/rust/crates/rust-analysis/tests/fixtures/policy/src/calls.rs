@@ -126,3 +126,22 @@ pub fn calls_helper_twice() {
     twice(1);
     helper();
 }
+
+/// A chain of concrete calls, five deep: a tree with a node at depth 4, so a budget of depth 3 cuts something (the stitching test of `tests/session.rs`).
+pub fn chain_a() {
+    chain_b();
+}
+
+pub fn chain_b() {
+    chain_c();
+}
+
+pub fn chain_c() {
+    chain_d();
+}
+
+pub fn chain_d() {
+    chain_e();
+}
+
+pub fn chain_e() {}

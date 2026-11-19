@@ -8,7 +8,7 @@ use analyzer_core::solve::{Cancel, SiteCalls, Summary, Target};
 use crate::calls::{self, Rust};
 use crate::env::Env;
 use crate::key::Key;
-use crate::sem::{Callee, Cause, Found, Func, RawSite, Sem};
+use crate::sem::{Callee, Cause, Found, Func, RawSite, Reason as SemReason, Sem};
 
 /// One site of a body, with what it reaches. A site has several callees when a later layer says so; layer 1 has one.
 pub(crate) struct Resolved<'p> {
@@ -99,6 +99,12 @@ pub(crate) fn body<'a, 'p>(
                     true,
                 ) => {
                     lang.note(calls::CONSTRUCTOR_PASSED, 1);
+                    continue;
+                }
+                // a trait's required method handed over (D44): a declaration with no body is no def to hand over, and a hand-over is not a call, so no
+                // `Unresolved` edge either. Counted; its `open` was counted above
+                (Found::Unknown(SemReason::FunctionTypedValue), true) => {
+                    lang.note(calls::SIGNATURE_PASSED, 1);
                     continue;
                 }
                 // a call to a def a macro made, or one beside the root, is a body that was there and was not walked (rule 8). A construction has no body: a

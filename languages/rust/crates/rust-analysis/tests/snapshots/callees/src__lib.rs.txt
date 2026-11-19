@@ -1,6 +1,6 @@
 Writer::twice
-  MethodCall "write" -> Def src/lib.rs:Writer::write open=self_in_trait
-  MethodCall "write" -> Def src/lib.rs:Writer::write open=self_in_trait
+  MethodCall "write" -> Unknown function_typed_value open=self_in_trait
+  MethodCall "write" -> Unknown function_typed_value open=self_in_trait
 plain
   Call "helper" -> Def src/lib.rs:helper
 with_inner

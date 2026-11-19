@@ -50,9 +50,17 @@ fn open(
     }
 }
 
+/// The policy entries, and a chain of concrete calls five deep (`chain_a` to `chain_e`): since D44 turned a trait's required method into an unresolved edge, no
+/// other entry has a node at depth 4, and a test that never meets a frontier at depth 3 proves nothing.
+fn policy_entries() -> Vec<(&'static str, &'static str, u16)> {
+    let mut entries = POLICY_ENTRIES.to_vec();
+    entries.push(("src/calls.rs", "chain_a", 0));
+    entries
+}
+
 fn cases() -> Vec<Case> {
     vec![
-        open("policy", "policy", POLICY_ENTRIES.to_vec()),
+        open("policy", "policy", policy_entries()),
         open(
             "context",
             "context",

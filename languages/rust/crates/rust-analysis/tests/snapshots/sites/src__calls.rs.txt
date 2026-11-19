@@ -71,3 +71,12 @@ calls_helper_twice
   Call 147..153 "helper"
   Call 161..166 "twice"
   Call 175..181 "helper"
+chain_a
+  Call 178..185 "chain_b"
+chain_b
+  Call 23..30 "chain_c"
+chain_c
+  Call 23..30 "chain_d"
+chain_d
+  Call 23..30 "chain_e"
+chain_e

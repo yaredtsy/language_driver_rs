@@ -50,6 +50,15 @@ pub fn impl_argument(w: impl Writer) {
     w.write();
 }
 
+/// A method with a body is the engine's answer through a `dyn` and through a parameter: a call to the trait's default (D44 changes only the required ones).
+pub fn default_method_through_dyn(w: &dyn Writer) {
+    w.twice();
+}
+
+pub fn default_method_through_a_parameter<W: Writer>(w: &W) {
+    w.twice();
+}
+
 /// The engine sees through a return-position `impl Trait` to the hidden type: the impl's method.
 pub fn impl_return() {
     make_writer().write();

@@ -22,6 +22,10 @@ boxed_dyn
   MethodCall 45..50 "write"
 impl_argument
   MethodCall 45..50 "write"
+default_method_through_dyn
+  MethodCall 215..220 "twice"
+default_method_through_a_parameter
+  MethodCall 68..73 "twice"
 impl_return
   Call 125..136 "make_writer"
   MethodCall 139..144 "write"

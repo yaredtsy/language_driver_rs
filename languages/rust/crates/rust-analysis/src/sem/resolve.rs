@@ -15,7 +15,8 @@ use super::sites::{Node, RawSite};
 /// The reason a site has no target: what the graph counts as an `Unresolved` edge. Not `warning::Why`, which is why a toolchain was substituted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Reason {
-    /// A call through a closure, a `fn` pointer or a parameter bounded by `Fn*` (D16). Its `open` says which.
+    /// A call through a closure, a `fn` pointer or a parameter bounded by `Fn*` (D16), or a trait's required method reached through a type parameter, dyn,
+    /// impl Trait or Self (D44). Its `open` says which.
     FunctionTypedValue,
     /// A call whose callee the engine could not type: an error, or a name it does not know.
     UnknownCallee,
@@ -187,10 +188,7 @@ impl<'p> Sem<'p> {
             let ty = self.sema().type_of_expr(&receiver)?.original();
             self.open_of(self.dispatch_of(&ty))
         });
-        Callee {
-            found: self.function_found(function),
-            open,
-        }
+        self.function_callee(function, open)
     }
 
     fn call_callee(&self, call: &ast::CallExpr) -> Callee<'p> {
@@ -226,10 +224,7 @@ impl<'p> Sem<'p> {
         match callable.kind() {
             CallableKind::Function(function) => match &path {
                 Some(path) => self.path_function(function, path, None),
-                None => Callee {
-                    found: self.function_found(function),
-                    open: None,
-                },
+                None => self.function_callee(function, None),
             },
             CallableKind::TupleStruct(s) => self.constructed(Item::Adt(s.into())),
             CallableKind::TupleEnumVariant(v) => self.constructed_variant(Variant::EnumVariant(v)),
@@ -258,10 +253,7 @@ impl<'p> Sem<'p> {
         let open = self
             .trait_item(function)
             .and_then(|_| self.open_of(self.qualifier_dispatch(path, subst)));
-        Callee {
-            found: self.function_found(function),
-            open,
-        }
+        self.function_callee(function, open)
     }
 
     /// The trait whose own item this function is: the declaration, or its default body. `None` for an impl's function and a free one.
@@ -364,6 +356,26 @@ impl<'p> Sem<'p> {
         } else {
             Dispatch::Open(Open::TypeParam)
         }
+    }
+
+    /// What a site that reached `function` answers, and the one place every path to a function goes through (a method call, a path, the callable type, a
+    /// hand-over, a macro's body). A trait's own item with no body, in project code, is a declaration that stands for whatever implements it: the site is
+    /// `Unresolved(function_typed_value)` and `open` is kept, so no `open_*` counter moves (D44). `has_body` is `hir::Function::has_body`, which the engine
+    /// documents as false for a required trait method. A default method (a body), an impl's method, a dependency's or `std`'s trait method and a foreign
+    /// function are what they were.
+    fn function_callee(&self, function: Function, open: Option<Open>) -> Callee<'p> {
+        let found = self.function_found(function);
+        if matches!(found, Found::Def(_))
+            && self.trait_item(function).is_some()
+            && !function.has_body(self.loaded().db())
+        {
+            // a concrete dispatch that still answers the declaration should not happen: `Other` counts it, so `open_other` says so
+            return Callee {
+                found: Found::Unknown(Reason::FunctionTypedValue),
+                open: Some(open.unwrap_or(Open::Other)),
+            };
+        }
+        Callee { found, open }
     }
 
     fn function_found(&self, function: Function) -> Found<'p> {
@@ -591,6 +603,94 @@ mod tests {
             // an unknown callee and an unknown method are not open: they are unresolved
             assert_eq!(dispatch("unknown_callee"), [None, None]);
             assert_eq!(dispatch("unknown_method"), [None]);
+        });
+    }
+
+    /// D44, row by row, with the `open` kind next to each answer: a trait's required method in project code is unresolved wherever it is reached; a default
+    /// method, an impl's method and `std`'s trait method are what they were. Written before the run.
+    #[test]
+    fn a_required_trait_method_is_unresolved_and_nothing_else_moves() {
+        let (loaded, _root) = policy("callee_required");
+        attached(&loaded, STYLE, |sem| {
+            let answers = |file: &str, qualname: &str| -> Vec<String> {
+                let func = sem.entry(file, qualname, 0).unwrap();
+                sem.sites(func)
+                    .list
+                    .iter()
+                    .map(|site| found(sem, &sem.callee(func, site)))
+                    .collect()
+            };
+            let dispatch = |qualname: &str| answers("src/dispatch.rs", qualname);
+            let required = |open: &str| format!("Unknown function_typed_value open={open}");
+            // a required method through a reference to a parameter, a parameter by value, `&dyn`, `Box<dyn>`, `impl Trait`
+            assert_eq!(dispatch("generic_by_reference"), [required("type_param")]);
+            assert_eq!(dispatch("generic_by_value"), [required("type_param")]);
+            assert_eq!(dispatch("dyn_reference"), [required("dyn")]);
+            assert_eq!(dispatch("boxed_dyn"), [required("dyn")]);
+            assert_eq!(dispatch("impl_argument"), [required("impl_trait")]);
+            // an associated function with no body, by a parameter and qualified
+            assert_eq!(
+                dispatch("static_through_a_parameter"),
+                [required("type_param")]
+            );
+            assert_eq!(
+                dispatch("qualified_through_a_parameter"),
+                [required("type_param")]
+            );
+            // `self.step()` and `Self::fresh()` in the default methods of a trait
+            assert_eq!(dispatch("Step::twice"), vec![required("self_in_trait"); 2]);
+            assert_eq!(dispatch("Step::pair"), vec![required("self_in_trait"); 2]);
+            assert_eq!(
+                answers("src/lib.rs", "Writer::twice"),
+                vec![required("self_in_trait"); 2]
+            );
+            // a trait-qualified path, an opaque return, a projection
+            assert_eq!(
+                dispatch("trait_path_through_a_parameter"),
+                [required("type_param")]
+            );
+            assert_eq!(
+                dispatch("impl_return_of_a_parameter"),
+                [
+                    "Def src/dispatch.rs:make_generic".to_string(),
+                    required("opaque")
+                ]
+            );
+            // a default method (it has a body) through `dyn` and through a parameter: a call to the trait's method
+            assert_eq!(
+                dispatch("default_method_through_dyn"),
+                ["Def src/lib.rs:Writer::twice open=dyn"]
+            );
+            assert_eq!(
+                dispatch("default_method_through_a_parameter"),
+                ["Def src/lib.rs:Writer::twice open=type_param"]
+            );
+            // a method of a concrete type: the impl's method, and the default one for a concrete type
+            assert_eq!(
+                dispatch("concrete"),
+                [
+                    "Def src/lib.rs:<Json as Writer>::write",
+                    "Def src/lib.rs:Writer::twice"
+                ]
+            );
+            assert_eq!(
+                dispatch("trait_path_on_a_concrete_type"),
+                ["Def src/lib.rs:<Json as Writer>::write"]
+            );
+            // `std`'s required method stays the named external: `items.next()` with `I: Iterator`, then the project's `write` through the projection
+            assert_eq!(
+                dispatch("projection_receiver"),
+                [
+                    "External core iter::traits::iterator::Iterator::next open=type_param"
+                        .to_string(),
+                    "External core option::Option::unwrap".to_string(),
+                    required("projection")
+                ]
+            );
+            assert_eq!(
+                dispatch("trait_path_through_an_iterator"),
+                ["External core iter::traits::iterator::Iterator::next open=type_param"]
+            );
         });
     }
 

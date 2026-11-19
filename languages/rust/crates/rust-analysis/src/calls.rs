@@ -27,6 +27,9 @@ pub(crate) const DUPLICATE_MARKER: &str = "duplicate_marker";
 pub(crate) const EXTERNAL_PASSED: &str = "external_passed";
 /// A tuple struct or variant handed over (`.map(Some)`, `let f = E::P;`): a constructor has no body, so no edge, counted.
 pub(crate) const CONSTRUCTOR_PASSED: &str = "constructor_passed";
+/// A trait's required method handed over (`.map(W::build)`): a declaration with no body stands for whatever implements it (D44), and a hand-over is not a
+/// call, so no edge and not an `Unresolved` one either, counted. TypeScript counts a signature handed over under the same key (D43).
+pub(crate) const SIGNATURE_PASSED: &str = "signature_passed";
 
 /// How to build a graph. The marker style is how a def's marker is read (`/// ID: …` in its doc comment).
 #[derive(Clone, Debug)]
@@ -219,6 +222,8 @@ pub struct Breakdown {
     pub external_passed: u64,
     /// Tuple structs and variants handed over (`.map(Some)`): no edge, counted.
     pub constructor_passed: u64,
+    /// A trait's required method handed over and not called: no edge, counted (D44).
+    pub signature_passed: u64,
     /// Calls to a function a macro or a built-in derive made: `External`, named, not entered (a body that was there and was not walked).
     pub macro_generated_target: u64,
     /// Calls into a local crate's file outside the root (D33's rule): `External`, a body that was there to walk and was not.
@@ -252,6 +257,7 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
         macro_not_expanded: count(MACRO_NOT_EXPANDED),
         external_passed: count(EXTERNAL_PASSED),
         constructor_passed: count(CONSTRUCTOR_PASSED),
+        signature_passed: count(SIGNATURE_PASSED),
         macro_generated_target: count(MACRO_GENERATED_TARGET),
         outside_root: count(OUTSIDE_ROOT),
         duplicate_marker: count(DUPLICATE_MARKER),
@@ -341,6 +347,10 @@ impl fmt::Display for Breakdown {
             (
                 "tuple structs and variants handed over and not called (no edge)",
                 self.constructor_passed,
+            ),
+            (
+                "trait methods with no body handed over and not called (no edge)",
+                self.signature_passed,
             ),
             (
                 "calls to a def a macro or a derive made, not entered",

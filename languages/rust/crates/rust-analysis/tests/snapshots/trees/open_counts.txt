@@ -1,0 +1,56 @@
+# policy
+src/calls.rs plain_calls: none
+src/calls.rs method_chain: none
+src/calls.rs constructions: none
+src/calls.rs closures: closure 3
+src/calls.rs nested_items: none
+src/calls.rs macro_from_another_module: none
+src/calls.rs recurse_a: none
+src/calls.rs FROM_CONST: none
+src/calls.rs Wrapper: none
+src/macros.rs std_arguments: none
+src/macros.rs project_wrapping_external: none
+src/dispatch.rs generic_by_value: type_param 1
+src/dispatch.rs impl_return: none
+src/dispatch.rs impl_return_of_a_parameter: opaque 1, type_param 1
+src/dispatch.rs fn_pointer: fn_pointer 1
+src/shapes.rs derived: none
+src/shapes.rs E: none
+src/lib.rs Writer::twice: self_in_trait 2
+src/lib.rs uses_the_twins: none
+src/external.rs std_calls: none
+src/external.rs std_naming: none
+src/constructions.rs MarkedStruct: none
+src/constructions.rs Tuple: none
+src/constructions.rs Shape: none
+src/constructions.rs build_variants: none
+src/constructions.rs build_external: none
+src/constructions.rs build_generated: none
+src/passed.rs named: none
+src/passed.rs Parser::run: none
+src/passed.rs called_and_passed: fn_pointer 1
+src/passed.rs constructors: none
+src/passed.rs externals: none
+src/passed.rs locals: closure 1, fn_pointer 1
+src/passed.rs through_a_parameter: type_param 1
+src/macros.rs project_macro_around_external: none
+src/macros.rs argument_through_external: none
+src/macros.rs two_project_levels: none
+src/macros.rs unknown_in_unknown: none
+src/macros.rs derived_methods: none
+src/macros.rs calls_made_functions: none
+# context
+src/generic.rs both: type_param 1
+src/generic.rs emit: type_param 1
+src/callback.rs use_callbacks: fn_param 1, fn_pointer 1
+src/callback.rs apply: fn_pointer 1
+src/callback.rs apply_generic: fn_param 1
+src/dyn_local.rs dyn_in_a_local: dyn 1
+src/dyn_param.rs call_dyn: dyn 1
+src/factory.rs use_factory: dyn 1
+src/factory.rs use_impl_factory: none
+src/holder.rs use_holder: dyn 1
+src/holder.rs Holder::run: dyn 1
+src/holder.rs Holder: none
+src/recursive.rs start: type_param 1
+src/recursive.rs countdown: type_param 1

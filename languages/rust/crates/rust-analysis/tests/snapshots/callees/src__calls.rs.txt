@@ -48,7 +48,7 @@ FROM_CONST
 FROM_STATIC
   Call "helper_const" -> Def src/calls.rs:helper_const
 Declared::defaulted
-  MethodCall "declared" -> Def src/calls.rs:Declared::declared open=self_in_trait
+  MethodCall "declared" -> Unknown function_typed_value open=self_in_trait
   Call "helper" -> Def src/calls.rs:helper
 operators
   Call "Some" -> External construct core option::Option::Some
@@ -64,3 +64,11 @@ calls_helper_twice
   Call "helper" -> Def src/calls.rs:helper
   Call "twice" -> Def src/calls.rs:twice
   Call "helper" -> Def src/calls.rs:helper
+chain_a
+  Call "chain_b" -> Def src/calls.rs:chain_b
+chain_b
+  Call "chain_c" -> Def src/calls.rs:chain_c
+chain_c
+  Call "chain_d" -> Def src/calls.rs:chain_d
+chain_d
+  Call "chain_e" -> Def src/calls.rs:chain_e

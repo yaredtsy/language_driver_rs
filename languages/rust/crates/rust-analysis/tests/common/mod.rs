@@ -156,3 +156,35 @@ pub(crate) const CONTEXT_ENTRIES: [(&str, &str); 14] = [
     ("src/recursive.rs", "start"),
     ("src/recursive.rs", "countdown"),
 ];
+
+/// The `open_*` counts every entry of `section` (`policy` or `context`) had before D44 (step 9b), frozen in `tests/snapshots/trees/open_counts.txt` from the
+/// snapshots of the commit before it: one line per entry, `<file> <qualname>: <kind> <n>, …` or `none`. D44 changes the edge of a required trait method and
+/// not the count of its `open` kind, and this is the proof.
+pub(crate) fn frozen_open_counts(section: &str) -> Vec<(String, String)> {
+    let text = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/trees/open_counts.txt"),
+    )
+    .expect("the frozen counts");
+    let mut lines = text
+        .lines()
+        .skip_while(|line| *line != format!("# {section}").as_str());
+    lines.next();
+    lines
+        .take_while(|line| !line.starts_with('#'))
+        .map(|line| {
+            let (entry, counts) = line.split_once(": ").expect("`<entry>: <counts>`");
+            (entry.to_string(), counts.to_string())
+        })
+        .collect()
+}
+
+/// A breakdown's `open` counts (`Breakdown::open`) in the form of `frozen_open_counts`.
+pub(crate) fn open_counts_of(open: &BTreeMap<String, u64>) -> String {
+    if open.is_empty() {
+        return "none".to_string();
+    }
+    open.iter()
+        .map(|(kind, count)| format!("{kind} {count}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}

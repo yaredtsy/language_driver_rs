@@ -113,13 +113,14 @@ breakdown:
 
 === src/dispatch.rs generic_by_value
 generic_by_value
-  Writer::write
 
 breakdown:
-  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  edges: 0 call, 0 construct, 0 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
   open (the answer is a family of defs), by why:
     type_param: 1
-  contexts 2, bodies walked 2, summaries reused 0
+  contexts 1, bodies walked 1, summaries reused 0
   cuts: none
 
 === src/dispatch.rs impl_return
@@ -135,14 +136,15 @@ breakdown:
 === src/dispatch.rs impl_return_of_a_parameter
 impl_return_of_a_parameter
   make_generic
-  Writer::write
 
 breakdown:
-  edges: 2 call, 0 construct, 1 external, 0 unresolved
+  edges: 1 call, 0 construct, 1 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
   open (the answer is a family of defs), by why:
     opaque: 1
     type_param: 1
-  contexts 3, bodies walked 3, summaries reused 0
+  contexts 2, bodies walked 2, summaries reused 0
   cuts: none
 
 === src/dispatch.rs fn_pointer
@@ -177,14 +179,14 @@ breakdown:
 
 === src/lib.rs Writer::twice
 Writer::twice
-  Writer::write
-  Writer::write
 
 breakdown:
-  edges: 2 call, 0 construct, 0 external, 0 unresolved
+  edges: 0 call, 0 construct, 0 external, 2 unresolved
+  unresolved by reason:
+    function_typed_value: 2
   open (the answer is a family of defs), by why:
     self_in_trait: 2
-  contexts 2, bodies walked 2, summaries reused 0
+  contexts 1, bodies walked 1, summaries reused 0
   cuts: none
 
 === src/lib.rs uses_the_twins
@@ -334,13 +336,13 @@ breakdown:
 
 === src/passed.rs through_a_parameter
 through_a_parameter
-  Build::build [Passed]
 
 breakdown:
-  edges: 0 call, 0 construct, 3 external, 0 unresolved, 1 passed
+  edges: 0 call, 0 construct, 3 external, 0 unresolved
   open (the answer is a family of defs), by why:
     type_param: 1
-  contexts 2, bodies walked 2, summaries reused 0
+  trait methods with no body handed over and not called (no edge): 1
+  contexts 1, bodies walked 1, summaries reused 0
   cuts: none
 
 === src/macros.rs project_macro_around_external

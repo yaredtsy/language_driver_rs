@@ -635,9 +635,9 @@ mod tests {
             ],
             "the five traits, the inline module, the thirteen macros, the type alias"
         );
-        // every other def: 18 in lib.rs, 8 in constructions.rs, 16 in shapes.rs, 29 in calls.rs, 30 in dispatch.rs, 21 in macros.rs, 11 in cfg_off.rs, 19 in passed.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
+        // every other def: 18 in lib.rs, 8 in constructions.rs, 16 in shapes.rs, 34 in calls.rs, 32 in dispatch.rs, 21 in macros.rs, 11 in cfg_off.rs, 19 in passed.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
         // byte-order mark
-        assert_eq!(joined, 162);
+        assert_eq!(joined, 169);
     }
 
     /// The join (RS4 §8) over the context workspace, which has no `#[cfg]`-disabled def and no exception but the kinds that cannot be an entry: every def the
