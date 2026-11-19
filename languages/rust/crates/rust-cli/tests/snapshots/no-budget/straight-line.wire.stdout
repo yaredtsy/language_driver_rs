@@ -1,0 +1,243 @@
+{
+  "target_qname": "main",
+  "target_id": "",
+  "target_file": "src/main.rs",
+  "target_qualname": "main",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "src/main.rs",
+          "qname": "main",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "fetch",
+      "target_id": "",
+      "target_file": "src/main.rs",
+      "target_qualname": "fetch",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          18,
+          5
+        ],
+        "end": [
+          18,
+          10
+        ]
+      },
+      "call_site_file": "src/main.rs",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "src/main.rs",
+              "qname": "fetch",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": [
+        {
+          "target_qname": "parse",
+          "target_id": "",
+          "target_file": "src/main.rs",
+          "target_qualname": "parse",
+          "target_occurrence": 0,
+          "target_kind": "Function",
+          "call_count": 0,
+          "call_site": {
+            "start": [
+              6,
+              5
+            ],
+            "end": [
+              6,
+              10
+            ]
+          },
+          "call_site_file": "src/main.rs",
+          "contexts": [
+            {
+              "func": {
+                "Path": {
+                  "module": "src/main.rs",
+                  "qname": "parse",
+                  "nth": 0
+                }
+              },
+              "digest": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "target_qname": "transform",
+      "target_id": "",
+      "target_file": "src/main.rs",
+      "target_qualname": "transform",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          19,
+          5
+        ],
+        "end": [
+          19,
+          14
+        ]
+      },
+      "call_site_file": "src/main.rs",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "src/main.rs",
+              "qname": "transform",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "target_qname": "store",
+      "target_id": "",
+      "target_file": "src/main.rs",
+      "target_qualname": "store",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          20,
+          5
+        ],
+        "end": [
+          20,
+          10
+        ]
+      },
+      "call_site_file": "src/main.rs",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "src/main.rs",
+              "qname": "store",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    }
+  ]
+}

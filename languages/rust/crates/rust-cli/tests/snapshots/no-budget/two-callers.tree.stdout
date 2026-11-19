@@ -1,0 +1,16 @@
+main
+  read_json
+    JsonWriter
+    emit
+  read_csv
+    CsvWriter
+    emit
+
+breakdown:
+  edges: 4 call, 2 construct, 0 external, 1 unresolved
+  unresolved by reason:
+    function_typed_value: 1
+  open (the answer is a family of defs), by why:
+    type_param: 1
+  contexts 4, bodies walked 4, summaries reused 0
+  cuts: none

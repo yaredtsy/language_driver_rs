@@ -8,9 +8,13 @@
 //!   read again, and the marker read back is printed. This tool is the only place a file is written (rule 2) and the only place that is given
 //!   the marker text: it never makes one up. Exit 0 for a marker planned (and written), 1 for a file that cannot be read, written or read back,
 //!   2 for bad usage (a qualname of several defs is listed and none is picked, D15), 3 for a plan that is a skip, with its reason.
-//! - `calls <dir> <file> --entry <qualname> [--id <marker> | --occurrence <n>] [--graph | --wire [--merged] [--function-prefix P] [--class-prefix P]] [--timing]
-//!   [--label <label>]`: the call tree under a def of
-//!   `file` (relative to `dir`), then the breakdown of the graph (the load's warnings first, edges by kind, unresolved edges by reason, what is open). A
+//! - `calls <dir> <file> --entry <qualname> [--id <marker> | --occurrence <n>] [--depth N] [--max-contexts N] [--max-nodes N]
+//!   [--graph | --wire [--merged] [--function-prefix P] [--class-prefix P]] [--timing] [--label <label>]`: the call tree under a def of
+//!   `file` (relative to `dir`), then the breakdown of the graph (the load's warnings first, edges by kind, unresolved edges by reason, what is open).
+//!   `--depth` and `--max-contexts` are a [`Budget`] (whole numbers, 0 and up): a def past it is listed and not walked, drawn `[Cut]`, and counted in the
+//!   `frontier` line; `--depth 0` is the entry alone, on the frontier. Asking again for a cut def as the entry continues from there. `--max-nodes N`
+//!   (1 and up) is the renderer's limit on the tree and the `--wire` (default 100 000, and not a budget: the graph is complete); when it cut, a line after
+//!   the breakdown says so. With none of the three the output is what it was before they existed. A
 //!   qualname is not unique in a file (D15): when it matches several defs they are listed and the exit code is 2, never the first one picked. `--entry` is
 //!   required: nothing runs at the top of a Rust file, so there is no file entry. The load's warnings go to stderr before the tree. `--wire` prints the
 //!   wire (D17) instead of the tree, as JSON alone on stdout, with the prefixes the caller gives for the ids of functions and classes; `--merged` joins
@@ -22,8 +26,8 @@ use std::process::ExitCode;
 use analyzer_core::edit::apply;
 use analyzer_core::text::{Encoding, LineIndex};
 use rust_analysis::{
-    Cancel, Entry, LoadOptions, Options, Project, RenderOptions, WireOptions, WireStyle, breakdown,
-    call_graph, render, to_text, wire,
+    Budget, Cancel, Entry, Graph, LoadOptions, Mark, Node, Options, Project, RenderOptions,
+    Session, Status, WireOptions, WireStyle, breakdown, render, to_text, wire,
 };
 use rust_syntax::{
     Edition, MarkerStyle, header_marker, marker, occurrences, outline, plan_header_marker,
@@ -32,7 +36,9 @@ use rust_syntax::{
 
 const USAGE: &str = "usage: rust-cli outline <file> [--label <label>] [--edition <2015|2018|2021|2024>]
        rust-cli marker <file> (--def <qualname> [--occurrence <n>] | --header) --text <text> [--write] [--label <label>] [--edition <2015|2018|2021|2024>]
-       rust-cli calls <dir> <file> --entry <qualname> [--id <marker> | --occurrence <n>] [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--timing] [--label <label>]";
+       rust-cli calls <dir> <file> --entry <qualname> [--id <marker> | --occurrence <n>] [--depth <n>] [--max-contexts <n>] [--max-nodes <n>] [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--timing] [--label <label>]
+  --depth and --max-contexts are the solver's budget: a def past it is listed and not walked, drawn [Cut] and counted in the frontier line.
+  --max-nodes is the renderer's limit on the tree or the wire (default 100000): the graph is complete, and a line says when the drawing was cut.";
 
 /// Remove `--name value` from `args` and return the value.
 fn take_value(args: &mut Vec<String>, name: &str) -> Option<String> {
@@ -43,6 +49,22 @@ fn take_value(args: &mut Vec<String>, name: &str) -> Option<String> {
     let value = args.remove(at + 1);
     args.remove(at);
     Some(value)
+}
+
+/// Remove `--name N` from `args` and return `N`, a whole number of at least `min`: `Ok(None)` when the flag is not there, an `Err` (what to tell the
+/// person) when it has no value or the value is not one (`-1`, `x`, `1.5`, a number past `u32`, a number under `min`).
+fn take_count(args: &mut Vec<String>, name: &str, min: u32) -> Result<Option<u32>, String> {
+    if !args.iter().any(|a| a == name) {
+        return Ok(None);
+    }
+    let needs = format!("{name} needs a whole number, {min} or more");
+    let Some(value) = take_value(args, name) else {
+        return Err(needs);
+    };
+    match value.parse::<u32>() {
+        Ok(n) if n >= min => Ok(Some(n)),
+        _ => Err(format!("{needs}, not `{value}`")),
+    }
 }
 
 /// Remove the flag `name` from `args` and say whether it was there.
@@ -76,6 +98,17 @@ fn main() -> ExitCode {
     let merged = take_flag(&mut args, "--merged");
     let function_prefix = take_value(&mut args, "--function-prefix");
     let class_prefix = take_value(&mut args, "--class-prefix");
+    let (depth, max_contexts, max_nodes) = match (
+        take_count(&mut args, "--depth", 0),
+        take_count(&mut args, "--max-contexts", 0),
+        take_count(&mut args, "--max-nodes", 1),
+    ) {
+        (Ok(depth), Ok(max_contexts), Ok(max_nodes)) => (depth, max_contexts, max_nodes),
+        (Err(message), _, _) | (_, Err(message), _) | (_, _, Err(message)) => {
+            eprintln!("{message}\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
     let (def, occurrence, text) = (
         take_value(&mut args, "--def"),
         take_value(&mut args, "--occurrence"),
@@ -110,6 +143,12 @@ fn main() -> ExitCode {
             );
             ExitCode::from(2)
         }
+        ["calls", _, _] if graph && max_nodes.is_some() => {
+            eprintln!(
+                "--max-nodes limits the tree and the wire; --graph prints the graph, which it does not touch\n{USAGE}"
+            );
+            ExitCode::from(2)
+        }
         ["calls", dir, file] => match (entry.as_deref(), occurrence.as_deref().map(str::parse)) {
             (Some(_), Some(Err(_))) | (None, _) => {
                 eprintln!("calls needs --entry <qualname>; --occurrence is a number\n{USAGE}");
@@ -134,6 +173,8 @@ fn main() -> ExitCode {
                     }),
                     merged,
                     timing,
+                    budget: Budget::new(depth, max_contexts),
+                    max_nodes,
                 },
             ),
         },
@@ -385,22 +426,36 @@ struct Calls<'a> {
     wire: Option<WireStyle>,
     merged: bool,
     timing: bool,
+    /// `Budget::default()` (no limit) when neither `--depth` nor `--max-contexts` was given.
+    budget: Budget,
+    /// The renderer's limit on the tree and the wire; `None` keeps `RenderOptions`' default.
+    max_nodes: Option<u32>,
 }
 
 fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
     let started = std::time::Instant::now();
-    let project = match Project::open(dir, Path::new(file), &LoadOptions::default()) {
-        Ok(project) => project,
+    // The label lives for the whole run of a one-shot program, which is what `Options` asks of a marker style.
+    let label: &'static str = Box::leak(ask.label.clone().into_boxed_str());
+    let style = MarkerStyle::docstring(label);
+    // A session even for one request: it is the call that takes a budget, and with none its graph is `call_graph`'s.
+    let session = match Session::open(
+        dir,
+        Path::new(file),
+        &LoadOptions::default(),
+        Options::new(style),
+    ) {
+        Ok(session) => session,
         Err(e) => {
             eprintln!("{file}: {e}");
             return ExitCode::from(1);
         }
     };
     let opened = started.elapsed();
-    // The label lives for the whole run of a one-shot program, which is what `Options` asks of a marker style.
-    let label: &'static str = Box::leak(ask.label.clone().into_boxed_str());
-    let style = MarkerStyle::docstring(label);
-    let occurrence = match choose_def(&project, dir, file, ask, style) {
+    let Some(project) = session.project() else {
+        eprintln!("{file}: the session has no project");
+        return ExitCode::from(1);
+    };
+    let occurrence = match choose_def(project, dir, file, ask, style) {
         Ok(occurrence) => occurrence,
         Err(code) => return code,
     };
@@ -412,26 +467,68 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
         qualname: ask.qualname,
         occurrence,
     };
-    let Some(graph) = call_graph(&project, file, &entry, &Options::new(style), &Cancel::new())
-    else {
+    let Some(graph) = session.graph(file, &entry, &ask.budget, &Cancel::new()) else {
         eprintln!(
             "{file}: `{}` cannot start a graph: it is a trait, a module, a type alias or a macro, or the code is turned off by a `cfg`",
             ask.qualname
         );
         return ExitCode::from(1);
     };
+    let mut render_options = RenderOptions::default();
+    if let Some(max_nodes) = ask.max_nodes {
+        render_options.max_nodes = max_nodes;
+    }
+    // The tree is drawn once here: the text prints it, and in the wire case it is only looked at (the wire draws its own) to see whether the renderer cut.
+    let (tree, renderer_cut) = if ask.graph {
+        (None, false)
+    } else {
+        let tree = render(&graph, &graph.entries[0], &render_options);
+        let cut = cut_by_renderer(&tree, &graph);
+        (ask.wire.is_none().then_some(tree), cut)
+    };
     if ask.timing {
         eprintln!(
-            "open {} ms, graph {} ms",
+            "open {} ms, graph {} ms{}{}",
             opened.as_millis(),
-            solving.elapsed().as_millis()
+            solving.elapsed().as_millis(),
+            // each said only when there is one, so a request with no budget and a tree that fits prints what it did
+            if graph.stats.frontier > 0 {
+                format!(", frontier {}", graph.stats.frontier)
+            } else {
+                String::new()
+            },
+            if renderer_cut {
+                format!(", tree cut at {} nodes", render_options.max_nodes)
+            } else {
+                String::new()
+            }
         );
     }
-    let summary = breakdown(&graph);
+    // `Breakdown` has no field for the frontier or the renderer's cut (they would be fields of `rust-analysis`), so their lines are added here, after the
+    // breakdown and only when there is one: a request with no budget and a tree that fits prints what it did.
+    let mut summary = breakdown(&graph).to_string();
+    if graph.stats.frontier > 0 {
+        summary.push_str(&format!(
+            "  frontier: {} (contexts the budget stopped at: listed, not walked)\n",
+            graph.stats.frontier
+        ));
+    }
+    if renderer_cut {
+        let graph_cut = graph.stats.frontier > 0 || !graph.stats.cuts.is_empty();
+        summary.push_str(&format!(
+            "tree: cut by the renderer at {} nodes (--max-nodes); the graph {}\n",
+            render_options.max_nodes,
+            if graph_cut {
+                "has its own cuts, above"
+            } else {
+                "itself is complete"
+            }
+        ));
+    }
     if let Some(style) = &ask.wire {
         // the wire alone on stdout: JSON, so it can be read as it is; the breakdown goes to stderr
-        let options = WireOptions::new(style.clone(), ask.merged, RenderOptions::default());
-        let frame = wire(&graph, &graph.entries[0], &project, &options);
+        let options = WireOptions::new(style.clone(), ask.merged, render_options);
+        let frame = wire(&graph, &graph.entries[0], project, &options);
         match serde_json::to_string_pretty(&frame) {
             Ok(json) => println!("{json}"),
             Err(e) => {
@@ -447,16 +544,31 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
     } else {
         print!(
             "{}",
-            to_text(&render(
-                &graph,
-                &graph.entries[0],
-                &RenderOptions::default()
-            ))
+            to_text(&tree.expect("the tree was drawn: this is not --wire or --graph"))
         );
         println!();
         print!("{summary}");
     }
     ExitCode::SUCCESS
+}
+
+/// Whether the renderer left nodes out because of `max_nodes`: a node marked `Cut` that no `Frontier` context stands behind (that one is the solver's
+/// budget, drawn `Cut` too). The renderer returns no count, and this program sets no other renderer limit (`max_depth` marks `Cut` the same way), so this is
+/// what it left. Walks with a stack: a tree can be 100 000 deep.
+fn cut_by_renderer(tree: &Node, graph: &Graph) -> bool {
+    let mut pending = vec![tree];
+    while let Some(node) = pending.pop() {
+        let on_frontier = node.contexts.iter().any(|id| {
+            graph
+                .context(id)
+                .is_some_and(|c| c.status == Status::Frontier)
+        });
+        if node.marks.contains(&Mark::Cut) && !on_frontier {
+            return true;
+        }
+        pending.extend(&node.children);
+    }
+    false
 }
 
 /// The occurrence of the def `qualname` names in `file`: the one `--occurrence` or `--id` picks, or the only one. A message and the exit code when there is
