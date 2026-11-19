@@ -287,7 +287,8 @@ only).
 | H15 | **built** (ae59938; reviewed 2026-11-19). An anonymous class written directly as the callee of `new` counted `decl_not_in_outline` at the top of a file and drew a false `Call` to the enclosing def inside one (§6.3) | fixture `anonymous-in-place` |
 | H16 | **closed, no code**: vscode's slow entries are the machine's swap (§6.3) | — |
 | H17 | **not built**: the type `Node` only in `sem/view/` (§6.3) | — |
-| H18 | **found by the owner, 2026-11-19; not built.** the renderer's 100,000-node limit cuts the tree of a complete graph (`runAgent`: 1,974 contexts, 100,000 lines, `[Cut]` on the root) while the breakdown says `cuts: none`; the merged wire is merged from the cut tree. §6.4 | (a) with row 8; (b) the owner's |
+| H18 | **found by the owner, 2026-11-19; (a) built (520770f), (b) the owner's.** the renderer's 100,000-node limit cuts the tree of a complete graph (`runAgent`: 1,974 contexts, 100,000 lines, `[Cut]` on the root) while the breakdown says `cuts: none`; the merged wire is merged from the cut tree. §6.4 | (a) with row 8; (b) the owner's |
+| H19 | **found at row 8's review, 2026-11-19; not built.** `tests/threads.rs` (`opening_on_one_thread_and_dropping_on_another_100_times_does_not_grow_the_process`) reads the whole process's resident memory while other tests of its binary run: it passes at the default thread count (3 runs by the reviewer) and fails at `--test-threads=2` (34 → 78 MB against a limit of 30). The memory tests of `tests/memory.rs` already take one lock for this (H2); this one does not | take the same kind of lock in `threads.rs` |
 
 **Rust note (H1).** A `std::sync::Mutex` locked twice by one thread does not return: the documentation leaves it at "will not return
 (it might panic or deadlock)". There is no error to catch, and `Cancel` is never checked, because the thread is waiting inside `lock`.
@@ -448,7 +449,7 @@ driver runs the analyzer in a process it supervises, so one panic costs one requ
   H14 built views **by capability** (`HasExpression`, `CallOrNew`, `Members`, `NameToken`, …: ten views, one cast serving several
   kinds) rather than one per node kind; H17 needs a view for every kind that sem holds, so it may add views by kind.
 
-### 6.4 H18: the renderer's node limit cuts a complete graph, and nothing says so (found by the owner, 2026-11-19; not built)
+### 6.4 H18: the renderer's node limit cuts a complete graph, and nothing says so (found by the owner, 2026-11-19; (a) built in 520770f, (b) not built)
 
 **What happened.** `scripts/ts-try.sh calls` on the private codebase, entry `runAgent`: the tree starts `runAgent [Cut]`,
 `getAgentModel [Cut]`, while the breakdown says `cuts: none`. **Run by the reviewer:** the graph is complete (1,974 contexts, no
@@ -473,6 +474,10 @@ is merged from the cut tree: 6,614 nodes, 8 of them `cut`, 24 MB (the unmerged w
   expanding the tree first. Then the merged view of a complete graph is never cut. Python's merge is the reference to read first
   (`docs/05-python-migration/04-the-wire.md`). A driver that asks with a depth budget (V-NOC's tier 3) rarely meets the limit; a
   whole-tree request on a big entry always will.
+
+**(a) as built** (520770f, reviewed 2026-11-19): `runAgent` now ends with `tree: cut by the renderer at 100000 nodes (--max-nodes);
+the graph itself is complete`. Its whole tree is larger than **2,000,000** nodes (still cut at `--max-nodes 2000000`), from 1,974
+contexts: a limit does not fix it, which is the case for (b).
 
 ## 7. The stack
 
