@@ -4,9 +4,19 @@
 //! program.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
 
 use typescript_analysis::Project;
+
+/// The last test reads the **process's** memory, so any test of this binary running beside it would count its projects as growth (H19, as `tests/memory.rs`
+/// does for H2). Every test takes this for its whole run. A test that failed holding it poisons it, and the next one goes on: the lock is for taking
+/// turns, not for a value.
+static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+
+fn one_at_a_time() -> MutexGuard<'static, ()> {
+    ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-files")
@@ -18,6 +28,7 @@ fn open() -> Project {
 
 #[test]
 fn a_project_opened_on_one_thread_is_used_and_dropped_on_another() {
+    let _turn = one_at_a_time();
     for _ in 0..20 {
         let project = thread::spawn(open).join().unwrap();
         let files = thread::spawn(move || {
@@ -33,6 +44,7 @@ fn a_project_opened_on_one_thread_is_used_and_dropped_on_another() {
 
 #[test]
 fn a_project_is_dropped_on_the_main_thread_after_a_spawned_thread_opened_it() {
+    let _turn = one_at_a_time();
     let projects: Vec<Project> = (0..4)
         .map(|_| thread::spawn(open).join().unwrap())
         .collect();
@@ -44,6 +56,7 @@ fn a_project_is_dropped_on_the_main_thread_after_a_spawned_thread_opened_it() {
 
 #[test]
 fn projects_opened_at_the_same_time_on_several_threads_do_not_disturb_each_other() {
+    let _turn = one_at_a_time();
     let handles: Vec<_> = (0..4)
         .map(|_| {
             thread::spawn(|| {
@@ -65,6 +78,7 @@ fn rss_mb() -> f64 {
 
 #[test]
 fn opening_on_one_thread_and_dropping_on_another_100_times_does_not_grow_the_process() {
+    let _turn = one_at_a_time();
     // as `tests/memory.rs`, but each project is freed on a different thread from the one that made it
     let mut early = 0.0;
     let mut peak: f64 = 0.0;
