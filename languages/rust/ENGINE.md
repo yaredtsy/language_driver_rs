@@ -631,3 +631,15 @@ loaded it with `ProjectWorkspace::load_inline`, sysroot `None`.
    not change: under `no_deps` every cross-package edge was lost whatever the method.
 4. **A JSON crate sees only its root module's folder** by default (`src/`): a `#[path = "../../tests/common/mod.rs"]` module was not
    loaded, and six edges were lost, until each crate's `source.include_dirs` was set to its whole package folder (without `target/`).
+
+## RS4 step 9b: a required trait method is unresolved (D44; bc7c202, reviewed 2026-11-19)
+
+- **"No body"** is `hir::Function::has_body` (`ra_ap_hir` 0.0.358, `src/lib.rs:1804`), documented by the engine as false for a
+  required trait method. `Sem::function_callee` (`sem/resolve.rs`) is the one place a method call, a path, the callable type, a
+  hand-over and a macro's body reach a function, and the rule is there.
+- **`core/` as a real project:** `function_typed_value` 79 → 83, calls 1450 → 1446, `signature_passed` 0, every `open_*` unchanged.
+- **The oracle's fifth class**, "a required trait method" (ours `Unresolved(function_typed_value)` with an open kind, the oracle's the
+  trait's function with no body): 17 in the policy workspace, 6 in the context workspace.
+- **Test memory** (6063445): one loaded policy and one context workspace per test program, shared; a test that needs its own load takes
+  `one_load()`. Peak footprint per test program: library tests 1.8 GB, `calls` 1.3 GB, `open` 1.0 GB, `session` 0.9 GB, the rest
+  under 0.85 GB (the earlier reading was 5.4 GB for the run).
