@@ -10,7 +10,7 @@ use rust_analysis::{
 };
 
 mod common;
-use common::copy_of_fixture;
+use common::{POLICY_ENTRIES as ENTRIES, copy_of_fixture};
 
 fn options() -> Options {
     Options::new(MarkerStyle::docstring("ID"))
@@ -38,54 +38,6 @@ fn policy(name: &str) -> (PathBuf, Project) {
     let project = open(&copy, "src/lib.rs");
     (copy, project)
 }
-
-/// Every entry of the first-trees snapshot: a function, a method, a const's initializer, a struct and an enum (a construction with nothing to enter),
-/// recursion, a project macro defined elsewhere, an `impl Trait` the engine sees through, one it does not, a built-in derive, a std call, a duplicate marker.
-const ENTRIES: [(&str, &str, u16); 40] = [
-    ("src/calls.rs", "plain_calls", 0),
-    ("src/calls.rs", "method_chain", 0),
-    ("src/calls.rs", "constructions", 0),
-    ("src/calls.rs", "closures", 0),
-    ("src/calls.rs", "nested_items", 0),
-    ("src/calls.rs", "macro_from_another_module", 0),
-    ("src/calls.rs", "recurse_a", 0),
-    ("src/calls.rs", "FROM_CONST", 0),
-    ("src/calls.rs", "Wrapper", 0),
-    ("src/macros.rs", "std_arguments", 0),
-    ("src/macros.rs", "project_wrapping_external", 0),
-    ("src/dispatch.rs", "generic_by_value", 0),
-    ("src/dispatch.rs", "impl_return", 0),
-    ("src/dispatch.rs", "impl_return_of_a_parameter", 0),
-    ("src/dispatch.rs", "fn_pointer", 0),
-    ("src/shapes.rs", "derived", 0),
-    ("src/shapes.rs", "E", 0),
-    ("src/lib.rs", "Writer::twice", 0),
-    ("src/lib.rs", "uses_the_twins", 0),
-    ("src/external.rs", "std_calls", 0),
-    ("src/external.rs", "std_naming", 0),
-    // constructions (step 5): a marked struct, a tuple struct and an enum as entries, and what builds them
-    ("src/constructions.rs", "MarkedStruct", 0),
-    ("src/constructions.rs", "Tuple", 0),
-    ("src/constructions.rs", "Shape", 0),
-    ("src/constructions.rs", "build_variants", 0),
-    ("src/constructions.rs", "build_external", 0),
-    ("src/constructions.rs", "build_generated", 0),
-    // hand-overs (step 6): named, a method path, called and passed, constructors, an external, a local, through a parameter
-    ("src/passed.rs", "named", 0),
-    ("src/passed.rs", "Parser::run", 0),
-    ("src/passed.rs", "called_and_passed", 0),
-    ("src/passed.rs", "constructors", 0),
-    ("src/passed.rs", "externals", 0),
-    ("src/passed.rs", "locals", 0),
-    ("src/passed.rs", "through_a_parameter", 0),
-    // macros (step 7): a project macro around an external one, two project levels, an unknown macro, a derive, a function a macro made
-    ("src/macros.rs", "project_macro_around_external", 0),
-    ("src/macros.rs", "argument_through_external", 0),
-    ("src/macros.rs", "two_project_levels", 0),
-    ("src/macros.rs", "unknown_in_unknown", 0),
-    ("src/macros.rs", "derived_methods", 0),
-    ("src/macros.rs", "calls_made_functions", 0),
-];
 
 fn text(graph: &Graph) -> String {
     to_text(&render(graph, &graph.entries[0], &RenderOptions::default()))

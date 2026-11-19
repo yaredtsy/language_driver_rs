@@ -10,31 +10,7 @@ use rust_analysis::{
 };
 
 mod common;
-use common::copy_of_fixture;
-
-/// (file, qualname, what the program is about). The entries are the callers, and the generics, callbacks and trait objects they reach.
-const ENTRIES: [(&str, &str); 14] = [
-    // a generic called from two callers
-    ("src/generic.rs", "both"),
-    ("src/generic.rs", "emit"),
-    // a callback: a `fn` pointer, a parameter bounded by `Fn`, a closure
-    ("src/callback.rs", "use_callbacks"),
-    ("src/callback.rs", "apply"),
-    ("src/callback.rs", "apply_generic"),
-    // a `dyn` in a local, and as a parameter
-    ("src/dyn_local.rs", "dyn_in_a_local"),
-    ("src/dyn_param.rs", "call_dyn"),
-    // a factory: a trait object, and an `impl Trait` the engine sees through
-    ("src/factory.rs", "use_factory"),
-    ("src/factory.rs", "use_impl_factory"),
-    // a struct holding a `Box<dyn Writer>`
-    ("src/holder.rs", "use_holder"),
-    ("src/holder.rs", "Holder::run"),
-    ("src/holder.rs", "Holder"),
-    // a recursive generic
-    ("src/recursive.rs", "start"),
-    ("src/recursive.rs", "countdown"),
-];
+use common::{CONTEXT_ENTRIES as ENTRIES, copy_of_fixture};
 
 fn graph(project: &Project, file: &str, qualname: &str) -> Graph {
     call_graph(

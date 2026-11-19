@@ -84,3 +84,75 @@ pub(crate) fn rs_files(base: &Path, dir: &Path, out: &mut Vec<String>) {
         }
     }
 }
+
+/// Every entry of the first-trees snapshot: a function, a method, a const's initializer, a struct and an enum (a construction with nothing to enter),
+/// recursion, a project macro defined elsewhere, an `impl Trait` the engine sees through, one it does not, a built-in derive, a std call, a duplicate marker.
+pub(crate) const POLICY_ENTRIES: [(&str, &str, u16); 40] = [
+    ("src/calls.rs", "plain_calls", 0),
+    ("src/calls.rs", "method_chain", 0),
+    ("src/calls.rs", "constructions", 0),
+    ("src/calls.rs", "closures", 0),
+    ("src/calls.rs", "nested_items", 0),
+    ("src/calls.rs", "macro_from_another_module", 0),
+    ("src/calls.rs", "recurse_a", 0),
+    ("src/calls.rs", "FROM_CONST", 0),
+    ("src/calls.rs", "Wrapper", 0),
+    ("src/macros.rs", "std_arguments", 0),
+    ("src/macros.rs", "project_wrapping_external", 0),
+    ("src/dispatch.rs", "generic_by_value", 0),
+    ("src/dispatch.rs", "impl_return", 0),
+    ("src/dispatch.rs", "impl_return_of_a_parameter", 0),
+    ("src/dispatch.rs", "fn_pointer", 0),
+    ("src/shapes.rs", "derived", 0),
+    ("src/shapes.rs", "E", 0),
+    ("src/lib.rs", "Writer::twice", 0),
+    ("src/lib.rs", "uses_the_twins", 0),
+    ("src/external.rs", "std_calls", 0),
+    ("src/external.rs", "std_naming", 0),
+    // constructions (step 5): a marked struct, a tuple struct and an enum as entries, and what builds them
+    ("src/constructions.rs", "MarkedStruct", 0),
+    ("src/constructions.rs", "Tuple", 0),
+    ("src/constructions.rs", "Shape", 0),
+    ("src/constructions.rs", "build_variants", 0),
+    ("src/constructions.rs", "build_external", 0),
+    ("src/constructions.rs", "build_generated", 0),
+    // hand-overs (step 6): named, a method path, called and passed, constructors, an external, a local, through a parameter
+    ("src/passed.rs", "named", 0),
+    ("src/passed.rs", "Parser::run", 0),
+    ("src/passed.rs", "called_and_passed", 0),
+    ("src/passed.rs", "constructors", 0),
+    ("src/passed.rs", "externals", 0),
+    ("src/passed.rs", "locals", 0),
+    ("src/passed.rs", "through_a_parameter", 0),
+    // macros (step 7): a project macro around an external one, two project levels, an unknown macro, a derive, a function a macro made
+    ("src/macros.rs", "project_macro_around_external", 0),
+    ("src/macros.rs", "argument_through_external", 0),
+    ("src/macros.rs", "two_project_levels", 0),
+    ("src/macros.rs", "unknown_in_unknown", 0),
+    ("src/macros.rs", "derived_methods", 0),
+    ("src/macros.rs", "calls_made_functions", 0),
+];
+
+/// (file, qualname, what the program is about). The entries are the callers, and the generics, callbacks and trait objects they reach.
+pub(crate) const CONTEXT_ENTRIES: [(&str, &str); 14] = [
+    // a generic called from two callers
+    ("src/generic.rs", "both"),
+    ("src/generic.rs", "emit"),
+    // a callback: a `fn` pointer, a parameter bounded by `Fn`, a closure
+    ("src/callback.rs", "use_callbacks"),
+    ("src/callback.rs", "apply"),
+    ("src/callback.rs", "apply_generic"),
+    // a `dyn` in a local, and as a parameter
+    ("src/dyn_local.rs", "dyn_in_a_local"),
+    ("src/dyn_param.rs", "call_dyn"),
+    // a factory: a trait object, and an `impl Trait` the engine sees through
+    ("src/factory.rs", "use_factory"),
+    ("src/factory.rs", "use_impl_factory"),
+    // a struct holding a `Box<dyn Writer>`
+    ("src/holder.rs", "use_holder"),
+    ("src/holder.rs", "Holder::run"),
+    ("src/holder.rs", "Holder"),
+    // a recursive generic
+    ("src/recursive.rs", "start"),
+    ("src/recursive.rs", "countdown"),
+];

@@ -7,6 +7,7 @@ mod manifest;
 mod paths;
 mod project;
 mod sem;
+mod session;
 mod toolchain;
 mod walk;
 mod warning;
@@ -21,4 +22,5 @@ pub use analyzer_core::wire::{Frame, LineSpan, Sources, WireOptions, WireStyle, 
 pub use calls::{Breakdown, Options, breakdown, call_graph};
 pub use project::{DefMatch, LoadOptions, OpenError, Project};
 pub use rust_syntax::{DefKind, MarkerStyle, Placement, Span};
+pub use session::Session;
 pub use warning::{Warning, Why};
