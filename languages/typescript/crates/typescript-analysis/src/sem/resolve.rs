@@ -205,13 +205,7 @@ impl Sem {
         facts.getter_result = declarations
             .iter()
             .any(|declaration| declaration.kind() == Kind::GetAccessor);
-        let mut found: Vec<Resolved<'_>> = Vec::new();
-        for declaration in declarations {
-            let resolved = self.classify(&mut checker, declaration, style);
-            if !found.contains(&resolved) {
-                found.push(resolved);
-            }
-        }
+        let mut found = self.classify_all(&mut checker, declarations, style);
         if unresolved_members {
             // a member of the union that has no declaration to enter is not dropped
             found.push(Resolved::Unknown(Why::UnionReceiver));
@@ -296,13 +290,7 @@ impl Sem {
                 declaration.pos(),
             )
         });
-        let mut found: Vec<Resolved<'_>> = Vec::new();
-        for declaration in declarations {
-            let resolved = self.classify(checker, declaration, style);
-            if !found.contains(&resolved) {
-                found.push(resolved);
-            }
-        }
+        let mut found = self.classify_all(checker, declarations, style);
         if found.is_empty() {
             found.push(Resolved::Unknown(Why::NoDeclaration));
         }
@@ -427,6 +415,40 @@ impl Sem {
         Some(found)
     }
 
+    /// `classify` for each declaration, in order, each answer once. A signature that stands for whatever implements it (`is_signature_without_a_body`) is
+    /// `FunctionTypedValue` (D43). When the site has other targets, the receiver is a union and that member is the one with nothing to enter: it is
+    /// `UnionReceiver`, as a member of function type is, so the answer is not mistaken for complete.
+    fn classify_all(
+        &self,
+        checker: &mut Checker,
+        declarations: Vec<P<Node>>,
+        style: MarkerStyle<'_>,
+    ) -> Vec<Resolved<'_>> {
+        // each answer, and whether it is a signature's
+        let mut found: Vec<(Resolved<'_>, bool)> = Vec::new();
+        for declaration in declarations {
+            let resolved = self.classify(checker, declaration, style);
+            if found.iter().all(|(known, _)| *known != resolved) {
+                let signature = resolved == Resolved::Unknown(Why::FunctionTypedValue)
+                    && is_signature_without_a_body(declaration);
+                found.push((resolved, signature));
+            }
+        }
+        let has_other_targets = found.iter().any(|(_, signature)| !signature);
+        let mut answers: Vec<Resolved<'_>> = Vec::new();
+        for (resolved, signature) in found {
+            let resolved = if signature && has_other_targets {
+                Resolved::Unknown(Why::UnionReceiver)
+            } else {
+                resolved
+            };
+            if !answers.contains(&resolved) {
+                answers.push(resolved);
+            }
+        }
+        answers
+    }
+
     /// A declaration the engine found, as a def of project code, an external, or a bug to count.
     fn classify(
         &self,
@@ -466,6 +488,11 @@ impl Sem {
                 outside_root: self.is_outside_root_source(file),
             };
         }
+        // D43: a signature has no body, and stands where the context layer is meant to put what really runs. It stays a def of the outline (a marker on it keeps
+        // its place); only a call through it is a function-typed value
+        if is_signature_without_a_body(declaration) {
+            return Resolved::Unknown(Why::FunctionTypedValue);
+        }
         let Some(defs) = self.file_defs(file, style) else {
             return Resolved::Unknown(Why::NotInOutline);
         };
@@ -482,16 +509,9 @@ impl Sem {
             // A property that holds an arrow and is not a def by D21's rule (a `let`, a default export, an argument's literal): a holder of a
             // function, declared in the project, as a callback property is. The outline says it is not a def on purpose, so this is not the bug below.
             None if is_property_function_value(node) => Resolved::Unknown(Why::FunctionTypedValue),
-            None => {
-                // a bug in one of the two rules (what the engine calls callable, what the outline calls a def): a test must find it,
-                // and a release counts it
-                debug_assert!(
-                    false,
-                    "the engine's declaration in {} is not a def of the outline",
-                    source_file.file_name()
-                );
-                Resolved::Unknown(Why::NotInOutline)
-            }
+            // a bug in one of the two rules (what the engine calls callable, what the outline calls a def), or a kind of declaration nobody has looked at yet:
+            // counted, never a panic on a user's text. The tests' helper fails on the count, so a test finds it (`tests/common`)
+            None => Resolved::Unknown(Why::NotInOutline),
         }
     }
 
@@ -635,6 +655,23 @@ impl Sem {
             file,
             def.range,
         )
+    }
+}
+
+/// A declaration with no body that stands for whatever implements it (D43): a method signature (in a type literal, an interface or `declare global`), a `get` or
+/// `set` signature of a type literal or an interface, and an abstract method. A method of a `declare class` has no body either, and is not one of these: it is the
+/// only declaration there is.
+fn is_signature_without_a_body(declaration: P<Node>) -> bool {
+    match declaration.kind() {
+        Kind::MethodSignature => true,
+        Kind::GetAccessor | Kind::SetAccessor => declaration.parent().is_some_and(|parent| {
+            matches!(
+                parent.kind(),
+                Kind::TypeLiteral | Kind::InterfaceDeclaration
+            )
+        }),
+        Kind::MethodDeclaration => ast::has_abstract_modifier(declaration),
+        _ => false,
     }
 }
 

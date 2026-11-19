@@ -4,12 +4,12 @@ use std::path::{Path, PathBuf};
 
 use typescript_analysis::{
     Cancel, Entry, Graph, MarkerStyle, OpenError, Options, Placement, Project, RenderOptions,
-    Session, StableDef, WireOptions, WireStyle, breakdown, call_graph, wire,
+    Session, StableDef, WireOptions, WireStyle, breakdown, wire,
 };
 
 mod common;
 
-use common::edges_as_text;
+use common::{call_graph, edges_as_text};
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",

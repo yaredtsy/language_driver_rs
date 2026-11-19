@@ -34,6 +34,7 @@ fn request(session: &Session, case: &Case, budget: &Budget, cancel: &Cancel) -> 
         .graph(&case.file, &entry, budget, cancel)
         .unwrap_or_else(|| panic!("{}: no def `{}`", case.name, case.entry));
     check_invariants(&graph);
+    common::assert_no_outline_gap(&graph);
     graph
 }
 

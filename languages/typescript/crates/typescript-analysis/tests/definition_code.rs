@@ -6,9 +6,9 @@ mod common;
 use std::path::{Path, PathBuf};
 
 use analyzer_testkit::graph::check_invariants;
-use common::{STYLE, edges_as_text};
+use common::{STYLE, call_graph, edges_as_text};
 use typescript_analysis::{
-    Cancel, Entry, Graph, Options, Project, RenderOptions, breakdown, call_graph, render, to_text,
+    Cancel, Entry, Graph, Options, Project, RenderOptions, breakdown, render, to_text,
 };
 
 fn root() -> PathBuf {

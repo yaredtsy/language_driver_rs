@@ -4,7 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
-use typescript_analysis::{EdgeTo, Graph, MarkerStyle, Options, Placement, Session, StableDef};
+use typescript_analysis::{
+    Cancel, EdgeTo, Entry, Graph, MarkerStyle, Options, Placement, Project, Session, StableDef,
+};
 
 /// Every edge of `graph` as `from | callee text | what it is`, in the order the graph holds them. A def is named by its qualname.
 pub(crate) fn edges_as_text(graph: &Graph, root: &Path) -> Vec<String> {
@@ -135,4 +137,50 @@ pub(crate) fn cases() -> Vec<Case> {
 pub(crate) fn open(case: &Case) -> Session {
     Session::open(&case.root, Path::new(&case.file), Options::new(STYLE))
         .unwrap_or_else(|error| panic!("{}: {error:?}", case.name))
+}
+
+/// `typescript_analysis::call_graph`, and a failure when the graph counted `decl_not_in_outline`: the engine found a declaration in project code that the
+/// outline does not list, one of the two rules of what a def is is wrong (D43: the count replaced a `debug_assert!`, so that a user's text can never panic a
+/// debug build). Every graph test goes through this or through `checked`, so a test finds the gap and a release build only counts it.
+pub(crate) fn call_graph(
+    project: &Project,
+    file: &str,
+    entry: &Entry<'_>,
+    options: &Options,
+    cancel: &Cancel,
+) -> Option<Graph> {
+    checked(typescript_analysis::call_graph(
+        project, file, entry, options, cancel,
+    ))
+}
+
+/// A graph, as it came (`Session::graph` too), after the check of `call_graph` above.
+pub(crate) fn checked(graph: Option<Graph>) -> Option<Graph> {
+    checked_expecting(graph, 0)
+}
+
+/// `checked`, for a test that says it expects `gaps` declarations the outline does not list.
+pub(crate) fn checked_expecting(graph: Option<Graph>, gaps: u64) -> Option<Graph> {
+    if let Some(graph) = &graph {
+        assert_outline_gaps(graph, gaps);
+    }
+    graph
+}
+
+/// For a graph a test got from a `Session`: no declaration the outline does not list.
+pub(crate) fn assert_no_outline_gap(graph: &Graph) {
+    assert_outline_gaps(graph, 0);
+}
+
+fn assert_outline_gaps(graph: &Graph, gaps: u64) {
+    let found = graph
+        .stats
+        .language
+        .get("decl_not_in_outline")
+        .copied()
+        .unwrap_or(0);
+    assert_eq!(
+        found, gaps,
+        "decl_not_in_outline: the engine's declaration is not a def of the outline"
+    );
 }

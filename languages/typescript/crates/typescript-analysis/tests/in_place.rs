@@ -5,9 +5,13 @@
 use std::path::{Path, PathBuf};
 
 use analyzer_testkit::graph::check_invariants;
+mod common;
+
+use common::call_graph;
+
 use typescript_analysis::{
     Cancel, Entry, Graph, MarkerStyle, Options, Placement, Project, RenderOptions, breakdown,
-    call_graph, render, to_text,
+    render, to_text,
 };
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {

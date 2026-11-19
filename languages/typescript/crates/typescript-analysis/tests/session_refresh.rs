@@ -95,7 +95,7 @@ fn graph(session: &Session) -> Option<Graph> {
         qualname: "main",
         occurrence: 0,
     };
-    session.graph("src/main.ts", &entry, &Budget::default(), &Cancel::new())
+    common::checked(session.graph("src/main.ts", &entry, &Budget::default(), &Cancel::new()))
 }
 
 /// The edges of `main`'s graph, sorted, with the callee text read from the **program's** text of the file and not from the disk: after a change the program

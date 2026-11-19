@@ -7,10 +7,10 @@ use std::path::{Path, PathBuf};
 
 use analyzer_testkit::expect_file;
 use analyzer_testkit::graph::check_invariants;
-use common::{Row, edges_as_text, rows};
+use common::{Row, call_graph, edges_as_text, rows};
 use typescript_analysis::{
-    Cancel, Entry, MarkerStyle, Options, Placement, Project, RenderOptions, breakdown, call_graph,
-    render, to_text,
+    Cancel, Entry, MarkerStyle, Options, Placement, Project, RenderOptions, breakdown, render,
+    to_text,
 };
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {

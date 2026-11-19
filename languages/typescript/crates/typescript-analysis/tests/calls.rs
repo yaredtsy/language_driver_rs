@@ -6,13 +6,12 @@ use analyzer_testkit::graph::check_invariants;
 use analyzer_testkit::scenarios::{Level, Subject, run};
 use typescript_analysis::{
     Basis, Cancel, Edge, EdgeTo, Entry, Frame, Graph, MarkerStyle, Options, Project, Reason,
-    RenderOptions, Root, StableDef, WireOptions, WireStyle, breakdown, call_graph, render, to_text,
-    wire,
+    RenderOptions, Root, StableDef, WireOptions, WireStyle, breakdown, render, to_text, wire,
 };
 
 mod common;
 
-use common::edges_as_text;
+use common::{call_graph, edges_as_text};
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
@@ -142,7 +141,8 @@ fn every_resolved_edge_rests_on_the_type_and_every_unresolved_edge_says_why() {
 fn the_breakdown_says_why_each_unresolved_edge_is_unresolved_and_adds_up() {
     let graph = graph_of(&fixture("resolve"), "src/main.ts", "callers");
     let summary = breakdown(&graph);
-    // `cb()` is a function-typed value, two calls are on `any`, one has a computed name (`tests/fixtures/resolve`)
+    // `cb()` is a function-typed value, and so are the calls through an interface's method signatures (`writer.write`, and `reader.read`, merged
+    // declarations: one edge); two calls are on `any`, one has a computed name (`tests/fixtures/resolve`)
     let reasons: Vec<(&str, u64)> = summary
         .reasons
         .iter()
@@ -153,7 +153,7 @@ fn the_breakdown_says_why_each_unresolved_edge_is_unresolved_and_adds_up() {
         [
             ("any_or_untyped", 2),
             ("computed_name", 1),
-            ("function_typed_value", 1)
+            ("function_typed_value", 3)
         ]
     );
     // every unresolved edge has exactly one reason, and the counters in `Stats.language` are the same numbers
@@ -391,7 +391,7 @@ fn construct_each_new_is_a_construction_an_external_or_an_unresolved_edge_that_s
         build("Ctor", "unresolved function_typed_value"),
         build("Kind", "unresolved function_typed_value"),
         build("(pick())", "unresolved no_declaration"),
-        // a `declare function` of the project is a def with no body: a leaf, as an interface method is
+        // a `declare function` of the project is a def with no body: a leaf
         build("pick", "call pick"),
         build("(class {})", "unresolved no_declaration"),
         build("(Legacy as any)", "unresolved any_or_untyped"),
@@ -1166,7 +1166,7 @@ fn tagged_template_the_tag_is_a_site_and_so_is_a_call_in_a_substitution() {
         &[
             "tag | call tag",
             "helper | call helper",
-            "formatter.fmt | call Formatter.fmt",
+            "formatter.fmt | unresolved function_typed_value",
             "factory | call factory",
             // the tag is the call's result: the call is a site of its own, and its result is no declaration
             "factory() | unresolved no_declaration",

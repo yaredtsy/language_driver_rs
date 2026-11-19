@@ -580,8 +580,8 @@ fn sem_contract_each_site_resolves_as_the_policy_table_says() {
         one("plain", "src/lib.ts plain"),
         one("counter.bump", "src/lib.ts Counter.bump"),
         one("Counter.make", "src/lib.ts Counter.make"),
-        // an interface method: the signature, a leaf with no body, not the implementations
-        one("writer.write", "src/lib.ts Writer.write"),
+        // an interface method: the signature has no body and is not the implementations (D43)
+        one("writer.write", "unknown function_typed_value"),
         // a union receiver: one target per member that declares the method (policy table). The engine's call hierarchy gives none and the
         // checker's signature gives only the first member, so the members are asked one by one
         (
@@ -640,14 +640,8 @@ fn sem_contract_each_site_resolves_as_the_policy_table_says() {
         one("child.bump", "src/lib.ts Counter.bump"),
         // a method of an object literal is a def (D9)
         one("api.load", "src/lib.ts api.load"),
-        // merged declarations: one target per declaration, told apart by their nth
-        (
-            "reader.read".to_owned(),
-            vec![
-                "src/lib.ts Reader.read".to_owned(),
-                "src/lib.ts Reader.read#1".to_owned(),
-            ],
-        ),
+        // merged declarations of an interface: both are signatures (D43), one answer
+        one("reader.read", "unknown function_typed_value"),
     ];
     assert_eq!(found, expected);
 }

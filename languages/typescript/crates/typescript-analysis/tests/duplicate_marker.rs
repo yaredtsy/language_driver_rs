@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 
 mod common;
 
-use common::edges_as_text;
+use common::{call_graph, edges_as_text};
 use typescript_analysis::{
     Cancel, DefInfo, EdgeTo, Entry, Frame, Graph, MarkerStyle, Options, Placement, Project,
-    RenderOptions, StableDef, WireOptions, WireStyle, breakdown, call_graph, render, to_text, wire,
+    RenderOptions, StableDef, WireOptions, WireStyle, breakdown, render, to_text, wire,
 };
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {

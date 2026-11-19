@@ -6,10 +6,10 @@ mod common;
 use std::path::{Path, PathBuf};
 
 use analyzer_testkit::graph::check_invariants;
-use common::{STYLE, edges_as_text};
+use common::{STYLE, call_graph, edges_as_text};
 use typescript_analysis::{
     Budget, Cancel, DefKind, Entry, Graph, Options, Project, RenderOptions, Session, StableDef,
-    WireOptions, WireStyle, breakdown, call_graph, render, to_text, wire,
+    WireOptions, WireStyle, breakdown, render, to_text, wire,
 };
 
 fn root() -> PathBuf {
@@ -287,6 +287,7 @@ fn a_session_gives_the_module_a_budget_and_a_cut_def_continues_from_there() {
         )
         .unwrap();
     check_invariants(&first);
+    common::assert_no_outline_gap(&first);
     assert_eq!(first.stats.frontier, 1);
     let drawn = to_text(&render(
         &first,

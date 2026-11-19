@@ -11,10 +11,10 @@ mod common;
 use std::path::PathBuf;
 
 use analyzer_testkit::graph::check_invariants;
-use common::{Case, STYLE, cases, open, tests_dir};
+use common::{Case, STYLE, call_graph, cases, open, tests_dir};
 use typescript_analysis::{
     Budget, Cancel, Entry, Graph, Mark, Node, Options, RenderOptions, Session, StableDef, Status,
-    call_graph, render, to_text,
+    render, to_text,
 };
 
 fn request(
@@ -32,6 +32,7 @@ fn request(
         .graph(file, &entry, budget, &Cancel::new())
         .unwrap_or_else(|| panic!("no def `{qualname}` in {file}"));
     check_invariants(&graph);
+    common::assert_no_outline_gap(&graph);
     graph
 }
 

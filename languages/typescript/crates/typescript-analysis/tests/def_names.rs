@@ -3,7 +3,11 @@
 
 use std::path::{Path, PathBuf};
 
-use typescript_analysis::{Cancel, Entry, MarkerStyle, Options, Placement, Project, call_graph};
+mod common;
+
+use common::call_graph;
+
+use typescript_analysis::{Cancel, Entry, MarkerStyle, Options, Placement, Project};
 use typescript_syntax::Dialect;
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {

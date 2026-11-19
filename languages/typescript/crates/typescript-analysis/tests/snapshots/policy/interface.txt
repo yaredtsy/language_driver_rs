@@ -1,5 +1,4 @@
 == viaInterface
 viaInterface
-  Writer.write
 edges:
-viaInterface | w.write | call Writer.write
+viaInterface | w.write | unresolved function_typed_value

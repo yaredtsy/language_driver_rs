@@ -146,7 +146,7 @@ fn calls_says_why_edges_are_unresolved_in_the_breakdown() {
             "  unresolved by reason:
     any_or_untyped: 2
     computed_name: 1
-    function_typed_value: 1
+    function_typed_value: 3
 "
         ),
         "{stdout}"
