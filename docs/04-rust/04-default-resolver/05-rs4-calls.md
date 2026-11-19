@@ -91,7 +91,8 @@ What `calls::finish` writes into `Stats.language` (a `BTreeMap<String, u64>`, so
 ## 3. Step A: the sites of a body
 
 A def's body is: a function's block, a const's or static's initializer. A trait method without a body and a foreign function have none:
-their list is empty and they are leaves.
+their list is empty and they are leaves. Since D44 no call reaches a trait method without a body (its site is `Unresolved`, §6), so
+such a def is a node only as an entry of its own; a foreign function is still reached.
 
 `sem.sites(f)` walks the body's syntax **in source order**. With macros it walks the expansion in place of the macro call, so the order
 is the order the code runs in.
@@ -337,8 +338,8 @@ This becomes `languages/rust/docs/policy.md`, with the name of each row's fixtur
 | Feature | Layer-1 policy | Changed by |
 |---|---|---|
 | a method on a concrete type | the method in that type's `impl`, inherent or trait | |
-| a method through a type parameter, `impl Trait`, or `Self` in a default method | the **trait's** declaration. A leaf if it has no default body. Counted `open_type_param` / `open_impl_trait` / `open_self_in_trait` | RC1 |
-| a method through `dyn Trait` | the trait's declaration. Counted `open_dyn` | RC3–RC5 |
+| a method through a type parameter, `impl Trait`, or `Self` in a default method | the trait's **default body**, when the method has one. A **required** method (no body): `Unresolved(function_typed_value)` (D44). Either way counted `open_type_param` / `open_impl_trait` / `open_self_in_trait` | RC1 |
+| a method through `dyn Trait` | as the row above: the default body, or `Unresolved(function_typed_value)` for a required method (D44). Counted `open_dyn` | RC3–RC5 |
 | a method on the result of `-> impl Trait` | **the engine's answer, the impl's method**: it sees through a return-position `impl Trait` to the hidden type (S-RS2, `ENGINE.md`), so `make().write()` is `<Json as Writer>::write` in layer 1 already (D7). Only where the engine still answers the trait's declaration (expected: a hidden type that depends on the function's own type parameters, `fn make<W: Writer + Default>() -> impl Writer`; **[check]** in step 5) is it the declaration, counted `open_opaque` | RC4 §2, only for what `open_opaque` still counts |
 | `Foo::new()` | a call to the function. Rust has no constructors |  |
 | `Foo { a, b }`, `Foo(a, b)`, `Enum::Variant(a)`, `Self { .. }` | `Construct { class, init: None }`; the class of a variant is its enum | |
@@ -453,6 +454,7 @@ the whole crate.
 | 7 ✅ | **done** (5cee903 `external_passed` label + `generated_handed_over` row, 8355422, reviewed 2026-11-17: `body_owner` + `upmap_once` close the `wrap!` gap; fixtures in `macros.rs`; ten trees; the §3 [check] answered; `macro_generated_target` counts calls to a project macro's function and a derive's methods once per call, `core/`'s 8 are all derives; `core/` unchanged, 22 / 11 / 108 / 0). Fix asked: one `macro_not_expanded` per written place (§3). Was: macros: what step 2 left (§3 "As built": a project macro's own call written as an external macro's argument, `upmap_once`), generated targets, built-in derives; the policy rows and counters for what step 2 built | fixtures; the counters; the two [check]s of §3 and §5 |
 | 8 ✅ | **done** (ff8f48b `macro_not_expanded` once per written place; 97d1311 the wire, reviewed 2026-11-17: `lib.rs` re-exports core's wire items by name; `impl Sources for Project` gives the engine's loaded text (`sem::text_of`), byte-equal to the file; `rust-cli calls … --wire [--merged] [--function-prefix P] [--class-prefix P]`, JSON alone on stdout, flag rules as `typescript-cli`; `tests/wire.rs`: four entries unmerged and merged, `WIRE_FORMAT_VERSION` 2. Probed on `core/`'s `render`: 59 nodes unmerged, 28 merged with `call_count` summing to 31 (28 + 31 = 59). Two findings for core, both outside this step: (1) a **byte-order mark is counted as a column** on line 1 (`Positions::at`): `(1,19)` where an editor says 18; TypeScript's `text_of` keeps the mark too, so it is not Rust's alone; fix asked in core, (2) a marked struct gets `function_prefix`: Q-RS7) | the wire snapshot |
 | 9 ✅ | scenarios (per-language trees, D30, one shared workspace), the oracle, no `std`, the real project. **Done** (52e98e7, 0d7bad2, b41610b, 33f7779, eab0ce0; core 3edf5bb BOM column; reviewed 2026-11-17, §8 "As built") | all of §8 |
+| 9b | **D44 (owner, 2026-11-19; not built).** A site whose answer is a trait's own function with **no body** is `Found::Unknown(FunctionTypedValue)`, its `open` kept. The oracle gains a fifth class, **a required trait method** (ours `Unresolved(function_typed_value)` with an open kind, the oracle's target the trait's function with no body), recognised by that rule and counted. The context workspace's `dyn` and generic trees lose their `Writer::write` leaves | the policy and context snapshots: every change is a required-method leaf that became an `Unresolved` edge, and nothing else moves; the `open_*` counts of every snapshot are unchanged; the oracle's counts pinned again; a default method reached through `dyn` stays a `Call` |
 | 10 | `languages/rust/docs/policy.md`, one fixture named per row; `ENGINE.md` | reviewed |
 | | **tag `rust-v0.2.0`** | |
 
