@@ -153,7 +153,10 @@ fn target_id(graph: &Graph, func: &StableDef, style: &WireStyle) -> String {
         return String::new();
     };
     let prefix = match graph.def(func).map(|d| &d.kind) {
-        Some(DefKind::Class) => &style.class_prefix,
+        // a type that is built, not called: a class, and (Rust, D45) a struct, an enum or a union. What it is stays in `target_kind`
+        Some(DefKind::Class | DefKind::Struct | DefKind::Enum | DefKind::Union) => {
+            &style.class_prefix
+        }
         _ => &style.function_prefix,
     };
     format!("{prefix}{text}")
@@ -554,6 +557,71 @@ mod tests {
             frame.target_id, "main",
             "no prefix given: the bare marker text"
         );
+    }
+
+    /// D45: a class, and a struct, an enum or a union (Rust's types, built and not called), get the style's class prefix; a function and a method get the
+    /// function prefix. The kind a def really is stays in `target_kind`.
+    #[test]
+    fn a_struct_an_enum_and_a_union_get_the_class_prefix_and_keep_their_kind() {
+        let kinds = [
+            ("Report", DefKind::Class),
+            ("S", DefKind::Struct),
+            ("E", DefKind::Enum),
+            ("U", DefKind::Union),
+            ("T", DefKind::Trait),
+        ];
+        let mut rows = vec![row(marked("main"), "m.main", DefKind::Function, 0, 40)];
+        let mut edges = Vec::new();
+        for (at, (name, kind)) in kinds.iter().enumerate() {
+            rows.push(row(
+                marked(name),
+                &format!("m.{name}"),
+                kind.clone(),
+                50,
+                90,
+            ));
+            let at = at as u32 * 4;
+            edges.push(Edge::new(
+                ContextId::of(marked("main")),
+                Site::new(at, at + 3),
+                EdgeTo::Construct {
+                    class: marked(name),
+                    init: None,
+                    basis: Basis::Type,
+                },
+            ));
+        }
+        let graph = Graph::new(
+            vec![Root::Context(ContextId::of(marked("main")))],
+            rows,
+            vec![Context::new(ContextId::of(marked("main")))],
+            edges,
+            Stats::default(),
+        );
+        let frame = wire(
+            &graph,
+            &Root::Context(ContextId::of(marked("main"))),
+            &files("0123456789012345678901234567890\n"),
+            &opts(false),
+        );
+        let got: Vec<(&str, Option<DefKind>)> = frame
+            .children
+            .iter()
+            .map(|child| (child.target_id.as_str(), child.target_kind.clone()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("C/Report", Some(DefKind::Class)),
+                ("C/S", Some(DefKind::Struct)),
+                ("C/E", Some(DefKind::Enum)),
+                ("C/U", Some(DefKind::Union)),
+                // a trait is not built: it keeps the function prefix, as before
+                ("F/T", Some(DefKind::Trait)),
+            ]
+        );
+        assert_eq!(frame.target_id, "F/main");
+        assert_eq!(serde_json::to_string(&DefKind::Union).unwrap(), "\"Union\"");
     }
 
     fn twice() -> Graph {

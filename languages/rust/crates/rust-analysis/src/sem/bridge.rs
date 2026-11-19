@@ -318,7 +318,7 @@ impl<'p> Sem<'p> {
                 .sema
                 .to_def(&named::<ast::Fn>(&node, range)?)
                 .map(Item::Function),
-            DefKind::Struct | DefKind::Enum => self
+            DefKind::Struct | DefKind::Enum | DefKind::Union => self
                 .sema
                 .to_def(&named::<ast::Adt>(&node, range)?)
                 .map(Item::Adt),
@@ -473,7 +473,9 @@ fn named<N: ast::HasName>(node: &SyntaxNode, range: TextRange) -> Option<N> {
 /// and an impl do not.
 fn can_be_entry(kind: &DefKind) -> bool {
     match kind {
-        DefKind::Function | DefKind::Method | DefKind::Struct | DefKind::Enum => true,
+        DefKind::Function | DefKind::Method | DefKind::Struct | DefKind::Enum | DefKind::Union => {
+            true
+        }
         DefKind::Other(what) => what == "const" || what == "static",
         _ => false,
     }

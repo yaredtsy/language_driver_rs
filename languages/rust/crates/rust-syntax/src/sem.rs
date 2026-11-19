@@ -18,8 +18,9 @@ pub(crate) enum ItemKind {
     Function,
     /// a function of a trait or of an impl, with or without a receiver
     Method,
-    /// `struct` and `union`
     Struct,
+    /// `union`
+    Union,
     Enum,
     Trait,
     /// an inline `mod m { }`
@@ -210,7 +211,7 @@ fn collect(
         match item {
             ast::Item::Fn(f) => push_function(&f, ItemKind::Function, parent, None, errors, out),
             ast::Item::Struct(s) => out.extend(named(&s, ItemKind::Struct, parent)),
-            ast::Item::Union(u) => out.extend(named(&u, ItemKind::Struct, parent)),
+            ast::Item::Union(u) => out.extend(named(&u, ItemKind::Union, parent)),
             ast::Item::Enum(e) => out.extend(named(&e, ItemKind::Enum, parent)),
             ast::Item::Trait(t) => {
                 if let Some(def) = named(&t, ItemKind::Trait, parent) {

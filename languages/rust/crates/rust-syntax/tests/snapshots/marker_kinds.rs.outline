@@ -1,7 +1,7 @@
 Function function [127..160] name [147..155] marker="function"
 Struct Structure [162..197] name [187..196] marker="structure"
 Enum Enumeration [199..238] name [224..235] marker="enumeration"
-Struct UnionDef [240..282] name [264..272] marker="union_def"
+Union UnionDef [240..282] name [264..272] marker="union_def"
 Type Alias [284..319] name [308..313] marker="type_alias"
 Other("const") CONSTANT [321..361] name [344..352] marker="constant"
 Other("static") STATIC_ITEM [363..410] name [390..401] marker="static_item"

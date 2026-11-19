@@ -81,6 +81,43 @@ fn a_policy_entry_through_the_wire_unmerged_and_merged() {
     }
 }
 
+/// D45. A marked struct, enum and union are built, not called, so the wire gives them the style's class prefix, and what each really is stays in
+/// `target_kind`: as the entry of a request (a construction with nothing to enter) and as the target of a construction in a body.
+#[test]
+fn a_struct_an_enum_and_a_union_have_the_class_prefix_and_keep_their_kind() {
+    use rust_analysis::DefKind;
+
+    let _load = one_load();
+    let copy = copy_of_fixture("kinds", "wire_kinds");
+    let project = open(&copy, "src/lib.rs");
+    let types = [
+        ("S", "build_struct", "class:kinds-struct", DefKind::Struct),
+        ("E", "build_enum", "class:kinds-enum", DefKind::Enum),
+        ("U", "build_union", "class:kinds-union", DefKind::Union),
+    ];
+    for (name, builder, id, kind) in types {
+        // as an entry: the root frame is the type
+        let entry = frame(&project, &graph(&project, "src/lib.rs", name), false, false);
+        assert_eq!(entry.target_id, id, "{name} as an entry");
+        assert_eq!(entry.target_kind, Some(kind.clone()), "{name} as an entry");
+
+        // as a construction: the child frame of the function that builds it
+        let built = frame(
+            &project,
+            &graph(&project, "src/lib.rs", builder),
+            false,
+            false,
+        );
+        let [child] = built.children.as_slice() else {
+            panic!("{builder}: {:?}", built.children.len());
+        };
+        assert_eq!(child.target_id, id, "{name} as a construction");
+        assert_eq!(child.target_kind, Some(kind), "{name} as a construction");
+        // the function that builds it is called, and has no marker: no prefix at all
+        assert_eq!(built.target_id, "");
+    }
+}
+
 fn count(frame: &Frame) -> usize {
     1 + frame.children.iter().map(count).sum::<usize>()
 }

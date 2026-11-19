@@ -15,6 +15,8 @@ pub enum DefKind {
     Interface,
     Trait,
     Enum,
+    /// A Rust `union`: a type with fields that share storage. Only Rust emits it (D45).
+    Union,
     Module,
     Namespace,
     Type,

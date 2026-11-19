@@ -116,6 +116,7 @@ fn kind(item: &Item) -> DefKind {
         ItemKind::Function => DefKind::Function,
         ItemKind::Method => DefKind::Method,
         ItemKind::Struct => DefKind::Struct,
+        ItemKind::Union => DefKind::Union,
         ItemKind::Enum => DefKind::Enum,
         ItemKind::Trait => DefKind::Trait,
         ItemKind::Module => DefKind::Module,

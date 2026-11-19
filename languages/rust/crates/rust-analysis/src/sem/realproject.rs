@@ -16,7 +16,9 @@ use crate::{Cancel, Entry, LoadOptions, MarkerStyle, Options, Project, call_grap
 /// What can start a graph (`Sem::entry`): a function, a method, a struct, an enum, a const, a static.
 fn is_entry_kind(kind: &DefKind) -> bool {
     match kind {
-        DefKind::Function | DefKind::Method | DefKind::Struct | DefKind::Enum => true,
+        DefKind::Function | DefKind::Method | DefKind::Struct | DefKind::Enum | DefKind::Union => {
+            true
+        }
         DefKind::Other(what) => what == "const" || what == "static",
         _ => false,
     }

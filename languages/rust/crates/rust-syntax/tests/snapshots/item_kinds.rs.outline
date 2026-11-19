@@ -1,7 +1,7 @@
 Struct Plain [0..31] name [25..30]
 Struct Tuple [32..53] name [39..44]
 Struct Record [54..77] name [61..67]
-Struct Bits [78..105] name [84..88]
+Union Bits [78..105] name [84..88]
 Enum Choice [106..143] name [111..117]
 Trait Speak [144..180] name [150..155]
   Method Speak::speak [162..178] name [165..170] (&self)
