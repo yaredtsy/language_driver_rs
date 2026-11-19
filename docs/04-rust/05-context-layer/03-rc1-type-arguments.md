@@ -131,7 +131,8 @@ then measured, then cheaper, with a test that the edge sets are identical with a
 
 ## 7. Between requests
 
-RS5 keeps an owned memo keyed by (`StableDef`, digest). A hit gives a summary whose targets are (stable def, digest) pairs. To walk
+RS5 keeps **no** memo between requests (RS5 §2, as built 2026-11-19): each request walks again over the warm database, so this section
+applies only if a memo is added later, after a measurement asks for one. It would be keyed by (`StableDef`, digest). A hit gives a summary whose targets are (stable def, digest) pairs. To walk
 *below* a memoized context, the solver needs the callee's live `Key` (engine types), which a digest cannot give back. Rule: a memoized
 summary is used when every context below it that the request needs is memoized too; otherwise that body is walked again, which
 recomputes its callees' keys. Bodies are cheap; types are salsa's to remember. **[measure]** the hit rate before doing more.

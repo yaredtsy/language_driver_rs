@@ -643,3 +643,17 @@ loaded it with `ProjectWorkspace::load_inline`, sysroot `None`.
 - **Test memory** (6063445): one loaded policy and one context workspace per test program, shared; a test that needs its own load takes
   `one_load()`. Peak footprint per test program: library tests 1.8 GB, `calls` 1.3 GB, `open` 1.0 GB, `session` 0.9 GB, the rest
   under 0.85 GB (the earlier reading was 5.4 GB for the run).
+
+## RS5 step 2: the session (ac0c34b, reviewed 2026-11-19)
+
+- **`Session { project, options }`**: `open(root, file, &LoadOptions, Options)`, `graph(&self, file, entry, &Budget, &Cancel)`, `project()`.
+  A request builds its `Sem` and `Solver` inside one `attach_db` and drops them; no solver memo between requests (RS5 §2). What stays
+  warm is the `RootDatabase` in the `Project`.
+- **Re-run at 8205aef:** the Rust workspace 185 passed, 0 failed, 12 ignored (`-j2`, `--test-threads=2`); `tests/session.rs` 4 passed.
+  Frontier nodes of the first request over all entries at `max_depth` 1, 2, 3: **48, 4, 1** (depth 3's one is `chain_a`, added at the 9b
+  stop); the ancestor rule fired once (`recurse_a`, depth 1). Clippy (`-p rust-analysis --all-targets -D warnings`), fmt and
+  `check-all --static` pass.
+- **For step 3, read at the pin:** the `Vfs`, `ChangeWithProcMacros`, `apply_change`, `ProjectFolders` and `SourceRootConfig` items it
+  needs are public, and `load_workspace` does not return the `SourceRootConfig` it builds; the table is in RS5 §3. The rule for a created
+  or deleted file that needs a reload is rust-analyzer's `should_refresh_for_change` (`crates/rust-analyzer/src/reload.rs`, not in a
+  published `ra_ap_*` crate), copied, not called.

@@ -159,7 +159,7 @@ The first three are pylspt's (`plan/03-call-tree/03-design.md`, "The rules"), re
 
 1. **A summary is a function of its key.** The walk of `(f, key)` starts from the key and the code, and from nothing else: not from the
    caller, not from the order contexts were found in.
-2. **Nothing request-local leaves a summary.** A summary that is kept between requests (RS5's owned memo) holds stable ids and digests,
+2. **Nothing request-local leaves a summary.** A summary that is kept between requests (none is in RS5; a memo added later) holds stable ids and digests,
    never a `Func`, a `Ty` or a site index of another body.
 3. **Precision is decided by the key and the code; cost limits only cut.** Every widening is a `KeyPolicy` rule and happens the same way
    on every run. A cut (too many contexts, a deadline) marks the context `Incomplete` and is never cached.
@@ -270,5 +270,6 @@ that names the lost road says which part), not to list impls.
 | the context workspace's snapshots flip, phase by phase, from the layer-1 column of §2 to the precise one | each phase's proof |
 | scenarios at `Level::Precise`, **per scenario** | the shared definition of done; needs the testkit change of [`../02-architecture.md`](../02-architecture.md) §9 |
 | a real project before and after: contexts, walks, time, and each `open_*` counter | whether the phase was worth it; written in `ENGINE.md` |
+| the frozen `open_*` counts of every policy and context entry (`rust-analysis/tests/snapshots/trees/open_counts.txt`, from RS4 step 9b) | layer 1 never changes how open a site is by accident. A phase that closes sites **on purpose** edits that file in its own commit, and the review reads each changed line |
 
 Next: [`02-rc0-spikes.md`](02-rc0-spikes.md)

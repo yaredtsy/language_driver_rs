@@ -18,7 +18,8 @@ what differs.
 
 | Need | Where | State |
 |---|---|---|
-| `Budget`, lazy render, the frontier (`more` tokens), paging | `analyzer-core` | TS5 steps 1–2. **Not built yet** (2026-11-12). If RS5 is reached first, those two steps are done here, in `core/`, against the toy language exactly as TS5 describes them; they need no engine |
+| `Budget`, the frontier, a frontier node drawn `Mark::Cut` | `analyzer-core` | **built by TS5 steps 1 and 2a**: `Solver::graph_within`, `Status::Frontier`, `Graph.stats.frontier` |
+| `more` tokens, `expand`, `Stale`, paging | `analyzer-core` | **not built** (TS5 step 2b, the owner's plan, D31). Until then a cut node is continued by a new request for its def |
 | `Cancel` (a flag and a deadline) | `analyzer-core::solve` | built |
 | stable ids, `environment_inputs` | RS3, RS4 | built by then |
 | following the disk (`refresh`), reload | Rust | this phase. Text the editor has not saved is not read, for now (D42) |
@@ -26,36 +27,47 @@ what differs.
 ## 2. The session
 
 ```rust
-pub struct Session { /* a Project + a Solver<Rust> that outlives one request */ }
+// rust-analysis (RS5). Built in step 2 (ac0c34b): open, graph, project. refresh, reload, Refreshed: steps 3 and 4.
+pub struct Session { /* root, file, LoadOptions, Options; Option<Project>; lost; the stamps (§3) */ }
 
 impl Session {
-    pub fn open(root: &Path, file: &Path, opts: &LoadOptions) -> Result<Session, OpenError>;
-    pub fn tree(&mut self, file: &str, entry: &Entry<'_>, budget: &Budget, cancel: &Cancel) -> Option<Tree>;
-    pub fn expand(&mut self, token: &Token, budget: &Budget, cancel: &Cancel) -> Result<Tree, Stale>;
+    /// `load` says what the load may run (build scripts, proc macros: RS3); `options` the limits and the marker style of every request.
+    pub fn open(root: &Path, file: &Path, load: &LoadOptions, options: Options) -> Result<Session, OpenError>;
+    /// One request: the graph under `entry`, walked no further than `budget`. `None`: no such def, or no project (`lost`).
+    pub fn graph(&self, file: &str, entry: &Entry<'_>, budget: &Budget, cancel: &Cancel) -> Option<Graph>;
+    pub fn project(&self) -> Option<&Project>;   // `&Project` in step 2; `Option` once a reload can fail (step 4)
     pub fn refresh(&mut self) -> Refreshed;      // before each request: follows the disk (§3)
     pub fn reload(&mut self) -> Refreshed;       // loads the workspace again, whatever the disk says (§6)
 }
 ```
 
-The same methods as TypeScript's, so a driver's main loop is written once. `Refreshed { reopened, lost }` is TypeScript's
+The same methods as TypeScript's session as built ([`../../03-typescript/07-ts5-driver-needs.md`](../../03-typescript/07-ts5-driver-needs.md)
+§2), so a driver's main loop is written once. Two differences, both Rust's: `open` takes the `LoadOptions` (TypeScript's load runs nothing,
+so it has none), and there is no `epoch` (TypeScript's is for tokens, which are not built). The answer is a `Graph` (rule 7); the driver
+draws it with `render` and sends its wire. `call_graph` stays, unchanged, for the CLI and the tests; with `Budget::default()` a session's
+graph is `call_graph`'s (pinned by a test). `Refreshed { reopened, lost }` is TypeScript's
 ([`../../03-typescript/11-step6-text-and-disk.md`](../../03-typescript/11-step6-text-and-disk.md) §3). The first version had
-`set_text(file, Option<&str>)` here; text the editor has not saved is **not read, for now (owner, 2026-11-17, D42)**.
+`set_text(file, Option<&str>)` here; text the editor has not saved is **not read, for now (owner, 2026-11-17, D42)**. `tree`, `expand`
+and `Token` were here too, before TS5 was built: they are gone (rule 7; D31: tokens are TS5 step 2b, not built). A cut node is
+continued by a new `graph` request for its def.
 
-**To align before RS5 starts:** the rest of this block was written before TS5 was built. TypeScript's session answers a `Graph`
-(`graph`, not `tree`: rule 7), and `expand` and its tokens are not built (D31, TS5 row 2b). Rust follows what TS5 built.
+**There is no solver memo between requests** (answered 2026-11-19, the `[check]` of the first version: TypeScript kept none, and Rust
+follows it). Each request builds its `Sem` and its `Solver` fresh, inside one `attach_db`, and drops them at the end. What stays warm is
+the engine's database inside the `Project`: salsa keeps every parsed file, every name resolution and every inferred body from one request
+to the next, which is where the time goes. A summary is one body's sites, cheap to walk again over warm types. **[measure]** in step 3:
+the first and a second request for the same entry on a real workspace.
 
-> **🦀 Rust note: a struct that borrows from itself, and how to avoid it.** `Solver<Rust<'p>>` holds `Func<'p>` handles, which borrow the
-> `Project`. A `Session` that owns *both* the `Project` and a `Solver` borrowing it would be a *self-referential struct*, which safe Rust
-> does not allow (moving the `Session` would move the `Project` and leave the borrow pointing at the old place). TypeScript's plan meets
-> the same wall. The clean way out here is that the solver's memo does not have to hold engine handles between requests: `Session`
-> keeps the memo in an **owned** form, keyed by the stable identity (`StableDef` + key digest) with sites and targets as plain data, and
-> each request builds a short-lived `Solver` over a fresh `Sem<'p>` that reads and fills that owned memo. The handles live for one
-> request, as [`../02-architecture.md`](../02-architecture.md) §4 says they do. No `unsafe`, no self-reference, and the memo is already in
-> the form a cache on disk would want.
->
-> This asks one thing of core: a way to give the solver a memo to start from and take it back (`Solver::with_memo` / `into_memo`), with the
-> conversion between a language's handles and stable ids supplied by the language. It is part of TS5 step 1's design, and TypeScript
-> needs it for the same reason. **[check]** against whatever TS5 has built by then; if it kept handles alive another way, Rust follows it.
+> **🦀 Rust note: a struct cannot borrow from itself.** `Rust<'a, 'p>` and its `Func<'p>` handles borrow the `Project`. A
+> `Session { project: Project, solver: Solver<Rust<'?>> }` would need `'?` to mean "as long as the field next to me", and Rust has no such
+> lifetime: moving the `Session` would move the `Project`, and the borrow would dangle. So the long-lived thing is the `Project`, and
+> everything that borrows it lives for one request, as [`../02-architecture.md`](../02-architecture.md) §4 says. The first version of this
+> note kept an owned memo (keyed by `StableDef` and key digest) to get around it; that costs a conversion each way for a gain nobody has
+> measured, and TypeScript did without it.
+
+> **🦀 Rust note: `&self` for a request, `&mut self` for a change.** `graph` takes `&self`: what a request fills lives in its own `Sem`, and
+> the database is only read. `refresh` and `reload` write the database (`RootDatabase::apply_change` takes `&mut self`), so they take
+> `&mut self`, and the compiler then forbids a change while a request still holds a borrow. A driver moves the session to a worker thread,
+> so `Session` must be `Send`; pinned by a test in step 3.
 
 ## 3. Edits: a file saved on disk
 
@@ -67,14 +79,28 @@ database and salsa recomputes only what depended on it.
 
 | What changed on disk | How `refresh` sees it | What it does |
 |---|---|---|
-| a `.rs` file of the project saved | the stamp (length, modified time) of every file the `Vfs` holds in a **local** source root (**[check]** `SourceRoot::is_library` at the pin tells a local root from a dependency's) | reads the text and applies it to the database (`RootDatabase::apply_change` with a `ChangeWithProcMacros` / `FileChange` **[check]** the type at the pin). Incremental by construction |
-| a `.rs` file created or deleted | the stamp of each folder of a local source root (a folder's modified time moves when an entry is added or removed) | **[check]** at the pin whether a file can be added to the `Vfs` and the source roots set again without loading the workspace (rust-analyzer's own main loop does that); if it can, that; if not, a reload (§6) |
+| a `.rs` file of the project saved | the stamp (length, modified time) of every `.rs` file the `Vfs` holds outside a library root (`SourceRootConfig::path_is_library`, checked at the pin below) | reads the bytes, `Vfs::set_file_contents`, then `RootDatabase::apply_change` with a `ChangeWithProcMacros` holding `change_file(id, Some(text))`. Incremental by construction |
+| a `.rs` file created or deleted, **not** where cargo finds a target by itself | the stamp of each folder that holds a stamped file, up to the package root and never above the project root (TypeScript's fix 1b) (a folder's modified time moves when an entry is added or removed); a changed folder is listed again, with the load's excludes (`target/`) | the same `set_file_contents` (`None` for a deleted file), and the source roots partitioned again (`SourceRootConfig::partition(&vfs)` into `change.set_roots`) in the same `apply_change`. No reload: rust-analyzer's own main loop does exactly this |
+| a `.rs` file created or deleted where cargo finds a target by itself (`build.rs`, `src/main.rs`, `src/lib.rs`, a file in `src/bin`, `examples`, `tests`, `benches`, or a `main.rs` one folder below them) | the folder stamps above | a reload (§6): the crate graph changed. The engine's own rule, copied: `should_refresh_for_change` in rust-analyzer's `crates/rust-analyzer/src/reload.rs`, which is not in a published `ra_ap_*` crate |
 | a manifest, a lock, the toolchain and cargo config files, a `build.rs` when build scripts ran (`environment_inputs`) | their stamps | a reload (§6): seconds |
 | a dependency's source (the registry, the sysroot) | not stamped | nothing. Cargo does not change the source of a published version, and a new version changes `Cargo.lock`, which is stamped. A registry file edited by hand needs `reload`: TypeScript's `node_modules` rule (D41 a) |
 | text the editor has not saved | not read (D42) | when the contract adds the text: the same `apply_change` with the buffer's text, and `None` for "back to the disk". Cheap here, unlike TypeScript |
 | the outline cache | per request (RS4 §5) | an edit cannot leave a stale one |
 
 `refresh` takes `&mut self`, so the borrow checker guarantees no request is running on the old text (RS3 §5's note).
+
+**Checked at the pin (`ra_ap_* 0.0.358`, 2026-11-19, by reading the source).** Everything the table needs is public:
+
+| Item | Crate | What it does |
+|---|---|---|
+| `Vfs::set_file_contents(path, Option<Vec<u8>>) -> bool` | `ra_ap_vfs` | gives a new path a new `FileId`; `None` is a deletion; returns `false` when the bytes hash the same, so a file touched and not changed costs nothing |
+| `Vfs::take_changes()` | `ra_ap_vfs` | the changes since the last call, each `Create`, `Modify` or `Delete`; drain it after each refresh, as the load does |
+| `ChangeWithProcMacros::change_file(FileId, Option<String>)`, `set_roots(Vec<SourceRoot>)` | `ra_ap_hir_expand` (re-exported by `ra_ap_ide_db`) | one transaction; `FileChange` (`ra_ap_base_db`) is the part inside it |
+| `RootDatabase::apply_change(&mut self, ChangeWithProcMacros)` | `ra_ap_ide_db` | applies it; salsa then recomputes only what read the changed inputs |
+| `ProjectFolders::new(&[ProjectWorkspace], &[], None).source_root_config` | `ra_ap_load_cargo` | `load_workspace` builds this and **does not return it**, so `sem` builds its own copy from a clone of the `ProjectWorkspace` (`Clone`) before the load takes it, and keeps it in `Loaded` |
+| `SourceRootConfig::partition(&Vfs) -> Vec<SourceRoot>`, `path_is_library(&VfsPath)` | `ra_ap_load_cargo` | the source roots again after a file was created or deleted; whether a path is a dependency's or the sysroot's (a path in no file set is *not* a library: such a file is stamped) |
+
+A file whose bytes are not UTF-8 gets `change_file(id, None)`, as it had no text after the load either (the load skips it).
 
 **What the review of TypeScript's step 6 found holds here too** (2026-11-17,
 [`../../03-typescript/11-step6-text-and-disk.md`](../../03-typescript/11-step6-text-and-disk.md) §4, §5). Each is a test in step 3 or 4:
@@ -108,28 +134,29 @@ A cancelled request returns what it has, marked `Incomplete`; cut summaries are 
 
 ## 5. The memo
 
-- **Way 1, as TypeScript:** any change `refresh` applies (a file's text, a reload) drops the whole memo. A summary is one body's sites; recomputing is cheap next to what salsa
-  keeps for us (the types). **[measure]** before anything smarter.
-- **One thing core's token must not assume:** TS5 describes a token as "`ContextId` plus a child offset". A `ContextId` holds a
-  *digest* of the key, and a digest cannot be turned back into a key. With `Key = ()` that does not matter. With layer 2 it does:
-  `expand(token)` must find the `(function, key)` again. So the session resolves a token by **looking the id up** in the contexts it has
-  listed (the owned memo of §2 has them), never by decoding it; an id it does not know is `Stale`. Building TS5 step 1 that way costs
-  nothing now and is the difference between layer 2 working with `expand` and not.
+- **There is none between requests** (§2, as built). So a change has no memo to drop: the next request builds its solver over the
+  changed database. What salsa keeps is invalidated by salsa.
+- **One thing core's token must not assume, when tokens are built (TS5 step 2b, D31):** TS5 describes a token as "`ContextId` plus a
+  child offset". A `ContextId` holds a *digest* of the key, and a digest cannot be turned back into a key. With `Key = ()` that does not
+  matter. With layer 2 it does: `expand(token)` must find the `(function, key)` again. So a session resolves a token by **looking the id
+  up** in the contexts it has listed, never by decoding it; an id it does not know is `Stale`. TS5's "Later: tokens as cursors" already
+  keeps a table of what was listed, which is that lookup.
 
 ## 6. Reload
 
-`reload()` loads the workspace again (`cargo metadata` and all) and drops the memo. `refresh` does the same by itself when the stamp of
-something in `environment_inputs()` changed; the driver calls `reload` only for what `refresh` cannot see (§3: a dependency's source
-edited by hand). It is the slow path, seconds; a saved file applied by `refresh` is the fast one.
+`reload()` loads the workspace again (`cargo metadata` and all), with the `LoadOptions` the session was opened with. The old `Project` is
+dropped first (§3 point 4). `refresh` does the same by itself when the stamp of something in `environment_inputs()` changed, or when a
+`.rs` file was created or deleted where cargo finds a target (§3's table); the driver calls `reload` only for what `refresh` cannot see
+(§3: a dependency's source edited by hand). It is the slow path, seconds; a saved file applied by `refresh` is the fast one.
 
 ## 7. Steps
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | (if not built) core: `Budget`, lazy render, tokens by lookup, paging; the memo in and out of the solver | TS5's step-1 and step-2 tests on the toy language; every language green |
-| 2 | `Session::open / tree / expand` | expanding under every cut node of a scenario gives the same tree as one unbounded request |
-| 3 | `refresh`: a saved file applied to the database, the memo dropped (an old token is `Stale`, if core has tokens by then). No `set_text` (D42) | TypeScript step 6's cases: the callee's file rewritten (the tree follows; without `refresh` it does not, pinned); a file a `mod` names created; a callee's file deleted; nothing changed (the graph byte-identical); a file saved between the stamp and the read is read again by the next `refresh`. **[measure]** `refresh` with nothing changed on a real workspace: the files stamped and the time |
-| 4 | `reload`, and `refresh` reloading when an environment input changed | add a dependency to a fixture's `Cargo.toml` between two requests: `refresh` reloads; a `Cargo.toml` saved with a syntax error, then fixed (a warning, then clean: D37); the opened file deleted, then written back (`lost`, then back by itself) |
+| 1 | ~~core: `Budget`, the frontier, a frontier node `Cut`~~ | **done by TS5 steps 1 and 2a**; tokens and paging wait for TS5 2b (D31) |
+| 2 | `Session::open / graph` (**done, ac0c34b, reviewed 2026-11-19**) | with `Budget::default()` a session's graph is `call_graph`'s, for every entry of the policy and context workspaces; a budget changes the graph (depth 0, `max_contexts`); at `max_depth` 1, 2 and 3, replacing each frontier node by the tree of a new request for its def gives the unbounded tree (48, 4 and 1 frontier nodes over all entries), with the ancestor rule (a def on the path above is a `Recursive` leaf), which a test shows is needed. The entries cover every scenario's shape (straight line, two callers, a method, a construction, an external call, direct and mutual recursion) |
+| 3 | `refresh`, the fast path: the stamps (in the `Session`, §3 point 1), a saved file applied to the database, a created or deleted file applied with the roots partitioned again (§3's table, the rows with no reload). No `set_text` (D42); no reload yet | TypeScript step 6's cases: the callee's file rewritten (the graph follows; without `refresh` it does not, pinned); a file a `mod` names created (and the `mod` line saved in the same refresh); a callee's file deleted; nothing changed (the graph byte-identical, and the `Vfs` sees no change); a file saved between the stamp and the read is read again by the next `refresh`; no folder above the root is stamped; `Session: Send`. **[measure]** on `core/` and on one bigger workspace: `refresh` with nothing changed (the files and folders stamped, the time), one saved file (the time, and the next request's), the first and a second request for the same entry |
+| 4 | `reload`; `refresh` reloading when an environment input changed or a target file was created or deleted (§3's table); `lost` | add a dependency to a fixture's `Cargo.toml` between two requests: `refresh` reloads; `src/bin/new.rs` created: a reload, and its defs found; a `Cargo.toml` saved with a syntax error, then fixed (a warning, then clean: D37); the opened file deleted, then written back (`lost`, then back by itself); the old database dropped before the new one is built. **[measure]** a reload's time and the database's footprint on a real workspace |
 | 5 | the cancel measurement of §4, written in `ENGINE.md`; engine-side cancel only if it asks | the number |
 | 6 | `rust-cli calls --depth --max-nodes`, and an interactive `expand` | by hand |
 | | **tag `rust-v0.3.0`** | tier-3 conformance in the driver (`vnoc`) |
