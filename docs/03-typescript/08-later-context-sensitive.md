@@ -103,4 +103,19 @@ The last-but-one row deserves a second look: **measure before deciding.** After 
 their reasons is the business case for context sensitivity. If 95% of sites resolve in typed TypeScript, C2 may be all that is ever needed there,
 and the effort belongs in JavaScript (C1) or in another language.
 
+**Measured, 2026-11-19 (reviewer; V-NOC `TaskDetailPanel`, the 86 `Unresolved` edges, all `function_typed_value`, counted by the text of
+the callee, read from the graph):**
+
+| What is called | Edges | What would resolve it |
+|---|---|---|
+| a state setter (`setAddingSubtask`, `setNavStack`, …; 17 names) | 43 | not C3: the setter is a value a library call returned (`useState`). A policy answer (an `External` of the library), or nothing |
+| a callback prop (`onClose`, `onSelect`, `onNavigateToNode`, …; 15 names) | 19 | **C3**: the function the parent passed. The same entry has 18 `passed` edges, the other end of these calls |
+| a store hook built by a call (`useVersioningStore`, `useProjectStore`, …) | 16 | C4 (what a call returns) and the library that built it |
+| other value holders (`getMergedChildren`, `IconComponent`, `Comp`, `buttonVariants`, …) | 8 | C1 or C3, case by case |
+
+So on this entry parameters in the key (C3) answer 19 of 86, about a fifth, and half of the rest is one React idiom that no step of §3
+reaches. V-NOC is one style (function components, hooks, stores). The same count on projects of other styles (classes behind interfaces,
+callbacks, plain JavaScript) is what decides the order of §3; one number for all of `function_typed_value` cannot, so the count needs a
+split by what holds the function (a parameter or prop, a binding made from a call's result, a property, a variable).
+
 Next: [`../04-rust/README.md`](../04-rust/README.md)
