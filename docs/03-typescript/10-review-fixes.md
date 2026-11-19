@@ -307,8 +307,8 @@ build stops, a release build counts the call as `Unresolved` with the reason `de
 | a property of function type (`{ m: () => void }`), a call or construct signature, a function type alias | `Unresolved(function_typed_value)` (D16) |
 | an abstract method, a method of a `declare class`, an interface in `declare global` | a def |
 | an index signature, `Record<string, () => void>` | `Unresolved(no_declaration)` |
-| **a method signature in a type literal**: under an alias, a parameter's type, a nested member, a return type, a generic argument, a `declare const`, a class property's type, a constraint (`T extends { m(): void }`), an intersection, through `Pick`, optional (`m?()`), with overloads, called as a template tag | **panic** (16 of the 28) |
-| **an accessor signature**: `get v(): number` or `set v(x)` in a type literal, **and in an interface** | **panic** |
+| **a method signature in a type literal**: under an alias, a parameter's type, a nested member, a return type, a generic argument, a `declare const`, a class property's type, a constraint (`T extends { m(): void }`), an intersection, through `Pick`, optional (`m?()`), with overloads, called as a template tag | **panic** (14 of the 28 cases) |
+| **an accessor signature**: `get v(): number` or `set v(x)` in a type literal, **and in an interface** | **panic** (3 cases; 17 of the 28 in all) |
 
 **Why no test found it.** The tests come from two lists: the policy table, whose rows were written from the kinds of call *site* and of
 callee expression, and the sweep over two real projects. The table has the interface's method and the function-typed property, the two
