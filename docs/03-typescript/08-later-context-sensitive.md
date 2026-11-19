@@ -118,4 +118,7 @@ reaches. V-NOC is one style (function components, hooks, stores). The same count
 callbacks, plain JavaScript) is what decides the order of §3; one number for all of `function_typed_value` cannot, so the count needs a
 split by what holds the function (a parameter or prop, a binding made from a call's result, a property, a variable).
 
+**Decided (D43, 2026-11-19):** the design of C3 is written after that split has been counted on the wider corpus
+([`10-review-fixes.md`](10-review-fixes.md) §6.1), not before.
+
 Next: [`../04-rust/README.md`](../04-rust/README.md)
