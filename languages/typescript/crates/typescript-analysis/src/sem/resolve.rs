@@ -35,6 +35,53 @@ pub(crate) struct SiteFacts {
     pub(crate) getter_result: bool,
     /// How many targets of the site are source files outside the root (`Resolved::External::outside_root`), once per target.
     pub(crate) outside_root: u64,
+    /// Where the function of a `function_typed_value` answer comes from, when the site has one (`FunctionOrigin`).
+    pub(crate) function_typed: Option<FunctionOrigin>,
+}
+
+/// Where the function a `function_typed_value` call goes through comes from, told by the **leftmost name** of the callee expression: `onClose` in `onClose()`,
+/// `props` in `props.onClose()`, `fs` in `fs.existsSync(p)`. Parentheses, assertions, `!` and `?.` are looked through; a call in the way (`make().run()`) has no
+/// leftmost name. It says, per project, how much each step of the context layer would answer (`docs/03-typescript/08-later-context-sensitive.md` §3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FunctionOrigin {
+    /// A parameter, or a name taken out of one by a pattern (`function Panel({ onClose })`).
+    Parameter,
+    /// A variable, or a name taken out of one by a pattern, whose initializer is a call (`const [open, setOpen] = useState()`, `const useStore = create(…)`).
+    CallResult,
+    /// `this`.
+    This,
+    /// Anything else, a callee with no leftmost name included.
+    Other,
+}
+
+impl FunctionOrigin {
+    /// Every origin, in the order the breakdown says them.
+    pub(crate) const ALL: [FunctionOrigin; 4] = [
+        FunctionOrigin::Parameter,
+        FunctionOrigin::CallResult,
+        FunctionOrigin::This,
+        FunctionOrigin::Other,
+    ];
+
+    /// The key in `Stats.language`, beside `function_typed_value`, whose count is the sum of these four.
+    pub(crate) fn counter(self) -> &'static str {
+        match self {
+            FunctionOrigin::Parameter => "function_typed_value_from_parameter",
+            FunctionOrigin::CallResult => "function_typed_value_from_call_result",
+            FunctionOrigin::This => "function_typed_value_from_this",
+            FunctionOrigin::Other => "function_typed_value_from_other",
+        }
+    }
+
+    /// What the breakdown calls it.
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            FunctionOrigin::Parameter => "a parameter",
+            FunctionOrigin::CallResult => "a call's result",
+            FunctionOrigin::This => "this",
+            FunctionOrigin::Other => "something else",
+        }
+    }
 }
 
 /// What runs when a class is constructed: the first constructor up its chain of base classes, since a class with none uses its base's.
@@ -124,7 +171,44 @@ impl Sem {
                 )
             })
             .count() as u64;
+        if found.contains(&Resolved::Unknown(Why::FunctionTypedValue)) {
+            facts.function_typed = self.function_origin(func, site_index, style);
+        }
         (found, facts)
+    }
+
+    /// Where the function of the site comes from (`FunctionOrigin`), read from the leftmost name of its callee expression. `None` when the def has no body to
+    /// read the site from.
+    fn function_origin(
+        &self,
+        func: Func<'_>,
+        site_index: usize,
+        style: MarkerStyle<'_>,
+    ) -> Option<FunctionOrigin> {
+        let calls = self.body(func, style)?;
+        let callee = calls.sites.get(site_index)?.expr;
+        let _scope = self.region.enter();
+        let mut checker = self.checker();
+        let Some(name) = leftmost_name(callee) else {
+            return Some(FunctionOrigin::Other);
+        };
+        if name.kind() == Kind::ThisKeyword {
+            return Some(FunctionOrigin::This);
+        }
+        let Some(mut symbol) = checker.get_symbol_at_location_exported(name) else {
+            return Some(FunctionOrigin::Other);
+        };
+        // through an import: the declaration it leads to
+        if symbol.flags().intersects(SymbolFlags::Alias) {
+            symbol = checker.get_aliased_symbol(symbol);
+        }
+        let origin = symbol
+            .declarations()
+            .first()
+            .map_or(FunctionOrigin::Other, |declaration| {
+                origin_of_declaration(*declaration)
+            });
+        Some(origin)
     }
 
     fn callee_found(
@@ -656,6 +740,56 @@ impl Sem {
             def.range,
         )
     }
+}
+
+/// The leftmost name of a callee expression: an identifier or `this`. `a.b`, `a[b]` and `a?.b` go to `a`; parentheses, assertions and `!` are looked through.
+/// Anything else (a call, a literal, `super`) has none.
+fn leftmost_name(callee: P<Node>) -> Option<P<Node>> {
+    let mut node = unwrap_expression(callee);
+    loop {
+        match node.kind() {
+            Kind::Identifier | Kind::ThisKeyword => return Some(node),
+            Kind::PropertyAccessExpression | Kind::ElementAccessExpression => {
+                node = unwrap_expression(node.expression()?);
+            }
+            _ => return None,
+        }
+    }
+}
+
+/// What a name's declaration says about where its value comes from: a parameter (or a binding taken out of one), a variable with a call as its initializer
+/// (or a binding taken out of one), anything else.
+fn origin_of_declaration(declaration: P<Node>) -> FunctionOrigin {
+    let mut node = declaration;
+    // a binding element is inside a pattern, which is inside a binding element, a parameter or a variable
+    while node.kind() == Kind::BindingElement {
+        let Some(pattern) = node.parent() else {
+            return FunctionOrigin::Other;
+        };
+        let Some(owner) = pattern.parent() else {
+            return FunctionOrigin::Other;
+        };
+        node = owner;
+    }
+    match node.kind() {
+        Kind::Parameter => FunctionOrigin::Parameter,
+        Kind::VariableDeclaration if node.initializer().is_some_and(is_a_call_result) => {
+            FunctionOrigin::CallResult
+        }
+        _ => FunctionOrigin::Other,
+    }
+}
+
+/// Whether `initializer` is a call, under parentheses, assertions and `await`: what a call returns.
+fn is_a_call_result(initializer: P<Node>) -> bool {
+    let mut node = unwrap_expression(initializer);
+    while node.kind() == Kind::AwaitExpression {
+        let Some(inner) = node.expression() else {
+            return false;
+        };
+        node = unwrap_expression(inner);
+    }
+    node.kind() == Kind::CallExpression
 }
 
 /// A declaration with no body that stands for whatever implements it (D43): a method signature (in a type literal, an interface or `declare global`), a `get` or

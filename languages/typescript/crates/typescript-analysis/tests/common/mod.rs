@@ -184,3 +184,9 @@ fn assert_outline_gaps(graph: &Graph, gaps: u64) {
         "decl_not_in_outline: the engine's declaration is not a def of the outline"
     );
 }
+
+/// The project of a case, opened (a `Project`, not a `Session`).
+pub(crate) fn open_project(case: &Case) -> Project {
+    Project::open(&case.root, Path::new(&case.file))
+        .unwrap_or_else(|error| panic!("{}: {error:?}", case.name))
+}

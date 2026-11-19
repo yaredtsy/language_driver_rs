@@ -15,7 +15,7 @@ use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary}
 use crate::Project;
 use crate::env::Env;
 use crate::key::Key;
-use crate::sem::{Func, Handed, Sem, Uncovered};
+use crate::sem::{Func, FunctionOrigin, Handed, Sem, Uncovered};
 use crate::walk;
 
 /// How to build a graph. The marker style is how a def's marker is read (`ID: …` in its JSDoc).
@@ -251,6 +251,9 @@ pub struct Breakdown {
     /// from `Stats.language`). The edge is a known class, so it is not `unresolved`, but it is not complete. Only these two keys: the heading of `Display`
     /// says what they are, so another counter is added to a field of its own.
     pub notes: BTreeMap<String, u64>,
+    /// `function_typed_value` by where the function comes from, the leftmost name of the callee (`from_parameter`, `from_call_result`, `from_this`,
+    /// `from_other`, from `Stats.language`): the values sum to `reasons["function_typed_value"]`. Only the origins above 0.
+    pub function_typed: BTreeMap<String, u64>,
     /// Defs a walked body hands over that no edge of the graph reaches, written inside an expression (`run({ onSuccess() {} })`, a property arrow of a
     /// literal passed on) and referenced by name (`onClick={handleClose}`). Counted once per def. Neither is an unresolved edge: the def is known and
     /// is not in the tree, because nothing calls it.
@@ -313,6 +316,14 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
     summary.outside_root = language(walk::OUTSIDE_ROOT);
     summary.duplicate_marker = language(walk::DUPLICATE_MARKER);
     summary.merged_defs = graph.stats.merged_defs;
+    summary.function_typed = FunctionOrigin::ALL
+        .iter()
+        .filter_map(|origin| {
+            let key = origin.counter();
+            let count = graph.stats.language.get(key).copied()?;
+            Some((key.strip_prefix("function_typed_value_")?.to_owned(), count))
+        })
+        .collect();
     summary.uncovered = graph
         .stats
         .language
@@ -348,6 +359,22 @@ impl fmt::Display for Breakdown {
             writeln!(f, "  unresolved by reason:")?;
             for (reason, count) in &self.reasons {
                 writeln!(f, "    {reason}: {count}")?;
+            }
+        }
+        if !self.function_typed.is_empty() {
+            writeln!(
+                f,
+                "  function_typed_value, by where the function comes from:"
+            )?;
+            // `ALL` is every origin, so none is left out
+            for origin in FunctionOrigin::ALL {
+                let key = origin
+                    .counter()
+                    .strip_prefix("function_typed_value_")
+                    .unwrap_or_default();
+                if let Some(count) = self.function_typed.get(key) {
+                    writeln!(f, "    {}: {count}", origin.label())?;
+                }
             }
         }
         if !self.notes.is_empty() {

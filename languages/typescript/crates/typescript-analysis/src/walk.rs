@@ -9,7 +9,7 @@ use typescript_syntax::MarkerStyle;
 
 use crate::calls::TypeScript;
 use crate::env::Env;
-use crate::sem::{Func, Init, Resolved, Sem, Uncovered};
+use crate::sem::{Func, Init, Resolved, Sem, Uncovered, Why};
 
 /// The reason of an `Unresolved` edge, and the key of its counter in `Stats.language`, for a def whose node is missing from the program's tree: a bug
 /// in one of the two parses, which must show on the graph and not as a body with no calls.
@@ -84,6 +84,15 @@ fn resolve<'p>(
         let (found, facts) = lang.sem.callee_with_facts(f, site_index, lang.style);
         if facts.getter_result {
             lang.note_uncovered(&[Uncovered::GetterResultCall]);
+        }
+        // the split of `function_typed_value` by where the function comes from: one note for each such edge, so the four add up to the total
+        if let Some(origin) = facts.function_typed {
+            for _ in found
+                .iter()
+                .filter(|resolved| **resolved == Resolved::Unknown(Why::FunctionTypedValue))
+            {
+                lang.note(origin.counter());
+            }
         }
         for _ in 0..facts.outside_root {
             lang.note(OUTSIDE_ROOT);
