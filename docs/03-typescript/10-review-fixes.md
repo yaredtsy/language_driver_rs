@@ -323,7 +323,7 @@ The reviewer had first chosen a def for the alias's members (`FsOperations.exist
 against it: such a def would stand where the context layer is meant to put the function that was really passed, and a def with no body
 is an empty node, which the product has no kind of node for.
 
-**Extended the same day (owner): an interface's method signature and an abstract method do not resolve either.** `w.write()` with
+**Extended the same day (owner): an interface's method signature and an abstract method do not resolve either.** In project code only: a package's or the bundled library's signature (`arr.map()` → `Array.map` in `lib.d.ts`) stays `External`. `w.write()` with
 `w: Writer` is `Unresolved(function_typed_value)`, no longer a `Call` to the leaf `Writer.write`; policy row `interface` changes to
 that, and its snapshot (`tests/snapshots/policy/interface.txt`) with it. The outline does not change: `Writer`, `Writer.write` and
 `B.m` (abstract) stay defs, so a marker on them keeps its place (rule 10). A union receiver whose member is an interface counts that
