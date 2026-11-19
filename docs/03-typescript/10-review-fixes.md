@@ -282,7 +282,7 @@ only).
 | H9 | **built, `d727c8e`.** **the warning of D34, where a person sees it.** `DefMatch` gains `owns_marker: bool` (additive: it is `#[non_exhaustive]`, `lib.rs:373`, checked), so a driver can say "this def carries `ID: SAME`, but `a` at line N owns it" without parsing the file again. `typescript-cli calls … --id X` picks the def that **owns** `X` (its id is `X`); a carrier that does not own it is not picked by `--id`, and the CLI prints which def owns it. The tree does not change | `tests/duplicate_marker.rs`: `defs_named` reports `owns_marker` for both; a CLI test of `--entry b --id SAME` (the message names `a` and its line) |
 | H11 | **built, `6c1dfc4` (D40; reviewed, accepted).** **(found at H10, 2026-11-17; decided by the owner the same day as recommended, D40) a named function expression called in place is not entered.** `(function named() { h(); })()`: the outline makes `named` a def (the engine's rule: a function expression with a name), so the enclosing body stops at it, and the call is `Unresolved` (since H10 `anonymous_function_called`, a reason that is wrong for it: the function has a name and a def). So `h` is drawn in no tree but `named`'s own, which only a request for `named` reaches; the coverage sweep cannot see it because it enters every def. The engine gives no answer either: its call hierarchy takes the callee, a `ParenthesizedExpression`, which is no declaration and has no symbol, and drops the call (`tsrs_ls/src/callhierarchy.rs:936`). **Recommended:** when the callee, under parentheses, assertions and `!`/`void`, is a function expression that `def_of` holds, the edge is `Call` to that def: the callee is the def's own node, so it is not a guess (rule 8), and it is what the row `nested` says for a named function (it appears where it is called). An anonymous one stays `anonymous_function_called`. Where it is common: UMD and bundler wrappers (`(function webpackUniversalModuleDefinition(root, factory) {…})(this, …)`) | `file-entry/src/iife-forms.ts`: the named case is a `Call` to `named` and the module's tree shows `named ▸ h`; the four anonymous ones unchanged; V-NOC and postcss goldens unchanged unless they hold a named IIFE (say which) |
 | H12 | **built, `c6835fe` (reviewed, accepted; (a) decided by the owner, D40 extended).** **(found at H11's review, 2026-11-17) two more defs written in place and reached without a direct call.** (a) `new (class Named { constructor() { g(); } })()`: the class expression is a def, and the `new` is `Unresolved(no_declaration)`, so the constructor's `g` is drawn under no caller (found by the coding session). (b) `(function wrapped() { g(); }).call(this)` and `.apply`: the site resolves to the external `Function.call`, and `wrapped`'s `g` is in no tree under the caller and **in no counter**. `uncovered_call_apply` counts a name before `.call`, not a function written there, so this is a rule 8 gap. Anonymous forms are fine: their calls are the enclosing body's. **Recommended:** (a) is D40 for a class: when the class expression of a `new`, under parentheses and assertions, is a def, the site is a `Construct` through `walk::construction`, like `new C()`. This is the owner's call (D40 names function expressions only). (b) is counted in `uncovered_call_apply`, as a name is, with no new decision (D22 step 5: call/apply is counted, not drawn) | a fixture for each, (a) in both forms, `new (class N {})()` and `new (class {})()`; V-NOC and postcss goldens unchanged |
-| H13 | **found by the owner, 2026-11-19; decided (D43); not built.** a call that resolves to a **method or accessor signature in a type literal** (`type Ops = { m(): void }`), or to an accessor signature of an interface, panics in a debug build and is `Unresolved(decl_not_in_outline)` in a release build: the outline has no def for it. §6.1 | §6.1 (c): one fixture per declaration kind |
+| H13 | **found by the owner, 2026-11-19; decided (D43: `Unresolved(function_typed_value)`, no new def); not built.** a call that resolves to a **method or accessor signature in a type literal** (`type Ops = { m(): void }`), or to an accessor signature of an interface, panics in a debug build and is `Unresolved(decl_not_in_outline)` in a release build. §6.1 | §6.1 (c): one fixture per declaration kind |
 
 **Rust note (H1).** A `std::sync::Mutex` locked twice by one thread does not return: the documentation leaves it at "will not return
 (it might panic or deadlock)". There is no error to catch, and `Cancel` is never checked, because the thread is waiting inside `lock`.
@@ -315,19 +315,14 @@ callee expression, and the sweep over two real projects. The table has the inter
 neighbours, and no row for the same member written in a type literal. Neither V-NOC nor postcss calls through one (the whole-project runs
 of both are debug builds and never stopped). Nothing listed the kinds of *declaration* the engine can answer with.
 
-**(a) The rule. Decided (D43, 2026-11-19; the owner asked the reviewer to decide):**
+**(a) The rule. Decided by the owner (D43, 2026-11-19): `Unresolved`, not a def, for now.** A call that resolves to a method signature
+in a type literal (under an alias or not), or to a `get`/`set` signature in a type literal or an interface, is
+`Unresolved(function_typed_value)`: what the same member written `m: () => void` already is (D16). The outline does not change.
 
-- a type alias whose type **is** an object type (`type Ops = { … }`): its method and accessor signatures are defs, named as an
-  interface's are (`FsOperations.existsSync`, Method). Such an alias is an interface in all but the keyword, and its members carry
-  JSDoc as an interface's do. Rule 10 allows it: a kind of def is added, no existing name changes;
-- a type literal anywhere else (a parameter's type, a nested member, a return type, a part of an intersection): it has no name of its
-  own, so the call is `Unresolved(function_typed_value)`, as the same member written `m: () => void` already is (D16);
-- an accessor signature of an interface: a def, as its method signature is (`G.v`), and as a class's accessor is.
-
-The choice not taken is `function_typed_value` for every one of them. It is simpler, and on the owner's file it gives some thirty
-`Unresolved` lines for calls whose names are written in the file. "An alias directly around it" means the alias's type is the object
-type itself: in `type A = { m(): void } & B` or `type A = Readonly<{ m(): void }>` the literal is a part of something else and has no
-name. `languages/typescript/docs/qualnames.md` and `policy.md` gain their rows when this is built.
+The reviewer had first chosen a def for the alias's members (`FsOperations.existsSync`, as an interface's). The owner's two reasons
+against it: such a def would stand where the context layer is meant to put the function that was really passed, and a def with no body
+is an empty node, which the product has no kind of node for. An `interface`'s method signature stays the def it is (policy row
+`interface`): changing that removes a kind of def, a decision of its own (rule 10).
 
 **(b) No panic on a user's code, in any build.** The `debug_assert!` at `resolve.rs:488` goes; the count stays. The tests keep their
 tripwire another way: the helper every graph test goes through fails when `decl_not_in_outline` is counted and the test did not say it
@@ -344,15 +339,36 @@ object literal, namespace, `declare`).
 every file of `Project::files()`, the total breakdown printed, a failure when `decl_not_in_outline` is not 0. The reviewer runs it on
 each new real project before the owner tries it.
 
-**The corpus (D43).** By style, not by size, each a checkout outside the repo that is only read: first the private codebase on the
-owner's machine that found H13 (about 1,900 `.ts`/`.tsx` files, no config and no packages: type-literal tables, `using`, async
-generators); then **hono** (type literals and generics) and **nest** (classes, decorators, interfaces). A bare checkout is enough for the
-sweep, since a disagreement between the engine and the outline is about project code. The unresolved counts need the packages installed
-(without them a call into a package is `any`), so those are taken on V-NOC and on one more project, chosen when the sweep has run.
+The sweep also prints what a big project costs: the time to open, the resident memory after open and after the last graph, the time
+of all the graphs, and the slowest defs.
 
-**(e) The count of `function_typed_value`, split by what holds the function** (a parameter or prop, a binding made from a call's result,
-a property, a variable): `Stats.language` keys beside the total. It is what says, per project, how much parameters in the key (C3 of
-[`08`](08-later-context-sensitive.md)) would answer; the design of C3 waits for it.
+**The corpus (D43; the owner asked for bigger projects, to test speed and memory too).** Each is a checkout outside the repo that is
+only read:
+
+| Project | Why | Size (from memory, to be counted when cloned) |
+|---|---|---|
+| the private codebase on the owner's machine that found H13 | type-literal tables, `using`, async generators | about 1,900 `.ts`/`.tsx` files, counted; no config, no packages |
+| hono | type literals and generics, small: a quick run | small |
+| **vscode**, `src` only | size; classes behind interfaces, decorators, events | thousands of files |
+| **TypeScript's own source**, `src` only | size of one file (the checker); almost no packages needed, so its calls stay in the project | hundreds of files, some of tens of thousands of lines |
+
+A bare checkout is enough for the sweep, since a disagreement between the engine and the outline is about project code. Without the
+packages a call into a package is `any`, so the unresolved counts of a bare checkout say less; TypeScript's own source is the one whose
+counts hold bare. The two large ones are fetched as a shallow, sparse checkout of `src` (the disk has a few GB free).
+
+**(e) The count of `function_typed_value`, split by where the function comes from.** Four keys in `Stats.language` beside the total,
+which stays; their sum is the total. The split is by the **leftmost name of the callee expression** (`onClose` in `onClose()`, `props` in
+`props.onClose()`, `fs` in `fs.existsSync(p)`):
+
+| Key | The leftmost name is | What would answer it ([`08`](08-later-context-sensitive.md) §3) |
+|---|---|---|
+| `function_typed_value_from_parameter` | a parameter, or a name taken out of a parameter by a pattern (`function Panel({ onClose })`) | C3, parameters in the key |
+| `function_typed_value_from_call_result` | a variable, or a name taken out by a pattern, whose initializer is a call (`const [open, setOpen] = useState()`, `const useStore = create(…)`) | C4, what a call returns |
+| `function_typed_value_from_this` | `this` (`this.handler()`, `this.fs.exists()`) | C5, attributes |
+| `function_typed_value_from_other` | anything else | case by case |
+
+It is what says, per project, how much each step of the context layer would answer; the design of C3 waits for it. On V-NOC's
+`TaskDetailPanel` the count by hand ([`08`](08-later-context-sensitive.md) §5) expects about 19, 59, 0 and 8.
 
 ## 7. The stack
 
