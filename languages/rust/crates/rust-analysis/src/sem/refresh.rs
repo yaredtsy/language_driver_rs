@@ -5,27 +5,64 @@
 //! file's folder up to its package root and never above the project root. A folder's modified time moves when an entry is created or deleted in it, so that is
 //! how a new file is found: the folder is listed again, the way the load listed it (same extensions, same excludes).
 //!
-//! Not here yet (step 4): the manifests, locks and toolchain files, and a `.rs` file created or deleted where cargo finds a target by itself. Those change
-//! the crate graph, and need a reload, not this.
+//! What makes the workspace load again instead (`Disk::Reload`): an environment input that moved (a manifest, a lock, a toolchain or cargo config file, a
+//! `build.rs` when build scripts ran), or a `.rs` file created or deleted where cargo finds a target by itself (`targets.rs`). Those change the crate
+//! graph; this module only detects them.
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
-use ra_ap_ide_db::ChangeWithProcMacros;
+use ra_ap_ide_db::{ChangeWithProcMacros, RootDatabase};
 use ra_ap_vfs::loader::Entry;
-use ra_ap_vfs::{AbsPath, AbsPathBuf, Change, VfsPath};
+use ra_ap_vfs::{AbsPath, AbsPathBuf, Change, ChangeKind, Vfs, VfsPath};
 
 use super::load::{Folders, Loaded};
 use super::stamps::{Stamp, Stamps};
+use super::targets::should_refresh_for_change;
 use crate::paths;
 
+/// What `follow_disk` did.
+pub(crate) enum Disk {
+    /// The changes of the disk are in the database (possibly none: a file touched and not changed).
+    Applied,
+    /// The crate graph may have changed: nothing was read or applied, and the workspace must be loaded again.
+    Reload,
+}
+
 impl Loaded {
-    /// The stamps of what the load read, now: each non-library `.rs` file and the folders above it (see the module's doc). Taken after the load, so a
-    /// file saved while the load ran is not seen until it is saved again.
-    pub(crate) fn stamp(&self) -> Stamps {
+    /// What to watch after a load, stamped now. `inputs` are `Project::environment_inputs()` (globs relative to the root, and exact absolute paths);
+    /// `opened` is the file the session was opened from; `before` is what was stamped just before the load, or nothing for the first load.
+    ///
+    /// A path `before` knew keeps its stamp from before the load; a path stamped for the first time is read once more and handed to the `Vfs`, because
+    /// the load read it before any stamp existed: a file saved while the load ran would otherwise have a stamp that describes the new text while the
+    /// database holds the old. The `Vfs` compares the bytes, so a file that did not change costs a read and a hash and applies nothing.
+    pub(crate) fn watch(&mut self, inputs: &[String], opened: &str, before: &Stamps) -> Stamps {
+        #[cfg(test)]
+        run_after_load();
+
+        let (mut fresh, files) = self.stamp();
+        for path in self.input_paths(inputs) {
+            fresh.add_input(&path);
+        }
+        fresh.add_kept(opened);
+        let mut stamps = fresh.keeping(before);
+
+        let new: BTreeSet<String> = files
+            .into_iter()
+            .filter(|file| !before.contains(file))
+            .collect();
+        let (db, vfs, folders, _) = self.follow();
+        apply(db, vfs, folders, &new);
+        stamps.forget_missing();
+        stamps
+    }
+
+    /// The stamps of what the load read, now: each non-library `.rs` file and the folders above it (see the module's doc); and the files, as engine text.
+    fn stamp(&self) -> (Stamps, Vec<String>) {
         let folders = self.folders();
         let includes = includes(folders);
         let mut stamps = Stamps::default();
+        let mut files = Vec::new();
         for (_, path) in self.vfs().iter() {
             let Some(file) = path.as_path() else { continue };
             if file.extension() != Some("rs") || folders.roots.path_is_library(path) {
@@ -35,37 +72,98 @@ impl Loaded {
                 continue;
             };
             stamps.add(&text);
+            files.push(text);
             let Some(dir) = file.parent() else { continue };
             watch_folders(&mut stamps, dir.as_ref(), &includes, self.root());
         }
-        stamps
+        files.sort();
+        (stamps, files)
     }
 
-    /// Looks at the disk and tells the database what changed, in one transaction. `known` is what the last look saw; `None` when nothing moved (nothing
-    /// is read), else the stamps for the next look.
+    /// The paths `inputs` name, as engine text. A glob (`**/Cargo.toml`) is resolved now, for the load: the name in the project root and in each package
+    /// root under it (it may be missing: its creation is then seen), and in any other folder of the project where the load found a file of that name. An
+    /// exact path (a manifest outside the root) is as it is.
+    fn input_paths(&self, inputs: &[String]) -> BTreeSet<String> {
+        let (folders, root) = (self.folders(), self.root());
+        let suffixes: Vec<&str> = inputs
+            .iter()
+            .filter_map(|input| input.strip_prefix("**/"))
+            .collect();
+        let names: Vec<&str> = suffixes
+            .iter()
+            .filter_map(|suffix| suffix.rsplit('/').next())
+            .collect();
+        let mut found: BTreeSet<String> = inputs
+            .iter()
+            .filter(|input| !input.starts_with("**/"))
+            .cloned()
+            .collect();
+
+        let mut dirs: Vec<PathBuf> = vec![root.to_path_buf()];
+        dirs.extend(
+            includes(folders)
+                .into_iter()
+                .filter(|include| paths::relative(root, Path::new(include)).is_some())
+                .map(PathBuf::from),
+        );
+        for dir in &dirs {
+            for suffix in &suffixes {
+                found.extend(paths::engine_text(&dir.join(suffix)));
+            }
+        }
+        for (_, path) in self.vfs().iter() {
+            let Some(file) = path.as_path() else { continue };
+            if !file.file_name().is_some_and(|name| names.contains(&name))
+                || folders.roots.path_is_library(path)
+                || paths::relative(root, file.as_ref()).is_none()
+            {
+                continue;
+            }
+            let Some(text) = paths::engine_text(file.as_ref()) else {
+                continue;
+            };
+            if suffixes
+                .iter()
+                .any(|suffix| text.ends_with(&format!("/{suffix}")))
+            {
+                found.insert(text);
+            }
+        }
+        found
+    }
+
+    /// Looks at the disk and tells the database what changed, in one transaction. `known` is what the last look saw and `now` what the disk says of the
+    /// same paths (taken by the caller, before anything here reads); `now` also gets the paths found here, stamped before they are read, and is what the
+    /// next look compares with.
     ///
     /// A saved file is read and given to the `Vfs`; a created or deleted one also splits the files into source roots again (the module tree looks a `mod`
     /// up in the roots); a file that is not UTF-8 has no text, as after the load. **Stamp first, read second**: every stamp here is taken before the
     /// bytes it describes are read, so a file saved in between has a newer stamp than the one kept, and the next look reads it again.
-    pub(crate) fn follow_disk(&mut self, known: &Stamps) -> Option<Stamps> {
-        let mut now = known.restamped();
-        let moved: Vec<&str> = known
+    ///
+    /// An input that moved, or a created or deleted `.rs` file where cargo finds a target by itself, is `Disk::Reload`: nothing is read.
+    pub(crate) fn follow_disk(&mut self, known: &Stamps, now: &mut Stamps) -> Disk {
+        let moved: Vec<String> = known
             .iter()
             .filter(|&(path, stamp)| now.get(path) != Some(stamp))
-            .map(|(path, _)| path)
+            .map(|(path, _)| path.to_owned())
             .collect();
-        if moved.is_empty() {
-            return None;
+        if moved.iter().any(|path| known.is_input(path)) {
+            return Disk::Reload;
         }
 
         let (db, vfs, folders, _) = self.follow();
         let mut to_read: BTreeSet<String> = BTreeSet::new();
         let mut to_list: Vec<String> = Vec::new();
-        for path in moved {
+        let mut deleted: Vec<&str> = Vec::new();
+        let mut created: Vec<String> = Vec::new();
+        for path in &moved {
             if known.get(path).is_some_and(Stamp::is_dir) {
-                to_list.push(path.to_owned());
+                to_list.push(path.clone());
             } else {
-                to_read.insert(path.to_owned());
+                to_read.insert(path.clone());
+                if now.get(path) == Some(Stamp::Missing) {
+                    deleted.push(path);
+                }
             }
         }
 
@@ -103,53 +201,71 @@ impl Loaded {
                     && listed(folders, &abs, false)
                 {
                     now.add(&text);
+                    created.push(text.clone());
                     to_read.insert(text);
                 }
             }
         }
 
-        for path in &to_read {
-            let Ok(abs) = AbsPathBuf::try_from(path.as_str()) else {
-                continue;
-            };
-            // a file that cannot be read is gone, as the load reads it
-            let bytes = read(path);
-            vfs.set_file_contents(VfsPath::from(abs), bytes);
+        let target_changed = |path: &str, kind| {
+            AbsPathBuf::try_from(path).is_ok_and(|abs| should_refresh_for_change(&abs, kind, &[]))
+        };
+        if created
+            .iter()
+            .any(|path| target_changed(path, ChangeKind::Create))
+            || deleted
+                .iter()
+                .any(|path| target_changed(path, ChangeKind::Delete))
+        {
+            return Disk::Reload;
         }
 
-        #[cfg(test)]
-        run_after_read();
-
-        let mut change = ChangeWithProcMacros::default();
-        let mut any = false;
-        let mut created_or_deleted = false;
-        for (id, file) in vfs.take_changes() {
-            any = true;
-            let text = match file.change {
-                Change::Create(bytes, _) => {
-                    created_or_deleted = true;
-                    String::from_utf8(bytes).ok()
-                }
-                Change::Modify(bytes, _) => String::from_utf8(bytes).ok(),
-                Change::Delete => {
-                    created_or_deleted = true;
-                    None
-                }
-            };
-            change.change_file(id, text);
-        }
-        // a file touched and not changed is not a change: the `Vfs` compares the bytes
-        if any {
-            if created_or_deleted {
-                change.set_roots(folders.roots.partition(vfs));
-            }
-            #[cfg(test)]
-            APPLIES.with(|n| n.set(n.get() + 1));
-            db.apply_change(change);
-        }
-
+        apply(db, vfs, folders, &to_read);
         now.forget_missing();
-        Some(now)
+        Disk::Applied
+    }
+}
+
+/// Reads each of `paths` (engine text) and gives it to the `Vfs`, then hands what changed to the database in one transaction. A file that cannot be
+/// read is gone, as the load reads it; one that is not UTF-8 has no text.
+fn apply(db: &mut RootDatabase, vfs: &mut Vfs, folders: &Folders, paths: &BTreeSet<String>) {
+    for path in paths {
+        let Ok(abs) = AbsPathBuf::try_from(path.as_str()) else {
+            continue;
+        };
+        let bytes = read(path);
+        vfs.set_file_contents(VfsPath::from(abs), bytes);
+    }
+
+    #[cfg(test)]
+    run_after_read();
+
+    let mut change = ChangeWithProcMacros::default();
+    let mut any = false;
+    let mut created_or_deleted = false;
+    for (id, file) in vfs.take_changes() {
+        any = true;
+        let text = match file.change {
+            Change::Create(bytes, _) => {
+                created_or_deleted = true;
+                String::from_utf8(bytes).ok()
+            }
+            Change::Modify(bytes, _) => String::from_utf8(bytes).ok(),
+            Change::Delete => {
+                created_or_deleted = true;
+                None
+            }
+        };
+        change.change_file(id, text);
+    }
+    // a file touched and not changed is not a change: the `Vfs` compares the bytes
+    if any {
+        if created_or_deleted {
+            change.set_roots(folders.roots.partition(vfs));
+        }
+        #[cfg(test)]
+        APPLIES.with(|n| n.set(n.get() + 1));
+        db.apply_change(change);
     }
 }
 
@@ -233,14 +349,28 @@ thread_local! {
     /// was applied" reads them before and after.
     pub(crate) static READS: Cell<u32> = const { Cell::new(0) };
     pub(crate) static APPLIES: Cell<u32> = const { Cell::new(0) };
-    /// A test hook, run once by the next `follow_disk` that read something, after the reads: a file saved here is saved after the database was given the old
-    /// text, and the stamp kept for it is the one taken before. Nothing else can land a change there.
+    /// A test hook, run once by the next `apply`, after the reads: a file saved here is saved after the database was given the old text, and the stamp
+    /// kept for it is the one taken before. Nothing else can land a change there.
     static AFTER_READ: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    /// A test hook, run once by the next `watch`, before it stamps anything: a file saved here is saved after the load read it and before it has a stamp.
+    static AFTER_LOAD: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
 }
 
 #[cfg(test)]
 pub(crate) fn after_the_next_read(hook: impl FnOnce() + 'static) {
     AFTER_READ.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+}
+
+#[cfg(test)]
+pub(crate) fn after_the_next_load(hook: impl FnOnce() + 'static) {
+    AFTER_LOAD.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+}
+
+#[cfg(test)]
+fn run_after_load() {
+    if let Some(hook) = AFTER_LOAD.with(|slot| slot.borrow_mut().take()) {
+        hook();
+    }
 }
 
 #[cfg(test)]
@@ -259,6 +389,7 @@ mod tests {
 
     use super::*;
     use crate::sem::common::{copy_of_fixture, one_load, write};
+    use crate::sem::load::alive;
     use crate::{Budget, Cancel, Entry, LoadOptions, MarkerStyle, Options, RenderOptions, Session};
 
     fn open(root: &Path, file: &str) -> Session {
@@ -425,16 +556,155 @@ mod tests {
         );
     }
 
-    /// `core/` is copied (no `target/`) and the copy is the project: a saved file must not touch the repo.
-    fn copy_of_core(name: &str) -> PathBuf {
-        let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../core");
+    fn made() -> u32 {
+        alive::MADE.with(Cell::get)
+    }
+
+    /// Makes the manifest longer: a save of an environment input.
+    fn save_manifest(root: &Path) {
+        grow(&root.join("Cargo.toml"));
+    }
+
+    /// Nothing moved: no load. A manifest saved: one load, and at no moment two databases alive, because the old project is dropped before the new one is
+    /// built. `reload` is the same. A session dropped frees its database.
+    #[test]
+    fn a_reload_drops_the_old_database_first_and_nothing_moved_loads_nothing() {
+        let _load = one_load();
+        let root = copy_of_fixture("refresh", "refresh_one_database");
+        alive::PEAK.with(|peak| peak.set(alive::ALIVE.with(Cell::get)));
+        let started = made();
+        let mut session = open(&root, "src/lib.rs");
+        assert_eq!(made(), started + 1);
+        assert_eq!(alive::ALIVE.with(Cell::get), 1);
+
+        for _ in 0..3 {
+            assert!(!session.refresh().reopened);
+        }
+        assert_eq!(made(), started + 1, "nothing moved: nothing loaded");
+
+        save_manifest(&root);
+        let refreshed = session.refresh();
+        assert!(refreshed.reopened, "an environment input moved");
+        assert_eq!(made(), started + 2);
+        assert!(session.reload().reopened);
+        assert_eq!(made(), started + 3);
+        assert!(!session.refresh().reopened, "and then nothing moved again");
+
+        assert_eq!(
+            alive::PEAK.with(Cell::get),
+            1,
+            "one database alive at most, through two reloads"
+        );
+        assert_eq!(alive::ALIVE.with(Cell::get), 1);
+        drop(session);
+        assert_eq!(
+            alive::ALIVE.with(Cell::get),
+            0,
+            "dropping the session frees it"
+        );
+    }
+
+    /// A lost session has no database at all, loads nothing while nothing moved, and loads when a path it watches moves.
+    #[test]
+    fn a_lost_session_holds_no_database_and_loads_only_when_a_stamp_moves() {
+        let _load = one_load();
+        let root = copy_of_fixture("refresh", "refresh_lost_counts");
+        let mut session = open(&root, "src/lib.rs");
+        let lib = root.join("src/lib.rs");
+        let text = std::fs::read_to_string(&lib).unwrap();
+        std::fs::remove_file(&lib).unwrap();
+
+        let before = made();
+        assert!(
+            session.refresh().lost.is_some(),
+            "the file it was opened from is gone"
+        );
+        assert_eq!(made(), before, "the load failed before a database was made");
+        assert_eq!(alive::ALIVE.with(Cell::get), 0, "and the old one is gone");
+        for _ in 0..3 {
+            assert!(session.refresh().lost.is_some());
+        }
+        assert_eq!(made(), before, "nothing moved: nothing attempted");
+
+        write(&lib, &text);
+        let back = session.refresh();
+        assert!(back.reopened && back.lost.is_none());
+        assert_eq!(made(), before + 1);
+    }
+
+    /// A file saved after the load read it and before it has a stamp: the stamp describes the new text, so the load's text is read once more, and the graph
+    /// after `open` has the new text with no `refresh`. (Without the re-read the stamp matches the disk, the database holds the old text, and nothing
+    /// would ever notice.)
+    #[test]
+    fn a_file_saved_between_the_load_and_the_stamps_is_in_the_graph_after_open() {
+        let _load = one_load();
+        let root = copy_of_fixture("refresh", "refresh_open_window");
+        let callee = root.join("src/callee.rs");
+        let saved = std::fs::read_to_string(&callee)
+            .unwrap()
+            .replace("first();", "second();");
+        after_the_next_load(move || write(&callee, &saved));
+
+        let mut session = open(&root, "src/lib.rs");
+        let (_, names) = tree(&session, "src/lib.rs", "entry");
+        assert!(
+            names.iter().any(|name| name.ends_with("second")),
+            "{names:?}"
+        );
+        assert!(
+            !names.iter().any(|name| name.ends_with("first")),
+            "{names:?}"
+        );
+
+        let reads_before = reads();
+        assert!(!session.refresh().reopened);
+        assert_eq!(
+            reads(),
+            reads_before,
+            "and the stamp matches: nothing moved"
+        );
+    }
+
+    /// The same window in a reload: a path the session knew keeps the stamp taken before the load, so a file saved during it is read by the next look; one
+    /// that was not known is read once more at once.
+    #[test]
+    fn a_file_saved_during_a_reload_is_seen_by_the_next_refresh() {
+        let _load = one_load();
+        let root = copy_of_fixture("refresh", "refresh_reload_window");
+        let mut session = open(&root, "src/lib.rs");
+        let callee = root.join("src/callee.rs");
+        let saved = std::fs::read_to_string(&callee)
+            .unwrap()
+            .replace("first();", "second();");
+        let calls_second = |session: &Session| {
+            tree(session, "src/lib.rs", "entry")
+                .1
+                .iter()
+                .any(|name| name.ends_with("second"))
+        };
+
+        save_manifest(&root);
+        after_the_next_load(move || write(&callee, &saved));
+        assert!(session.refresh().reopened);
+        assert!(
+            !calls_second(&session),
+            "`callee.rs` was known: its stamp is from before the load, and the load read the old text"
+        );
+        let second = session.refresh();
+        assert!(!second.reopened, "a source file saved is no reload");
+        assert!(calls_second(&session), "the next look read it");
+    }
+
+    /// Copies `from` to a folder of the tests' scratch space (no `target/` and no `.git`): what is measured is saved to, and a measurement must not touch
+    /// the repo.
+    fn copy_of_workspace(from: &Path, name: &str) -> PathBuf {
         let to = crate::sem::common::tmp_root().join(name);
         let _ = std::fs::remove_dir_all(&to);
         fn copy(from: &Path, to: &Path) {
             std::fs::create_dir_all(to).unwrap();
             for entry in std::fs::read_dir(from).unwrap() {
                 let entry = entry.unwrap();
-                if entry.file_name() == "target" {
+                if entry.file_name() == "target" || entry.file_name() == ".git" {
                     continue;
                 }
                 let target = to.join(entry.file_name());
@@ -445,7 +715,7 @@ mod tests {
                 }
             }
         }
-        copy(&from, &to);
+        copy(from, &to);
         crate::paths::absolute(&to).unwrap()
     }
 
@@ -455,26 +725,74 @@ mod tests {
         (result, started.elapsed())
     }
 
-    /// RS5 step 3 `[measure]`, on a copy of `core/`: what a refresh costs when nothing changed (and how many files and folders it stamps), when one file was
-    /// saved, and what the request after it costs; and the first and second request for one entry. Printed, to be written into `ENGINE.md`.
+    /// The process's peak physical footprint, from `vmmap -summary` (macOS): what the machine counts, which `ps`'s RSS leaves out (compressed memory).
+    fn peak_footprint() -> String {
+        let pid = std::process::id().to_string();
+        match std::process::Command::new("vmmap")
+            .args(["-summary", &pid])
+            .output()
+        {
+            Ok(out) => String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter(|line| line.contains("Physical footprint"))
+                .collect::<Vec<_>>()
+                .join(" | "),
+            Err(_) => "no `vmmap` here".to_owned(),
+        }
+    }
+
+    /// RS5 steps 3 and 4 `[measure]`, on a copy of a workspace: what a refresh costs when nothing changed (and how many files and folders it stamps), when
+    /// one file was saved, and what the request after it costs; the first and second request for one entry; and what a reload costs, the next request
+    /// after it, and the process's peak footprint. Printed, to be written into `ENGINE.md`.
+    ///
+    /// The workspace comes from the environment: `RS_MEASURE_ROOT` (a folder, copied: default `core/` of this repo), `RS_MEASURE_FILE` (the file the
+    /// session is opened from, relative to the root: default `analyzer-core/src/lib.rs`) and `RS_MEASURE_ENTRY` (`<file>::<qualname>`, the def asked
+    /// for: default `analyzer-core/src/wire.rs::wire`). The load's warnings are printed, and a load that fell down the ladder (no cargo, a manifest cargo
+    /// could not read: no `std`, no dependencies) fails the test: its numbers are not the numbers of a workspace.
     ///
     /// ```text
-    /// cargo test -p rust-analysis --lib -j2 -- --ignored --nocapture --test-threads=2 refresh::tests::measure
+    /// RS_MEASURE_ROOT=/path RS_MEASURE_FILE=a/src/lib.rs RS_MEASURE_ENTRY=a/src/lib.rs::main \
+    ///   cargo test -p rust-analysis --lib -j2 -- --ignored --nocapture --test-threads=2 refresh::tests::measure
     /// ```
     #[test]
     #[ignore = "a measurement: run by hand with --ignored --nocapture"]
-    fn measure_refresh_on_core() {
+    fn measure_refresh_and_reload() {
         let _load = one_load();
-        let root = copy_of_core("refresh_measure_core");
-        let (mut session, opened) = timed(|| open(&root, "analyzer-core/src/lib.rs"));
-        let (files, folders) = session.stamps().counts();
-        println!("MEASURE open {opened:?}; stamped {files} files and {folders} folders");
+        let var =
+            |name: &str, default: &str| std::env::var(name).unwrap_or_else(|_| default.to_owned());
+        let from = std::env::var("RS_MEASURE_ROOT").map_or_else(
+            |_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../core"),
+            PathBuf::from,
+        );
+        let open_file = var("RS_MEASURE_FILE", "analyzer-core/src/lib.rs");
+        let entry = var("RS_MEASURE_ENTRY", "analyzer-core/src/wire.rs::wire");
+        let (file, qualname) = entry
+            .split_once("::")
+            .expect("RS_MEASURE_ENTRY is <file>::<qualname>");
+        let root = copy_of_workspace(&from, "refresh_measure");
 
-        let file = "analyzer-core/src/wire.rs";
-        let (first, first_time) = timed(|| tree(&session, file, "wire"));
-        let (second, second_time) = timed(|| tree(&session, file, "wire"));
+        let (mut session, opened) = timed(|| open(&root, &open_file));
+        let project = session.project().expect("a project");
+        println!("MEASURE root {}", from.display());
+        for warning in project.warnings() {
+            println!("MEASURE warning {}: {warning}", warning.code());
+        }
+        let rung = project.loaded().rung();
+        assert_eq!(
+            rung,
+            crate::sem::Rung::Cargo,
+            "the load fell down the ladder ({rung:?}, warnings {:?}): its numbers are not a workspace's",
+            project.warnings()
+        );
+        let (files, folders) = session.stamps().counts();
+        println!(
+            "MEASURE open {opened:?}; stamped {files} paths that are files and {folders} folders"
+        );
+
+        let (first, first_time) = timed(|| tree(&session, file, qualname));
+        let (second, second_time) = timed(|| tree(&session, file, qualname));
         assert_eq!(first, second);
-        println!("MEASURE request for `wire`: first {first_time:?}, second {second_time:?}");
+        println!("MEASURE request for `{qualname}`: first {first_time:?}, second {second_time:?}");
 
         let mut worst = Duration::ZERO;
         let mut total = Duration::ZERO;
@@ -488,26 +806,55 @@ mod tests {
             total / 50
         );
 
+        // one saved file that is not the entry's, then the entry's own
+        let other = session
+            .project()
+            .unwrap()
+            .files()
+            .into_iter()
+            .find(|name| name != file)
+            .expect("a second file");
         let applied = applies();
-        grow(&root.join("analyzer-core/src/text.rs"));
+        grow(&root.join(&other));
         let (_, refresh_time) = timed(|| session.refresh());
         assert_eq!(
             applies(),
             applied + 1,
             "the saved file reached the database"
         );
-        let (_, next_time) = timed(|| tree(&session, file, "wire"));
-        let (_, again_time) = timed(|| tree(&session, file, "wire"));
+        let (_, next_time) = timed(|| tree(&session, file, qualname));
+        let (_, again_time) = timed(|| tree(&session, file, qualname));
         println!(
-            "MEASURE one saved file (text.rs): refresh {refresh_time:?}, next request {next_time:?}, the one after {again_time:?}"
+            "MEASURE one saved file ({other}): refresh {refresh_time:?}, next request {next_time:?}, the one after {again_time:?}"
         );
-
-        grow(&root.join("analyzer-core/src/wire.rs"));
+        grow(&root.join(file));
         let (_, refresh_time) = timed(|| session.refresh());
         assert_eq!(applies(), applied + 2, "and the second one");
-        let (_, next_time) = timed(|| tree(&session, file, "wire"));
+        let (_, next_time) = timed(|| tree(&session, file, qualname));
         println!(
-            "MEASURE one saved file (wire.rs, the entry's own): refresh {refresh_time:?}, next request {next_time:?}"
+            "MEASURE one saved file ({file}, the entry's own): refresh {refresh_time:?}, next request {next_time:?}"
         );
+
+        // a reload, by `refresh` (a manifest saved) and by `reload`
+        let manifest = root.join(session.project().unwrap().manifest());
+        let mut text = std::fs::read_to_string(&manifest).unwrap();
+        text.push_str("\n# saved\n");
+        write(&manifest, &text);
+        let made = alive::MADE.with(Cell::get);
+        let (refreshed, reload_time) = timed(|| session.refresh());
+        assert!(refreshed.reopened, "a manifest saved is a reload");
+        assert_eq!(alive::MADE.with(Cell::get), made + 1);
+        let (_, next_time) = timed(|| tree(&session, file, qualname));
+        let (_, again_time) = timed(|| tree(&session, file, qualname));
+        println!(
+            "MEASURE reload by refresh (a manifest saved): {reload_time:?}, next request {next_time:?}, the one after {again_time:?}"
+        );
+        let (reloaded, reload_time) = timed(|| session.reload());
+        assert!(reloaded.reopened);
+        println!(
+            "MEASURE reload(): {reload_time:?}; databases alive at most {} at once",
+            alive::PEAK.with(Cell::get)
+        );
+        println!("MEASURE process {}", peak_footprint());
     }
 }

@@ -74,6 +74,42 @@ pub(crate) struct Loaded {
     skipped: Vec<(&'static str, u64)>,
     /// Manifests (and the lock) that fed the load and sit outside the root, as engine text: no glob relative to the root covers them.
     outside_inputs: Vec<String>,
+    /// Declared last: dropped after the database (fields drop in order), so a count of one means one database.
+    #[cfg(test)]
+    _alive: alive::Alive,
+}
+
+/// How many loads are alive on this thread, how many were ever made, and the most that were alive at once: a test that says "the old database is dropped
+/// before the new one is built" reads the peak. Counted in a field of `Loaded`, whose `Drop` runs when the load (and its database) is freed.
+#[cfg(test)]
+pub(crate) mod alive {
+    use std::cell::Cell;
+
+    thread_local! {
+        pub(crate) static ALIVE: Cell<u32> = const { Cell::new(0) };
+        pub(crate) static PEAK: Cell<u32> = const { Cell::new(0) };
+        pub(crate) static MADE: Cell<u32> = const { Cell::new(0) };
+    }
+
+    pub(super) struct Alive;
+
+    impl Alive {
+        pub(super) fn new() -> Alive {
+            MADE.with(|n| n.set(n.get() + 1));
+            let now = ALIVE.with(|n| {
+                n.set(n.get() + 1);
+                n.get()
+            });
+            PEAK.with(|peak| peak.set(peak.get().max(now)));
+            Alive
+        }
+    }
+
+    impl Drop for Alive {
+        fn drop(&mut self) {
+            ALIVE.with(|n| n.set(n.get() - 1));
+        }
+    }
 }
 
 /// How far down the ladder a load went (RS3 §6).
@@ -113,6 +149,8 @@ impl Loaded {
             build_error: None,
             skipped: Vec::new(),
             outside_inputs: Vec::new(),
+            #[cfg(test)]
+            _alive: alive::Alive::new(),
         }
     }
 

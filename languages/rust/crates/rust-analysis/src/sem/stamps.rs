@@ -1,7 +1,7 @@
 //! What the disk said about each path a session watches, so a later look can tell whether anything moved (RS5 §3). Plain `std`: no engine type is here, so
 //! the `Session` keeps these beside the project and not inside it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::SystemTime;
 
 /// What `std::fs::metadata` says of one path. It follows symlinks, as the engine's own load does (`follow_links(true)`), and any error is `Missing`: a
@@ -42,57 +42,108 @@ impl Stamp {
     }
 }
 
-/// The paths a session watches, each with its stamp, sorted by path (rule 9), no path twice. A path that is gone is not kept: its folder says when it
-/// comes back.
+/// The paths a session watches, each with its stamp, sorted by path (rule 9), no path twice.
+///
+/// Three kinds of path, by what happens to them:
+/// - a **watched** path (a project `.rs` file, a folder above one): when it is gone, it is forgotten, and its folder says when it comes back;
+/// - a **kept** path (an environment input, the file the session was opened from): stamped as missing and kept, so that its creation is seen;
+/// - an **input** (kept, and the engine reads it to build the crate graph: a manifest, a lock, a toolchain or cargo config file, a `build.rs` when
+///   build scripts ran): when it changes the workspace is loaded again.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Stamps(BTreeMap<String, Stamp>);
+pub(crate) struct Stamps {
+    seen: BTreeMap<String, Stamp>,
+    kept: BTreeSet<String>,
+    inputs: BTreeSet<String>,
+}
 
 impl Stamps {
     /// Stamps `path` now and keeps it, unless it is already here (the first stamp is the one taken before anything was read, and stays).
     pub(super) fn add(&mut self, path: &str) {
-        if !self.0.contains_key(path) {
-            self.0.insert(path.to_owned(), Stamp::of(path));
+        if !self.seen.contains_key(path) {
+            self.seen.insert(path.to_owned(), Stamp::of(path));
         }
     }
 
+    /// Like `add`, and the path is not forgotten when it is missing.
+    pub(crate) fn add_kept(&mut self, path: &str) {
+        self.add(path);
+        self.kept.insert(path.to_owned());
+    }
+
+    /// Like `add_kept`, and a change of the path is a reason to load the workspace again.
+    pub(super) fn add_input(&mut self, path: &str) {
+        self.add_kept(path);
+        self.inputs.insert(path.to_owned());
+    }
+
     pub(super) fn get(&self, path: &str) -> Option<Stamp> {
-        self.0.get(path).copied()
+        self.seen.get(path).copied()
     }
 
     pub(super) fn contains(&self, path: &str) -> bool {
-        self.0.contains_key(path)
+        self.seen.contains_key(path)
+    }
+
+    pub(super) fn is_input(&self, path: &str) -> bool {
+        self.inputs.contains(path)
     }
 
     /// The paths and their stamps, in path order.
     pub(super) fn iter(&self) -> impl Iterator<Item = (&str, Stamp)> {
-        self.0.iter().map(|(path, stamp)| (path.as_str(), *stamp))
+        self.seen
+            .iter()
+            .map(|(path, stamp)| (path.as_str(), *stamp))
     }
 
-    /// Forgets the paths that are not there: a file that was deleted, a folder that was removed.
+    /// Forgets the watched paths that are not there: a file that was deleted, a folder that was removed. A kept path stays.
     pub(super) fn forget_missing(&mut self) {
-        self.0.retain(|_, stamp| *stamp != Stamp::Missing);
+        let kept = &self.kept;
+        self.seen
+            .retain(|path, stamp| *stamp != Stamp::Missing || kept.contains(path));
     }
 
     /// The same paths, stamped again now: what the disk says at this moment.
-    pub(super) fn restamped(&self) -> Stamps {
-        Stamps(
-            self.0
+    pub(crate) fn restamped(&self) -> Stamps {
+        Stamps {
+            seen: self
+                .seen
                 .keys()
                 .map(|path| (path.clone(), Stamp::of(path)))
                 .collect(),
-        )
+            kept: self.kept.clone(),
+            inputs: self.inputs.clone(),
+        }
+    }
+
+    /// Whether `path` is there in one of `self` and `now` and not in the other (it was created, or it is gone).
+    pub(crate) fn existence_moved(&self, now: &Stamps, path: &str) -> bool {
+        let missing = |stamps: &Stamps| stamps.get(path) == Some(Stamp::Missing);
+        missing(self) != missing(now)
+    }
+
+    /// `self` is what was stamped just after a load; `before` is what was stamped just before it. A path `before` already had keeps its stamp from
+    /// before: a file saved while the load ran then differs from it at the next look, and the next look reads it again. Stamping it after the load would
+    /// describe the new text while the database may hold the old, and nothing would notice. A path `before` did not have is new, and keeps the stamp
+    /// it has.
+    pub(super) fn keeping(mut self, before: &Stamps) -> Stamps {
+        for (path, stamp) in &mut self.seen {
+            if let Some(old) = before.seen.get(path) {
+                *stamp = *old;
+            }
+        }
+        self
     }
 
     /// How many files and how many folders are watched.
     #[cfg(test)]
     pub(crate) fn counts(&self) -> (usize, usize) {
-        let folders = self.0.values().filter(|stamp| stamp.is_dir()).count();
-        (self.0.len() - folders, folders)
+        let folders = self.seen.values().filter(|stamp| stamp.is_dir()).count();
+        (self.seen.len() - folders, folders)
     }
 
     #[cfg(test)]
     pub(crate) fn paths(&self) -> impl Iterator<Item = &str> {
-        self.0.keys().map(String::as_str)
+        self.seen.keys().map(String::as_str)
     }
 }
 
@@ -142,5 +193,41 @@ mod tests {
         stamps.add(&path);
         assert_eq!(stamps.get(&path), first);
         assert_ne!(Stamp::of(&path), first.unwrap());
+    }
+
+    /// A kept path is stamped as missing and stays; a watched one is forgotten. A path of `before` keeps its older stamp across a load.
+    #[test]
+    fn a_kept_path_survives_being_missing_and_a_known_path_keeps_its_old_stamp() {
+        let root = tmp_root().join("stamps_kept");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let (watched, kept) = (root.join("a.rs"), root.join("Cargo.lock"));
+        let text = |path: &std::path::Path| path.to_str().unwrap().to_owned();
+
+        let mut stamps = Stamps::default();
+        stamps.add(&text(&watched));
+        stamps.add_input(&text(&kept));
+        assert_eq!(stamps.get(&text(&kept)), Some(Stamp::Missing));
+        assert!(stamps.is_input(&text(&kept)) && !stamps.is_input(&text(&watched)));
+        stamps.forget_missing();
+        assert!(
+            !stamps.contains(&text(&watched)),
+            "a watched path is forgotten"
+        );
+        assert!(stamps.contains(&text(&kept)), "a kept one stays");
+
+        write(&kept, "version = 4\n");
+        let before = stamps.restamped();
+        assert_ne!(before, stamps, "its creation is seen");
+        write(&kept, "version = 4\n# longer\n");
+        let mut after = Stamps::default();
+        after.add_input(&text(&kept));
+        let after = after.keeping(&before);
+        assert_eq!(after.get(&text(&kept)), before.get(&text(&kept)));
+        assert_ne!(
+            after,
+            after.restamped(),
+            "saved during the load: seen at the next look"
+        );
     }
 }

@@ -259,7 +259,7 @@ fn with_no_budget_a_session_gives_the_graph_call_graph_gives() {
                 occurrence,
             };
             let expected = call_graph(
-                case.session.project(),
+                case.session.project().expect("a project"),
                 file,
                 &entry,
                 &options(),

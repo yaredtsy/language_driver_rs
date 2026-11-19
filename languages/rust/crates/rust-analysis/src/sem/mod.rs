@@ -7,6 +7,7 @@ mod refresh;
 mod resolve;
 mod sites;
 mod stamps;
+mod targets;
 mod tool;
 
 #[expect(
@@ -17,6 +18,7 @@ pub(crate) use bridge::{Bridged, DefFound, Func, Sem, attached, text_of};
 pub(crate) use load::{Loaded, Rung, load};
 #[expect(unused_imports, reason = "RS4's calls.rs uses them (step 4)")]
 pub(crate) use origin::{Cause, Item, Owner};
+pub(crate) use refresh::Disk;
 #[expect(unused_imports, reason = "RS4's calls.rs uses them (step 4)")]
 pub(crate) use resolve::{Callee, Found, Open, Reason};
 pub(crate) use sites::RawSite;

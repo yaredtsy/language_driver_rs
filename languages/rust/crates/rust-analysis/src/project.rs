@@ -7,7 +7,7 @@ use analyzer_core::text::Span;
 use analyzer_core::wire::Sources;
 
 use crate::paths;
-use crate::sem::{self, Loaded, Rung, attached, text_of};
+use crate::sem::{self, Loaded, Rung, Stamps, attached, text_of};
 use crate::warning::{self, Facts, Warning};
 
 /// Config, manifest and lock files whose change means "load again". Each is relative to the root, so it starts with `**/`.
@@ -174,6 +174,13 @@ impl Project {
     /// The engine's load, for the call graph (`calls.rs`): it builds its `Sem` inside one `attach_db` per request.
     pub(crate) fn loaded(&self) -> &Loaded {
         &self.loaded
+    }
+
+    /// What a session watches after this load, stamped now (`sem::Loaded::watch`): the project's `.rs` files and their folders, the environment inputs
+    /// and the file the session was opened from. `before` is what was stamped before the load, or nothing for the first.
+    pub(crate) fn watch(&mut self, before: &Stamps, opened: &str) -> Stamps {
+        let inputs = self.environment_inputs();
+        self.loaded.watch(&inputs, opened, before)
     }
 
     /// The engine's load, to write to: a session follows the disk with it (`refresh`), and nothing else changes a loaded project.
