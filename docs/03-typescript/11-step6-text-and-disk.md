@@ -139,7 +139,8 @@ under a folder the `include` listed is seen, and so is a file created at a path 
 `Missing` to `File`).
 
 **`Session`** keeps `root` and `file` (as `open` was given them), `options`, `project: Option<Project>`, `lost: Option<OpenError>` and
-`stamps: Stamps`.
+`stamps: Stamps`. `Session::open` keeps its signature, `Result<Session, OpenError>`: a first open that fails gives no session, as today, and
+the driver opens again when it is asked again. Only a session that was open once can be lost and come back.
 
 ```
 refresh:
@@ -226,6 +227,7 @@ Each case first asks, then changes, then asks again; the expected tree is writte
 | 11 | the `tsconfig.json` is saved with a syntax error, then fixed | broken: `lost` is `ConfigError` on each `refresh`; fixed: `reopened` true and the tree is back |
 | 12 | after any rebuild | the graph is byte-identical to a fresh `Session::open` on the same disk |
 | 13 | the callee's file is rewritten **during** a rebuild | that `refresh` may give either tree; the next `refresh` has `reopened` true and the new tree |
+| 14 | case 8's edit, and the lock file beside that `node_modules` is rewritten (what an install does) | `refresh`: `reopened` true and the new answer |
 
 Case 13 needs the change to land between the build and the stamps, so it is an in-crate test with a test-only hook in `sem` that
 `open_tracked` calls once the program is bound (as the `def_without_node` test's hook, `sem/mod.rs`). With rule (2) of §4 taken out, the
@@ -247,7 +249,7 @@ cannot see V-NOC):
 
 One commit each, a stop for review after each.
 
-1. **The stamps, `refresh` and `reload`** (cases 1–13, the seen-paths unit test). `Sem::open_tracked` with `trackingvfs` and a fresh
+1. **The stamps, `refresh` and `reload`** (cases 1–14, the seen-paths unit test). `Sem::open_tracked` with `trackingvfs` and a fresh
    `cachedvfs` per build, `Stamp`, `Stamps`; `Session::refresh` and `reload`, `Refreshed`, `project()` as an `Option`.
 2. **The memory loop and the measurements.** No CLI change: `typescript-cli calls` is one request and needs no `refresh`.
 
