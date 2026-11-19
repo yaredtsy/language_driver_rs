@@ -6,6 +6,9 @@
 //!   cargo test --release -p typescript-analysis --test sweep -- --ignored --nocapture
 //! ```
 //!
+//! `TS_SWEEP_ONLY=<text>` keeps the files whose path contains the text, and `TS_SWEEP_ENTRY=<qualname>` the defs with that qualname (every occurrence): a run of
+//! one file, or of one entry in its own run (the project is still opened whole).
+//!
 //! Depth 1 resolves every site of the project exactly once, which is what finds a disagreement between the engine and the outline; a larger depth is for the
 //! speed runs. It fails when a graph counted `decl_not_in_outline` or `engine_kind_unhandled` (the first 20 entries of each are named), and a panic in any graph is a failure by itself: nothing
 //! here catches one.
@@ -45,6 +48,8 @@ fn sweep_every_def_of_a_project() {
         .map(|text| text.parse().expect("TS_SWEEP_DEPTH is a number"))
         .unwrap_or(1);
 
+    let only = std::env::var("TS_SWEEP_ONLY").ok();
+    let only_entry = std::env::var("TS_SWEEP_ENTRY").ok();
     let before_open = rss_mb();
     let started = Instant::now();
     let session = Session::open(&root, Path::new(&file), Options::new(STYLE))
@@ -63,6 +68,12 @@ fn sweep_every_def_of_a_project() {
     let mut unhandled: Vec<String> = Vec::new();
     let sweep = Instant::now();
     for name in &files {
+        if only
+            .as_ref()
+            .is_some_and(|only| !name.contains(only.as_str()))
+        {
+            continue;
+        }
         let Some(dialect) = Dialect::from_path(name) else {
             continue;
         };
@@ -72,13 +83,19 @@ fn sweep_every_def_of_a_project() {
         // the entry names a def by its qualname and which of the same-named defs it is, in source order
         let mut seen: BTreeMap<&str, u16> = BTreeMap::new();
         for def in &outline.defs {
-            defs += 1;
             let occurrence = seen.entry(def.qualname.as_str()).or_default();
+            let skip = only_entry
+                .as_ref()
+                .is_some_and(|only| *only != def.qualname);
             let entry = Entry::Def {
                 qualname: &def.qualname,
                 occurrence: *occurrence,
             };
             *occurrence += 1;
+            if skip {
+                continue;
+            }
+            defs += 1;
             let started = Instant::now();
             let Some(graph) = session.graph(name, &entry, &budget, &cancel) else {
                 no_graph += 1;

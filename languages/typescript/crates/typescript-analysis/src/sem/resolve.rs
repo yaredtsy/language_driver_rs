@@ -259,6 +259,15 @@ impl Sem {
         {
             return (vec![self.classify(&mut checker, class, style)], facts);
         }
+        // An anonymous function or class written right where it is called or constructed, with no parentheses (`new class {}()`, `!function () {}()`), is the
+        // declaration itself: nothing to enter, as with parentheses (H10, H12). The engine's call hierarchy calls it a possible declaration and searches **up**
+        // for an enclosing one, and answers the function, the method or the file around it (H15).
+        if is_anonymous_function_or_class(unwrap_expression(callee)) {
+            return (
+                vec![Resolved::Unknown(why_unknown(&mut checker, callee))],
+                facts,
+            );
+        }
         let mut declarations = self.prefer_project_bodies(declarations_of(&mut checker, callee));
         let mut unresolved_members = false;
         if declarations.is_empty()
@@ -742,6 +751,14 @@ impl Sem {
             def.range,
         )
     }
+}
+
+/// A function expression or a class expression with no name: it can be neither looked up nor entered by name.
+fn is_anonymous_function_or_class(node: P<Node>) -> bool {
+    matches!(
+        node.kind(),
+        Kind::FunctionExpression | Kind::ClassExpression
+    ) && node.name().is_none()
 }
 
 /// The leftmost name of a callee expression: an identifier or `this`. `a.b`, `a[b]` and `a?.b` go to `a`; parentheses, assertions and `!` are looked through.
