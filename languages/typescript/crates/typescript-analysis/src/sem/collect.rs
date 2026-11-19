@@ -1,4 +1,8 @@
 use super::handed::{is_handed_function_expression, is_handed_over, literal_is_handed};
+use super::view::{
+    CallOrNew, NameToken, Wrapper, arguments_of, elements_of, expression_of, initializer_of,
+    members_of, spelled, statements_of, tag_name_of,
+};
 use super::*;
 
 /// The plain calls in one def's body, as the callee expression's span of each. It follows `tsrs_ls`'s `CallSiteCollector` (`callhierarchy.rs`, `collect`),
@@ -46,6 +50,8 @@ pub(super) struct Body {
     pub(super) binds: Vec<P<Node>>,
     pub(super) call_apply: Vec<P<Node>>,
     pub(super) refs: Vec<(Span, P<Node>)>,
+    /// How many nodes the reading met of a kind an accessor does not handle, where it expected one (`view::counted`): the count of this body, kept with it.
+    pub(super) unhandled: u64,
 }
 
 /// A site found in a body: the span of the expression that is resolved (absolute, in the file), that expression, and the node the site is (a call, a `new`, a
@@ -137,17 +143,17 @@ impl<'a> Collector<'a> {
         {
             self.nested.push((def, is_handed_function_expression(node)));
             if ast::is_class_like(node) {
-                for &member in node.members() {
+                for &member in members_of(node) {
                     if let Some(name) = member.name()
                         && ast::is_computed_property_name(name)
                     {
-                        self.collect(name.expression());
+                        self.collect(expression_of(name));
                     }
                 }
                 self.class_definition_code(node);
             } else if node.kind() == Kind::EnumDeclaration {
-                for &member in node.members() {
-                    self.collect(member.initializer());
+                for &member in members_of(node) {
+                    self.collect(initializer_of(member));
                 }
             }
             return;
@@ -175,13 +181,13 @@ impl<'a> Collector<'a> {
             | Kind::TypeAliasDeclaration => return,
             // not the type side of an assertion
             Kind::TypeAssertionExpression | Kind::AsExpression | Kind::SatisfiesExpression => {
-                self.collect(node.expression());
+                self.collect(expression_of(node));
                 return;
             }
             // not the type of a variable or parameter
             Kind::VariableDeclaration | Kind::Parameter => {
                 if node.kind() == Kind::VariableDeclaration
-                    && node.initializer().is_some()
+                    && initializer_of(node).is_some()
                     && let Some(pattern) = node
                         .name()
                         .filter(|name| name.kind() == Kind::ObjectBindingPattern)
@@ -189,12 +195,12 @@ impl<'a> Collector<'a> {
                     self.note_destructured(pattern);
                 }
                 self.collect(node.name());
-                self.collect(node.initializer());
+                self.collect(initializer_of(node));
                 return;
             }
             Kind::CallExpression => {
                 if is_plain_call(node)
-                    && let Some(callee) = node.expression()
+                    && let Some(callee) = expression_of(node)
                 {
                     self.sites.push(CallNode {
                         span: own_span(self.text, callee),
@@ -205,15 +211,15 @@ impl<'a> Collector<'a> {
                 }
                 self.note_bound_or_applied(node);
                 // not the type arguments
-                self.collect(node.expression());
-                for &argument in node.arguments() {
+                self.collect(expression_of(node));
+                for &argument in arguments_of(node) {
                     self.collect(Some(argument));
                 }
                 return;
             }
             Kind::NewExpression => {
                 // a construction is a site on the class expression, as a call is one on the callee
-                if let Some(class) = node.expression() {
+                if let Some(class) = expression_of(node) {
                     self.sites.push(CallNode {
                         span: own_span(self.text, class),
                         expr: class,
@@ -221,8 +227,8 @@ impl<'a> Collector<'a> {
                         kind: SiteKind::Call,
                     });
                 }
-                self.collect(node.expression());
-                for &argument in node.arguments() {
+                self.collect(expression_of(node));
+                for &argument in arguments_of(node) {
                     self.collect(Some(argument));
                 }
                 return;
@@ -239,8 +245,9 @@ impl<'a> Collector<'a> {
             }
             // `<Tag />`: a component is called, an intrinsic element (`<div>`, `<my-el>`, `<svg:rect>`) is not
             Kind::JsxOpeningElement | Kind::JsxSelfClosingElement => {
-                let tag = node.tag_name();
-                if !is_intrinsic_jsx_tag(tag) {
+                if let Some(tag) = tag_name_of(node)
+                    && !is_intrinsic_jsx_tag(tag)
+                {
                     self.sites.push(CallNode {
                         span: own_span(self.text, tag),
                         expr: tag,
@@ -251,7 +258,7 @@ impl<'a> Collector<'a> {
             }
             // `@decorator`, `@decorator(1)`: the expression is called with what it decorates
             Kind::Decorator => {
-                if let Some(expression) = node.expression() {
+                if let Some(expression) = expression_of(node) {
                     self.sites.push(CallNode {
                         span: own_span(self.text, expression),
                         expr: expression,
@@ -274,7 +281,7 @@ impl<'a> Collector<'a> {
             Kind::PropertyAccessExpression if !ast::is_part_of_type_node(node) => {
                 self.reference(node, node);
                 self.note_access(node);
-                self.collect(node.expression());
+                self.collect(expression_of(node));
                 return;
             }
             _ => {}
@@ -291,7 +298,7 @@ impl<'a> Collector<'a> {
     /// The elements of an object binding pattern, and of the patterns nested in it. Which of them name one property (not a rest element, not a computed key) is
     /// `bound_symbol`'s to say.
     fn note_destructured(&mut self, pattern: P<Node>) {
-        for &element in pattern.elements() {
+        for &element in elements_of(pattern) {
             if element.kind() != Kind::BindingElement {
                 continue;
             }
@@ -364,18 +371,18 @@ impl<'a> Collector<'a> {
     /// `x.bind(…)` in a hand-over position, and `x.call(…)` / `x.apply(…)` anywhere: `x` is a function that is handed over bound, or called through `call`, and
     /// no edge covers either. Remembered for the count.
     fn note_bound_or_applied(&mut self, call: P<Node>) {
-        let Some(callee) = call.expression() else {
+        let Some(callee) = expression_of(call) else {
             return;
         };
         if callee.kind() != Kind::PropertyAccessExpression {
             return;
         }
-        let (Some(target), Some(name)) = (callee.expression(), callee.name()) else {
+        let (Some(target), Some(name)) = (expression_of(callee), callee.name()) else {
             return;
         };
-        match name.text() {
-            "bind" if is_handed_over(call) => self.binds.push(target),
-            "call" | "apply" => self.call_apply.push(target),
+        match spelled(self.text, name).as_deref() {
+            Some("bind") if is_handed_over(call) => self.binds.push(target),
+            Some("call" | "apply") => self.call_apply.push(target),
             _ => {}
         }
     }
@@ -398,9 +405,9 @@ impl<'a> Collector<'a> {
             }
         }
         if let Some(heritage) = ast::get_class_extends_heritage_element(class) {
-            self.collect(heritage.expression());
+            self.collect(expression_of(heritage));
         }
-        for &member in class.members() {
+        for &member in members_of(class) {
             if ast::can_have_modifiers(member)
                 && let Some(modifiers) = member.modifiers()
             {
@@ -425,7 +432,7 @@ impl<'a> Collector<'a> {
             }
             match member.kind() {
                 Kind::PropertyDeclaration if ast::is_static(member) => {
-                    self.collect(member.initializer());
+                    self.collect(initializer_of(member));
                 }
                 Kind::ClassStaticBlockDeclaration => {
                     self.collect(Some(member.as_class_static_block_declaration().body));
@@ -453,9 +460,9 @@ impl<'a> Collector<'a> {
             // what runs when the class is defined, and the initializers of its instance fields, which a construction runs
             Kind::ClassDeclaration | Kind::ClassExpression => {
                 self.class_definition_code(node);
-                for &member in node.members() {
+                for &member in members_of(node) {
                     if member.kind() == Kind::PropertyDeclaration && !ast::is_static(member) {
-                        self.collect(member.initializer());
+                        self.collect(initializer_of(member));
                     }
                 }
             }
@@ -463,14 +470,14 @@ impl<'a> Collector<'a> {
                 if let Some(body) = node.body()
                     && ast::is_module_block(body)
                 {
-                    for &statement in body.statements() {
+                    for &statement in statements_of(body) {
                         self.collect(Some(statement));
                     }
                 }
             }
             // the file's own code: its top-level statements, down to the next def (D32)
             Kind::SourceFile => {
-                for &statement in node.statements() {
+                for &statement in statements_of(node) {
                     self.collect(Some(statement));
                 }
             }
@@ -492,13 +499,13 @@ fn is_callee_position(node: P<Node>) -> bool {
             | Kind::TypeAssertionExpression
             | Kind::NonNullExpression => at = parent,
             Kind::CallExpression | Kind::NewExpression | Kind::Decorator => {
-                return parent.expression() == Some(at);
+                return expression_of(parent) == Some(at);
             }
             Kind::TaggedTemplateExpression => {
                 return parent.as_tagged_template_expression().tag == at;
             }
             Kind::JsxOpeningElement | Kind::JsxSelfClosingElement | Kind::JsxClosingElement => {
-                return parent.tag_name() == at;
+                return tag_name_of(parent) == Some(at);
             }
             _ => return false,
         }
@@ -511,25 +518,18 @@ fn is_callee_position(node: P<Node>) -> bool {
 fn is_intrinsic_jsx_tag(tag: P<Node>) -> bool {
     match tag.kind() {
         Kind::JsxNamespacedName => true,
-        Kind::Identifier => {
-            let name = tag.text();
+        Kind::Identifier => NameToken::cast(tag).is_some_and(|tag| {
+            let name = tag.value();
             name.starts_with(|c: char| c.is_lowercase()) || name.contains('-')
-        }
+        }),
         _ => false,
     }
 }
 
 /// The expression under `(x)`, `x as T`, `x satisfies T`, `<T>x` and `x!`, however many.
 pub(super) fn unwrap_expression(mut node: P<Node>) -> P<Node> {
-    while matches!(
-        node.kind(),
-        Kind::ParenthesizedExpression
-            | Kind::AsExpression
-            | Kind::SatisfiesExpression
-            | Kind::TypeAssertionExpression
-            | Kind::NonNullExpression
-    ) {
-        match node.expression() {
+    while let Some(wrapper) = Wrapper::cast(node) {
+        match wrapper.inner() {
             Some(inner) => node = inner,
             None => break,
         }
@@ -539,14 +539,17 @@ pub(super) fn unwrap_expression(mut node: P<Node>) -> P<Node> {
 
 /// `f(x)`, `a.b(x)`, `a?.b(x)`, `super(x)`. Not `import("./m")` and not `require("./m")`: that is loading a module, not calling into a function.
 fn is_plain_call(call: P<Node>) -> bool {
-    let Some(callee) = call.expression() else {
+    let Some(call) = CallOrNew::cast(call) else {
+        return false;
+    };
+    let Some(callee) = call.callee() else {
         return false;
     };
     if callee.kind() == Kind::ImportKeyword {
         return false;
     }
-    let is_require = callee.kind() == Kind::Identifier
-        && callee.text() == "require"
+    let is_require = NameToken::cast(callee).is_some_and(|name| name.value() == "require")
+        && callee.kind() == Kind::Identifier
         && matches!(call.arguments(), [argument] if ast::is_string_literal_like(*argument));
     !is_require
 }

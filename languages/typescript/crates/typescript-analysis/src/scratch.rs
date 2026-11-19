@@ -7,12 +7,14 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// Every folder a test may ask `scratch` for.
-const NAMES: [&str; 5] = [
+const NAMES: [&str; 7] = [
     "seen-paths",
     "stamps",
     "during-a-build",
     "lost-no-rebuild",
     "stamp-paths",
+    "view-libs",
+    "view-casts",
 ];
 
 /// The folder of `name`, empty, and canonical (the OS may spell the temp dir through a link, `/var` is `/private/var` on macOS, and the engine's paths are the

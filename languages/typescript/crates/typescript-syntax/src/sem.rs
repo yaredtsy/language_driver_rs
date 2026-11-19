@@ -296,12 +296,6 @@ impl Parsed<'_> {
         Span::new(start, end)
     }
 
-    /// Is `text` an identifier as the engine scans one (`foo`, `$x`, `café`)? A reserved word is one too: `class` is a valid member name.
-    /// `my-key`, `1a`, a text with an escape in it and the empty text are not.
-    pub(crate) fn is_identifier(&self, text: &str) -> bool {
-        !text.is_empty() && tsrs_scanner::is_identifier_text(text, LanguageVariant::Standard)
-    }
-
     /// The text a span covers; `None` if it is out of bounds or cuts a character.
     pub(crate) fn slice(&self, span: Span) -> Option<&str> {
         span.slice(self.text)
@@ -387,6 +381,12 @@ impl Parsed<'_> {
             })
             .collect()
     }
+}
+
+/// Is `text` an identifier as the engine scans one (`foo`, `$x`, `café`)? A reserved word is one too: `class` is a valid member name. `my-key`, `1a`, a text with an
+/// escape in it and the empty text are not.
+pub(crate) fn is_identifier_text(text: &str) -> bool {
+    !text.is_empty() && tsrs_scanner::is_identifier_text(text, LanguageVariant::Standard)
 }
 
 #[cfg(test)]

@@ -173,15 +173,17 @@ pub(crate) fn assert_no_outline_gap(graph: &Graph) {
 }
 
 fn assert_outline_gaps(graph: &Graph, gaps: u64) {
-    let found = graph
-        .stats
-        .language
-        .get("decl_not_in_outline")
-        .copied()
-        .unwrap_or(0);
+    let count = |key: &str| graph.stats.language.get(key).copied().unwrap_or(0);
     assert_eq!(
-        found, gaps,
+        count("decl_not_in_outline"),
+        gaps,
         "decl_not_in_outline: the engine's declaration is not a def of the outline"
+    );
+    // a node of a kind the engine's accessors do not handle, met where one was expected (H14): a missing answer nobody expects
+    assert_eq!(
+        count("engine_kind_unhandled"),
+        0,
+        "engine_kind_unhandled: a view met a kind of node it does not handle"
     );
 }
 

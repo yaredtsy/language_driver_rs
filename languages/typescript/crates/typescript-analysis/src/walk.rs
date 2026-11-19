@@ -9,7 +9,7 @@ use typescript_syntax::MarkerStyle;
 
 use crate::calls::TypeScript;
 use crate::env::Env;
-use crate::sem::{Func, Init, Resolved, Sem, Uncovered, Why};
+use crate::sem::{Func, Init, Resolved, Sem, UNHANDLED_KEY, Uncovered, Why, counted};
 
 /// The reason of an `Unresolved` edge, and the key of its counter in `Stats.language`, for a def whose node is missing from the program's tree: a bug
 /// in one of the two parses, which must show on the graph and not as a body with no calls.
@@ -20,6 +20,10 @@ const DEF_WITHOUT_NODE: &str = "def_without_node";
 /// they are counted apart and `Breakdown` lists them as notes.
 pub(crate) const INHERITED_EXTERNAL: &str = "inherited_constructor_external";
 pub(crate) const INHERITED_UNKNOWN: &str = "inherited_constructor_unknown";
+
+/// The key of the counter, in `Stats.language`, for a place where a body hands over a signature that has no body (`use(w.write)` with `w` an interface): no
+/// edge, nothing to enter (D43). The key Rust uses for the same thing (D44).
+pub(crate) const SIGNATURE_PASSED: &str = "signature_passed";
 
 /// The key of the counter, in `Stats.language`, for a call into a source file outside the root (D33): an `External` edge for a body that was there to walk.
 pub(crate) const OUTSIDE_ROOT: &str = "outside_root";
@@ -32,8 +36,23 @@ pub(crate) const DUPLICATE_MARKER: &str = "duplicate_marker";
 pub(crate) const WRITTEN_NOT_CALLED: &str = "def_written_not_called";
 pub(crate) const NAMED_NOT_CALLED: &str = "def_named_not_called";
 
-/// Read `f`'s body once: its sites, each with its targets. The solver does the recursion.
+/// Read `f`'s body once: its sites, each with its targets. The solver does the recursion. Says (`engine_kind_unhandled`) how many nodes of a kind the engine's
+/// accessors do not handle were met where one was expected: while reading the body, and while resolving what it calls and hands over.
 pub(crate) fn body<'p>(
+    lang: &TypeScript<'p>,
+    f: Func<'p>,
+    env: &Env,
+    cancel: &Cancel,
+) -> Summary<TypeScript<'p>> {
+    let (summary, unhandled) = counted(|| body_of(lang, f, env, cancel));
+    lang.note_n(
+        UNHANDLED_KEY,
+        unhandled + lang.sem.unhandled_in_body(f, lang.style),
+    );
+    summary
+}
+
+fn body_of<'p>(
     lang: &TypeScript<'p>,
     f: Func<'p>,
     env: &Env,
@@ -69,6 +88,7 @@ pub(crate) fn body<'p>(
     found.sort_by_key(|calls| (calls.site.start, calls.site.end));
     lang.note_handed_over(&hand_overs.handed);
     lang.note_uncovered(&hand_overs.uncovered);
+    lang.note_n(SIGNATURE_PASSED, hand_overs.signatures_passed);
     Summary::complete(found)
 }
 

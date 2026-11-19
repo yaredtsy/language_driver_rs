@@ -113,6 +113,23 @@ abstract class Base {
 export function abstractMethod(b: Base) {
   b.m();
 }
+abstract class AbstractAccessor {
+  abstract get v(): number;
+}
+export function abstractGetter(b: AbstractAccessor) {
+  b.v;
+}
+// a signature handed over, and not called: nothing to enter, so no edge; a class's method handed over keeps its passed edge
+declare function use(f: unknown): void;
+export function handOverInterface(w: Writer) {
+  use(w.write);
+}
+export function handOverTypeLiteral(o: { run(): void }) {
+  use(o.run);
+}
+export function handOverAbstract(b: Base) {
+  use(b.m);
+}
 declare global {
   interface Window {
     foo(): void;
@@ -123,6 +140,9 @@ export function declaredGlobal() {
 }
 class JsonWriter {
   write(s: string) {}
+}
+export function handOverClass(w: JsonWriter) {
+  use(w.write);
 }
 export function classReceiver(w: JsonWriter) {
   w.write("x");

@@ -199,20 +199,8 @@ impl Walker<'_, '_> {
         }
     }
 
-    /// The text of a name token as written: `f`, `#secret`, `"my-key"`, `[Symbol.iterator]`. One exception: a string that is a valid
-    /// identifier loses its quotes, because `"load"() {}` and `load() {}` declare the same member. Any other string keeps them, so
-    /// `"a.b"` cannot be mistaken for a path.
     fn name_text(&self, name: RawNode) -> Option<String> {
-        let written = self.p.slice(self.p.span(name))?;
-        if self.p.kind(name) == NodeKind::StringLiteral {
-            let inner = written
-                .strip_prefix(['"', '\''])
-                .and_then(|rest| rest.strip_suffix(['"', '\'']));
-            if let Some(inner) = inner.filter(|inner| self.p.is_identifier(inner)) {
-                return Some(inner.to_owned());
-            }
-        }
-        Some(written.to_owned())
+        Some(spell_name(self.p.slice(self.p.span(name))?))
     }
 
     /// The name of a declaration and the range to reveal: its name token, or `default` for `export default` without one.
@@ -707,5 +695,21 @@ impl Walker<'_, '_> {
             self.visit(body);
         }
         self.leave();
+    }
+}
+
+/// The spelling of a name, from the text of its node **as written**: `f`, `#secret`, `"my-key"`, `[Symbol.iterator]` (brackets included for a computed name,
+/// spaces inside them as they are), `1`. One exception: a string that is a valid identifier loses its quotes, because `"load"() {}` and `load() {}` declare
+/// the same member. Any other string keeps them, so `"a.b"` cannot be mistaken for a path.
+///
+/// The one rule for a name, which the outline and the analysis share, so that a member is spelled the same wherever it is named (rule 10): `K.[Symbol.iterator]`
+/// in a class of the project and `Array.[Symbol.iterator]` in a library. It reads text only, so it cannot panic on any kind of name.
+pub fn spell_name(written: &str) -> String {
+    let inner = written
+        .strip_prefix(['"', '\''])
+        .and_then(|rest| rest.strip_suffix(['"', '\'']));
+    match inner {
+        Some(inner) if crate::sem::is_identifier_text(inner) => inner.to_owned(),
+        _ => written.to_owned(),
     }
 }

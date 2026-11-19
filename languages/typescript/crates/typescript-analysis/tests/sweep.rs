@@ -7,7 +7,7 @@
 //! ```
 //!
 //! Depth 1 resolves every site of the project exactly once, which is what finds a disagreement between the engine and the outline; a larger depth is for the
-//! speed runs. It fails when a graph counted `decl_not_in_outline` (the first 20 entries are named), and a panic in any graph is a failure by itself: nothing
+//! speed runs. It fails when a graph counted `decl_not_in_outline` or `engine_kind_unhandled` (the first 20 entries of each are named), and a panic in any graph is a failure by itself: nothing
 //! here catches one.
 
 use std::collections::BTreeMap;
@@ -60,6 +60,7 @@ fn sweep_every_def_of_a_project() {
     let mut made: Vec<Made> = Vec::new();
     let mut counts: BTreeMap<String, u64> = BTreeMap::new();
     let mut gaps: Vec<String> = Vec::new();
+    let mut unhandled: Vec<String> = Vec::new();
     let sweep = Instant::now();
     for name in &files {
         let Some(dialect) = Dialect::from_path(name) else {
@@ -110,6 +111,15 @@ fn sweep_every_def_of_a_project() {
             {
                 gaps.push(format!("{name} {}", def.qualname));
             }
+            if stats
+                .language
+                .get("engine_kind_unhandled")
+                .copied()
+                .unwrap_or(0)
+                > 0
+            {
+                unhandled.push(format!("{name} {}", def.qualname));
+            }
             made.push(Made {
                 file: name.clone(),
                 qualname: def.qualname.clone(),
@@ -139,6 +149,11 @@ fn sweep_every_def_of_a_project() {
             slow.time, slow.file, slow.qualname, slow.contexts
         );
     }
+    eprintln!(
+        "decl_not_in_outline: {} entries; engine_kind_unhandled: {} entries",
+        gaps.len(),
+        unhandled.len()
+    );
     eprintln!("the sum of every count over all the graphs:");
     for (key, value) in &counts {
         eprintln!("  {key}: {value}");
@@ -148,5 +163,11 @@ fn sweep_every_def_of_a_project() {
         "decl_not_in_outline is counted by {} entries; the first 20: {:#?}",
         gaps.len(),
         &gaps[..gaps.len().min(20)]
+    );
+    assert!(
+        unhandled.is_empty(),
+        "engine_kind_unhandled is counted by {} entries; the first 20: {:#?}",
+        unhandled.len(),
+        &unhandled[..unhandled.len().min(20)]
     );
 }

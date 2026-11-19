@@ -4,6 +4,8 @@ use tsrs_checker::{Checker, Type};
 
 use super::collect::unwrap_expression;
 use super::hierarchy::{callable_declarations, is_variable_like};
+use super::resolve::is_signature_without_a_body;
+use super::view::{NameToken, expression_of, initializer_of, properties_of};
 use super::*;
 
 /// A def's node that is a **named function expression handed over where it is written**: `xs.map(function step() {})`, `register(function step() {})`.
@@ -69,11 +71,11 @@ fn handed_position(value: P<Node>, creating: bool) -> bool {
                 }
             }
             Kind::CallExpression | Kind::NewExpression => {
-                return parent.expression() != Some(at);
+                return expression_of(parent) != Some(at);
             }
             // `const { load } = api` and `({ load } = api)` read the members they name: the names are followed (`bound_member`), the initializer hands nothing over
             Kind::VariableDeclaration | Kind::Parameter
-                if parent.initializer() == Some(at)
+                if initializer_of(parent) == Some(at)
                     && parent.name().is_some_and(ast::is_binding_pattern) =>
             {
                 return false;
@@ -82,7 +84,9 @@ fn handed_position(value: P<Node>, creating: bool) -> bool {
             | Kind::VariableDeclaration
             | Kind::Parameter
             | Kind::BindingElement
-            | Kind::PropertyDeclaration => return !creating && parent.initializer() == Some(at),
+            | Kind::PropertyDeclaration => {
+                return !creating && initializer_of(parent) == Some(at);
+            }
             Kind::ArrowFunction => return parent.body() == Some(at),
             Kind::ShorthandPropertyAssignment
             | Kind::ArrayLiteralExpression
@@ -117,6 +121,9 @@ struct Assigned {
 pub(crate) struct HandOvers<'p> {
     pub(crate) handed: Vec<Handed<'p>>,
     pub(crate) uncovered: Vec<Uncovered>,
+    /// The places a body names a signature that has no body (an interface's or a type literal's method, an abstract method) where a value is handed over
+    /// (`use(w.write)`): no edge, since there is nothing to enter (D43), and counted once for each place (`signature_passed`, as Rust counts it, D44).
+    pub(crate) signatures_passed: u64,
 }
 
 impl Sem {
@@ -134,9 +141,11 @@ impl Sem {
             return HandOvers {
                 handed: Vec::new(),
                 uncovered,
+                signatures_passed: 0,
             };
         };
         let mut found: Vec<Handed<'p>> = Vec::new();
+        let mut signatures_passed = 0;
         // a named function expression handed over where it is written (`xs.map(function step() {})`): at its name
         if let Some(defs) = self.file_defs(func.file, style) {
             for &(def, handed) in &body.nested {
@@ -267,12 +276,18 @@ impl Sem {
                     declarations.push(declaration);
                 }
             }
+            // a signature with no body is no def to hand over: nothing to enter, and the place is counted once whatever number of declarations name it
+            if declarations.iter().any(|d| is_signature_without_a_body(*d)) {
+                signatures_passed += 1;
+            }
             for declaration in declarations {
+                if is_signature_without_a_body(declaration) {
+                    continue;
+                }
                 // a name that holds an object literal (`const local = { traverse: () => {} }`, a nested `local.data`) hands over that literal's
                 // function members, at the name
                 if (is_variable_like(Some(declaration)) || ast::is_property_assignment(declaration))
-                    && let Some(literal) = declaration
-                        .initializer()
+                    && let Some(literal) = initializer_of(declaration)
                         .map(unwrap_expression)
                         .filter(|init| init.kind() == Kind::ObjectLiteralExpression)
                     && let Some(file_node) = ast::get_source_file_of_node(declaration)
@@ -320,6 +335,7 @@ impl Sem {
         HandOvers {
             handed: found,
             uncovered,
+            signatures_passed,
         }
     }
 
@@ -361,15 +377,16 @@ impl Sem {
         style: MarkerStyle<'_>,
         out: &mut Assigned,
     ) {
-        for &member in left.properties() {
+        for &member in properties_of(left) {
             // `...others`: the rest object holds the members of the value that the pattern did not name
             if member.kind() == Kind::SpreadAssignment {
-                let named: Vec<&str> = left
-                    .properties()
+                // a computed key names no property we can look up: it is left out (the engine's `text` panics on it)
+                let named: Vec<&str> = properties_of(left)
                     .iter()
                     .filter(|sibling| sibling.kind() != Kind::SpreadAssignment)
                     .filter_map(|sibling| sibling.name())
-                    .map(|name| name.text())
+                    .filter_map(NameToken::cast)
+                    .map(NameToken::value)
                     .collect();
                 let left_over = checker
                     .get_properties_of_type_exported(ty)
@@ -378,7 +395,7 @@ impl Sem {
                     .filter(|property| !named.contains(&property.name()))
                     .any(|property| self.holds_def(checker, property, style));
                 if left_over
-                    && let Some(target) = member.expression().map(unwrap_expression)
+                    && let Some(target) = expression_of(member).map(unwrap_expression)
                     && let Some(variable) = checker.get_symbol_at_location_exported(target)
                 {
                     out.rests.push(variable);
@@ -394,7 +411,7 @@ impl Sem {
             let (target, nested) = match member.kind() {
                 Kind::ShorthandPropertyAssignment => (None, None),
                 Kind::PropertyAssignment => {
-                    let value = member.initializer().map(unwrap_expression);
+                    let value = initializer_of(member).map(unwrap_expression);
                     match value {
                         Some(value) if value.kind() == Kind::ObjectLiteralExpression => {
                             (None, Some(value))
@@ -405,7 +422,9 @@ impl Sem {
                 }
                 _ => continue,
             };
-            let Some(property) = checker.get_property_of_type_exported(ty, key.text()) else {
+            let Some(property) = NameToken::expect(key)
+                .and_then(|key| checker.get_property_of_type_exported(ty, key.value()))
+            else {
                 continue;
             };
             if let Some(nested) = nested {
@@ -503,7 +522,7 @@ impl Sem {
         out: &mut Vec<(Func<'p>, Span)>,
     ) {
         let text = file.node.text();
-        for &member in literal.properties() {
+        for &member in properties_of(literal) {
             let key = member.name().map(|name| own_span(text, name));
             match member.kind() {
                 Kind::MethodDeclaration => {
@@ -512,7 +531,7 @@ impl Sem {
                     }
                 }
                 Kind::PropertyAssignment => {
-                    let Some(value) = member.initializer().map(unwrap_expression) else {
+                    let Some(value) = initializer_of(member).map(unwrap_expression) else {
                         continue;
                     };
                     if value.kind() == Kind::ObjectLiteralExpression {
@@ -559,11 +578,11 @@ fn bound_symbol(checker: &mut Checker, element: P<Node>) -> Option<P<Symbol>> {
         if !(ast::is_identifier(key) || ast::is_string_literal_like(key)) {
             return None;
         }
-        keys.push(key.text().to_string());
+        keys.push(NameToken::expect(key)?.value().to_string());
         let holder = pattern.parent()?;
         match holder.kind() {
             Kind::BindingElement => at = holder,
-            Kind::VariableDeclaration => break holder.initializer()?,
+            Kind::VariableDeclaration => break initializer_of(holder)?,
             _ => return None,
         }
     };
@@ -599,7 +618,7 @@ fn for_of_member(checker: &mut Checker, element: P<Node>) -> Option<P<Symbol>> {
         if !(ast::is_identifier(key) || ast::is_string_literal_like(key)) {
             return None;
         }
-        keys.push(key.text().to_string());
+        keys.push(NameToken::expect(key)?.value().to_string());
         let holder = pattern.parent()?;
         match holder.kind() {
             Kind::BindingElement => at = holder,

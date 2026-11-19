@@ -35,6 +35,7 @@ mod sem;
 pub use analyzer_core::edit::{Edit, MarkerStyle, Placement};
 pub use analyzer_core::outline::{Def, DefKind, Outline, SyntaxError};
 pub use analyzer_core::text::Span;
+pub use outline::spell_name;
 
 /// Which grammar to parse with. The same text parses differently as `.ts` and `.tsx` (`<T>x` is a cast in one and the start of
 /// an element in the other).
@@ -229,6 +230,47 @@ impl Dialect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The expected spellings are written before the run: one case for each kind of name.
+    #[test]
+    fn a_name_is_spelled_as_written_and_a_string_that_is_an_identifier_loses_its_quotes() {
+        let cases = [
+            // an identifier, a private name, a keyword (a valid member name)
+            ("f", "f"),
+            ("#secret", "#secret"),
+            ("class", "class"),
+            // a string that is an identifier declares the same member as the identifier
+            ("\"load\"", "load"),
+            ("'load'", "load"),
+            // a string that is not keeps its quotes, so `"a.b"` cannot be mistaken for a path
+            ("\"my-key\"", "\"my-key\""),
+            ("\"a.b\"", "\"a.b\""),
+            ("''", "''"),
+            // a numeric name
+            ("1", "1"),
+            ("0x10", "0x10"),
+            // a computed name: the brackets, and what is inside them as it is written
+            ("[Symbol.iterator]", "[Symbol.iterator]"),
+            ("[ Symbol.iterator ]", "[ Symbol.iterator ]"),
+            ("[\"load\"]", "[\"load\"]"),
+            ("[key]", "[key]"),
+        ];
+        for (written, spelled) in cases {
+            assert_eq!(spell_name(written), spelled, "{written}");
+        }
+    }
+
+    /// The outline names a member with the same rule.
+    #[test]
+    fn the_outline_spells_a_member_with_spell_name() {
+        let text = "class K {\n  [Symbol.iterator]() {}\n  \"load\"() {}\n  \"a-b\"() {}\n}\n";
+        let names: Vec<String> = outline(text, Dialect::Ts, MarkerStyle::docstring("ID"))
+            .defs
+            .into_iter()
+            .map(|def| def.qualname)
+            .collect();
+        assert_eq!(names, ["K", "K.[Symbol.iterator]", "K.load", "K.\"a-b\""]);
+    }
 
     #[test]
     fn dialect_from_the_extension() {

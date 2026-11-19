@@ -15,7 +15,7 @@ use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary}
 use crate::Project;
 use crate::env::Env;
 use crate::key::Key;
-use crate::sem::{Func, FunctionOrigin, Handed, Sem, Uncovered};
+use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
 use crate::walk;
 
 /// How to build a graph. The marker style is how a def's marker is read (`ID: …` in its JSDoc).
@@ -82,7 +82,14 @@ impl<'p> TypeScript<'p> {
 
     /// Count one more of `key`.
     pub(crate) fn note(&self, key: &'static str) {
-        *self.notes.borrow_mut().entry(key).or_default() += 1;
+        self.note_n(key, 1);
+    }
+
+    /// `n` more of `key`; nothing when `n` is 0, so the key is in `Stats.language` only when there is something to say.
+    pub(crate) fn note_n(&self, key: &'static str, n: u64) {
+        if n > 0 {
+            *self.notes.borrow_mut().entry(key).or_default() += n;
+        }
     }
 }
 
@@ -143,9 +150,14 @@ pub(crate) fn graph_within(
         _ => return None,
     };
     let lang = TypeScript::new(sem, opts.marker);
-    let start = start_of(&lang, func);
-    let mut solver = Solver::new(lang, opts.limits.clone());
-    let mut graph = solver.graph_within(&[start], budget, cancel);
+    // what the walk of a body says it counted is in `lang`'s notes; what the request itself met (a class entry's construction) is said here
+    let ((solver, mut graph), unhandled) = counted(|| {
+        let start = start_of(&lang, func);
+        let mut solver = Solver::new(lang, opts.limits.clone());
+        let graph = solver.graph_within(&[start], budget, cancel);
+        (solver, graph)
+    });
+    solver.lang().note_n(UNHANDLED_KEY, unhandled);
     finish(&mut graph, solver.lang());
     Some(graph)
 }
@@ -265,6 +277,12 @@ pub struct Breakdown {
     /// Defs of the graph whose marker another def **of the same file** owns, earlier in source order (D34): each is named by where it is, as a def with
     /// no marker is, and counted once. The outline still reports the marker on both.
     pub duplicate_marker: u64,
+    /// Places where a body hands over a signature that has no body (`use(w.write)` with `w` an interface, a type literal's method, an abstract method): no edge,
+    /// nothing to enter (D43). From `Stats.language["signature_passed"]`, said only when above 0.
+    pub signature_passed: u64,
+    /// Nodes of a kind that an engine accessor does not handle, met where the code expected one (`engine_kind_unhandled`): a missing answer, never expected, said
+    /// only when above 0.
+    pub engine_kind_unhandled: u64,
     /// Defs that share an id with an earlier one **across files** and were dropped by the graph (`Stats::merged_defs`, D34 rule 2): their calls are drawn under
     /// the first. Nothing is renamed across files, because an id must not depend on what the request reaches.
     pub merged_defs: u64,
@@ -315,6 +333,8 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
     summary.handed_named = language(walk::NAMED_NOT_CALLED);
     summary.outside_root = language(walk::OUTSIDE_ROOT);
     summary.duplicate_marker = language(walk::DUPLICATE_MARKER);
+    summary.signature_passed = language(walk::SIGNATURE_PASSED);
+    summary.engine_kind_unhandled = language(UNHANDLED_KEY);
     summary.merged_defs = graph.stats.merged_defs;
     summary.function_typed = FunctionOrigin::ALL
         .iter()
@@ -411,6 +431,20 @@ impl fmt::Display for Breakdown {
                 f,
                 "  defs dropped because an earlier def has their id (their calls are drawn under it): {}",
                 self.merged_defs
+            )?;
+        }
+        if self.signature_passed > 0 {
+            writeln!(
+                f,
+                "  signatures handed over, with no body to enter (counted, not drawn): {}",
+                self.signature_passed
+            )?;
+        }
+        if self.engine_kind_unhandled > 0 {
+            writeln!(
+                f,
+                "  nodes of a kind the engine's accessors do not handle, met where one was expected: {}",
+                self.engine_kind_unhandled
             )?;
         }
         if self.outside_root > 0 {
@@ -587,6 +621,30 @@ mod tests {
 
     /// Every kind of `Uncovered` reaches the line of a breakdown, in the order of `Uncovered::ALL`: a key that the line did not know used to be left out
     /// without a word.
+    /// The two counters of H14 (D43): a signature handed over has no edge, and a kind of node an engine accessor does not handle is a missing answer. Each is said
+    /// when above 0, in the words the label table gives, and not otherwise.
+    #[test]
+    fn the_breakdown_says_signatures_handed_over_and_kinds_the_engine_did_not_handle() {
+        let mut graph_language = BTreeMap::new();
+        graph_language.insert(walk::SIGNATURE_PASSED.to_owned(), 2);
+        graph_language.insert(UNHANDLED_KEY.to_owned(), 1);
+        let mut graph = Graph::default();
+        graph.stats.language = graph_language;
+        let said = breakdown(&graph).to_string();
+        assert!(
+            said.contains("signatures handed over, with no body to enter (counted, not drawn): 2"),
+            "{said}"
+        );
+        assert!(
+            said.contains(
+                "a kind the engine's accessors do not handle, met where one was expected: 1"
+            ),
+            "{said}"
+        );
+        let quiet = breakdown(&Graph::default()).to_string();
+        assert!(!quiet.contains("signatures handed over") && !quiet.contains("accessors do not"));
+    }
+
     #[test]
     fn the_breakdown_line_says_every_uncovered_kind() {
         // the line of `Display` that counts what no edge covers, and nothing else of the breakdown

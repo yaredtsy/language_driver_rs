@@ -1,3 +1,4 @@
+use super::view::{initializer_of, members_of};
 use super::*;
 
 /// What a body hands over or calls in a way **no edge covers**, counted per occurrence (D22 step 5): a function handed over by an element access with a
@@ -122,11 +123,10 @@ impl Sem {
 
 /// The spans of the initializers of `class`'s instance fields (`x = make()`).
 fn instance_initializers(text: &str, class: P<Node>) -> Vec<Span> {
-    class
-        .members()
+    members_of(class)
         .iter()
         .filter(|member| member.kind() == Kind::PropertyDeclaration && !ast::is_static(**member))
-        .filter_map(|member| member.initializer())
+        .filter_map(|member| initializer_of(*member))
         .map(|initializer| own_span(text, initializer))
         .collect()
 }

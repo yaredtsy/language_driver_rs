@@ -8,6 +8,7 @@ use super::hierarchy::{
     declarations_of, declarations_of_signature, declarations_of_union_symbol,
     is_property_function_value, symbol_of_declaration,
 };
+use super::view::{expression_of, initializer_of, spelled};
 use super::*;
 
 /// What one declaration the engine found for a site is.
@@ -456,7 +457,7 @@ impl Sem {
         // the same class must not have two names (`new Error()` is `Error`), so the base is read from the `extends` expression, as `init_chain` does
         let callee = if callee.kind() == Kind::SuperKeyword {
             let class = ast::find_ancestor(Some(callee), ast::is_class_like)?;
-            ast::get_class_extends_heritage_element(class)?.expression()?
+            expression_of(ast::get_class_extends_heritage_element(class)?)?
         } else {
             callee
         };
@@ -484,7 +485,7 @@ impl Sem {
             if let Resolved::External { name, .. } = &mut resolved
                 && ast::is_property_access_expression(callee)
                 && !name.contains('.')
-                && let Some(receiver) = callee.expression()
+                && let Some(receiver) = expression_of(callee)
                 && let Some(receiver_symbol) = checker.get_symbol_at_location_exported(receiver)
             {
                 *name = format!(
@@ -557,9 +558,10 @@ impl Sem {
             } else {
                 Some(declaration)
             };
+            // the name as written, spelled by the one rule the outline uses (`typescript_syntax::spell_name`): `[Symbol.iterator]` for a computed name
             let own = named
                 .and_then(|node| node.name())
-                .map(|name| name.text().to_owned())
+                .and_then(|name| spelled(source_file.text(), name))
                 .or_else(|| {
                     symbol_of_declaration(checker, declaration)
                         .map(|symbol| checker.symbol_to_string_exported(symbol))
@@ -631,7 +633,7 @@ impl Sem {
             let Some(heritage) = ast::get_class_extends_heritage_element(node) else {
                 return Init::Nothing;
             };
-            let Some(base) = heritage.expression() else {
+            let Some(base) = expression_of(heritage) else {
                 return Init::Unknown;
             };
             let _scope = self.region.enter();
@@ -750,7 +752,7 @@ fn leftmost_name(callee: P<Node>) -> Option<P<Node>> {
         match node.kind() {
             Kind::Identifier | Kind::ThisKeyword => return Some(node),
             Kind::PropertyAccessExpression | Kind::ElementAccessExpression => {
-                node = unwrap_expression(node.expression()?);
+                node = unwrap_expression(expression_of(node)?);
             }
             _ => return None,
         }
@@ -773,7 +775,7 @@ fn origin_of_declaration(declaration: P<Node>) -> FunctionOrigin {
     }
     match node.kind() {
         Kind::Parameter => FunctionOrigin::Parameter,
-        Kind::VariableDeclaration if node.initializer().is_some_and(is_a_call_result) => {
+        Kind::VariableDeclaration if initializer_of(node).is_some_and(is_a_call_result) => {
             FunctionOrigin::CallResult
         }
         _ => FunctionOrigin::Other,
@@ -784,7 +786,7 @@ fn origin_of_declaration(declaration: P<Node>) -> FunctionOrigin {
 fn is_a_call_result(initializer: P<Node>) -> bool {
     let mut node = unwrap_expression(initializer);
     while node.kind() == Kind::AwaitExpression {
-        let Some(inner) = node.expression() else {
+        let Some(inner) = expression_of(node) else {
             return false;
         };
         node = unwrap_expression(inner);
@@ -793,17 +795,20 @@ fn is_a_call_result(initializer: P<Node>) -> bool {
 }
 
 /// A declaration with no body that stands for whatever implements it (D43): a method signature (in a type literal, an interface or `declare global`), a `get` or
-/// `set` signature of a type literal or an interface, and an abstract method. A method of a `declare class` has no body either, and is not one of these: it is the
-/// only declaration there is.
-fn is_signature_without_a_body(declaration: P<Node>) -> bool {
+/// `set` signature of a type literal or an interface, and an abstract method or accessor. A method of a `declare class` has no body either, and is not one of
+/// these: it is the only declaration there is.
+pub(super) fn is_signature_without_a_body(declaration: P<Node>) -> bool {
     match declaration.kind() {
         Kind::MethodSignature => true,
-        Kind::GetAccessor | Kind::SetAccessor => declaration.parent().is_some_and(|parent| {
-            matches!(
-                parent.kind(),
-                Kind::TypeLiteral | Kind::InterfaceDeclaration
-            )
-        }),
+        Kind::GetAccessor | Kind::SetAccessor => {
+            ast::has_abstract_modifier(declaration)
+                || declaration.parent().is_some_and(|parent| {
+                    matches!(
+                        parent.kind(),
+                        Kind::TypeLiteral | Kind::InterfaceDeclaration
+                    )
+                })
+        }
         Kind::MethodDeclaration => ast::has_abstract_modifier(declaration),
         _ => false,
     }
@@ -814,6 +819,7 @@ fn is_signature_without_a_body(declaration: P<Node>) -> bool {
 /// whose name is a string (`declare module "x"`) adds nothing, since the package says it.
 fn qualified_name(declaration: P<Node>, own: String) -> String {
     let mut parts = vec![own];
+    let text = ast::get_source_file_of_node(declaration).map_or("", |file| file.text());
     let mut parent = declaration.parent();
     while let Some(node) = parent {
         if matches!(
@@ -823,8 +829,9 @@ fn qualified_name(declaration: P<Node>, own: String) -> String {
                 | Kind::InterfaceDeclaration
                 | Kind::ModuleDeclaration
         ) && let Some(name) = node.name().filter(|name| ast::is_identifier(*name))
+            && let Some(spelling) = spelled(text, name)
         {
-            parts.push(name.text().to_owned());
+            parts.push(spelling);
         }
         parent = node.parent();
     }

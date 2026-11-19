@@ -20,6 +20,7 @@ use analyzer_core::solve::{Budget, Cancel, Limits, Solver};
 use typescript_syntax::Placement;
 
 use super::collect::SiteKind;
+use super::view::{NameToken, arguments_of, expression_of, tag_name_of};
 use super::*;
 use crate::calls::{TypeScript, start_of};
 
@@ -87,14 +88,14 @@ struct Found {
 fn anchor_of(node: P<Node>) -> Option<(&'static str, P<Node>)> {
     match node.kind() {
         // `f(x)`, `a?.b(x)`, `super(x)`, `import(x)`
-        Kind::CallExpression => Some(("call", node.expression()?)),
-        Kind::NewExpression => Some(("new", node.expression()?)),
+        Kind::CallExpression => Some(("call", expression_of(node)?)),
+        Kind::NewExpression => Some(("new", expression_of(node)?)),
         Kind::TaggedTemplateExpression => {
             Some(("tagged", node.as_tagged_template_expression().tag))
         }
         // the closing tag is the same element
-        Kind::JsxOpeningElement | Kind::JsxSelfClosingElement => Some(("jsx", node.tag_name())),
-        Kind::Decorator => Some(("decorator", node.expression()?)),
+        Kind::JsxOpeningElement | Kind::JsxSelfClosingElement => Some(("jsx", tag_name_of(node)?)),
+        Kind::Decorator => Some(("decorator", expression_of(node)?)),
         _ => None,
     }
 }
@@ -109,8 +110,8 @@ fn policy_of(node: P<Node>, what: &str, anchor: P<Node>) -> Option<Policy> {
         "call" if anchor.kind() == Kind::ImportKeyword => Some(Policy::ModuleLoad),
         "call"
             if anchor.kind() == Kind::Identifier
-                && anchor.text() == "require"
-                && matches!(node.arguments(), [argument] if ast::is_string_literal_like(*argument)) =>
+                && NameToken::cast(anchor).is_some_and(|name| name.value() == "require")
+                && matches!(arguments_of(node), [argument] if ast::is_string_literal_like(*argument)) =>
         {
             Some(Policy::ModuleLoad)
         }
@@ -123,10 +124,10 @@ fn policy_of(node: P<Node>, what: &str, anchor: P<Node>) -> Option<Policy> {
 fn is_intrinsic(tag: P<Node>) -> bool {
     match tag.kind() {
         Kind::JsxNamespacedName => true,
-        Kind::Identifier => {
-            let name = tag.text();
+        Kind::Identifier => NameToken::cast(tag).is_some_and(|tag| {
+            let name = tag.value();
             name.starts_with(char::is_lowercase) || name.contains('-')
-        }
+        }),
         _ => false,
     }
 }

@@ -48,6 +48,7 @@ mod stamps;
 #[cfg(test)]
 mod tests;
 mod uncovered;
+mod view;
 
 use collect::{Body, Collector};
 pub(crate) use handed::Handed;
@@ -58,6 +59,7 @@ use project::{
 pub(crate) use resolve::{FunctionOrigin, Init, Resolved, Why};
 pub(crate) use stamps::Stamps;
 pub(crate) use uncovered::Uncovered;
+pub(crate) use view::{UNHANDLED_KEY, counted};
 
 /// First chunk of the region a program lives in: the 1 MB `tsrs_lint` uses for one program.
 const CHUNK: usize = 1 << 20;
@@ -582,6 +584,11 @@ impl Sem {
     /// The plain calls in the body of `func`: the callee expression of each, as an absolute byte span in the file, in source order (by where the
     /// callee starts, then where it ends). Walks the **program's** tree from the def's node, through `FileDefs`. `None` for a def with no node (see
     /// `FileDefs::nodes`).
+    /// How many nodes of an unhandled kind reading `func`'s body met where it expected one (`view::counted`): said by the walk each time the body is walked.
+    pub(crate) fn unhandled_in_body(&self, func: Func<'_>, style: MarkerStyle<'_>) -> u64 {
+        self.body(func, style).map_or(0, |body| body.unhandled)
+    }
+
     pub(crate) fn call_sites(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Vec<Span>> {
         let body = self.body(func, style)?;
         Some(body.sites.iter().map(|call| call.span).collect())
@@ -597,7 +604,7 @@ impl Sem {
         }
         let _scope = self.region.enter();
         let mut collector = Collector::new(func.file.node.text(), &defs.def_of, node);
-        collector.body_of(node);
+        let ((), unhandled) = counted(|| collector.body_of(node));
         let accessors = self.accessor_sites(&collector.accesses, collector.text);
         collector.sites.extend(accessors);
         collector.sites.sort_by_key(|call| call.span);
@@ -611,6 +618,7 @@ impl Sem {
             refs: collector.refs,
             destructured: collector.destructured,
             assigns: collector.assigns,
+            unhandled,
         });
         self.bodies.borrow_mut().insert(node, Arc::clone(&made));
         Some(made)

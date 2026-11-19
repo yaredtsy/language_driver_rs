@@ -1,6 +1,7 @@
 use tsrs_ast::{Symbol, SymbolFlags};
 use tsrs_checker::Checker;
 
+use super::view::initializer_of;
 use super::*;
 
 // ---- the port of `tsrs_ls`'s `callhierarchy.rs`. Names and shapes follow the original so an engine bump can be checked line by line.
@@ -43,7 +44,7 @@ fn is_assigned_expression(node: P<Node>) -> bool {
         return false;
     }
     let parent = parent.expect("is_variable_like says there is one");
-    if parent.initializer() != Some(node) {
+    if initializer_of(parent) != Some(node) {
         return false;
     }
     if !parent.name().is_some_and(ast::is_identifier) {
@@ -234,17 +235,15 @@ pub(super) fn callable_declarations(checker: &mut Checker, declaration: P<Node>)
         return find_implementation_or_all_initial_declarations(checker, declaration);
     }
     if is_variable_like(Some(declaration))
-        && let Some(initializer) = declaration
-            .initializer()
-            .filter(|initializer| is_assigned_expression(*initializer))
+        && let Some(initializer) =
+            initializer_of(declaration).filter(|initializer| is_assigned_expression(*initializer))
     {
         return vec![initializer];
     }
     // the same addition as in `declarations_of` (D21): a member of a union that holds an arrow in an object literal
     if ast::is_property_assignment(declaration)
-        && let Some(initializer) = declaration
-            .initializer()
-            .filter(|initializer| is_function_value(*initializer))
+        && let Some(initializer) =
+            initializer_of(declaration).filter(|initializer| is_function_value(*initializer))
     {
         return vec![initializer];
     }
@@ -297,7 +296,7 @@ pub(super) fn declarations_of(checker: &mut Checker, location: P<Node>) -> Vec<P
             }
             if is_variable_like(parent)
                 && let Some(initializer) = parent
-                    .and_then(|parent| parent.initializer())
+                    .and_then(initializer_of)
                     .filter(|initializer| is_assigned_expression(*initializer))
             {
                 return vec![initializer];
@@ -319,9 +318,8 @@ pub(super) fn declarations_of(checker: &mut Checker, location: P<Node>) -> Vec<P
             continue;
         }
         if ast::is_variable_declaration(location)
-            && let Some(initializer) = location
-                .initializer()
-                .filter(|initializer| is_assigned_expression(*initializer))
+            && let Some(initializer) =
+                initializer_of(location).filter(|initializer| is_assigned_expression(*initializer))
         {
             return vec![initializer];
         }
