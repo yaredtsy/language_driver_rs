@@ -657,3 +657,30 @@ loaded it with `ProjectWorkspace::load_inline`, sysroot `None`.
   needs are public, and `load_workspace` does not return the `SourceRootConfig` it builds; the table is in RS5 §3. The rule for a created
   or deleted file that needs a reload is rust-analyzer's `should_refresh_for_change` (`crates/rust-analyzer/src/reload.rs`, not in a
   published `ra_ap_*` crate), copied, not called.
+
+## RS5 step 3: `refresh`, the fast path (22e8412, reviewed 2026-11-19)
+
+- **Built as RS5 §3 says**, with two corrections to the doc (now fixed there): `ProjectFolders::new` takes a borrow
+  (`slice::from_ref`), not a clone, and `Loaded` keeps `ProjectFolders.load` (the `Vec<Entry>`) beside the `SourceRootConfig`, because
+  the excludes a folder is listed again with live in the entries. Built on all three load paths.
+- **Re-run:** the Rust workspace 196 passed, 0 failed, 13 ignored (`-j2`, `--test-threads=2`); `tests/refresh.rs` 6 passed. Mutation
+  re-run by the reviewer: without `set_roots(partition)` the three creation tests fail (the deletion test still passes: a deleted
+  file's `FileId` stays in the old roots, and `change_file(id, None)` is enough).
+- **`Session` is `Send` and not `Sync`** (a compile probe, 2026-11-19): `RootDatabase`'s salsa `Storage` holds a `RefCell` (`ZalsaLocal`).
+- **Measured** (`sem::refresh::tests::measure_refresh_on_core`, ignored, debug build with the workspace's `opt-level`):
+
+| | `core/` (13 files, 4 folders stamped) | `core/` + `languages/typescript/` (70 files, 16 folders; tsrs a git dependency) |
+|---|---|---|
+| open | 0.99 s | 1.56 s |
+| first request / second, same entry | 2.86 s / 16 ms (`wire`) | 7.0 s / 238 ms (`Session::graph`) |
+| `refresh`, nothing changed (50 runs) | 21 µs mean, 84 µs worst | 125 µs mean, 306 µs worst |
+| one saved file, the first after the load | refresh 4.6 ms, next request 29 ms | refresh 25 ms, next request 396 ms |
+| one saved file, the second (the entry's own) | refresh 0.2 ms, next request 22 ms | refresh 0.4 ms, next request 309 ms |
+| peak footprint of the test process | | 1.1 GB |
+
+  A save costs a refresh of milliseconds and a next request about 1.3–1.7 times a warm one; a reload would cost the open and the first
+  request again (seconds). The first `apply_change` after a load costs 10–50 times the next one; not explained, small either way.
+- **A trap in measuring:** a copy of `languages/typescript/` alone fails `cargo metadata` (its path dependency `../../core` is not
+  beside it) and loads by D37's own reader, with no std and no dependencies: 28 MB, a 105 ms first request, and no error, only a
+  warning the measurement did not print. A measurement prints the load's warnings and refuses a fallback rung.
+- **Found:** a file saved while the load ran was missed (stamps taken after the load); the rule is RS5 §3 point 3's re-read, step 4.
