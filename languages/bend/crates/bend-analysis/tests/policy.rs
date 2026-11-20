@@ -223,7 +223,7 @@ fn every_row_of_the_table_has_a_fixture_and_a_snapshot() {
         &snapshots_dir(),
     );
     assert!(found.is_empty(), "{}", found.join("\n"));
-    assert_eq!(rows(TABLE).len(), 27, "the table was not read");
+    assert_eq!(rows(TABLE).len(), 28, "the table was not read");
 }
 
 #[test]

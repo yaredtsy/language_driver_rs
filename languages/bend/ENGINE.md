@@ -235,11 +235,11 @@ read (`walked`): a site, a term skipped as a type, a counted sugar, or data. **N
 |---|---|
 | a `Call` to a def of the book (`qualified` is Bend's `ns:name`) | 12,547 |
 | `External` (Base's, by the name as written) | 4,300 |
-| a name handed over (`passed`) | 117 |
+| a name handed over (`passed`) | 156 |
 | not a site, counted `sugar_base` (`(a + b : U32)`, `&&`, `++`, `a[i]`, `do IO<..>`, `&`, `\|`) | 12,116 |
 | inside a term skipped as a type, counted `type_position` | 2,652 |
 | a `type` handed over, counted `type_passed` (`App.run(~U32, ..)`) | 261 |
-| a bare project def name below the arguments, counted `passed_deep` | 104 |
+| a bare project def name below the arguments, counted `passed_deep` | 65 |
 | data: `3n+p`, `{a != b : T}`, a do block's closing value, a Base name as a value | 708 |
 | in none | **0** |
 
@@ -251,9 +251,11 @@ bytes of our site, the whole `a[i]` (for `a[i] <- v` too: 22 of the 46), so an i
 
 ### What the walk counted over every def of each demo's largest book (`demos_counters`)
 
-Over the 16 books (all their defs, walked once each): **3,679** calls to defs of the book, **1,185** constructs, 1,172 externals, 33 passed edges, **68 `function_typed_value`**, 0 `unknown_name`, 0 `unknown_constructor`;
-counted and not drawn: **6,667 `type_position`**, **3,072 `sugar_base`**, **28 `passed_deep`**, 84 `type_passed`, **0 `open_law`** (every law of a demo has its proof), 0 `external_passed`. Per demo, the largest are
-`app_slash_boss_3d` (1,998 calls, 3,552 `type_position`, 22 `function_typed_value`, 13 `passed_deep`) and `pure_hvm5_mini` (656 calls, 590 constructs, 21 `function_typed_value`, 15 `passed_deep`).
+Over the 16 books (all their defs, walked once each): **3,679** calls to defs of the book, **1,185** constructs, 1,172 externals, 46 passed edges, **68 `function_typed_value`**, 0 `unknown_name`, 0 `unknown_constructor`;
+counted and not drawn: **6,667 `type_position`**, **3,072 `sugar_base`**, **15 `passed_deep`**, 84 `type_passed`, **0 `open_law`** (every law of a demo has its proof), 0 `external_passed`. Per demo, the largest are
+`app_slash_boss_3d` (1,998 calls, 3,552 `type_position`, 22 `function_typed_value`, 13 `passed_deep`) and `pure_hvm5_mini` (656 calls, 590 constructs, 21 `function_typed_value`, 2 `passed_deep`).
+
+The two oracle rows and these counts are those after the `passed-do` fix (a do bind's, exec's and step's bare def is a passed edge): before it, `passed` was 117 Refs and `passed_deep` 104, and 33 passed edges and 28 `passed_deep` over the books; 39 Refs and 13 edges moved from the one to the other, nothing else changed (0 in none, 0 differ).
 
 ### The sweep (BD4 step 5)
 
@@ -279,10 +281,10 @@ maximum resident set size is 2–8 MB).
 | proof_insertion_sort/main.bend | 2 | 10 | 10 | 13 | 0 | 2 | 0 | 0 | 29 | 4 | 0 | 0 | 0 | 0 | 1.1 |
 | proof_numerics/main.bend | 1 | 7 | 7 | 9 | 0 | 0 | 0 | 0 | 21 | 1 | 0 | 0 | 0 | 0 | 1.1 |
 | proof_typed_eval/main.bend | 1 | 13 | 11 | 21 | 28 | 2 | 0 | 0 | 36 | 0 | 0 | 0 | 0 | 0 | 1.2 |
-| pure_hvm5_mini/main.bend | 1 | 188 | 161 | 611 | 590 | 60 | 1 | 21 | 931 | 132 | 34 | 15 | 21 | 5 | 2.8 |
+| pure_hvm5_mini/main.bend | 1 | 188 | 161 | 611 | 590 | 60 | 14 | 21 | 931 | 132 | 34 | 2 | 21 | 5 | 2.8 |
 | pure_par_sort/main.bend | 1 | 8 | 8 | 18 | 0 | 11 | 0 | 0 | 32 | 0 | 0 | 0 | 0 | 0 | 1.1 |
 | pure_par_sum/main.bend | 1 | 3 | 3 | 5 | 0 | 5 | 0 | 0 | 6 | 0 | 0 | 0 | 0 | 0 | 1.1 |
-| **the 16 `main` entries** | 20 | 999 | 916 | 3,170 | 1,149 | 1,098 | 33 | 55 | 5,905 | 3,016 | 81 | 28 | 55 | 29 | 4.9 (max) |
+| **the 16 `main` entries** | 20 | 999 | 916 | 3,170 | 1,149 | 1,098 | 46 | 55 | 5,905 | 3,016 | 81 | 15 | 55 | 29 | 4.9 (max) |
 | **app_slash_boss_3d/PROOF.bend** (the largest book) | 5 | 514 | 475 | 1,998 | 444 | 708 | 22 | 22 | 3,524 | 2,385 | 17 | 13 | 22 | 21 | 4.9 |
 
 Contexts are the distinct contexts of the union of the graphs: the defs entered and the defs, types and leaves they reach. Everything is milliseconds and a few MB: a book of these sizes is rebuilt, and every def of it walked, in less than
@@ -291,7 +293,7 @@ a frame (BD5's `refresh` can drop the book).
 **The sweep found a cost the tests did not.** The first run of `app_slash_boss_3d/main.bend` took **2,333 ms** (471 requests, about 5 ms each): a request made a new `Bend`, which read the file it touched again (the places of the bodies,
 and the markers with the caller's style: two parses of a 216 kB file). The book now keeps both (`OnceLock` per file, markers per label behind a `Mutex`): **34 ms**, and 17 ms for the table's run.
 
-**What the 28 `passed_deep` are** (`app_slash_boss_3d` 13, `pure_hvm5_mini` 15; each read at its site): **15 are project type names**, operands of `->` or `&` in a value position (`@+f: F -> Cam`, the type argument `Sound & Audio` of
+**What the 28 `passed_deep` were** (the table above is after the `passed-do` fix, which drew the 13 as passed edges: `pure_hvm5_mini` passed 1 → 14, `passed_deep` 15 → 2; the 15 that remain are the types) (`app_slash_boss_3d` 13, `pure_hvm5_mini` 15; each read at its site): **15 are project type names**, operands of `->` or `&` in a value position (`@+f: F -> Cam`, the type argument `Sound & Audio` of
 `IO.pure(…)`): a type written where the walk does not know it is a type (an arrow's or a pair's operands are walked, as the plan says). **13 are one thing: the value of a do bind or exec** (`w : String <- name`, `Unit <- pop`,
 `e : Bool <- eof`, `h : Hc <- peek`, all in `pure_hvm5_mini`'s parser), a bare project def used as the **value argument of the sugar's `P.bind`**: a def **handed over** to `M.bind`, which the rule for a direct argument
 (D22) would draw as a passed edge, and which the walk reads as a nested term because it sees the statement and not the call it stands for. So the thirteen are a policy row owed (`do-project`: a bare def as a bind's value is

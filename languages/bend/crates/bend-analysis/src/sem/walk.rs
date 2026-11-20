@@ -181,7 +181,8 @@ impl Walker {
         }
     }
 
-    /// A direct argument of a call, or a direct field of a constructor: a bare name that is not bound is handed over; anything else is walked.
+    /// A direct argument of a call, or a direct field of a constructor, or the value of a `do` bind, exec or step (a direct argument of the `bind` the sugar
+    /// stands for): a bare name that is not bound is handed over; anything else is walked.
     fn passable(&mut self, term: &Term) {
         let inner = strip_group(term);
         match &inner.kind {
@@ -457,17 +458,17 @@ impl Walker {
                         } => {
                             self.push(stmt.span, What::Sugar(sugar("bind")));
                             self.skip(ty);
-                            self.term(value, &Ns::None);
+                            self.passable(value);
                             self.scope.push(name.text.clone());
                         }
                         DoKind::Exec { ty, value } => {
                             self.push(stmt.span, What::Sugar(sugar("bind")));
                             self.skip(ty);
-                            self.term(value, &Ns::None);
+                            self.passable(value);
                         }
                         DoKind::Step(step) => {
                             self.push(stmt.span, What::Sugar(sugar("bind")));
-                            self.term(step, &Ns::None);
+                            self.passable(step);
                         }
                         DoKind::Return(value) => {
                             self.push(stmt.span, What::Sugar(sugar("pure")));

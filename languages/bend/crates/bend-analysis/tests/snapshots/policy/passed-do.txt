@@ -1,0 +1,20 @@
+== main.bend main
+main
+  Parser.bind
+  name [Passed]
+  Parser.bind
+  pop [Passed]
+  Parser.bind
+  tick [Passed]
+  Parser.pure
+    Parser
+edges:
+Parser.pure | P | construct Parser no init
+main | x : U32 <- name | call Parser.bind
+main | name | pass name
+main | Unit <- pop | call Parser.bind
+main | pop | pass pop
+main | tick | call Parser.bind
+main | tick | pass tick
+main | return x | call Parser.pure
+counters: type_position=12
