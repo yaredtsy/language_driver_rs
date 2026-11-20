@@ -1,0 +1,16 @@
+files, in load order
+  #0 local.bend  ns="local"  in root  []
+  #1 ../shared/lib.bend  ns="../shared/lib"  OUTSIDE  []
+  #2 main.bend  ns=""  in root  [Local -> #0, Lib -> #1]
+imports Base: true
+decls (file:def)
+  0:0 local:a function
+  1:0 ../shared/lib:b function
+  2:0 main function
+tlds, sorted
+  ../shared/lib:b -> 1:0
+  local:a -> 0:0
+  main -> 2:0
+ctrs, sorted
+counters
+  file_outside_root: 1

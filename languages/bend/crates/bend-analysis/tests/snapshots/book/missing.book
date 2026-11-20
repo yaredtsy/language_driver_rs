@@ -1,0 +1,13 @@
+files, in load order
+  #0 lib.bend  ns="lib"  in root  []
+  #1 main.bend  ns=""  in root  [N -> missing, L -> #0]
+imports Base: true
+decls (file:def)
+  0:0 lib:here function
+  1:0 main function
+tlds, sorted
+  lib:here -> 0:0
+  main -> 1:0
+ctrs, sorted
+counters
+  import_missing: 1

@@ -1,0 +1,20 @@
+files, in load order
+  #0 lib.bend  ns="lib"  in root  []
+  #1 p1.bend  ns="p1"  in root  [L -> #0]
+  #2 p2.bend  ns="p2"  in root  [L -> #0]
+  #3 main.bend  ns=""  in root  [P1 -> #1, P2 -> #2]
+imports Base: true
+decls (file:def)
+  0:0 lib:ok law
+  1:0 lib:ok function  proves 0:0
+  2:0 lib:ok function
+  3:0 twice function
+  3:1 twice function
+  3:2 main function
+tlds, sorted
+  lib:ok -> 1:0
+  main -> 3:2
+  twice -> 3:0
+ctrs, sorted
+counters
+  duplicate_declaration: 2

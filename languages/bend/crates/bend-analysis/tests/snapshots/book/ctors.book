@@ -1,0 +1,17 @@
+files, in load order
+  #0 lib.bend  ns="lib"  in root  []
+  #1 main.bend  ns=""  in root  [L -> #0]
+imports Base: true
+decls (file:def)
+  0:0 lib:Shape enum
+  1:0 Local enum
+  1:1 main function
+tlds, sorted
+  Local -> 1:0
+  lib:Shape -> 0:0
+  main -> 1:1
+ctrs, sorted
+  Dot -> 1:0
+  lib:Circle -> 0:0
+  lib:Square -> 0:0
+counters
