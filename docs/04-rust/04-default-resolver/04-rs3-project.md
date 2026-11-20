@@ -107,7 +107,11 @@ and holds five workspaces (`core/`, one per language). So, as TypeScript finds t
 **Now:** `test` (since RS3, S-RS2) and **`debug_assertions`** are on, `miri` is off: the code a default `cargo build` / `cargo test`
 compiles. On the cargo rung through `CargoConfig::cfg_overrides` (`CfgOverrides { global: CfgDiff::new(enable, disable) }`, the field
 rust-analyzer fills from its `rust-analyzer.cargo.cfgs` setting; the engine applies it to every crate, as a dev build compiles the
-dependencies with debug assertions too); on D37's reader and the lone file through `manifest::host_cfgs()`. Not a `LoadOptions` field yet.
+dependencies with debug assertions too; `CfgDiff` comes from `ra_ap_cfg`, a direct dependency since then); on D37's reader and the lone
+file through `manifest::host_cfgs()`, which **already** pushed `debug_assertions` (since RS3 step 7, 5fb73d8): before D48 the cargo rung
+and the reader disagreed, and only the cargo rung changed (fa2f1e0, reviewed 2026-11-20; `tests/cfg.rs` on all three rungs: the two
+live functions are defs with edges, the two that are off are `None`, and the entry's calls to them are `unknown_callee`). Not a
+`LoadOptions` field yet.
 
 **Later, not scheduled (look at it again when a user asks to choose):**
 

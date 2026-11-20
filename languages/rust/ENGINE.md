@@ -6,7 +6,8 @@ The RS0 spikes below were run on 2026-11-16 (macOS, Darwin 23.6.0, Rust 1.99.1) 
 - Upstream URL: https://github.com/rust-lang/rust-analyzer (read from `../language_clone/rust-analyzer` at `2a362a4`; **built from crates.io**, not git)
 - Pinned commit / version: `ra_ap_* =0.0.358` for **every** `ra_ap_*` crate we name (published 2026-10-12), written once in `languages/rust/Cargo.toml` (RS1 step 1). See S-RS1 for why one number and why not newer.
 - Engine crates used: `rust-syntax`: `ra_ap_syntax` (its `ra_ap_parser`, `rowan` come with it). `rust-analysis`: + `ra_ap_hir`, `ra_ap_ide_db`,
-  `ra_ap_load-cargo`, `ra_ap_project_model`, `ra_ap_vfs`. Dev only: `ra_ap_ide` (the oracle). Final list confirmed when RS3 and RS4 are built.
+  `ra_ap_load-cargo`, `ra_ap_project_model`, `ra_ap_vfs`, `ra_ap_cfg` (D48, fa2f1e0: `CfgDiff` is re-exported by neither `hir` nor
+  `project_model`). Dev only: `ra_ap_ide` (the oracle).
 - Patches: none
 - How to bump: an engine bump is a change of its own (only the pins, the lockfile, the `sem` module and this file).
   1. Look for a newer set: `cargo info ra_ap_hir`, `ra_ap_ide`, `ra_ap_ide_db`, `ra_ap_load-cargo`, `ra_ap_project_model` (these five were the ones that stopped at
@@ -48,7 +49,7 @@ new call into the engine adds its row in the same commit (the reviewer writes it
 | `SyntaxKind`: `WHITESPACE`, `COMMENT`, `SHEBANG`, `DOC_COMMENT`, `OUTER_DOC_COMMENT`, `INNER_DOC_COMMENT`, `ATTR` | the tree shapes of S-RS4: a doc line is a `DOC_COMMENT` node around an `OUTER_`/`INNER_DOC_COMMENT` token; a plain comment is a `COMMENT` token and can open an item's node, so an item's range starts at its first `DOC_COMMENT` or `ATTR` child, else its first child that is not `COMMENT` or `WHITESPACE` |
 | `SyntaxKind`: `LIFETIME`, `LIFETIME_ARG`, `FOR_BINDER`, `GENERIC_ARG_LIST`, `PARENTHESIZED_ARG_LIST`, `TUPLE_TYPE`, `PARAM_LIST`, `TYPE_BOUND_LIST`, `ABI`, `STRING`, `COLON2`, `COMMA`, `PLUS`, `EQ`, `THIN_ARROW`, `COLON`, `SEMICOLON`, `R_PAREN`, `R_BRACK`, `R_ANGLE`, `R_CURLY`, `AS_KW`, `DYN_KW`, `IMPL_KW`, `MUT_KW`, `CONST_KW`, `UNSAFE_KW`, `EXTERN_KW` | the type-text printer (`docs/qualnames.md` P1–P8). A renamed or split kind changes stored qualnames: the `the_printing_rule` test and the snapshots catch it |
 
-**`rust-analysis`** (`crates/rust-analysis/src/sem/`, D35; as of RS3 step 7, 5fb73d8; the test-only calls are marked):
+**`rust-analysis`** (`crates/rust-analysis/src/sem/`, D35; as of RS3 step 7, 5fb73d8, with RS5's rows added at its 2026-11-20 review; the test-only calls are marked):
 
 | Item | Where | What we rely on |
 |---|---|---|
@@ -84,6 +85,10 @@ new call into the engine adds its row in the same commit (the reviewer writes it
 | `ast::Path::{qualifier, segment}`, `PathSegment::type_anchor`, `TypeAnchor::ty` | `resolve.rs` | the qualifier of `W::make()` and the type of `<W as Make>::make()` |
 | `ast::{MacroCall, CallExpr, MethodCallExpr, RecordExpr, PathExpr, ParenExpr, ClosureExpr, BlockExpr::async_token, Item, Attr::simple_name}`, `SyntaxNode::preorder`, `Preorder::skip_subtree` | `sites.rs` | the walk of a body and of an expansion: nested items skipped, closures and `async` blocks numbered, `#[cfg]` read by the tree |
 | test only: `Semantics::{new, attach_first_edition_opt, parse, resolve_expr_as_callable, resolve_method_call_fallback}`, `CallableKind::Function`, `Either::left`; `ra_ap_syntax::{ast::CallExpr, ast::MethodCallExpr, AstNode}` | `origin.rs` tests | the fixture's call walk, the part of RS4's site walk RS3 needs |
+| `ra_ap_load_cargo::{ProjectFolders::new(slice::from_ref(&ws), &[], None), SourceRootConfig::{partition, path_is_library}}`, `ra_ap_vfs::loader::Entry::{contains_dir, contains_file}` | `load.rs`, `refresh.rs` | RS5 step 3 (22e8412): built from a borrow of the workspace before `load_workspace` takes it (it builds its own and does not return it); the source roots again after a file is created or deleted; a library path is not stamped; a folder is listed again with the load's own excludes |
+| `ra_ap_vfs::{Vfs::set_file_contents, Vfs::take_changes, Change}`, `ra_ap_ide_db::{ChangeWithProcMacros::{change_file, set_roots}, RootDatabase::apply_change}` | `refresh.rs` | RS5 step 3: a saved, created or deleted file in one transaction; `set_file_contents` returns `false` for the same bytes, so a touched file applies nothing; `apply_change` takes `&mut` (the session's `&mut self`) |
+| `ra_ap_hir::{Crate::all, Crate::origin, CrateOrigin::is_local, Crate::root_file, Crate::display_name, Crate::modules}` | `prime.rs` | RS5 step 5b (16389db): the local crates whose root file is under the root, sorted by name; `modules` builds each one's def map and std's with it (measured against `ide_db::prime_caches::parallel_prime_caches`, which also builds trait impls and symbols: dearer) |
+| `ra_ap_project_model::{CfgOverrides { global, .. }}`, `ra_ap_cfg::{CfgDiff::new(enable, disable), CfgAtom::Flag}` | `load.rs` | D48 (fa2f1e0): `debug_assertions` enabled for every crate on the cargo rung, `miri` not; the reader rung and the lone file had it already through `manifest::host_cfgs()` (5fb73d8) |
 
 **Test-only** (`sem/oracle.rs`, RS4 step 9, 33f7779; `ra_ap_ide =0.0.358` is a dev-dependency, kept out of the normal tree by
 `scripts/check-all.sh --static`): `ra_ap_ide::{AnalysisHost::with_database, Analysis::outgoing_calls, CallHierarchyConfig, FilePosition,
