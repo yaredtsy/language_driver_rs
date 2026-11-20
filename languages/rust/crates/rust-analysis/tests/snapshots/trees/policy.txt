@@ -6,7 +6,7 @@ plain_calls
 breakdown:
   edges: 2 call, 0 construct, 0 external, 0 unresolved
   contexts 3, bodies walked 3, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/calls.rs method_chain
 method_chain
@@ -15,7 +15,7 @@ method_chain
 breakdown:
   edges: 1 call, 0 construct, 2 external, 0 unresolved
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/calls.rs constructions
 constructions
@@ -27,7 +27,7 @@ constructions
 breakdown:
   edges: 0 call, 4 construct, 0 external, 0 unresolved
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/calls.rs closures
 closures
@@ -42,7 +42,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     closure: 3
   contexts 3, bodies walked 3, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/calls.rs nested_items
 nested_items
@@ -52,7 +52,7 @@ nested_items
 breakdown:
   edges: 2 call, 0 construct, 0 external, 0 unresolved
   contexts 3, bodies walked 3, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/calls.rs macro_from_another_module
 macro_from_another_module
@@ -62,7 +62,7 @@ macro_from_another_module
 breakdown:
   edges: 2 call, 0 construct, 0 external, 0 unresolved
   contexts 3, bodies walked 3, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/calls.rs recurse_a
 recurse_a
@@ -72,7 +72,7 @@ recurse_a
 breakdown:
   edges: 2 call, 0 construct, 0 external, 0 unresolved
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/calls.rs FROM_CONST
 FROM_CONST
@@ -81,7 +81,7 @@ FROM_CONST
 breakdown:
   edges: 1 call, 0 construct, 0 external, 0 unresolved
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/calls.rs Wrapper
 Wrapper
@@ -89,7 +89,7 @@ Wrapper
 breakdown:
   edges: 0 call, 0 construct, 0 external, 0 unresolved
   contexts 0, bodies walked 0, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/macros.rs std_arguments
 std_arguments
@@ -100,7 +100,7 @@ std_arguments
 breakdown:
   edges: 3 call, 0 construct, 0 external, 0 unresolved
   contexts 3, bodies walked 3, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/macros.rs project_wrapping_external
 project_wrapping_external
@@ -109,7 +109,7 @@ project_wrapping_external
 breakdown:
   edges: 1 call, 0 construct, 0 external, 0 unresolved
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/dispatch.rs generic_by_value
 generic_by_value
@@ -121,7 +121,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     type_param: 1
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/dispatch.rs impl_return
 impl_return
@@ -131,7 +131,7 @@ impl_return
 breakdown:
   edges: 2 call, 0 construct, 0 external, 0 unresolved
   contexts 3, bodies walked 3, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/dispatch.rs impl_return_of_a_parameter
 impl_return_of_a_parameter
@@ -145,7 +145,7 @@ breakdown:
     opaque: 1
     type_param: 1
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/dispatch.rs fn_pointer
 fn_pointer
@@ -157,7 +157,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     fn_pointer: 1
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/shapes.rs derived
 derived
@@ -167,7 +167,7 @@ breakdown:
   edges: 0 call, 1 construct, 2 external, 0 unresolved
   calls to a def a macro or a derive made, not entered: 2
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/shapes.rs E
 E
@@ -175,7 +175,7 @@ E
 breakdown:
   edges: 0 call, 0 construct, 0 external, 0 unresolved
   contexts 0, bodies walked 0, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/lib.rs Writer::twice
 Writer::twice
@@ -187,7 +187,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     self_in_trait: 2
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/lib.rs uses_the_twins
 uses_the_twins
@@ -198,7 +198,7 @@ breakdown:
   edges: 2 call, 0 construct, 0 external, 0 unresolved
   defs named by where they are, because a def of the same file owns their marker: 1
   contexts 3, bodies walked 3, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/external.rs std_calls
 std_calls
@@ -209,7 +209,7 @@ breakdown:
   edges: 1 call, 1 construct, 10 external, 0 unresolved
   calls to a def a macro or a derive made, not entered: 2
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/external.rs std_naming
 std_naming
@@ -217,7 +217,7 @@ std_naming
 breakdown:
   edges: 0 call, 0 construct, 3 external, 0 unresolved
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/constructions.rs MarkedStruct
 MarkedStruct
@@ -225,7 +225,7 @@ MarkedStruct
 breakdown:
   edges: 0 call, 0 construct, 0 external, 0 unresolved
   contexts 0, bodies walked 0, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/constructions.rs Tuple
 Tuple
@@ -233,7 +233,7 @@ Tuple
 breakdown:
   edges: 0 call, 0 construct, 0 external, 0 unresolved
   contexts 0, bodies walked 0, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/constructions.rs Shape
 Shape
@@ -241,7 +241,7 @@ Shape
 breakdown:
   edges: 0 call, 0 construct, 0 external, 0 unresolved
   contexts 0, bodies walked 0, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/constructions.rs build_variants
 build_variants
@@ -251,7 +251,7 @@ build_variants
 breakdown:
   edges: 0 call, 2 construct, 0 external, 0 unresolved
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/constructions.rs build_external
 build_external
@@ -259,7 +259,7 @@ build_external
 breakdown:
   edges: 0 call, 0 construct, 4 external, 0 unresolved
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/constructions.rs build_generated
 build_generated
@@ -267,7 +267,7 @@ build_generated
 breakdown:
   edges: 0 call, 0 construct, 1 external, 0 unresolved
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/passed.rs named
 named
@@ -276,7 +276,7 @@ named
 breakdown:
   edges: 0 call, 0 construct, 4 external, 0 unresolved, 1 passed
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/passed.rs Parser::run
 Parser::run
@@ -286,7 +286,7 @@ Parser::run
 breakdown:
   edges: 0 call, 0 construct, 7 external, 0 unresolved, 2 passed
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/passed.rs called_and_passed
 called_and_passed
@@ -301,7 +301,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     fn_pointer: 1
   contexts 3, bodies walked 3, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/passed.rs constructors
 constructors
@@ -310,7 +310,7 @@ breakdown:
   edges: 0 call, 0 construct, 7 external, 0 unresolved
   tuple structs and variants handed over and not called (no edge): 3
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/passed.rs externals
 externals
@@ -319,7 +319,7 @@ breakdown:
   edges: 0 call, 0 construct, 3 external, 0 unresolved
   functions outside project code handed over and not called (no edge): 1
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/passed.rs locals
 locals
@@ -332,7 +332,7 @@ breakdown:
     closure: 1
     fn_pointer: 1
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/passed.rs through_a_parameter
 through_a_parameter
@@ -343,7 +343,7 @@ breakdown:
     type_param: 1
   trait methods with no body handed over and not called (no edge): 1
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/macros.rs project_macro_around_external
 project_macro_around_external
@@ -352,7 +352,7 @@ project_macro_around_external
 breakdown:
   edges: 1 call, 0 construct, 0 external, 0 unresolved
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/macros.rs argument_through_external
 argument_through_external
@@ -361,7 +361,7 @@ argument_through_external
 breakdown:
   edges: 1 call, 0 construct, 0 external, 0 unresolved
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/macros.rs two_project_levels
 two_project_levels
@@ -370,7 +370,7 @@ two_project_levels
 breakdown:
   edges: 1 call, 0 construct, 0 external, 0 unresolved
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/macros.rs unknown_in_unknown
 unknown_in_unknown
@@ -380,7 +380,7 @@ breakdown:
   edges: 1 call, 0 construct, 0 external, 0 unresolved
   macro calls not expanded (their arguments are lost): 1
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/macros.rs derived_methods
 derived_methods
@@ -389,7 +389,7 @@ breakdown:
   edges: 0 call, 0 construct, 2 external, 0 unresolved
   calls to a def a macro or a derive made, not entered: 2
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/macros.rs calls_made_functions
 calls_made_functions
@@ -398,5 +398,5 @@ breakdown:
   edges: 0 call, 0 construct, 2 external, 0 unresolved
   calls to a def a macro or a derive made, not entered: 2
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 

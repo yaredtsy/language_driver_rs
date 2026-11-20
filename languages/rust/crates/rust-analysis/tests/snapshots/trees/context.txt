@@ -12,7 +12,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     type_param: 1
   contexts 4, bodies walked 4, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/generic.rs emit
 emit
@@ -24,7 +24,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     type_param: 1
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/callback.rs use_callbacks
 use_callbacks
@@ -42,7 +42,7 @@ breakdown:
     fn_param: 1
     fn_pointer: 1
   contexts 4, bodies walked 4, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/callback.rs apply
 apply
@@ -54,7 +54,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     fn_pointer: 1
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/callback.rs apply_generic
 apply_generic
@@ -66,7 +66,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     fn_param: 1
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/dyn_local.rs dyn_in_a_local
 dyn_in_a_local
@@ -78,7 +78,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     dyn: 1
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/dyn_param.rs call_dyn
 call_dyn
@@ -92,7 +92,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     dyn: 1
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/factory.rs use_factory
 use_factory
@@ -105,7 +105,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     dyn: 1
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/factory.rs use_impl_factory
 use_impl_factory
@@ -115,7 +115,7 @@ use_impl_factory
 breakdown:
   edges: 2 call, 0 construct, 0 external, 0 unresolved
   contexts 3, bodies walked 3, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/holder.rs use_holder
 use_holder
@@ -130,7 +130,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     dyn: 1
   contexts 3, bodies walked 3, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/holder.rs Holder::run
 Holder::run
@@ -142,7 +142,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     dyn: 1
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/holder.rs Holder
 Holder
@@ -150,7 +150,7 @@ Holder
 breakdown:
   edges: 0 call, 0 construct, 0 external, 0 unresolved
   contexts 0, bodies walked 0, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/recursive.rs start
 start
@@ -166,7 +166,7 @@ breakdown:
   open (the answer is a family of defs), by why:
     type_param: 1
   contexts 2, bodies walked 2, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 
 === src/recursive.rs countdown
 countdown
@@ -179,5 +179,5 @@ breakdown:
   open (the answer is a family of defs), by why:
     type_param: 1
   contexts 1, bodies walked 1, summaries reused 0
-  cuts: none
+  cuts in the graph: none
 

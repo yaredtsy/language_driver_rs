@@ -12,9 +12,9 @@
 //!   [--graph | --wire [--merged] [--function-prefix P] [--class-prefix P]] [--timing] [--label <label>]`: the call tree under a def of
 //!   `file` (relative to `dir`), then the breakdown of the graph (the load's warnings first, edges by kind, unresolved edges by reason, what is open).
 //!   `--depth` and `--max-contexts` are a [`Budget`] (whole numbers, 0 and up): a def past it is listed and not walked, drawn `[Cut]`, and counted in the
-//!   `frontier` line; `--depth 0` is the entry alone, on the frontier. Asking again for a cut def as the entry continues from there. `--max-nodes N`
+//!   `cuts in the graph` line of the breakdown; `--depth 0` is the entry alone, on the frontier. Asking again for a cut def as the entry continues from there. `--max-nodes N`
 //!   (1 and up) is the renderer's limit on the tree and the `--wire` (default 100 000, and not a budget: the graph is complete); when it cut, a line after
-//!   the breakdown says so. With none of the three the output is what it was before they existed. A
+//!   a `cuts in the tree` line of the breakdown says so. With none of the three the output is what it was before they existed. A
 //!   qualname is not unique in a file (D15): when it matches several defs they are listed and the exit code is 2, never the first one picked. `--entry` is
 //!   required: nothing runs at the top of a Rust file, so there is no file entry. The load's warnings go to stderr before the tree. `--wire` prints the
 //!   wire (D17) instead of the tree, as JSON alone on stdout, with the prefixes the caller gives for the ids of functions and classes; `--merged` joins
@@ -37,7 +37,7 @@ use rust_syntax::{
 const USAGE: &str = "usage: rust-cli outline <file> [--label <label>] [--edition <2015|2018|2021|2024>]
        rust-cli marker <file> (--def <qualname> [--occurrence <n>] | --header) --text <text> [--write] [--label <label>] [--edition <2015|2018|2021|2024>]
        rust-cli calls <dir> <file> --entry <qualname> [--id <marker> | --occurrence <n>] [--depth <n>] [--max-contexts <n>] [--max-nodes <n>] [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--timing] [--label <label>]
-  --depth and --max-contexts are the solver's budget: a def past it is listed and not walked, drawn [Cut] and counted in the frontier line.
+  --depth and --max-contexts are the solver's budget: a def past it is listed and not walked, drawn [Cut] and counted in the breakdown's `cuts in the graph` line.
   --max-nodes is the renderer's limit on the tree or the wire (default 100000): the graph is complete, and a line says when the drawing was cut.";
 
 /// Remove `--name value` from `args` and return the value.
@@ -504,24 +504,18 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
             }
         );
     }
-    // `Breakdown` has no field for the frontier or the renderer's cut (they would be fields of `rust-analysis`), so their lines are added here, after the
-    // breakdown and only when there is one: a request with no budget and a tree that fits prints what it did.
+    // `Breakdown` has no field for the renderer's cut (it is the drawing's, not the graph's), so its line is added here, right after the breakdown's
+    // `cuts in the graph` line, which is its last: said only when there is one, so a tree that fits prints what it did.
     let mut summary = breakdown(&graph).to_string();
-    if graph.stats.frontier > 0 {
-        summary.push_str(&format!(
-            "  frontier: {} (contexts the budget stopped at: listed, not walked)\n",
-            graph.stats.frontier
-        ));
-    }
     if renderer_cut {
         let graph_cut = graph.stats.frontier > 0 || !graph.stats.cuts.is_empty();
         summary.push_str(&format!(
-            "tree: cut by the renderer at {} nodes (--max-nodes); the graph {}\n",
+            "  cuts in the tree: at {} nodes (--max-nodes); the graph {}\n",
             render_options.max_nodes,
             if graph_cut {
                 "has its own cuts, above"
             } else {
-                "itself is complete"
+                "is complete"
             }
         ));
     }

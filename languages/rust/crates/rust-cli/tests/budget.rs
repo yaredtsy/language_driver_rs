@@ -73,8 +73,8 @@ fn stderr(out: &Output) -> String {
     String::from_utf8(out.stderr.clone()).unwrap()
 }
 
-/// What the tree mode prints for a program with no unresolved edge and nothing open: the tree, a blank line, the breakdown, and the frontier line when
-/// there is a frontier.
+/// What the tree mode prints for a program with no unresolved edge and nothing open: the tree, a blank line, and the breakdown, whose last line says what
+/// cut the graph: nothing, or the budget's frontier.
 fn tree_output(
     tree: &str,
     calls: u32,
@@ -83,13 +83,13 @@ fn tree_output(
     walked: u32,
     frontier: u32,
 ) -> String {
-    let frontier = if frontier == 0 {
-        String::new()
+    let cuts = if frontier == 0 {
+        "none".to_owned()
     } else {
-        format!("  frontier: {frontier} (contexts the budget stopped at: listed, not walked)\n")
+        format!("the budget stopped at {frontier} (listed, not walked)")
     };
     format!(
-        "{tree}\nbreakdown:\n  edges: {calls} call, {constructs} construct, 0 external, 0 unresolved\n  contexts {contexts}, bodies walked {walked}, summaries reused 0\n  cuts: none\n{frontier}"
+        "{tree}\nbreakdown:\n  edges: {calls} call, {constructs} construct, 0 external, 0 unresolved\n  contexts {contexts}, bodies walked {walked}, summaries reused 0\n  cuts in the graph: {cuts}\n"
     )
 }
 
@@ -232,7 +232,7 @@ fn the_wire_marks_a_frontier_node_cut_and_gives_it_no_children() {
     }
     assert!(
         stderr(&out)
-            .ends_with("  frontier: 3 (contexts the budget stopped at: listed, not walked)\n")
+            .ends_with("  cuts in the graph: the budget stopped at 3 (listed, not walked)\n")
     );
 
     let out = calls("straight-line", &["--wire", "--depth", "0"]);
@@ -249,7 +249,7 @@ fn the_graph_counts_its_frontier_and_lists_the_contexts_as_frontier() {
     assert_eq!(graph.matches("Frontier,").count(), 3, "{graph}");
     assert!(
         stderr(&out)
-            .ends_with("  frontier: 3 (contexts the budget stopped at: listed, not walked)\n")
+            .ends_with("  cuts in the graph: the budget stopped at 3 (listed, not walked)\n")
     );
 }
 
@@ -306,9 +306,9 @@ fn a_max_contexts_that_is_not_a_whole_number_from_zero_is_a_usage_error() {
 
 // --- --max-nodes: the renderer's limit, on a complete graph ---
 
-/// The line after the breakdown when the renderer cut.
+/// The line after the breakdown's `cuts in the graph` line when the renderer cut.
 fn renderer_line(nodes: u32, graph: &str) -> String {
-    format!("tree: cut by the renderer at {nodes} nodes (--max-nodes); the graph {graph}\n")
+    format!("  cuts in the tree: at {nodes} nodes (--max-nodes); the graph {graph}\n")
 }
 
 #[test]
@@ -318,7 +318,7 @@ fn a_tree_wider_than_max_nodes_is_cut_there_and_a_line_says_so() {
     assert_eq!(
         stdout(&out),
         tree_output("main [Cut]\n  fetch\n    parse\n", 4, 0, 5, 5, 0)
-            + &renderer_line(3, "itself is complete")
+            + &renderer_line(3, "is complete")
     );
     let out = calls("straight-line", &["--max-nodes", "4"]);
     assert_eq!(
@@ -330,12 +330,12 @@ fn a_tree_wider_than_max_nodes_is_cut_there_and_a_line_says_so() {
             5,
             5,
             0
-        ) + &renderer_line(4, "itself is complete")
+        ) + &renderer_line(4, "is complete")
     );
     let out = calls("straight-line", &["--max-nodes", "1"]);
     assert_eq!(
         stdout(&out),
-        tree_output("main [Cut]\n", 4, 0, 5, 5, 0) + &renderer_line(1, "itself is complete")
+        tree_output("main [Cut]\n", 4, 0, 5, 5, 0) + &renderer_line(1, "is complete")
     );
 }
 
@@ -373,7 +373,7 @@ fn the_wire_honours_max_nodes_merged_or_not() {
         assert_eq!(children[0]["target_qname"], "fetch");
         assert_eq!(children[0]["children"].as_array().unwrap().len(), 1);
         assert!(
-            stderr(&out).ends_with(&renderer_line(3, "itself is complete")),
+            stderr(&out).ends_with(&renderer_line(3, "is complete")),
             "{flags:?}: {}",
             stderr(&out)
         );

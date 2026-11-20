@@ -5,4 +5,4 @@ breakdown:
   open (the answer is a family of defs), by why:
     type_param: 1
   contexts 4, bodies walked 4, summaries reused 0
-  cuts: none
+  cuts in the graph: none
