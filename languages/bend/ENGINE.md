@@ -143,6 +143,87 @@ none refused, none already marked in the corpus, every file's defs still Bend's 
 the whole file on each call, so the test plans **every def of a file of at most 300 defs, and about 40 spread over a larger one** (the generated `bench/` files have up to 70,000):
 13,468 of the 160,916 defs were planned, not all of them.
 
+## BD3
+
+### What `book_load` and the tables do that the plan did not say (read from `bend.ts`, 2026-11-20)
+
+- **Bend's own offsets are into the text with its `import` lines emptied.** `book_load` parses `body.join("\n")` where each import line was set to `""`, so every `Span` of a
+  `Ref` (and of every other term) is before the file's own offset by the length of each import line above it. `scripts/bend-refs.ts` puts that length back; a comparison of
+  our spans with Bend's that forgets it is off by 12 (`import Base`) or more on every line after the imports.
+- **The entry file's namespace is `""`, the same as Base's**, not its file name: `book_read` calls `book_load(book, file, "", seen)`. A bare name in `tlds` is therefore the entry's or
+  Base's. Every other file is `ns:name` with the namespace relative to the entry file's folder (`../shared/lib` for a file above it).
+- **`book.order` lists a law's name twice**, once for the law and once for the def that fills it (`parse_def` pushes the same key again); `tlds` has **one** entry, the def's body replacing
+  the law's `null`, and its `m` stays the law's namespace. A proof is named `<law's namespace>:<name>` though it is written in another file: `DeclEntry::qualified` follows that.
+- **A proof is the def with no `->` whose resolved name is a law of the book** (`tld.v === null`, not Base's, not foreign). A second proof of one law finds a def there, not a law, and is
+  a duplicate (we count it; the first stays).
+- **Duplicates across files cannot happen by namespace alone**: `a:f` and `b:f` are two names. `parse_fresh` refuses `nm in tab` (the bare spelling: Base's, or the entry's), a name already
+  taken in this namespace, and a name whose first segment is an alias. So the duplicates a book can have are: a name twice in one file, a second proof of a law (two files), and a name Base has.
+- `parse_reso` with an alias whose file lacks the name tries the whole name as Base's (`List.map` with an alias `List`); with the alias *and* the whole name both in the table it refuses
+  ("the alias shadows"). We never refuse: the alias wins. A file's own def written with the alias's name (refused by `bend`) is found rather than called unknown.
+- Base's names are a regex over `base.bend` (`scripts/bend-base-names.sh`), checked against Bend's own loader on `bend2/base.bend`: the same **517 distinct top-level names** (541
+  declarations: 24 laws that Base proves itself, so a name twice) and the same **50 constructors**. `src/base_names.rs` carries the pin in its first lines; the ignored test
+  `base_names_are_current` runs the script and fails when the file differs.
+
+### The Ref oracle (S-BD4) against the book
+
+`bun scripts/bend-refs.ts ../language_clone/bend languages/bend/spikes/out` loads every `.bend` directly under `demos/*/` as an entry (56 files, 16 demos) with `book_load`, lowers each def's
+body with `term_lower` (which opens the closures of Bend's higher-order terms), and prints one line per distinct `Ref`: `<file> <def ns:name> <callee ns:name> <beg>-<end>`, spans in
+UTF-16 units of the file as it is on disk. About 3 s for all 56. It is not run by any test by itself: `every_ref_the_oracle_prints_resolves` (ignored, `--test corpus`) reads its output.
+
+| | |
+|---|---|
+| entries, Refs | 56, **32,805** |
+| found again by the name written at the span | 19,773 |
+| made up by sugar (`T.add`, `Array.get`, `Nat.add`, `Pair`, … : the span is the whole sugar) | 13,032; resolved by the callee's name without its namespace |
+| ours: `Project` (and `qualified` equals Bend's `ns:name`) / `Base` | 13,827 / 18,978 |
+| `Unknown`, or a different def | **0** |
+
+The oracle names a law and its proof alike (`LAWS:sorted`), so it cannot tell the two `DeclId`s apart: the fixture `law_alias` does. A Ref is also printed for names in **type positions** of a
+body (annotations): the list is every def reference, not the call sites; BD4 decides which are sites (BD-D9).
+
+### The corpus against the book
+
+`every_accepted_entry_opens_with_bends_names` (ignored): each of the 1,744 files the loader accepts, opened with its own folder as the root.
+
+- the **160,916 declarations of the entry files** have Bend's names (`ns:name`, with a proof named in its law's namespace) and Bend's kinds, in Bend's order, and the **15,313 constructors** are Bend's;
+  1,897 files were opened in all (the corpus is flat: a book of one file nearly always);
+- none of them counts a cycle, a missing import, a hub import, an import with no alias, or a duplicate: what Bend accepts, we accept;
+- the 214 files the loader refuses open all the same: `import_missing` 13 (all in `tests/import`: a file that is not there: `cycle_terminates` and `diamond_dedup` name `/cycle/other_half.bend`, `/diamond/top.bend`),
+  `duplicate_declaration` 17 over the 214 (three of them in `tests/import`: `duplicate_name`, `shadow_lib`, `shadow_base`, where a name Base has is declared again). **`tests/import/` has no cycle**: the flat corpus cannot hold the second
+  file of one (`cycle_terminates` says so in its own comment), so cycles are covered by the fixture `cycle` only. The corpus has no hub import (`bend-corpus.sh` counted 0).
+
+### Measurement (`measure`, release)
+
+2026-11-20, macOS, the owner's machine, `cargo test -p bend-analysis --release --test corpus measure -- --ignored --nocapture`. Median of 30 opens (100 for `base.bend`); time covers reading the files, both
+parses (the outline and the book's facts), and the tables. **Bytes are from lengths and `size_of`, not from an allocator** (the crate forbids unsafe code, so no counting allocator): texts are exact, outlines and
+tables are the strings and structs counted, without the allocator's rounding or the maps' nodes. Each demo is opened at the entry file with the largest book (`PROOF.bend`; `walkers_test.bend` for the netcode).
+
+| book | files | defs | text bytes | outline bytes | table bytes | open, ms |
+|---|---|---|---|---|---|---|
+| demos/app_pong_game_2d/PROOF.bend | 3 | 25 | 7,471 | 6,395 | 3,287 | 0.39 |
+| demos/app_ray_tracer_3d/PROOF.bend | 3 | 39 | 10,720 | 9,508 | 5,074 | 0.51 |
+| demos/app_slash_boss_3d/PROOF.bend | 5 | 514 | 216,051 | 140,011 | 69,691 | 8.51 |
+| demos/app_triangle_2d/PROOF.bend | 4 | 20 | 5,337 | 5,762 | 2,485 | 0.28 |
+| demos/app_win_is_bug_2d/PROOF.bend | 4 | 73 | 23,954 | 17,360 | 9,009 | 0.82 |
+| demos/io_hello_world/PROOF.bend | 3 | 3 | 614 | 546 | 349 | 0.14 |
+| demos/io_http_fetch/PROOF.bend | 3 | 20 | 7,583 | 4,685 | 2,590 | 0.35 |
+| demos/io_http_server/PROOF.bend | 3 | 12 | 3,499 | 2,656 | 1,504 | 0.23 |
+| demos/io_rollback_netcode/walkers_test.bend | 3 | 172 | 48,870 | 45,684 | 24,854 | 2.05 |
+| demos/io_tcp_echos/PROOF.bend | 3 | 12 | 3,230 | 2,656 | 1,494 | 0.19 |
+| demos/proof_insertion_sort/PROOF.bend | 4 | 19 | 6,203 | 4,592 | 2,316 | 0.64 |
+| demos/proof_numerics/PROOF.bend | 3 | 28 | 7,120 | 6,861 | 3,257 | 0.40 |
+| demos/proof_typed_eval/PROOF.bend | 3 | 19 | 6,935 | 4,164 | 2,580 | 0.34 |
+| demos/pure_hvm5_mini/PROOF.bend | 3 | 220 | 69,062 | 55,623 | 32,667 | 2.62 |
+| demos/pure_par_sort/PROOF.bend | 4 | 20 | 6,654 | 4,895 | 2,393 | 0.35 |
+| demos/pure_par_sum/PROOF.bend | 4 | 11 | 3,551 | 2,374 | 1,312 | 0.24 |
+| **largest book of the corpus by file count**: demos/app_slash_boss_3d/PROOF.bend | 5 | 514 | 216,051 | 140,011 | 69,691 | 8.52 |
+| bend2/base.bend alone | 1 | 541 | 90,291 | 133,129 | 68,397 | 3.29 |
+
+- **The whole of `tests/` is not one book** (no single entry): the corpus's books are nearly all one file, and the largest by file count is a demo (5 files, 514 defs, 216 kB, 8.5 ms). The plan's "a few
+  hundred files in milliseconds" (03 §4) holds with room: the cost is parsing, and parsing all 1,744 accepted files together was 195 ms (BD1 step 5).
+- A book is two to three times its text in memory (the text, an outline about two thirds of it, tables about a third); `base.bend` alone, a dense file of 541 short defs, is the one whose outline is larger than its text.
+- A refresh that rebuilds a book of this size (BD5) is under 10 ms for every demo: `Session::refresh` can drop the book and open it again.
+
 ## grammar
 
 S-BD2 (G1–G30, step 2; G31–G36 found in step 4): every form `bend.ts` reads that the BNF comment (lines 8–160) does not name, or names differently. Read 2026-11-20 from `parse_book` (2593), `parse_def`
