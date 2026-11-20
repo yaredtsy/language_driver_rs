@@ -11,6 +11,9 @@
 //!   span, resolves in our book to the def Bend says it is (never `Unknown`).
 //! - `every_accepted_entry_opens_with_bends_names`: for every file the loader accepts, the book of that file has the entry's declarations with Bend's
 //!   names and kinds, in order, and counts no cycle and no missing import.
+//! - `every_ref_the_oracle_prints_is_accounted_for` (BD4): each Ref that is in a def's body falls in a place the walk read: a site (a call, a construct, an
+//!   external, a passed edge, an unresolved one), a term it skipped as a type, or one it counted or knows to be data. The first ten that fall in none are printed.
+//! - `demos_counters`: what the walk counted over every def of each demo's largest book.
 //! - `measure`: time and bytes of opening (a) each demo, (b) the largest book of the corpus by file count, (c) `base.bend` alone.
 
 use std::collections::{BTreeMap, HashMap};
@@ -19,7 +22,9 @@ use std::mem::size_of;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use bend_analysis::{Book, DeclEntry, DefKind, FileIndex, Resolved};
+use bend_analysis::{
+    Book, DeclEntry, DefKind, FileIndex, MarkerStyle, Options, Resolved, Walked, WalkedKind, walked,
+};
 
 /// The repo's root, which a relative `BEND_CLONE` is from (a test runs in its crate's folder).
 fn repo_root() -> PathBuf {
@@ -405,4 +410,198 @@ fn measure() {
     row(&format!("largest by files: {rel}"), &clone.join(&rel), 30);
     // (c) base.bend alone
     row("bend2/base.bend", &clone.join("bend2/base.bend"), 100);
+}
+
+fn options() -> Options {
+    Options::new(MarkerStyle::above("ID"))
+}
+
+/// The byte offset of each UTF-16 unit of `text` (and one past the end), which is how the oracle's spans are written.
+fn byte_of_unit(text: &str) -> Vec<u32> {
+    let mut at = Vec::with_capacity(text.len() + 1);
+    for (byte, c) in text.char_indices() {
+        for _ in 0..c.len_utf16() {
+            at.push(byte as u32);
+        }
+    }
+    at.push(text.len() as u32);
+    at
+}
+
+/// The place that holds the start of `beg..end`: the one that starts last, and of those the one whose end is nearest the Ref's. Bend ends the span of a do
+/// statement after the white space that follows it, so an end can only be compared, not required to lie inside; and a do block's closing value has two Refs
+/// that start together (the monad's, over the whole value, and the call's inside it).
+fn smallest(items: &[Walked], beg: u32, end: u32) -> Option<&Walked> {
+    items
+        .iter()
+        .filter(|w| w.span.start <= beg && beg < w.span.end)
+        .min_by_key(|w| (std::cmp::Reverse(w.span.start), w.span.end.abs_diff(end)))
+}
+
+fn bucket(w: &Walked) -> String {
+    match &w.kind {
+        WalkedKind::Call(_) => "call".into(),
+        WalkedKind::Passed(_) => "passed".into(),
+        WalkedKind::Construct(_) => "construct".into(),
+        WalkedKind::External(_) => "external".into(),
+        WalkedKind::Unresolved(reason) => format!("unresolved {reason}"),
+        WalkedKind::Counted(key) => format!("counted {key}"),
+        WalkedKind::Quiet => "quiet (data, or a Base name)".into(),
+        _ => "?".into(),
+    }
+}
+
+#[test]
+#[ignore = "needs BEND_CLONE and the Ref oracle's output (scripts/bend-refs.ts)"]
+fn every_ref_the_oracle_prints_is_accounted_for() {
+    let clone = clone_dir();
+    let refs = out_dir().join("refs");
+    let mut tables: Vec<PathBuf> = fs::read_dir(&refs)
+        .unwrap_or_else(|_| panic!("{}: run scripts/bend-refs.ts first", refs.display()))
+        .map(|e| e.expect("entry").path())
+        .filter(|p| p.extension().is_some_and(|e| e == "tsv"))
+        .collect();
+    tables.sort();
+    let mut buckets: BTreeMap<String, usize> = BTreeMap::new();
+    let mut none: Vec<String> = Vec::new();
+    let mut wrong: Vec<String> = Vec::new();
+    let mut total = 0;
+    for table in &tables {
+        let stem = table
+            .file_stem()
+            .expect("name")
+            .to_string_lossy()
+            .into_owned();
+        let entry = clone.join(stem.split("__").collect::<PathBuf>());
+        let dir = entry.parent().expect("folder").to_path_buf();
+        let book = open_entry(&entry).unwrap_or_else(|| panic!("{stem}: the book did not open"));
+        let declared = book.declared();
+        let mut units: HashMap<FileIndex, Vec<u32>> = HashMap::new();
+        let mut places: HashMap<bend_analysis::DeclId, Vec<Walked>> = HashMap::new();
+        for line in fs::read_to_string(table).expect("oracle table").lines() {
+            let cells: Vec<&str> = line.split('\t').collect();
+            let [file, def, callee, span] = cells[..] else {
+                panic!("{stem}: a line of four cells: {line}");
+            };
+            total += 1;
+            let at = book
+                .file_at(&dir.join(file))
+                .expect("the file is in the book");
+            let id = declared
+                .iter()
+                .find(|(name, _)| name == def)
+                .map(|(_, id)| *id)
+                .unwrap_or_else(|| panic!("{stem}: no def {def}"));
+            let map = units
+                .entry(at)
+                .or_insert_with(|| byte_of_unit(&book.files()[at.index()].text));
+            let (beg, end) = span.split_once('-').expect("beg-end");
+            let (beg, end) = (
+                map[beg.parse::<usize>().expect("beg")],
+                map[end.parse::<usize>().expect("end")],
+            );
+            let items = places
+                .entry(id)
+                .or_insert_with(|| walked(&book, id, &options()).expect("a def of the book"));
+            // a term the walk skipped as a type holds whatever is in it, whatever the smaller places inside say
+            let skipped = items.iter().any(|w| {
+                w.kind == WalkedKind::Counted("type_position".into())
+                    && w.span.start <= beg
+                    && end <= w.span.end
+            });
+            let found = if skipped {
+                *buckets.entry("counted type_position".into()).or_default() += 1;
+                continue;
+            } else {
+                smallest(items, beg, end)
+            };
+            let Some(found) = found else {
+                none.push(format!("{stem}: {file} {def} -> {callee} at {beg}..{end}"));
+                continue;
+            };
+            *buckets.entry(bucket(found)).or_default() += 1;
+            // what a place says it reaches is what Bend says
+            let agrees = match &found.kind {
+                WalkedKind::Call(to) | WalkedKind::Passed(to) => {
+                    book.decl(*to).is_some_and(|d| d.qualified == callee)
+                }
+                WalkedKind::External(name) => {
+                    callee == name
+                        || callee.ends_with(&format!(":{name}"))
+                        || name.ends_with(callee)
+                }
+                _ => true,
+            };
+            if !agrees {
+                wrong.push(format!(
+                    "{stem}: {file} {def} -> {callee} at {beg}..{end}: {:?}",
+                    found.kind
+                ));
+            }
+        }
+    }
+    println!("oracle: {total} refs in {} tables", tables.len());
+    for (name, n) in &buckets {
+        println!("  {n:6}  {name}");
+    }
+    println!("  {:6}  in none", none.len());
+    for line in none.iter().take(10) {
+        println!("    {line}");
+    }
+    println!(
+        "  {:6}  whose place names another def than Bend's",
+        wrong.len()
+    );
+    for line in wrong.iter().take(10) {
+        println!("    {line}");
+    }
+    assert!(
+        none.is_empty(),
+        "{} refs fall in no place the walk read",
+        none.len()
+    );
+    assert!(wrong.is_empty());
+}
+
+#[test]
+#[ignore = "needs BEND_CLONE"]
+fn demos_counters() {
+    let clone = clone_dir();
+    let mut demos: Vec<PathBuf> = fs::read_dir(clone.join("demos"))
+        .expect("demos")
+        .map(|e| e.expect("entry").path())
+        .filter(|p| p.is_dir())
+        .collect();
+    demos.sort();
+    let mut totals: BTreeMap<String, usize> = BTreeMap::new();
+    for demo in &demos {
+        let entry = ["PROOF.bend", "walkers_test.bend"]
+            .iter()
+            .map(|f| demo.join(f))
+            .find(|f| f.is_file())
+            .expect("an entry");
+        let book = open_entry(&entry).expect("opens");
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for d in book.decls() {
+            for w in walked(&book, d.id, &options()).expect("a def") {
+                *counts.entry(bucket(&w)).or_default() += 1;
+                // a call to a def with no code: the name means a law with no proof (`open_law`)
+                if let WalkedKind::Call(to) = &w.kind
+                    && book
+                        .decl(*to)
+                        .is_some_and(|d| matches!(&d.kind, DefKind::Other(k) if k == "law"))
+                {
+                    *counts.entry("open_law".into()).or_default() += 1;
+                }
+            }
+        }
+        println!(
+            "{}: {counts:?}",
+            demo.file_name().expect("name").to_string_lossy()
+        );
+        for (k, n) in counts {
+            *totals.entry(k).or_default() += n;
+        }
+    }
+    println!("all demos: {totals:#?}");
 }

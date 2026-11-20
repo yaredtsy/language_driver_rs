@@ -17,9 +17,17 @@
 
 mod base_names;
 mod book;
+mod calls;
+mod env;
+mod key;
 mod paths;
 mod sem;
+mod walk;
 
-pub use analyzer_core::graph::Stats;
+pub use analyzer_core::edit::{MarkerStyle, Placement};
+pub use analyzer_core::graph::{Edge, EdgeTo, Entry, Graph, Stats};
 pub use analyzer_core::outline::{Def, DefKind, Outline};
+pub use analyzer_core::render::{RenderOptions, render, to_text};
+pub use analyzer_core::solve::{Budget, Cancel, Limits};
 pub use book::{Alias, AliasTarget, Book, DeclEntry, DeclId, FileEntry, FileIndex, Resolved};
+pub use calls::{Options, Walked, WalkedKind, call_graph, walked};

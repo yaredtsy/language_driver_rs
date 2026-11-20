@@ -224,6 +224,36 @@ tables are the strings and structs counted, without the allocator's rounding or 
 - A book is two to three times its text in memory (the text, an outline about two thirds of it, tables about a third); `base.bend` alone, a dense file of 541 short defs, is the one whose outline is larger than its text.
 - A refresh that rebuilds a book of this size (BD5) is under 10 ms for every demo: `Session::refresh` can drop the book and open it again.
 
+## BD4
+
+### What Bend's own `Ref`s say about the walk (2026-11-20)
+
+`every_ref_the_oracle_prints_is_accounted_for` (ignored, `--test corpus`) takes the 32,805 Refs `scripts/bend-refs.ts` prints for the 56 demo entries and finds, for each, the place of its def's body that the walk
+read (`walked`): a site, a term skipped as a type, a counted sugar, or data. **None falls in no place; none is a site that names another def than Bend's.**
+
+| Bucket | Refs |
+|---|---|
+| a `Call` to a def of the book (`qualified` is Bend's `ns:name`) | 12,547 |
+| `External` (Base's, by the name as written) | 4,300 |
+| a name handed over (`passed`) | 117 |
+| not a site, counted `sugar_base` (`(a + b : U32)`, `&&`, `++`, `a[i]`, `do IO<..>`, `&`, `\|`) | 12,116 |
+| inside a term skipped as a type, counted `type_position` | 2,652 |
+| a `type` handed over, counted `type_passed` (`App.run(~U32, ..)`) | 261 |
+| a bare project def name below the arguments, counted `passed_deep` | 104 |
+| data: `3n+p`, `{a != b : T}`, a do block's closing value, a Base name as a value | 708 |
+| in none | **0** |
+
+How the oracle's spans and ours meet (found by running it): Bend's `Ref` of a sugar is at the **operator token** for an infix (`Ref(f, op === "&" ? s : t)`), at the whole sugar for `a[i]` and `3n+p`, and at a do statement's
+span **ended after the white space that follows it** (`parse_span` after `parse_skip`): the statement's end is not ours. The test therefore compares **starts**, takes the innermost place that holds a Ref's start, and of those the one
+whose end is nearest. A do block's final value has two Refs that start together (the monad's, over the whole value, and the call's inside it). Our site for an infix sugar is the whole `a + b` (the tree has no operator
+span), so a project operator's edge reads `a + b` in a snapshot.
+
+### What the walk counted over every def of each demo's largest book (`demos_counters`)
+
+Over the 16 books (all their defs, walked once each): **3,679** calls to defs of the book, **1,185** constructs, 1,172 externals, 33 passed edges, **68 `function_typed_value`**, 0 `unknown_name`, 0 `unknown_constructor`;
+counted and not drawn: **6,667 `type_position`**, **3,072 `sugar_base`**, **28 `passed_deep`**, 84 `type_passed`, **0 `open_law`** (every law of a demo has its proof), 0 `external_passed`. Per demo, the largest are
+`app_slash_boss_3d` (1,998 calls, 3,552 `type_position`, 22 `function_typed_value`, 13 `passed_deep`) and `pure_hvm5_mini` (656 calls, 590 constructs, 21 `function_typed_value`, 15 `passed_deep`).
+
 ## grammar
 
 S-BD2 (G1–G30, step 2; G31–G36 found in step 4): every form `bend.ts` reads that the BNF comment (lines 8–160) does not name, or names differently. Read 2026-11-20 from `parse_book` (2593), `parse_def`

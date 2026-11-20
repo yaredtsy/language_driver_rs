@@ -34,7 +34,7 @@ pub struct DeclId {
 }
 
 impl DeclId {
-    fn new(file: usize, def: usize) -> Self {
+    pub(crate) fn new(file: usize, def: usize) -> Self {
         DeclId {
             file: FileIndex(file as u32),
             def: def as u32,
@@ -525,6 +525,19 @@ impl Book {
     /// proof (the law alone when there is no proof).
     pub fn resolve(&self, file: FileIndex, name: &str) -> Resolved {
         self.reso(file, name, &self.tlds, base_names::TLDS)
+    }
+
+    /// What `name` means when `bend` makes the name up itself (`parse_own`: `Array.get` for `a[i]`, `T.bind` for a do block): this file's own def, else Base's,
+    /// and no alias is looked at.
+    pub fn resolve_own(&self, file: FileIndex, name: &str) -> Resolved {
+        let own = self.tlds.get(file.index()).and_then(|t| t.get(name));
+        match own {
+            Some(&id) => Resolved::Project(id),
+            None if self.imports_base && base_names::TLDS.binary_search(&name).is_ok() => {
+                Resolved::Base
+            }
+            None => Resolved::Unknown,
+        }
     }
 
     /// The same for a constructor (`K{..}`, a pattern): a project constructor resolves to the def of the `type` that has it.

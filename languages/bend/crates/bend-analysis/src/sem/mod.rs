@@ -6,6 +6,10 @@
 
 use analyzer_core::text::Span;
 
+mod walk;
+
+pub(crate) use walk::{DefWalk, Item, Sugar, What, of as walk_of, walks};
+
 /// One `import` line, as written.
 #[derive(Clone, Debug)]
 pub(crate) struct ImportLine {
