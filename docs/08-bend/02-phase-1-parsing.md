@@ -13,7 +13,7 @@ phase 1
 └── 5. steps
 ```
 
-## 1. BD0: three spikes
+## 1. BD0: four spikes
 
 Throwaway code in `languages/bend/spikes/`, its own tiny workspace, deleted once the answers are in `languages/bend/ENGINE.md`.
 
@@ -21,6 +21,7 @@ Throwaway code in `languages/bend/spikes/`, its own tiny workspace, deleted once
 |---|---|---|---|
 | S-BD1 | **Which files of the corpus does `bend` accept?** The negatives (a test whose trailing `#|` lines are an error message) must be excluded from "must parse"; `tests/parse/` is positives | a script over `../language_clone/bend`: run the installed `bend` (or `bun bend2/main.ts`) with a check-only flag on every `.bend`; record accept / refuse per file, with `--check-only` (`bend2/main.ts` 43: "check the file and its imports; run nothing"). Neither `bend` nor `bun` is installed on the owner's machine (checked 2026-11-20): the owner installs `bend` first (`curl -fsSL https://bend-lang.com/install.sh \| sh`), and the pinned clone is the source of truth for the grammar even if the installed `bend` is newer. Without it, the fallback is the `#|` convention: a file whose expected lines are an error is a negative, every other file is a positive | `ENGINE.md` §corpus: the accepted list's count, and the script kept as `scripts/bend-corpus.sh` |
 | S-BD2 | **Is the grammar comment complete?** Walk `parse_term`, `parse_body`, `parse_tele`, the do-block and the law parser and list every form the code reads that the BNF at lines 8–160 does not name | reading, not running | `ENGINE.md` §grammar: the list; each item becomes a fixture in BD1 |
+| S-BD4 | **The Ref oracle.** `bend.ts` keeps a `Span` on every `Ref` node it builds, and `parse_book` is an exported function. A Bun script (`scripts/bend-refs.ts`, run from the clone, never committed into a crate) imports `bend2/bend.ts`, loads a book, and prints one line per def: `(def, callee name, span)`. Needs `bun` (not installed here; the owner installs it). Its output is the oracle BD1 lacks for declarations and BD4 lacks for calls: our sites, by span, must be a superset of its `Ref`s to project defs, and any `Ref` we lack is a bug or a policy row. Re-run against upstream head by hand at every bump | `ENGINE.md` §oracle: how to run it, and the first diff's numbers |
 | S-BD3 | **Base's names.** Parse `bend2/base.bend` with the BD1 parser once it exists, or with a regex now (`^(def\|type\|law\|@unsafe def) Name`, and constructor lines under a `type`), and emit the name list | a 30-line script | the generated `base_names.rs` and the script that writes it, `scripts/bend-base-names.sh` (Q-BD3) |
 
 No spike measures memory or time: there is nothing to measure yet. The parser's speed is measured in BD1 §4.
@@ -143,8 +144,9 @@ range is the right answer for it, and `syntax_error: true` is how the driver alr
 | **time** | the corpus, release build **[measure]** | written into `ENGINE.md`; the expectation is well under a second for all 1,982 files |
 
 What the proof is **not**: agreement with `bend`'s own tree. `bend` has no tree printer at the surface level (`term_show` prints desugared
-core terms), so there is no oracle to diff against. The oracle is: accepted files parse, our fixtures' snapshots are reviewed by hand against
-`GUIDE.md`'s syntax reference.
+core terms). What it does have is a `Span` on every `Ref` node, and S-BD4's script turns that into an oracle for **names and where they are**:
+every declaration name and every reference `bend` sees, with its span. BD1's corpus test compares declarations against it; BD4 compares call
+sites. The tree's shape itself is checked by reviewed snapshots against `GUIDE.md`'s syntax reference.
 
 ## 5. Steps
 

@@ -142,9 +142,9 @@ At each `Term::Call { callee, args }`:
 
 | `callee` | Target |
 |---|---|
-| a `Name` that resolves to a project def (own file, alias, or shadowing a Base name) | `Call(def, ())` |
+| a `Name` not bound in scope that resolves to a project def (own file, or alias) | `Call(def, ())` |
 | a `Name` that resolves to a Base def, or to a hub alias | `External { name }` |
-| a `Name` bound by a parameter, a `let`, a `case` pattern or a lambda | `Unresolved("function_typed_value")` |
+| a `Name` bound by a parameter, a `let`, a `case` pattern or a lambda (checked **first**, as `parse_var` does) | `Unresolved("function_typed_value")` |
 | a `Name` that resolves to nothing (typo, a def `bend` would refuse too) | `Unresolved("unknown_name")` |
 | any other term (`f(a)(b)`: the callee is a call; `(x => …)(a)`) | `Unresolved("function_typed_value")`; the inner call is still walked |
 
@@ -168,7 +168,8 @@ two languages do (and Rust's `policy.md` is a test: the file is read by a test t
 | recursion | `f(p)` inside `f` | `Call` to self (the renderer marks it) | |
 | below | `g()` where `g` is declared below (only legal in `@unsafe`) | `Call` | |
 | alias | `M.f(a)` | `Call` to the def in the other file | |
-| shadow | `show(x)` where this file declares `show` and Base has one | `Call` to this file's | |
+| no-shadow | `def show(x)` in a file where Base has `show`: `bend` refuses the declaration (`parse_fresh`), we outline it and resolve `show(x)` to **this file's** def (never fail) | `Call` to this file's | `duplicate_of_base` |
+| binder-wins | `f(x)` where `f` is a parameter and a def `f` exists | `Unresolved` (the binder shadows the def: `parse_var` looks binders up first) | `function_typed_value` |
 | base | `IO.print(s)`, `U32.show(a)`, `List.map(…)` | `External("IO.print")` | |
 | hub | `P.f(a)` with `import 0x…/main.bend as P` | `External("P.f")` | `hub_import` once per import |
 | foreign | a call to a D3 def | `Call` to the leaf (it has a declaration here; its body is a `.c`) | |

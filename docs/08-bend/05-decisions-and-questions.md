@@ -60,6 +60,8 @@ Checked while writing (2026-11-20): `bend <file> --check-only` exists (`bend2/ma
 
 | # | Claim | Where it is used | How to check |
 |---|---|---|---|
+| 13 | `HigherOrderCO/tree-sitter-bend` predates the Bend2 syntax (last push 2024) | 01 §7 | look at the repository |
+| 14 | the demos' call-site counts (5,900 sites, 64 with a local head) | 04 §2 | BC0 |
 | 2 | the grammar comment at `bend.ts` 8–160 names every form the parser reads | the fixture list of BD1 | S-BD2 |
 | 3 | no corpus file starts with something other than a comment or an import | the header slot | a grep over the corpus in S-BD1's script |
 | 5 | the demos never put a blank line between a doc comment block and its def | the range rule, 03 §1.2 | grep the demos |

@@ -79,7 +79,11 @@ This is the part that makes the default layer exact, so it is worth being precis
   is one name, and the dot means nothing (`GUIDE.md`: "dots inside a name are just characters: `U32.show` needs no module").
 - `import ./m.bend as M` binds a **file-local alias**: a name `M.x` resolves to `ns(M):x` (`parse_reso`). Two aliases of one file agree.
 - An unqualified name resolves to **this file's own** `ns:name` if the book has it, else to the bare (Base) spelling if the book has that
-  (`q in tab || !(k in tab) ? q : k`). So a file may shadow a Base name, and the shadow wins.
+  (`q in tab || !(k in tab) ? q : k`). A file **cannot** declare a name Base already has: `parse_fresh` refuses `nm in tab` as a duplicate
+  (2525–2533), so there is no shadowing of Base by project code. (Corrected 2026-11-20 after a second reading; the first draft said the
+  shadow wins.)
+- Before any of that, a **local binder wins**: `parse_var` (1708) looks the name up in the binders in scope first (`p.idx`), then calls
+  `parse_reso`. So resolution is four steps: binder, alias, own file, Base.
 - **Constructors** are a second table (`book.ctrs`), qualified the same way, and a constructor name is fresh across the whole book
   (`parse_fresh(…, "ctrs")`). `Nil{}`, `Con{h, t}`, `Some{x}`, `True{}` are Base's.
 - A def written **below** a reference to it is an error unless the caller is `@unsafe`: so at a call site in a well-formed file, the callee is
@@ -153,7 +157,8 @@ takes in our parser. **[measure]** after BD1: lines of `bend-parser`.
 
 | Risk | Why it is one | What the plan does |
 |---|---|---|
-| the grammar moves under us | a young language, releases every few weeks, each with parser fixes | a grammar pin in `ENGINE.md`; the corpus proof re-run at every bump; function names that mirror `bend.ts` |
+| the grammar moves under us | a young language, releases every few weeks, each with parser fixes | a grammar pin in `ENGINE.md`; the corpus proof re-run at every bump; function names that mirror `bend.ts`; the Ref oracle (02 §4): a Bun script that dumps every `Ref` with its span from `bend.ts` itself, diffed against our call sites |
+| a tree-sitter grammar looks like a shortcut | `HigherOrderCO/tree-sitter-bend` exists; its last push is from 2024, before the Bend2 syntax **[check]** | not used; noted so nobody picks it up |
 | error recovery that `bend` does not have | `bend` fails at the first error; we must outline a broken file (never fail; the cut-every-50-bytes test) | recovery only at declaration boundaries: a line at column 0 starting with `def`, `type`, `law`, `@unsafe` or `import` resyncs; the broken def keeps its range and gets `syntax_error: true` (BD1 §3) |
 | Base's names | needed to tell "unknown name is the file's own" from "it is Base's" | a generated list, pinned; a file's own def still wins (§3), so the list being stale costs only a few `External` vs `Call` mistakes on Base's *new* names, never a wrong edge to a project def |
 | a marker placement core has not built | D6 kept `Placement` for it; nothing built | Q-BD1; the code is `comment_marker::read/plan` with `#`, which core has for the file header already |

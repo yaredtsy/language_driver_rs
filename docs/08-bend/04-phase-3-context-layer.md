@@ -35,6 +35,10 @@ layer 1's context ids do not move until a key is non-empty (as RC1 says for Rust
 
 ## 2. BC0: the measurement
 
+A prior, from a regex count another reader made on the demos at the same commit (2026-11-20, not ours, **[measure]** in BC0): about 5,900
+call sites, 64 with a local variable as head; in Base, 39 of about 1,000. If that holds, layer 1 resolves about 99% of sites by name and the
+context layer is about the last 1%, which is why it is designed small and scheduled last.
+
 One script, in `languages/bend/spikes/`, over the demos and `tests/`, with layer 1 built: for every `function_typed_value` site, which of the
 four ways it is, and for the first two, whether the caller's argument is a def, a lambda or a parameter. Written into `ENGINE.md`. Go / no-go:
 if templates and parameters together are most of the sites (the guide says templates are "how `List.map` is written in Base", and user code
