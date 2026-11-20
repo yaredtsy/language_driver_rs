@@ -212,7 +212,7 @@ engine to keep warm and no database to patch; rebuilding a book of a few hundred
 
 | # | Phase | Do | Proof |
 |---|---|---|---|
-| 1 | BD2 | `sem::parse`, `outline` with rows D1–D10, `languages/bend/docs/qualnames.md` | fixture snapshots; `cargo tree -p bend-syntax` shows `bend-parser` and `analyzer-core` only |
+| 1 | BD2 | `sem::parse`, `outline` with rows D1–D10, `languages/bend/docs/qualnames.md` | fixture snapshots; `cargo tree -p bend-syntax` shows `bend-parser` and `analyzer-core` only. **Done 2026-11-20 (08bdce7), accepted:** 15 fixtures, 160,916 defs on the corpus (= declarations − constructors), `qualnames.md` written; the blank-line rule of §1.2 confirmed by the measurement (61 of the 103 blocks a blank line away are section banners) |
 | 2 | BD2 | core: `Placement::Above` + `plan` (after Q-BD1); `bend-syntax`'s `marker`, `plan_marker`, `header_slot`; `markers.md` | `marker_round_trip`, `cut_every_50_bytes`; every other language's tests green |
 | | | **tag `bend-v0.1.0`** (the owner's) | |
 | 3 | BD3 | `Book::open`, the tables, `base_names.rs` + its script | the 16 demos open; `tests/import/` opens with its cycles and misses counted; the measurement |

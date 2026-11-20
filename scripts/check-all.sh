@@ -19,10 +19,11 @@ rs() { grep -rn --include='*.rs' --exclude-dir=target --exclude-dir=vendor "$@" 
 rs_files() { grep -rl --include='*.rs' --exclude-dir=target --exclude-dir=vendor "$@" 2>/dev/null || true; }
 crates=(languages/*/crates)
 
-# rule 4: only the sem module (sem.rs, or the files of a sem/ folder) names an engine (Python's interp/ may name types sem re-exports); core names none
-engine='(^|[^A-Za-z0-9_])(tsrs_|ruff_|ty_|ra_ap_)[a-z]'
+# rule 4: only the sem module (sem.rs, or the files of a sem/ folder) names an engine (Python's interp/ may name types sem re-exports); core names none.
+# Bend's engine is our own crate, bend-parser (BD-D1): `bend_parser` is an engine name everywhere but in that crate itself.
+engine='(^|[^A-Za-z0-9_])(tsrs_|ruff_|ty_|ra_ap_|bend_parser)[a-z:]'
 none "an engine is named outside the sem module (rule 4)" \
-  "$(rs_files -E "$engine" "${crates[@]}" | grep -vE '/src/sem(\.rs|/.+\.rs)$' | grep -v '^languages/python/crates/python-analysis/src/interp/' || true)"
+  "$(rs_files -E "$engine" "${crates[@]}" | grep -vE '/src/sem(\.rs|/.+\.rs)$' | grep -v '^languages/python/crates/python-analysis/src/interp/' | grep -v '^languages/bend/crates/bend-parser/' || true)"
 none "core names an engine (rule 5)" "$(rs -E "$engine" core)"
 
 # rule 1: no product words in code. `FileID` is the product's spelling and is matched as written (D47): the engines' own `FileId`, `EditionedFileId` and
