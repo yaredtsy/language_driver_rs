@@ -84,6 +84,13 @@ if [ -d languages/rust ]; then
   done
 fi
 
+# bend-parser is the engine Bend has no other source for (BD-D1): it depends on analyzer-core and on nothing else, dev-dependencies included
+if [ -d languages/bend/crates/bend-parser ]; then
+  parser_deps=$(cd languages/bend && cargo tree --locked -p bend-parser --depth 1 2>&1) || bad "cargo tree -p bend-parser failed: $parser_deps"
+  direct=$(tail -n +2 <<<"$parser_deps" | grep -c . || true)
+  if [ "$direct" != 1 ] || ! grep -q 'analyzer-core' <<<"$parser_deps"; then bad "bend-parser depends on something besides analyzer-core: $parser_deps"; fi
+fi
+
 # relative links in docs and the top-level markdown files resolve (anchors are not checked)
 while IFS= read -r md; do
   dir=$(dirname "$md")
@@ -102,7 +109,10 @@ if [ "$fail" != 0 ]; then echo "check-all: static checks FAILED" >&2; exit 1; fi
 
 langs=${1:-$(scripts/list-languages.sh)}
 for l in $langs; do
+  pkgs=(-p "$l-syntax" -p "$l-analysis" -p "$l-cli")
+  # a language that writes its own parser (Bend, BD-D1) has a fourth crate; the others have none
+  if [ -d "languages/$l/crates/$l-parser" ]; then pkgs+=(-p "$l-parser"); fi
   (cd "languages/$l" && cargo fmt --check &&
-    cargo clippy --locked -p "$l-syntax" -p "$l-analysis" -p "$l-cli" --all-targets -- -D warnings &&
+    cargo clippy --locked "${pkgs[@]}" --all-targets -- -D warnings &&
     cargo test --locked) && scripts/check-proofs.sh "$l"
 done

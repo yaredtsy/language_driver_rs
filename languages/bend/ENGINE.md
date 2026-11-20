@@ -56,8 +56,7 @@ What these say about the plan:
 2026-11-20, `cargo test -p bend-parser --release --test corpus -- --ignored` (needs `BEND_CLONE` and the lists above). Every file of `parse-accepted.txt`
 (1,744; 13,715,509 bytes) parses with **zero `ParseError`s**, and the declarations found are Bend's own, in order, for every file: the same kind and name,
 the same number of parameters (a def's, a type's, a constructor's fields) and, for a def with a `->`, of templates. **176,229 declarations** (78,754 defs,
-74,427 laws, 7,735 types, 15,313 constructors), the loader's count exactly. Parsing alone took 57–76 ms over all of it (release; this is the step 5
-measure, taken early because it was free).
+74,427 laws, 7,735 types, 15,313 constructors), the loader's count exactly. Parsing alone took 57–76 ms over all of it with bodies skipped (release).
 
 - A def with no `->` fills a law, and its template count is the law's (`for ~k`), so the test does not compare it: 32 files showed that, all of them
   law-filling defs. A def that fills a law of another file is named `<Alias>.<name>` in the text and `<namespace>:<name>` by Bend; the test accepts
@@ -72,6 +71,9 @@ measure, taken early because it was free).
 and every node of every tree passes the span invariants (a term inside its parent, siblings apart, a name that is its span, a call that runs from its callee to its
 `)`, an operator from its left to its right). Cutting the 1,733 accepted files of at most 20 kB at every 53rd byte (37,641 cuts) never panics and the invariants hold
 on every cut. Breaking the newline-ends-the-spine rule makes 176 files fail, so the test sees terms.
+
+**Time (BD1 step 5):** with bodies read, parsing all 1,744 files (13.7 MB, release, five runs) takes 189–262 ms, median 195 ms, parse only (no file reading), on the
+owner's machine, 2026-11-20. The expectation in 02 §4 was "well under a second for all 1,982 files": met.
 
 The term nodes of the accepted corpus, a first picture of what BD4 walks (1,729,369 terms; a reply body is counted as its term):
 
