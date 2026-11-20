@@ -1,0 +1,6 @@
+== main.bend main
+main
+  Shape
+edges:
+main | Circle | construct Shape no init
+counters: type_position=1

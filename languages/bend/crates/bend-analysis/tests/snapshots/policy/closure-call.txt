@@ -1,0 +1,10 @@
+== main.bend main
+main
+  adder
+  adder
+edges:
+main | adder | call adder
+main | adder | call adder
+main | adder(2) | unresolved function_typed_value
+main | add2 | unresolved function_typed_value
+counters: function_typed_value=2, type_position=3

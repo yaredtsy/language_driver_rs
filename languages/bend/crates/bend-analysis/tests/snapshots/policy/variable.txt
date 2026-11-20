@@ -1,0 +1,7 @@
+== main.bend main
+main
+edges:
+main | k | unresolved function_typed_value
+main | g | unresolved function_typed_value
+main | f | unresolved function_typed_value
+counters: function_typed_value=3, type_position=3

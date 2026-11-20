@@ -1,0 +1,9 @@
+== main.bend main
+main
+edges:
+main | IO.print | external Base IO.print
+counters: sugar_base=2, type_position=2
+== main.bend maybe
+maybe
+edges: none
+counters: sugar_base=2, type_position=4

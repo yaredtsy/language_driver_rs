@@ -1,0 +1,14 @@
+== main.bend main
+main
+  twice
+  f
+  twice
+  g [Passed]
+edges:
+main | twice | call twice
+main | f | call f
+main | twice | call twice
+main | g | pass g
+twice | h | unresolved function_typed_value
+twice | h | unresolved function_typed_value
+counters: function_typed_value=2, type_position=8

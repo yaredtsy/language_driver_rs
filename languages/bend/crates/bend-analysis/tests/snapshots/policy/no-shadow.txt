@@ -1,0 +1,6 @@
+== main.bend main
+main
+  Nat.add
+edges:
+main | Nat.add | call Nat.add
+counters: duplicate_declaration=1, type_position=4

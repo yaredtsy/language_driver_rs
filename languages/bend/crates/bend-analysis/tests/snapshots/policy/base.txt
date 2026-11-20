@@ -1,0 +1,6 @@
+== main.bend main
+main
+edges:
+main | IO.print | external Base IO.print
+main | U32.show | external Base U32.show
+counters: type_position=1

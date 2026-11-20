@@ -1,0 +1,5 @@
+== main.bend main
+main
+edges:
+main | P.f | external P P.f
+counters: hub_import=1, type_position=1

@@ -1,0 +1,4 @@
+== main.bend main
+main
+edges: none
+counters: sugar_base=2, type_position=4
