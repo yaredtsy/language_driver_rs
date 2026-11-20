@@ -51,11 +51,16 @@ pub fn apply(text: &str, edits: &[Edit]) -> Option<String> {
     Some(out)
 }
 
-/// Where a marker goes. Only `Docstring` is built; a comment-above placement is a later option.
+/// Where a marker goes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Placement {
+    /// In the def's docstring, or the doc comment the language has for it (Python, TypeScript, Rust).
     Docstring,
+    /// A `<prefix> <label>: <text>` comment line in the comment block directly above the def, for a language that has no docstring and no doc
+    /// comment (Bend: `#` is its only comment, and `bend` ignores it). `comment_marker::plan` aimed at the def's first token writes it: the
+    /// line goes immediately above the declaration, below any block already there. Only Bend uses it.
+    Above,
 }
 
 /// How a marker is written. The label (`"ID"`) belongs to the caller, never to core.
@@ -70,6 +75,13 @@ impl<'a> MarkerStyle<'a> {
         MarkerStyle {
             label,
             placement: Placement::Docstring,
+        }
+    }
+    /// A marker in a comment line above the def, for a language with no docstring ([`Placement::Above`]).
+    pub fn above(label: &'a str) -> Self {
+        MarkerStyle {
+            label,
+            placement: Placement::Above,
         }
     }
 }
@@ -515,6 +527,90 @@ mod tests {
             edit.at.start as usize + edit.text.len(),
         );
         assert_eq!(format!("{}{}", &out[..a], &out[b..]), text);
+    }
+
+    // ---- the above placement: a marker line above a def, in a language with no docstring (Bend) ----
+
+    const ABOVE: MarkerStyle<'static> = MarkerStyle {
+        label: "ID",
+        placement: Placement::Above,
+    };
+
+    #[test]
+    fn above_is_a_style_of_its_own() {
+        assert_eq!(MarkerStyle::above("ID"), ABOVE);
+        assert_ne!(MarkerStyle::above("ID"), MarkerStyle::docstring("ID"));
+    }
+
+    /// Aimed at the def's first token, the line goes immediately above the def, and below the comment block that is there.
+    #[test]
+    fn above_goes_below_an_existing_comment_block() {
+        let text = "# Adds.\n# More.\ndef add(a): a\n";
+        let at = text.find("def").unwrap() as u32;
+        let edit = plan(text, at, "#", ABOVE, "k1").unwrap();
+        let out = apply(text, &[edit]).unwrap();
+        assert_eq!(out, "# Adds.\n# More.\n# ID: k1\ndef add(a): a\n");
+        // the marker is the last line of the block, and reads back from it
+        let line = out.find("# ID").unwrap() as u32;
+        assert_eq!(read(&out, line, "#", ABOVE).unwrap().text, "k1");
+    }
+
+    #[test]
+    fn above_with_no_block_makes_one() {
+        let text = "def a(): 0\n\ndef b(): 1\n";
+        let at = text.find("def b").unwrap() as u32;
+        let out = apply(text, &[plan(text, at, "#", ABOVE, "k").unwrap()]).unwrap();
+        assert_eq!(out, "def a(): 0\n\n# ID: k\ndef b(): 1\n");
+    }
+
+    /// A blank line between a block and the def keeps the block apart: the marker is still directly above the def.
+    #[test]
+    fn above_does_not_join_a_block_a_blank_line_away() {
+        let text = "# banner\n\ndef a(): 0\n";
+        let at = text.find("def").unwrap() as u32;
+        let out = apply(text, &[plan(text, at, "#", ABOVE, "k").unwrap()]).unwrap();
+        assert_eq!(out, "# banner\n\n# ID: k\ndef a(): 0\n");
+    }
+
+    #[test]
+    fn above_copies_crlf_and_the_missing_final_newline() {
+        let text = "# doc\r\ndef a(): 0\r\n";
+        let at = text.find("def").unwrap() as u32;
+        let out = apply(text, &[plan(text, at, "#", ABOVE, "k").unwrap()]).unwrap();
+        assert_eq!(out, "# doc\r\n# ID: k\r\ndef a(): 0\r\n");
+        let text = "def a(): 0";
+        let out = apply(text, &[plan(text, 0, "#", ABOVE, "k").unwrap()]).unwrap();
+        assert_eq!(
+            out, "# ID: k\ndef a(): 0",
+            "no final newline: nothing is added to the end"
+        );
+    }
+
+    #[test]
+    fn above_is_read_back_and_a_marked_def_is_recognised() {
+        let text = "# ID: k\n# other\ndef a(): 0\n";
+        assert_eq!(read(text, 0, "#", ABOVE).unwrap().text, "k");
+        assert_eq!(
+            read(text, 8, "#", ABOVE),
+            None,
+            "the next line is no marker"
+        );
+        // another label is not the caller's marker
+        assert_eq!(read(text, 0, "#", MarkerStyle::above("Ref")), None);
+    }
+
+    #[test]
+    fn above_changes_nothing_but_the_inserted_line() {
+        let text = "import Base\n\n# doc\n@unsafe def f(): 0\n";
+        let at = text.find("@unsafe").unwrap() as u32;
+        let edit = plan(text, at, "#", ABOVE, "k").unwrap();
+        let out = apply(text, std::slice::from_ref(&edit)).unwrap();
+        let (a, b) = (
+            edit.at.start as usize,
+            edit.at.start as usize + edit.text.len(),
+        );
+        assert_eq!(format!("{}{}", &out[..a], &out[b..]), text);
+        assert_eq!(edit.text, "# ID: k\n");
     }
 
     // ---- block_marker and the helpers TypeScript and Rust share ----
