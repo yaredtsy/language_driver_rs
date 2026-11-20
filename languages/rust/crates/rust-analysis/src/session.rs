@@ -144,8 +144,9 @@ impl Session {
 
     /// One request: the graph under `entry`, a def in `file` (relative to the root), walked no further than `budget`. A context past the budget is
     /// listed and not walked (`Status::Frontier`), and its node is drawn `Mark::Cut`: asking for that def as a new entry continues from there. `None`
-    /// when there is no such def (see [`call_graph`](crate::call_graph)), while the session has no project, and when `cancel` was already set when the
-    /// request started (nothing was read). With `Budget::default()` it is `call_graph`'s graph.
+    /// when there is no such def (see [`call_graph`](crate::call_graph)), and while the session has no project. A request whose `cancel` was set before it
+    /// started is a graph like any other cancelled one: its root context is `Incomplete` and no body was read. With `Budget::default()` it is
+    /// `call_graph`'s graph.
     pub fn graph(
         &self,
         file: &str,

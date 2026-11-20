@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use super::common::one_load;
 use super::testing::{copy_of_workspace, measured, open_measured, peak_footprint, timed};
 use crate::walk::probe::{self, Call};
-use crate::{Budget, Cancel, Entry, Graph, Session, Status};
+use crate::{Budget, Cancel, Entry, Graph, Root, Session, Status};
 
 fn ask(session: &Session, file: &str, qualname: &str, cancel: &Cancel) -> Graph {
     let entry = Entry::Def {
@@ -72,82 +72,94 @@ fn marked(log: &probe::Log, what: &str) -> bool {
 
 const ENTRY_FOUND: &str = "the entry found (Sem::entry)";
 
-/// A cancel set before the request returns before `Sem::entry`: nothing is looked up, and the answer is `None`. (An uncancelled request does reach it.)
+/// The status of the graph's root context.
+fn root_status(graph: &Graph) -> &Status {
+    let Root::Context(id) = &graph.entries[0] else {
+        panic!("the entry of a request is a context");
+    };
+    &graph.context(id).expect("the root has a context").status
+}
+
+fn is_incomplete(status: &Status) -> bool {
+    matches!(status, Status::Incomplete(_))
+}
+
+/// A cancel set before the request is a graph, as a cancelled request always is (fix 5c): `Some`, its root context `Incomplete`, no body read. The entry is
+/// looked up first (primed, `Sem::entry` takes milliseconds, and nothing looks at the flag before it); the solver's own look, before the first body, is where
+/// the request stops. An uncancelled request reads the body and its root is not `Incomplete`.
 #[test]
-fn a_cancel_set_before_a_request_returns_before_the_entry_is_looked_up() {
+fn a_cancel_set_before_a_request_is_a_graph_whose_root_is_incomplete() {
     let _load = one_load();
-    let session = fixture_session("cancel_before_entry");
+    let session = fixture_session("cancel_before_request");
     let entry = Entry::Def {
         qualname: "entry",
         occurrence: 0,
     };
 
     probe::start();
-    let graph = session.graph("src/lib.rs", &entry, &Budget::default(), &Cancel::new());
+    let graph = session
+        .graph("src/lib.rs", &entry, &Budget::default(), &Cancel::new())
+        .expect("an uncancelled request");
     let log = probe::finish();
-    assert!(graph.is_some());
-    assert!(
-        marked(&log, ENTRY_FOUND),
-        "an uncancelled request finds its entry"
-    );
+    assert!(!is_incomplete(root_status(&graph)));
+    assert!(!log.sites.is_empty(), "its body was read");
 
     let cancel = Cancel::new();
     cancel.cancel();
     probe::start();
-    let graph = session.graph("src/lib.rs", &entry, &Budget::default(), &cancel);
+    let graph = session
+        .graph("src/lib.rs", &entry, &Budget::default(), &cancel)
+        .expect("cancelled before it started: still a graph");
     let log = probe::finish();
-    assert!(graph.is_none(), "cancelled before it started: no graph");
-    assert!(!marked(&log, ENTRY_FOUND), "`Sem::entry` was not called");
-    assert_eq!(
-        log.checks.len(),
-        3,
-        "the start, the look before the entry, the end"
+    assert!(
+        is_incomplete(root_status(&graph)),
+        "{:?}",
+        root_status(&graph)
     );
+    assert_eq!(graph.contexts.len(), 1, "the root, and nothing walked");
+    assert!(marked(&log, ENTRY_FOUND), "the entry was looked up");
     assert!(
         log.sites.is_empty() && log.resolves.is_empty(),
         "no body was read"
     );
 }
 
-/// The look before `Sem::entry` is the request's first: a cancel that fires on its first check stops there, and one that fires on its second lets the entry
-/// be found and stops the solver at its own first look, with a graph that says so. (Core's `Cancel::after_checks`: a cancel at each point, with no timing.)
+/// Where a cancel lands, counting the looks (core's `Cancel::after_checks`: a cancel at each point, with no timing). The first look is the solver's, before
+/// the first body: the request stops with its root `Incomplete` and no body listed. The second is the walk's, before the first site, after the body's
+/// sites were listed: the root is `Incomplete` and no site was resolved.
 #[test]
-fn the_first_look_is_before_the_entry_and_the_second_is_the_solvers() {
+fn the_first_look_is_before_the_first_body_and_the_second_is_before_its_first_site() {
     let _load = one_load();
     let session = fixture_session("cancel_first_looks");
     let entry = Entry::Def {
         qualname: "entry",
         occurrence: 0,
     };
+    let ask = |checks| {
+        probe::start();
+        let graph = session
+            .graph(
+                "src/lib.rs",
+                &entry,
+                &Budget::default(),
+                &Cancel::after_checks(checks),
+            )
+            .expect("a cancelled request is a graph");
+        (graph, probe::finish())
+    };
 
-    probe::start();
-    let first = session.graph(
-        "src/lib.rs",
-        &entry,
-        &Budget::default(),
-        &Cancel::after_checks(1),
-    );
-    let log = probe::finish();
-    assert!(first.is_none());
-    assert!(!marked(&log, ENTRY_FOUND));
-
-    probe::start();
-    let second = session
-        .graph(
-            "src/lib.rs",
-            &entry,
-            &Budget::default(),
-            &Cancel::after_checks(2),
-        )
-        .expect("the entry was found");
-    let log = probe::finish();
+    let (first, log) = ask(1);
+    assert!(is_incomplete(root_status(&first)));
     assert!(marked(&log, ENTRY_FOUND));
     assert!(
         log.sites.is_empty(),
         "the solver stopped before the first body"
     );
-    assert_eq!(incomplete(&second), second.contexts.len());
-    assert!(!second.contexts.is_empty());
+
+    let (second, log) = ask(2);
+    assert!(is_incomplete(root_status(&second)));
+    assert_eq!(log.sites.len(), 1, "the first body's sites were listed");
+    assert!(log.resolves.is_empty(), "and none was resolved");
 }
 
 #[test]
