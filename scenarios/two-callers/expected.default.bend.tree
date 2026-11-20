@@ -1,0 +1,7 @@
+main
+  read_json
+    emit
+    json_write [Passed]
+  read_csv
+    emit
+    csv_write [Passed]
