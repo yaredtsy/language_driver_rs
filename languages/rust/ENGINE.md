@@ -146,6 +146,23 @@ says so. Built in 4727dda; the `toolchains.rs` workers keep `CARGO` and `RUSTC`.
 gives `toolchain_substituted` and **2 external, 0 unresolved**, like the run without it; `core/` gives 22 call, 11 construct, 108 external,
 0 unresolved with the full `PATH`, with `PATH=/usr/bin:/bin`, and with `CARGO` set.
 
+**A rustup whose proxies are not in `$CARGO_HOME/bin` (2c9e685, CI fix, reviewer re-run 2026-11-20).** The macOS CI runner's rustup is a
+package-manager build (its log: "self-update is disabled for this build of rustup … fetched with your system package manager"; Homebrew's
+rustup keeps its proxies in its own folder on `PATH`). `$CARGO_HOME/bin` has no `cargo` there, so `prefer_proxy()` took the next rung,
+the `CARGO` variable, which under `cargo test` is the toolchain's own binary: the `1.50.0` crate was not substituted, and
+`toolchains.rs::a_toolchain_that_is_not_installed…` failed with `dependencies_missing, no_std_source` (red since 4727dda, CI runs 28–31).
+Our rule is now **`$CARGO_HOME/bin`, then `PATH`, then the engine's fallback (variable, bare name)**: `prefer_proxy()` with `PATH`
+moved before the variable (`sem::tool::path`). Reviewer's re-run on macOS, the runner's layout made by hand (proxies, as links to
+`rustup`, in a folder on `PATH` only; `CARGO_HOME` an empty folder; `CARGO`, `RUSTC`, `RUSTUP_TOOLCHAIN` set as `cargo test` sets
+them): the test **fails** built from 2c9e685^ and **passes** built from 2c9e685.
+
+- The empty-`PATH` test (`origin.rs`) checks the engine's `$CARGO_HOME/bin` rung, so where that folder has no `cargo` it prints why and
+  returns: there `NoToolchain` is the true answer.
+- Left, and not fixed: with such a rustup **and** `CARGO` set (a driver under `cargo run`; V-NOC starts it without), the engine's own
+  `cargo` is still the variable's (its `prefer_proxy()` is not ours to change), while our probe and sysroot follow the pin. The engine's
+  `cargo` then only reads `cargo metadata`; the lock rule (D38) reads our `cargo --version`, which can differ from it across 1.97. A
+  developer's case; no test.
+
 ## S-RS1: does it build as a dependency?
 
 ### Which version (2026-11-16)

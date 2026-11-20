@@ -137,7 +137,10 @@ after is warm again.
 
 **Known limit, as TypeScript's:** a stamp is the length and the modified time, so a file rewritten with the same length within the file
 system's clock tick is not seen (APFS and ext4 keep nanoseconds, so in practice a person cannot do it; FAT keeps two seconds). The tests
-change a file's length.
+change a file's length. A **folder's** stamp is its modified time alone, and NTFS's moves only with a clock of about 16 ms: an entry created
+in a folder within the tick of the look that stamped it leaves the time unchanged, and is not seen until the folder changes again (Windows CI,
+`refresh.rs` `a_change_at_the_root…`, scouted 3 for 4; the test waits for a new tick before each change, 6b08b1c). A person saving files
+is slower than that; a tool writing several files in a row while a refresh runs is not, and the next change to that folder brings it in.
 
 **Answered (D46, owner, 2026-11-19):** point 2 is TypeScript's answer (D41 b) carried over: a reload that fails drops the old database.
 A driver may offer a manual re-sync through the public `Session::reload()`.
