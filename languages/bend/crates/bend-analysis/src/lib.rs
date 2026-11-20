@@ -21,7 +21,11 @@ mod calls;
 mod env;
 mod key;
 mod paths;
+#[cfg(test)]
+mod scratch;
 mod sem;
+mod session;
+mod stamps;
 mod walk;
 
 pub use analyzer_core::edit::{MarkerStyle, Placement};
@@ -35,3 +39,4 @@ pub use analyzer_core::solve::{Budget, Cancel, Limits};
 pub use analyzer_core::wire::{Frame, LineSpan, Sources, WireOptions, WireStyle, merge, wire};
 pub use book::{Alias, AliasTarget, Book, DeclEntry, DeclId, FileEntry, FileIndex, Resolved};
 pub use calls::{Options, Walked, WalkedKind, call_graph, walked};
+pub use session::{OpenError, Refreshed, Session};

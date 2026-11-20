@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use analyzer_core::edit::MarkerStyle;
-use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Graph, StableDef};
+use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Entry, Graph, StableDef};
 use analyzer_core::outline::DefKind;
 use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary};
 use analyzer_core::text::Span;
@@ -36,16 +36,22 @@ pub(crate) const FUNCTION_TYPED_VALUE: &str = "function_typed_value";
 pub(crate) const UNKNOWN_NAME: &str = "unknown_name";
 pub(crate) const UNKNOWN_CONSTRUCTOR: &str = "unknown_constructor";
 
-/// How to build a graph. The marker style is how a def's marker is read (`# ID: …` in the comment block above it).
+/// How to build a graph. The marker style is how a def's marker is read (`# ID: …` in the comment block above it); the limits protect the cost of a request
+/// and cut (a cut is counted in `Stats.cuts`).
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct Options {
+    pub limits: Limits,
     pub marker: MarkerStyle<'static>,
 }
 
 impl Options {
+    /// The default cost limits, and `marker` for reading markers.
     pub fn new(marker: MarkerStyle<'static>) -> Self {
-        Options { marker }
+        Options {
+            limits: Limits::default(),
+            marker,
+        }
     }
 }
 
@@ -170,7 +176,7 @@ impl Lang for Bend<'_> {
 /// The context graph under `entry`, a def of `file` (from the root, or absolute): every def it reaches, as far as `limits` allow. `entry` is the def's
 /// qualname; when a file has two defs of it, a law and its proof, the one with code is the entry (the law alone when there is no proof). `None` when the
 /// file is not in the book or has no such def. A `type` is an entry too: a construction, with nothing to enter. The tree and the wire are views of this graph
-/// (`analyzer_core::render`).
+/// (`analyzer_core::render`). `options.limits` is not read: `limits` is.
 pub fn call_graph(
     book: &Book,
     file: &Path,
@@ -188,19 +194,68 @@ pub fn call_graph(
         .iter()
         .position(|d| named(&d) && not_a_law(&d))
         .or_else(|| defs.iter().position(|d| named(&d)))?;
-    let id = DeclId::new(at.index(), index);
+    let mut options = options.clone();
+    options.limits = limits.clone();
+    Some(run(
+        book,
+        DeclId::new(at.index(), index),
+        &options,
+        &Budget::default(),
+        cancel,
+    ))
+}
+
+/// `Session::graph`: the graph under `entry`, a def of `file` (from the root, or absolute), walked no further than `budget`. The def is named as the outline
+/// names it, by qualname and which of the same-named defs it is (D20): the law is occurrence 0 and its proof occurrence 1 when the law comes first. `None`
+/// when the file is not in the book, there is no such def, or `entry` is [`Entry::File`]: a Bend file has no code of its own to run when it is loaded. With
+/// `Budget::default()` and the same limits it is [`call_graph`]'s graph.
+pub(crate) fn graph_within(
+    book: &Book,
+    file: &str,
+    entry: &Entry<'_>,
+    options: &Options,
+    budget: &Budget,
+    cancel: &Cancel,
+) -> Option<Graph> {
+    let Entry::Def {
+        qualname,
+        occurrence,
+    } = *entry
+    else {
+        return None;
+    };
+    let at = book.file_at(Path::new(file))?;
+    let outline = &book.file(at)?.outline;
+    let occurrences = bend_syntax::occurrences(outline);
+    let index = outline
+        .defs
+        .iter()
+        .enumerate()
+        .position(|(i, d)| d.qualname == qualname && occurrences[i] == u32::from(occurrence))?;
+    Some(run(
+        book,
+        DeclId::new(at.index(), index),
+        options,
+        budget,
+        cancel,
+    ))
+}
+
+/// One request for the def `id`: what both public ways in come to.
+fn run(book: &Book, id: DeclId, options: &Options, budget: &Budget, cancel: &Cancel) -> Graph {
+    let kind = book.def(id).map_or(DefKind::Function, |d| d.kind.clone());
     let lang = Bend::new(book, options.marker);
-    let start = match defs[index].kind {
+    let start = match kind {
         DefKind::Enum => Start::Construct {
             class: id,
             init: None,
         },
         _ => Start::Call(id, ()),
     };
-    let mut solver = Solver::new(lang, limits.clone());
-    let mut graph = solver.graph_within(&[start], &Budget::default(), cancel);
+    let mut solver = Solver::new(lang, options.limits.clone());
+    let mut graph = solver.graph_within(&[start], budget, cancel);
     finish(&mut graph, solver.lang(), book);
-    Some(graph)
+    graph
 }
 
 /// What a graph has beyond its edges, in `Stats.language`: each unresolved edge's reason (a count is what the edges say), the notes the walk kept, the defs

@@ -18,6 +18,14 @@ use crate::base_names;
 use crate::calls::Marked;
 use crate::paths;
 use crate::sem;
+use crate::session::OpenError;
+use crate::stamps::Stamps;
+
+#[cfg(test)]
+thread_local! {
+    /// How many times `Book::load` ran on this thread, for the tests of the session.
+    pub(crate) static BUILDS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
 
 /// Where a file is in [`Book::files`]: the order the files were loaded in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -253,12 +261,30 @@ impl Book {
     ///
     /// Nothing is written or fetched, and `~/.bend` is never read.
     pub fn open(root: &Path, entry: &Path) -> Option<Book> {
-        let root = paths::real(root)?;
-        let entry_path = paths::real(&root.join(entry))?;
+        Book::load(root, entry).0.ok()
+    }
+
+    /// `open` with the reason it failed, and the stamps of what it depended on, for a session (`stamps.rs`): every file it read and every path an import asked
+    /// for, found or not, each stamped before it was read. When it fails, the stamps are the entry's path, which is what a session waits on to try again.
+    pub(crate) fn load(root: &Path, entry: &Path) -> (Result<Book, OpenError>, Stamps) {
+        #[cfg(test)]
+        BUILDS.with(|n| n.set(n.get() + 1));
+        let mut stamps = Stamps::default();
+        stamps.watch(&root.join(entry));
+        let built = Book::read(root, entry, &mut stamps);
+        (built, stamps.finished())
+    }
+
+    fn read(root: &Path, entry: &Path, stamps: &mut Stamps) -> Result<Book, OpenError> {
+        let root = paths::real(root).ok_or(OpenError::NoSuchFile)?;
+        let entry_path = paths::real(&root.join(entry)).ok_or(OpenError::NoSuchFile)?;
         if !entry_path.starts_with(&root) {
-            return None;
+            return Err(OpenError::OutsideRoot);
         }
-        let entry_dir = entry_path.parent()?.to_path_buf();
+        let entry_dir = entry_path
+            .parent()
+            .ok_or(OpenError::NoSuchFile)?
+            .to_path_buf();
         let mut stats = Stats::default();
         let mut imports_base = false;
 
@@ -267,7 +293,8 @@ impl Book {
         // the thread's stack, and the "where was I" of each file is a field (`next_import`).
         let mut done: Vec<Frame> = Vec::new();
         let mut marks: HashMap<PathBuf, Mark> = HashMap::new();
-        let text = read_text(&entry_path)?;
+        stamps.watch(&entry_path);
+        let text = read_text(&entry_path).ok_or(OpenError::NoSuchFile)?;
         marks.insert(entry_path.clone(), Mark::Reading);
         let mut stack = vec![frame(entry_path, String::new(), text)];
         while let Some(top) = stack.last_mut() {
@@ -288,10 +315,15 @@ impl Book {
                 }
                 ImportKind::Local => {
                     let from = top.path.parent().unwrap_or(&entry_dir).to_path_buf();
-                    let found = paths::real(&from.join(&line.path)).and_then(|real| {
-                        match marks.get(&real) {
-                            Some(_) => Some((real, None)),
-                            None => read_text(&real).map(|text| (real, Some(text))),
+                    // the path the import asked for is stamped found or not: a file created there later is seen. The real path of a file is stamped too, as it is
+                    // the one read; both **before** the read
+                    let asked = from.join(&line.path);
+                    stamps.watch(&asked);
+                    let found = paths::real(&asked).and_then(|real| match marks.get(&real) {
+                        Some(_) => Some((real, None)),
+                        None => {
+                            stamps.watch(&real);
+                            read_text(&real).map(|text| (real, Some(text)))
                         }
                     });
                     let Some((real, text)) = found else {
@@ -371,7 +403,7 @@ impl Book {
         };
         book.walks = book.files.iter().map(|_| OnceLock::new()).collect();
         book.build_tables(&facts);
-        Some(book)
+        Ok(book)
     }
 
     /// The tables, over the whole book. Two passes, so that the order of the files and of the declarations does not matter: first every declaration
