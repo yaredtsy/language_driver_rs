@@ -14,14 +14,15 @@ this first table only, from its `| Row |` header to the first line that is not a
 
 - **groups** separated by `; `;
 - a group is a **fixture folder** under `crates/bend-analysis/tests/fixtures/policy/`, which is also the root the book is opened at, then
-  **one file** of it (relative to that root), then **the entries** in that file (qualnames; a second def of one name is `name#1`);
+  **one file** of it (relative to that root), then **the entries** in that file (qualnames; `call_graph` takes a qualname, and when a law
+  and its proof share one the proof is the entry, so no `#n` form is needed or read);
 - a group that begins with a file keeps the folder of the group before it.
 
 The test fails on a row with no fixture, a folder or file that is not there, a file with no entry, a row without its snapshot
 `crates/bend-analysis/tests/snapshots/policy/<row>.txt` and a snapshot of no row. A snapshot is, for each entry, a heading
 `== <file> <entry>`, the tree (the project's defs; `[Passed]` and `[Recursive]` are the renderer's marks), then every edge of the graph as
 `from | callee text | what it is` (sorted by the `from` def's name, byte order; by (start, end) of the site within one def; the callee text
-is the site's text, so a sugar site reads as the whole `a + b` or `x : U32 <- item()`), then `counters: key=n, …` above 0 (`Stats.language`,
+is the site's text: an operator's site is the operator token, `+`; an index's the whole `a[i]`; a do statement's the statement, `x : U32 <- item()`), then `counters: key=n, …` above 0 (`Stats.language`,
 the book's counters merged in, so `type_position` shows on every row: every walked def has a return type). Write the expected text by hand
 before running; bless only to write a snapshot you then review.
 
@@ -59,11 +60,11 @@ A name none of the four knows is `Unresolved(unknown_name)`. Every resolved edge
 | `passed` | `h(g)` with `g` a def; `App.run(~U32, ~App{view, tick})` | `g`, `view`, `tick`: passed edges (a bare def name as a direct argument, or as a direct field of a constructor argument); `App.run` an `External`; `h`'s own `f(1)` is `Unresolved`. A def name deeper in an argument is **not** drawn | `function_typed_value`; `passed_deep` for the deeper ones; `type_passed` for a type handed over (`~U32`) | `passed` `main.bend` `main` |
 | `construct` | `Circle{5}` of a project `type Shape` | `Construct Shape`, no init (a type has no constructor function: a leaf) | | `construct` `main.bend` `main` |
 | `construct-base` | `Some{x}`, `Con{h, t}`, `[1, 2]`, `"s"`, `3n+p`, `(a, b)` | nothing: data, constructors of Base types underneath | | `construct-base` `main.bend` `main` |
-| `op-project` | `(a + b : Vec2)` with `def Vec2.add` in the project | `Call Vec2.add`; the site is the whole `a + b` | | `op-project` `main.bend` `main` |
+| `op-project` | `(a + b : Vec2)` with `def Vec2.add` in the project | `Call Vec2.add`; the site is the operator token `+`, where Bend's own `Ref` sits (step 5.1: 11,399 operator Refs of the demos at exactly our bytes) | | `op-project` `main.bend` `main` |
 | `op-base` | `(a + b : U32)`, `(a < b : U32)`, `x && y`, `s ++ t`, `h <> l` | nothing: Base's arithmetic and the fixed operators are the language's, not sites (BD-D8); a Base call written out (`U32.add(a, b)`) is still an `External` | `sugar_base`, one per operator | `op-base` `main.bend` `main` |
-| `index` | `a[i]`, `a[i] <- v` | nothing (Base's `Array.get` / `Array.set`) | `sugar_base` | `index` `main.bend` `main` |
+| `index` | `a[i]`, `a[i] <- v` | nothing (Base's `Array.get` / `Array.set`); the site is the whole `a[i]`, as Bend's `Ref` is (46 of 46 demo indexes equal) | `sugar_base` | `index` `main.bend` `main` |
 | `do-project` | `do Parser<U32>:` with `def Parser.bind`, `def Parser.pure` in the project | `Call Parser.bind` per bind, exec or step (the site is the statement), `Call Parser.pure` per `return`; the statement's own call (`item()`) is drawn too, before its bind (sites sort by start) | | `do-project` `main.bend` `main` |
-| `do-base` | `do IO<Unit>:`, `do Maybe<U32>:` | nothing for the monad; a Base call inside a step (`IO.print("a")`) is still its `External` | `sugar_base`, one per statement | `do-base` `main.bend` `main`; `maybe` |
+| `do-base` | `do IO<Unit>:`, `do Maybe<U32>:` | nothing for the monad; a Base call inside a step (`IO.print("a")`) is still its `External` | `sugar_base`, one per statement | `do-base` `main.bend` `main` `maybe` |
 | `rewrite` | `%add_zero(p) : Nat` | `Call add_zero`: proof code calls proof code | | `rewrite` `main.bend` `main` |
 | `type-position` | `-> Or(IsEven(n), Empty)`, `{Unit{} : IsEven(n)}`, `List<Nat>`: calls and constructors inside a type | nothing, in layer 1 (BD-D9): parameter and return types, annotations' right sides, type arguments, a `do`'s monad arguments, bind and let types, `@` domains, a rewrite's motive, a law's claim | `type_position`, one per skipped term | `type-position` `main.bend` `main` |
 | `law-call` | `add_zero(2n)` where both `law add_zero` and its proof `def add_zero(x)` exist | `Call` to the **proof** (the def with code, `add_zero#1`); the law gets no edge. An entry named `add_zero` is the proof | | `law-call` `main.bend` `main` |
@@ -105,14 +106,19 @@ Rows the owner may reopen after seeing real trees: `op-base`, `index`, `do-base`
 
 ## Scenarios
 
+The wire's `target_kind` is the outline's `DefKind` as core's wire writes it (`"Function"`, `"Enum"`, `{"Other":"law"}`); a marked type gets
+`class_prefix` as an entry and as a construction (D45). `bend-cli outline` prints line:column and the marker text, as the other CLIs do.
+
 `scenarios/*/bend/`, run by `tests/scenarios.rs` at `Level::Default`: `straight-line`, `recursion-direct`, `external-call`, `method-on-class`
 and `law-across-files` give the shared tree; `construct-marked-class` and `two-callers` have a Bend tree of their own (`expected.bend.tree`,
 `expected.default.bend.tree`) because Bend has no constructor function and no receiver to dispatch on; each scenario's README says why.
 
 ## Known limits, each a fixture
 
-- a sugar site's span is the whole expression (`a + b`), where `bend`'s own `Ref` sits on the operator token: the parser keeps no operator
-  span. A small `bend-parser` change (`Op.op_span`) would narrow it; BD4 step 5.
+- **owed, a `do-project` fix (found by the sweep, 28 `passed_deep` of the demos):** a bare project def as the **value** of a `do` bind or exec
+  (`x : String <- name`, `Unit <- pop`) is a direct argument of the sugar's `M.bind` and should be a passed edge (D22), as `h(g)` is. The walk
+  reads the statement, not the call it stands for, and counts it `passed_deep` (13 in `pure_hvm5_mini`). The other 15 `passed_deep` are type
+  names as operands of `->` or `&` in value position and owe nothing unless Q-BD5 changes what a type position is.
 - a closure called after being stored (`add2(1)`) and a closure returned by a call (`adder(2)(…)`) are unresolved: BC3 (values through lets
   and returns).
 - a template parameter called inside its def is unresolved for every caller: BC1 resolves it per call site, exactly.
