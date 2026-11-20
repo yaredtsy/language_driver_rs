@@ -10,6 +10,7 @@ publish = false
 [workspace.dependencies]
 analyzer-core    = { path = "../../core/analyzer-core" }
 analyzer-testkit = { path = "../../core/analyzer-testkit" }
+serde_json       = "1"
 
 # no engine pin: bend-parser is the engine and it is ours (BD-D1). ENGINE.md carries the grammar pin, a bend commit, instead.
 bend-parser = { path = "crates/bend-parser" }

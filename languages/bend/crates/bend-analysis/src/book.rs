@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use analyzer_core::edit::MarkerStyle;
 use analyzer_core::graph::Stats;
 use analyzer_core::outline::{Def, DefKind, Outline};
+use analyzer_core::wire::Sources;
 
 use crate::base_names;
 use crate::paths;
@@ -610,6 +611,17 @@ impl Book {
             .collect();
         all.sort();
         all
+    }
+}
+
+/// The wire needs the text of a file to turn a call site (bytes relative to its def) into a line and a column. A book has it: the text of the file **as it was
+/// read**, by its path relative to the root, so the wire's offsets are the graph's.
+impl Sources for Book {
+    fn text(&self, file: &str) -> Option<String> {
+        self.files
+            .iter()
+            .find(|f| f.relative == file)
+            .map(|f| f.text.clone())
     }
 }
 

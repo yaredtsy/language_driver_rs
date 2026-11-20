@@ -1,0 +1,187 @@
+unmerged
+{
+  "target_qname": "main",
+  "target_id": "",
+  "target_file": "main.bend",
+  "target_qualname": "main",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "main.bend",
+          "qname": "main",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "f",
+      "target_id": "",
+      "target_file": "main.bend",
+      "target_qualname": "f",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          7,
+          3
+        ],
+        "end": [
+          7,
+          4
+        ]
+      },
+      "call_site_file": "main.bend",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "main.bend",
+              "qname": "f",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    }
+  ]
+}
+
+merged
+{
+  "target_qname": "main",
+  "target_id": "",
+  "target_file": "main.bend",
+  "target_qualname": "main",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "main.bend",
+          "qname": "main",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "f",
+      "target_id": "",
+      "target_file": "main.bend",
+      "target_qualname": "f",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          7,
+          3
+        ],
+        "end": [
+          7,
+          4
+        ]
+      },
+      "call_site_file": "main.bend",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "main.bend",
+              "qname": "f",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    }
+  ]
+}

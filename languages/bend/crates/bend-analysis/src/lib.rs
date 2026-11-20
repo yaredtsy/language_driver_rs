@@ -25,9 +25,13 @@ mod sem;
 mod walk;
 
 pub use analyzer_core::edit::{MarkerStyle, Placement};
-pub use analyzer_core::graph::{Edge, EdgeTo, Entry, Graph, Stats};
+pub use analyzer_core::graph::{
+    Basis, Context, ContextId, Cut, DefInfo, Edge, EdgeTo, Entry, External, Graph, Reason, Root,
+    Site, StableDef, Stats, Status,
+};
 pub use analyzer_core::outline::{Def, DefKind, Outline};
-pub use analyzer_core::render::{RenderOptions, render, to_text};
+pub use analyzer_core::render::{Mark, Node, RenderOptions, render, to_text};
 pub use analyzer_core::solve::{Budget, Cancel, Limits};
+pub use analyzer_core::wire::{Frame, LineSpan, Sources, WireOptions, WireStyle, merge, wire};
 pub use book::{Alias, AliasTarget, Book, DeclEntry, DeclId, FileEntry, FileIndex, Resolved};
 pub use calls::{Options, Walked, WalkedKind, call_graph, walked};
