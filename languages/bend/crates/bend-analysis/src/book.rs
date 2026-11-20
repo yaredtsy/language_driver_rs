@@ -7,6 +7,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use analyzer_core::edit::MarkerStyle;
 use analyzer_core::graph::Stats;
@@ -14,6 +15,7 @@ use analyzer_core::outline::{Def, DefKind, Outline};
 use analyzer_core::wire::Sources;
 
 use crate::base_names;
+use crate::calls::Marked;
 use crate::paths;
 use crate::sem;
 
@@ -128,6 +130,11 @@ pub struct Book {
     files: Vec<FileEntry>,
     /// Only ever looked up, never iterated (rule 9).
     by_path: HashMap<PathBuf, FileIndex>,
+    /// What each file's bodies say, read the first time a body of the file is walked and kept: a book is read many times (a request per def), and a file is parsed
+    /// once, not once per request. `OnceLock` is "set at most once, from any thread, then only read".
+    walks: Vec<OnceLock<Vec<sem::DefWalk>>>,
+    /// The markers of a file read with a style, kept for the next request: keyed by (label, placement, file), only ever looked up (rule 9).
+    markers: Mutex<HashMap<(String, String, usize), Arc<Marked>>>,
     decls: Vec<DeclEntry>,
     /// For each file, where its first def is in `decls`.
     first_decl: Vec<usize>,
@@ -353,6 +360,8 @@ impl Book {
             root,
             files,
             by_path: index,
+            walks: Vec::new(),
+            markers: Mutex::new(HashMap::new()),
             decls: Vec::new(),
             first_decl: Vec::new(),
             tlds: Vec::new(),
@@ -360,6 +369,7 @@ impl Book {
             imports_base,
             stats,
         };
+        book.walks = book.files.iter().map(|_| OnceLock::new()).collect();
         book.build_tables(&facts);
         Some(book)
     }
@@ -477,6 +487,31 @@ impl Book {
 
     pub fn file(&self, file: FileIndex) -> Option<&FileEntry> {
         self.files.get(file.index())
+    }
+
+    /// The places of each body of `file`, read once (`sem::walks`).
+    pub(crate) fn walks(&self, file: FileIndex) -> &[sem::DefWalk] {
+        match (self.walks.get(file.index()), self.files.get(file.index())) {
+            (Some(cell), Some(entry)) => cell.get_or_init(|| sem::walks(&entry.text)),
+            _ => &[],
+        }
+    }
+
+    /// The markers of `file` read with `style`, read once per style.
+    pub(crate) fn marked(&self, file: FileIndex, style: MarkerStyle<'_>) -> Option<Arc<Marked>> {
+        let entry = self.files.get(file.index())?;
+        let key = (
+            style.label.to_owned(),
+            format!("{:?}", style.placement),
+            file.index(),
+        );
+        let mut cache = self.markers.lock().ok()?;
+        Some(
+            cache
+                .entry(key)
+                .or_insert_with(|| Arc::new(Marked::new(&entry.text, style)))
+                .clone(),
+        )
     }
 
     /// The file at `path`, absolute or from the root, symlinks followed. `None` when no file of the book is there.

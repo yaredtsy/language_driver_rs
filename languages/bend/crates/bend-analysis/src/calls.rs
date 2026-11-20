@@ -4,9 +4,8 @@
 //! `Target::Call(def, key)`, and `walk` is the only place that would take a key.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
-use std::rc::Rc;
 
 use analyzer_core::edit::MarkerStyle;
 use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Graph, StableDef};
@@ -14,10 +13,10 @@ use analyzer_core::outline::DefKind;
 use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary};
 use analyzer_core::text::Span;
 
-use crate::book::{Book, DeclId, FileIndex};
+use crate::book::{Book, DeclId};
 use crate::env::Env;
 use crate::key::Key;
-use crate::sem::{self, DefWalk, Item};
+use crate::sem::{self, Item};
 use crate::walk::{self, Reached};
 
 /// The keys of the counters in `Stats.language` that the walk keeps, besides the reason of each unresolved edge. Each is absent when 0.
@@ -51,15 +50,16 @@ impl Options {
 }
 
 /// The markers of one file, read with the caller's style.
-struct Marked {
-    markers: Vec<Option<String>>,
+#[derive(Debug)]
+pub(crate) struct Marked {
+    pub(crate) markers: Vec<Option<String>>,
     /// Which defs own their marker: the first in source order of each text (D34). Another def carrying it is named by where it is.
-    owns: Vec<bool>,
-    occurrences: Vec<u32>,
+    pub(crate) owns: Vec<bool>,
+    pub(crate) occurrences: Vec<u32>,
 }
 
 impl Marked {
-    fn new(text: &str, style: MarkerStyle<'static>) -> Self {
+    pub(crate) fn new(text: &str, style: MarkerStyle<'_>) -> Self {
         let outline = bend_syntax::outline(text, style);
         let mut order: Vec<usize> = (0..outline.defs.len()).collect();
         order.sort_by_key(|&at| (outline.defs[at].range.start, at));
@@ -83,8 +83,6 @@ pub(crate) struct Bend<'b> {
     pub(crate) book: &'b Book,
     style: MarkerStyle<'static>,
     /// Only ever looked up, never iterated (rule 9).
-    walks: RefCell<HashMap<FileIndex, Rc<Vec<DefWalk>>>>,
-    marked: RefCell<HashMap<FileIndex, Rc<Marked>>>,
     /// Counters that are not the reason of an edge, filled as bodies are walked, once each, and put in `Stats.language` by `finish`.
     notes: RefCell<BTreeMap<&'static str, u64>>,
     /// The ids of the defs described that have a marker another def of their file owns (D34). Described more than once, so a set.
@@ -96,8 +94,6 @@ impl<'b> Bend<'b> {
         Bend {
             book,
             style,
-            walks: RefCell::new(HashMap::new()),
-            marked: RefCell::new(HashMap::new()),
             notes: RefCell::new(BTreeMap::new()),
             demoted: RefCell::new(HashSet::new()),
         }
@@ -109,29 +105,13 @@ impl<'b> Bend<'b> {
         }
     }
 
-    /// The places of `f`'s body, read once per file.
+    /// The places of `f`'s body (the book reads each file once).
     pub(crate) fn items(&self, f: DeclId) -> Vec<Item> {
-        let (Some(file), Some(def)) = (self.book.file(f.file()), self.book.def(f)) else {
+        let Some(def) = self.book.def(f) else {
             return Vec::new();
         };
-        let walks = self
-            .walks
-            .borrow_mut()
-            .entry(f.file())
-            .or_insert_with(|| Rc::new(sem::walks(&file.text)))
-            .clone();
-        sem::walk_of(&walks, def.name_range).map_or_else(Vec::new, |w| w.items.clone())
-    }
-
-    fn marked(&self, file: FileIndex) -> Option<Rc<Marked>> {
-        let entry = self.book.file(file)?;
-        Some(
-            self.marked
-                .borrow_mut()
-                .entry(file)
-                .or_insert_with(|| Rc::new(Marked::new(&entry.text, self.style)))
-                .clone(),
-        )
+        sem::walk_of(self.book.walks(f.file()), def.name_range)
+            .map_or_else(Vec::new, |w| w.items.clone())
     }
 }
 
@@ -145,7 +125,7 @@ impl Lang for Bend<'_> {
         let (Some(file), Some(def)) = (self.book.file(f.file()), self.book.def(f)) else {
             unreachable!("a DeclId of the book the solver was given");
         };
-        let marked = self.marked(f.file());
+        let marked = self.book.marked(f.file(), self.style);
         let occurrence = marked.as_ref().map_or(0, |m| m.occurrences[f.def()]);
         let marker = marked.as_ref().and_then(|m| m.markers[f.def()].clone());
         let owns = marked.as_ref().is_some_and(|m| m.owns[f.def()]);
