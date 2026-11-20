@@ -216,4 +216,9 @@ dropped first (§3 point 4). `refresh` does the same by itself when the stamp of
 | 6b | **done, 2447928, reviewed 2026-11-20.** TypeScript's later wording (41dd2d3, 06fbab8): `Breakdown` gains `frontier` and says `cuts in the graph:` (the budget's frontier joined with the solver's limits); the CLI prints `cuts in the tree:` right after the breakdown's last line, as TypeScript's does (the renderer's cut belongs to the drawing, so `Breakdown` has no field for it) | the same one-line snapshot changes TypeScript made; no flag still identical apart from that line |
 | | **tag `rust-v0.3.0`** | tier-3 conformance in the driver (`vnoc`) |
 
+**Layer 1 is complete in this repo (2026-11-20, fe29721).** RS1–RS5 built and reviewed; `languages/rust/docs/policy.md` is a test
+(`tests/policy.rs`, 43 row snapshots); swept on terminusdb and ruff (ENGINE.md, "Sweeps of real projects"). Left, none of it code here:
+the tags `rust-v0.2.0` and `rust-v0.3.0` (the owner's; v0.3.0 after tier-3 conformance in the vnoc driver). Later, decided and written
+down: the user's choice of the `cfg` set (D48, RS3 §3), build-time code (D39), `expand` tokens (D31).
+
 Layer 1 ends here. Next: [`../05-context-layer/01-design.md`](../05-context-layer/01-design.md)
