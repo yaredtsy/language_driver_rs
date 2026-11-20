@@ -59,7 +59,7 @@ known number in the table.
 
 **State (2026-11-20): BD0 and BD1 complete** (aeef3fc, c8742de, f1ed5f6, e67f328, 379b909), every proof reproduced at review; `bend-parser` is
 2,030 code lines, 85 fixtures; `languages/bend/ENGINE.md` has the corpus numbers, the term-node counts and the grammar list G1–G36. **BD2 complete** (08bdce7, 01f622e, 692dfa0): `qualnames.md` and `markers.md` are the contract.
-**Tag `bend-v0.1.0` is the owner's, after Q-BD2 (law and proof: one qualname or a suffix).** **BD3 complete** (03de29f, 66695e6): the book, Base's names as a generated list (Q-BD3 answered as recommended), the Ref oracle at zero mismatches. BD4 next.
+**Tag `bend-v0.1.0` is the owner's, after Q-BD2 (law and proof: one qualname or a suffix).** **BD3 complete** (03de29f, 66695e6): the book, Base's names as a generated list (Q-BD3 answered as recommended), the Ref oracle at zero mismatches. BD4 step 4 (walk, calls, policy fixtures, scenarios) accepted; `policy.md` written. Step 5 (wire, cli, policy test, sweep) next, then **tag `bend-v0.2.0`** (the owner's).
 
 The user asked for three phases. They map so: **phase 1 (reading)** is BD0–BD1, the parser and its tree; **phase 2 (what can be called, and
 the call tree)** is BD2–BD5, the outline, the book and the call graph on core's flat solver; **phase 3 (the context layer)** is BC0–BC5.
