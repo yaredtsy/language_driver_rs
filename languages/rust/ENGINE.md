@@ -752,3 +752,41 @@ loaded it with `ProjectWorkspace::load_inline`, sysroot `None`.
   macOS a debug build leaves each codegen unit's object beside the library for the debugger: `split-debuginfo = "unpacked"`), 45
   dependency crates in more than one build (`syn` seven times), 0.08 GB stale test binaries. S-RS1 measured 0.9 GB with `debug = 0`.
   The profile gives every dependency full debug info (`[profile.dev.package."*"]` sets only `opt-level`).
+
+## Sweeps of real projects (reviewer, 2026-11-20)
+
+A throwaway probe (not committed) through the public API only: `Session::open` (so the priming is real), then every entry-kind def of the
+files asked once at `max_depth = 1` (its own body: the union of the edges is each site once, and the summed notes each body once),
+each request under `catch_unwind`, then a sample with no budget. On copies (no `target/`, no `.git`), so `cargo metadata` writes nothing in
+the owner's clones. Footprint sampled every 2 s by `footprint -p`, killed above a limit. Debug build of the test.
+
+| | terminusdb `src/rust` (whole workspace, 3 crates) | ruff, root `crates/ruff_python_parser` | ruff, root `crates/ruff_linter`, entries in `rules/flake8_bugbear` |
+|---|---|---|---|
+| open (load + priming) | 60 s with the git dependencies fetched, 10.8 s after | 7.0 s | 7.3 s (1,016 files, 200k lines primed) |
+| warnings | none | `toolchain_substituted` (1.98.0 pinned, not installed: 1.94.1 used, nothing installed) | the same |
+| files, entries | 37, 801 | 23, 973 | 45, 232 |
+| panics / `None` | 0 / 3 | 0 / 4 | 0 / 0 |
+| depth-1 pass | 9.1 s | 12.4 s | 3.1 s |
+| sites (each once) | 6294: call 1012, construct 441, external 4638, passed 38, `function_typed_value` 41, `unknown_callee` 109, `unknown_method` 15 | 5282: call 2588, construct 283, external 2350, passed 11, `function_typed_value` 48, `unknown_method` 2 | 1261: call 353, construct 34, external 867, passed 3, `function_typed_value` 1, `unknown_method` 3 |
+| `open_*` | `type_param` 93, `dyn` 58, `fn_param` 15, `self_in_trait` 13, `opaque` 7, `closure` 6, `projection` 2 | `type_param` 39, `fn_param` 11, `closure` 1, `impl_trait` 1, `projection` 1 | `opaque` 2, `fn_pointer` 1, `impl_trait` 1, `projection` 1 |
+| other notes | `macro_generated_target` 113, `external_passed` 4, `constructor_passed` 2 | `macro_generated_target` 87, `outside_root` 478, `macro_not_expanded` 2, `external_passed` 10 | `macro_generated_target` 30, `outside_root` 363, `external_passed` 6 |
+| whole trees (sample) | 40 in 0.38 s, the slowest 56 ms (37 contexts) | 40 in 1.74 s, the slowest 160 ms (394 contexts) | 20 in 0.16 s |
+| slowest single request | 1.87 s (the first body after the open) | 0.81 s (the same) | 1.33 s (the same) |
+| peak footprint | 1.75 GB | 1.03 GB | 1.34 GB |
+
+What the sweeps found:
+
+- **No analyzer bug among the unknowns.** Every `unknown_callee` and `unknown_method` was read at its site: all are what a proc macro
+  would have made, with proc macros off by default (`proc_macros_skipped` on every graph). terminusdb: 97 `register_*_in_module`
+  functions made by `swipl`'s `predicates!`, juniper's `GraphQLInputObject` derive (`*FilterInputObject::from_input_value`) and a body
+  under its `#[graphql_object]` attribute, `swipl`'s clone-blob macros (`name`). ruff: `is_u_add`, `is_store` from the `is-macro` derive.
+  A missing method usually counts twice: the call, then `unknown_method` on its result's `.unwrap()`. About 2% of terminusdb's sites,
+  0.04% of the parser's.
+- **`None` for code `#[cfg(debug_assertions)]` turns on** (ruff's `Cursor::previous` and three `#[test]`s): our load sets no cfg beyond
+  `test`, while `cargo build` and `cargo test` compile debug assertions by default, and rust-analyzer's own default
+  (`rust-analyzer.cargo.cfgs`, `crates/rust-analyzer/src/config.rs:838`) is `["debug_assertions", "miri"]`. Q-RS8 for the owner.
+  terminusdb's two `get_process_rss_bytes` twins for Linux and other systems are `None` rightly (D15).
+- **`None` for an item a built-in attribute macro rewrites:** terminusdb's `#[global_allocator] static ALLOC` (active on macOS). The engine
+  sees the static only inside the attribute's expansion. No calls are lost (a path initializer); a small gap, written down, not scheduled.
+- **The first request after an open is the slow one** (0.8–1.9 s, the first body's inference), every later one tens of milliseconds:
+  RS5 §4's "about a second" holds on these projects.
