@@ -57,8 +57,9 @@ disagree, say so"):
 S, M, L are relative. **[measure]** after BD1: the parser is the one piece of work this repo has not done before, so its size is the least
 known number in the table.
 
-**State (2026-11-20):** BD0 and BD1 steps 1–3 built and accepted (aeef3fc, c8742de, f1ed5f6); `languages/bend/ENGINE.md` has the corpus
-numbers and the grammar list G1–G30. Step 4 next.
+**State (2026-11-20): BD0 and BD1 complete** (aeef3fc, c8742de, f1ed5f6, e67f328, 379b909), every proof reproduced at review; `bend-parser` is
+2,030 code lines, 85 fixtures; `languages/bend/ENGINE.md` has the corpus numbers, the term-node counts and the grammar list G1–G36. BD2 next;
+its step 2 (markers) waits for Q-BD1.
 
 The user asked for three phases. They map so: **phase 1 (reading)** is BD0–BD1, the parser and its tree; **phase 2 (what can be called, and
 the call tree)** is BD2–BD5, the outline, the book and the call graph on core's flat solver; **phase 3 (the context layer)** is BC0–BC5.

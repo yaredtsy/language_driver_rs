@@ -24,7 +24,7 @@ accept them, as Rust's did. Nothing is decided until then.
 | BD-D7 | **Nothing is fetched and `~/.bend` is never read.** A hub import is an external module; its calls are named `External`s; counted `hub_import` | 03 §2 |
 | BD-D8 | **Sugar on a Base type is not a site** (`(a + b : U32)`, `a[i]`, `do IO<…>:`, `&&`, `++`, `<>`); **sugar on a project type is a `Call`** to the def it names (`(a + b : Vec2)` → `Vec2.add`; `do Parser<…>:` → `Parser.bind`, `Parser.pure`) | 03 §3.3 rows op-*, index, do-* |
 | BD-D9 | **A call in a type position is not a site in layer 1**, counted `type_position`: parameter and return types, annotations' right sides, type arguments, law clauses, rewrite motives | 01 §4, 03 §3.2 |
-| BD-D10 | **Recovery at declaration boundaries only** (a column-0 `def` / `type` / `law` / `@unsafe` / `import` line resyncs); a term-level `Error` node is tried and dropped if it costs drift | 02 §3 |
+| BD-D10 | **Recovery at declaration boundaries only** (a column-0 `def` / `type` / `law` / `@unsafe` / `import` line resyncs); no term-level `Error` node (decided at BD1's review, 2026-11-20: a failed term flags its declaration, whose name and range are kept) | 02 §3 |
 | BD-D11 | **The `Lang` impl's `BASIS` is `Basis::Name`** (core's "the code's own names fixed it"): every Bend edge is that kind, and the one a reader may take as certain | 03 §3.1 |
 | BD-D12 | **Bend's call targets are resolved over the whole book, ignoring declaration order**, so a forward reference `bend` would refuse still gets its edge (never fail) | 01 §3 |
 
@@ -58,17 +58,16 @@ Bend tree is its own file and the scenario README says why.
 
 Checked while writing (2026-11-20): `bend <file> --check-only` exists (`bend2/main.ts` 43: "check the file and its imports; run nothing"), and core's `Basis::Name` is the variant Bend's edges rest on.
 
-Checked by BD0 and BD1 step 3 (2026-11-20, `languages/bend/ENGINE.md`): every accepted file starts with comments, then imports, then declarations (127 start with code on their first non-blank line: the header slot is offset 0); parsing the accepted corpus takes 57 ms in release; a name has no `-`; `bend.ts` spans are UTF-16 units; the parser consults the book's tables in four places, not one. Open from BD1: `scripts/check-all.sh` runs clippy on `*-syntax`, `*-analysis` and `*-cli` only, so `bend-parser` needs a line (step 4's task).
+Checked by BD0 and BD1 step 3 (2026-11-20, `languages/bend/ENGINE.md`): every accepted file starts with comments, then imports, then declarations (127 start with code on their first non-blank line: the header slot is offset 0); parsing the accepted corpus takes 57 ms in release; a name has no `-`; `bend.ts` spans are UTF-16 units; the parser consults the book's tables in four places, not one. BD1 steps 4–5 (e67f328, 379b909): the BNF does not name 36 forms the parser reads (`ENGINE.md` G1–G36, each a fixture); `check-all.sh` lints `bend-parser`
+and a static check pins its dependency list to `analyzer-core` alone.
 
 | # | Claim | Where it is used | How to check |
 |---|---|---|---|
 | 13 | `HigherOrderCO/tree-sitter-bend` predates the Bend2 syntax (last push 2024) | 01 §7 | look at the repository |
 | 14 | the demos' call-site counts (5,900 sites, 64 with a local head) | 04 §2 | BC0 |
-| 2 | the grammar comment at `bend.ts` 8–160 names every form the parser reads | the fixture list of BD1 | S-BD2 |
 | 5 | the demos never put a blank line between a doc comment block and its def | the range rule, 03 §1.2 | grep the demos |
 | 6 | `base.bend` sits on disk in an install, or only inside the binary | Q-BD3 | install `bend`; look |
 | 7 | the renderer prints a `Construct` with `init: None` as the other languages' scenario trees show | §2 | run the scenario in BD4 |
 | 9 | a book of the whole `tests/` is a few megabytes and opens in milliseconds | BD3, BD5 | BD3 step 3 |
 | 10 | TC's answer on lambdas as values (Q-TC) is one Bend can share | BC1 | read 12-context-layer when Q-TC1..5 are answered |
-| 11 | the term-level `Error` node is worth its drift cost | BD-D10 | BD1 step 4 |
 | 12 | how the V-NOC contract treats a def imported from outside the root (`../lib.bend`) | BD3 | D26's text and the Python driver |

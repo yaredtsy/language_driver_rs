@@ -56,6 +56,13 @@ pub struct Tree { pub imports: Vec<Import>, pub decls: Vec<Decl>, pub errors: Ve
 
 ### 2.2 The tree
 
+**Built (2026-11-20, e67f328): `crates/bend-parser/src/tree.rs` is the tree, and where it and this sketch differ, the code is right.** The
+differences, accepted at review: `Term { kind: TermKind, span }` (a struct, so every kind has its span once); `Group { body, ns }` and `Tuple { items, ns }`
+keep the parens and the `: T` namespace (`bend.ts` erases the group: BD4 sees through `Group` for a callee or a binder); `Lam` has one binder and an
+`annot` (`(x : T) => b` is legal, G31); infix operators are one `Op` enum with `&` as `Pair`, `|` as `Either`, `<&>` as `Min`, `Arrow` apart; `Plus(term)`
+keeps `+x` / `+D<A>` open; `~` is accepted on any argument (`bend.ts` takes only the callee's template count: a book question); literals are raw text;
+`NatPlus`, `All`, `ArraySize`, `Do { monad, args, stmts }` with six statement kinds; a broken def has `body: None`. 2,030 code lines, 85 fixtures.
+
 An owned tree at the **surface** level: what the user wrote, with sugar kept, every node with a `Span` (core's `text::Span`, byte offsets).
 Bend's own parser desugars while parsing (`parse_call` builds `App(App(Ref f, a), b)`; a list literal becomes `Con{…}`); we do not, because
 the outline and the markers need the source shape, and the call walk needs to know that `f(a, b)` was written as one call with two arguments.
@@ -150,10 +157,11 @@ sites. The tree's shape itself is checked by reviewed snapshots against `GUIDE.m
 
 ## 5. Steps
 
-**State (2026-11-20):** BD0 done (c8742de), steps 1–3 done (aeef3fc, f1ed5f6) and accepted; the corpus proof reproduced by the reviewer (1,744
-files, 176,229 declarations, 57 ms release). Step 3 reads types and bodies as spans through a throwaway `stopgap.rs` (313 lines) that step 4
-deletes; the 30 grammar items the BNF does not name are `ENGINE.md` §grammar G1–G30, each a step 4 fixture. S-BD4 (the Ref oracle) was added to
-the plan after the step 3 prompt went out and is not done: it moves to BD4, where its output (callee spans) is compared.
+**State (2026-11-20): BD1 COMPLETE.** BD0 (c8742de), steps 1–3 (aeef3fc, f1ed5f6), steps 4–5 (e67f328, 379b909), each accepted; every proof
+reproduced by the reviewer: 1,744 files with bodies read, zero errors, 176,229 declarations matching Bend's, span invariants on every node, 37,641 cuts
+without a panic, 195 ms median in release, `scripts/check-all.sh bend` green. `ENGINE.md` §grammar G1–G36 (G31–G36 found in step 4), each with its
+fixture. The term-level `Error` node of §3 was **not** built and is not missing: a failed term flags the declaration and reading resumes at the next
+one (BD-D10 as decided). S-BD4 (the Ref oracle) moved to BD4, where its output (callee spans) is compared.
 
 | # | Do | Proof |
 |---|---|---|
