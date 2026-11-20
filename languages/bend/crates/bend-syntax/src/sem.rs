@@ -39,6 +39,10 @@ pub(crate) struct Error {
 pub(crate) struct Parsed {
     pub(crate) decls: Vec<Decl>,
     pub(crate) errors: Vec<Error>,
+    /// Every `#` comment, each from its `#` to the end of its line, in source order.
+    pub(crate) comments: Vec<Span>,
+    /// Where the first `import` line starts, if the file has one the parser could read.
+    pub(crate) first_import: Option<u32>,
 }
 
 /// A binder or a clause name as written: `~f`, `-A`, `+x`, `n`. An `exs` clause has no quantity mark, and the parser says `Plain` for it.
@@ -86,6 +90,8 @@ fn decl(d: &bend_parser::Decl) -> Option<Decl> {
 pub(crate) fn parse(text: &str) -> Parsed {
     let tree = bend_parser::parse(text);
     Parsed {
+        comments: tree.comments.clone(),
+        first_import: tree.imports.first().map(|i| i.span.start),
         decls: tree.decls.iter().filter_map(decl).collect(),
         errors: tree
             .errors

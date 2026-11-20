@@ -135,6 +135,14 @@ blank line, then the first def of the section; counted over all accepted files, 
 so **the range rule of 03 §1.2 (a blank line between makes the block not the def's) is right as written** and nothing has to change before the tag; a rule that took "the
 block that ends on the line above, blank or not" would put a section title into the first def's range. Two blank lines between never occur.
 
+### BD2 step 2: markers and the header
+
+2026-11-20, `cargo test -p bend-syntax --release --test corpus -- --ignored --nocapture`. A marker (`# ID: m<i>`) planned on the defs of every accepted file, the file's own marker
+(`# ID: FILE`) planned too, all the edits applied together to the text, and the text outlined again: **1,744 files, 1,744 file markers read back, 13,468 def markers read back**,
+none refused, none already marked in the corpus, every file's defs still Bend's own list (same names and kinds, in order) and no syntax error added. `plan_marker` outlines
+the whole file on each call, so the test plans **every def of a file of at most 300 defs, and about 40 spread over a larger one** (the generated `bench/` files have up to 70,000):
+13,468 of the 160,916 defs were planned, not all of them.
+
 ## grammar
 
 S-BD2 (G1–G30, step 2; G31–G36 found in step 4): every form `bend.ts` reads that the BNF comment (lines 8–160) does not name, or names differently. Read 2026-11-20 from `parse_book` (2593), `parse_def`
@@ -188,3 +196,4 @@ Two facts change the plan's picture before the list:
 | G34 | a **def's body** is read with `parse_body(col 0)`, a law's claim, a lambda body and a rewrite tail with `parse_block` (the column of their first token): a `case` may sit at its `match`'s own column in a def body | `parse_def` 2588, `parse_block` 2466 | not in the BNF (or differs) | `layout_match_cols` (written) |
 | G35 | a string (and a foreign import's path) may span lines, and one that never closes runs to the end of the text; recovery restarts at its opening quote and reads strings per line, so the declarations below it survive | `parse_term_base` 2024 | not in the BNF (or differs) | `recover_unterminated`, `recover_foreign` (written) |
 | G36 | a typed let is tried with a memo (`p.ann`): `x : T` with no `=` after it rewinds, and the position is remembered so that nested annotations are not read twice at each level | `parse_body` 2411 | not in the BNF (or differs) | `let_typed_rewind` (written) |
+| G37 | **a byte-order mark** at the start of a file: `book_load` trims one off an `import` line (`String.trim` strips U+FEFF) but `parse_skip` does not skip one before a declaration, so `bend` refuses a BOM file that starts with a `def`. `bend-parser` reads it as whitespace at the start of the text (a file with no outline at all is the worse answer), and the file marker goes after it | `book_load` 973, `parse_skip` 1595 | not in the BNF | `bom`, `bom_doc` (parser), `bom` (syntax) (written) |

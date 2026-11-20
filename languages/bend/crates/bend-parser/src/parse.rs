@@ -44,6 +44,9 @@ pub(crate) struct Parser<'a> {
     text: &'a str,
     pub(crate) bytes: &'a [u8],
     pub(crate) pos: usize,
+    /// Where the text really starts: past a byte-order mark. `bend.ts` trims one off an import line but does not skip one before a declaration, so a
+    /// file that starts with one would have no outline at all; here it is whitespace at the start of the file.
+    bom: usize,
     /// The end of the last token before the latest `skip` that moved: where a term or a declaration really ended, before the whitespace and comments
     /// that `skip` passed on the way to the next token.
     pub(crate) tail: usize,
@@ -103,11 +106,17 @@ pub(crate) fn parse(text: &str) -> Tree {
 
 impl<'a> Parser<'a> {
     fn new(text: &'a str) -> Self {
+        let bom = if text.starts_with('\u{feff}') {
+            '\u{feff}'.len_utf8()
+        } else {
+            0
+        };
         Parser {
             text,
             bytes: text.as_bytes(),
-            pos: 0,
-            tail: 0,
+            pos: bom,
+            tail: bom,
+            bom,
             skip_end: usize::MAX,
             comments: BTreeMap::new(),
             ann: BTreeSet::new(),
@@ -290,7 +299,7 @@ impl<'a> Parser<'a> {
 
     /// `bend.ts` 1557 `parse_col`: the 1-based column of `at`, in bytes.
     pub(crate) fn col(&self, at: usize) -> usize {
-        at - self.line_start(at) + 1
+        at.saturating_sub(self.line_start(at)) + 1
     }
 
     /// The end of what has been read: where the last token ended. Right after a `skip` that is `tail` (the whitespace and comments it passed are not
@@ -329,7 +338,7 @@ impl<'a> Parser<'a> {
         self.bytes
             .get(..at)
             .and_then(|before| before.iter().rposition(|&b| b == b'\n'))
-            .map_or(0, |i| i + 1)
+            .map_or(self.bom, |i| i + 1)
     }
 
     /// `bend.ts` 2487 `parse_tele`: a parameter list, up to and including its `close`. `out` keeps the binders read so far if it gives up.
@@ -390,7 +399,7 @@ impl<'a> Parser<'a> {
     /// blank or `#` line, or an `import` line, until the first line that is none of them. Leaves `pos` at the start of that line.
     fn imports(&mut self, errors: &mut Vec<ParseError>) -> Vec<Import> {
         let mut out = Vec::new();
-        let mut ls = 0;
+        let mut ls = self.bom;
         while ls < self.bytes.len() {
             let le = self
                 .bytes
@@ -774,7 +783,7 @@ impl<'a> Parser<'a> {
 
     /// Whether `at` starts a line that begins at column 0 with `def`, `type`, `law`, `@unsafe` or `import`.
     fn is_resync_line(&self, at: usize) -> bool {
-        if at != 0 && self.bytes.get(at - 1) != Some(&b'\n') {
+        if at != 0 && at != self.bom && self.bytes.get(at - 1) != Some(&b'\n') {
             return false;
         }
         let rest = self.bytes.get(at..).unwrap_or(&[]);
@@ -800,7 +809,7 @@ impl<'a> Parser<'a> {
         }
         let (mut beg, mut end) = (None, None);
         let mut line = ls;
-        while line > 0 {
+        while line > self.bom {
             let prev_end = line - 1;
             let prev_start = self.line_start(prev_end);
             let text = self.bytes.get(prev_start..prev_end)?;

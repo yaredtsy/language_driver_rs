@@ -1,0 +1,2 @@
+(def a 13..36 "def a(x: Nat) -> Nat: x" (doc 3..12 "# the doc") (params (x Nat)) (ret Nat) (body x))
+(comment 3..12 "# the doc")

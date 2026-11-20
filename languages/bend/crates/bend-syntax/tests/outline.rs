@@ -1,23 +1,27 @@
-//! The shared checks on every fixture: the outline equals its reviewed snapshot and nothing panics on a cut file; and the rows of docs/08-bend/03 §1.1 as
-//! plain assertions beside the snapshots. The marker round trip is not here: markers are BD2 step 2 (Q-BD1 is open).
+//! The shared checks on every fixture: the outline equals its reviewed snapshot, nothing panics on a cut file, and a marker planned on each def and applied
+//! gives the same defs, each with its marker; and the rows of docs/08-bend/03 §1.1 as plain assertions beside the snapshots.
 
 use std::fs;
 
-use analyzer_testkit::syntax::{Subject, cut_every_50_bytes, snapshot_every_fixture};
-use bend_syntax::{Def, DefKind, Edit, MarkerStyle, Outline, Placement, occurrences, outline};
+use analyzer_testkit::syntax::{
+    Subject, cut_every_50_bytes, marker_round_trip, snapshot_every_fixture,
+};
+use bend_syntax::{
+    Def, DefKind, Edit, MarkerStyle, Outline, Placement, occurrences, outline, plan_marker,
+};
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
-    placement: Placement::Docstring,
+    placement: Placement::Above,
 };
 
 fn outline_of(text: &str) -> Outline {
     outline(text, STYLE)
 }
 
-/// Step 2 fills this in. Until then no def accepts a marker, which is why `marker_round_trip` (it fails on a planner that plans nothing) is not run.
-fn plan(_text: &str, _def: &Def, _marker: &str) -> Option<Edit> {
-    None
+/// The testkit's round trip wants an `Option`: a def that is refused (a `Skip`) is left alone.
+fn plan(text: &str, def: &Def, marker: &str) -> Option<Edit> {
+    plan_marker(text, def, marker, STYLE).ok()
 }
 
 const BEND: Subject = Subject {
@@ -42,6 +46,12 @@ fn names(o: &Outline) -> Vec<(&str, DefKind)> {
 #[test]
 fn every_fixture_equals_its_snapshot() {
     snapshot_every_fixture(&BEND);
+}
+
+/// Plan, apply, outline again: the same defs, the def has its marker, no other def changed, and a second plan is refused.
+#[test]
+fn a_marker_planned_on_every_def_of_every_fixture_round_trips() {
+    marker_round_trip(&BEND);
 }
 
 #[test]
@@ -230,14 +240,4 @@ fn a_broken_def_is_flagged_and_the_others_are_not() {
         "stray text between defs breaks none of them"
     );
     assert_eq!(o.syntax_errors.len(), 1);
-}
-
-#[test]
-fn the_file_marker_is_not_read_yet() {
-    for entry in fs::read_dir("tests/fixtures").expect("fixtures") {
-        let text = fs::read_to_string(entry.expect("entry").path()).expect("text");
-        let o = outline_of(&text);
-        assert!(o.file_marker.is_none());
-        assert!(o.defs.iter().all(|d| d.marker.is_none()));
-    }
 }
