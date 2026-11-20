@@ -13,7 +13,7 @@ use rust_analysis::{
 };
 
 mod common;
-use common::{Cell, Group, Row, copy_of_fixture, one_load, rows, shared, tmp_root};
+use common::{Cell, Group, Row, copy_of_fixture, one_load, rows, shared, tmp_root, write};
 
 const TABLE: &str = include_str!("../../../docs/policy.md");
 
@@ -21,17 +21,18 @@ fn tests_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests")
 }
 
-fn snapshot_path(id: &str) -> PathBuf {
-    tests_dir()
-        .join("snapshots/policy")
-        .join(format!("{id}.txt"))
+fn snapshots_dir() -> PathBuf {
+    tests_dir().join("snapshots/policy")
 }
 
-/// What is wrong with a table, one sentence for each. `tests` is the folder that holds `fixtures/` and `snapshots/policy/`.
-fn problems(table: &str, tests: &Path) -> Vec<String> {
+fn snapshot_path(id: &str) -> PathBuf {
+    snapshots_dir().join(format!("{id}.txt"))
+}
+
+/// What is wrong with a table, one sentence for each. `tests` is the folder that holds `fixtures/`, `snapshots` the folder of the rows' snapshots.
+fn problems(table: &str, tests: &Path, snapshots: &Path) -> Vec<String> {
     let rows = rows(table);
     let fixtures = tests.join("fixtures");
-    let snapshots = tests.join("snapshots/policy");
     let mut found = Vec::new();
     let mut seen: Vec<&str> = Vec::new();
     for row in &rows {
@@ -74,7 +75,7 @@ fn problems(table: &str, tests: &Path) -> Vec<String> {
             }
         }
     }
-    if let Ok(dir) = std::fs::read_dir(&snapshots) {
+    if let Ok(dir) = std::fs::read_dir(snapshots) {
         let mut names: Vec<String> = dir
             .flatten()
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
@@ -251,7 +252,7 @@ fn render_row(row: &Row, groups: &[Group]) -> String {
 
 #[test]
 fn every_row_of_the_table_has_a_fixture_and_a_snapshot() {
-    let found = problems(TABLE, &tests_dir());
+    let found = problems(TABLE, &tests_dir(), &snapshots_dir());
     assert!(found.is_empty(), "{}", found.join("\n"));
     assert!(rows(TABLE).len() > 40, "the table was not read");
 }
@@ -259,12 +260,17 @@ fn every_row_of_the_table_has_a_fixture_and_a_snapshot() {
 #[test]
 fn the_check_finds_every_kind_of_problem() {
     let tests = tests_dir();
+    // the snapshots of a small table of our own: the one row's, and one that no row builds
+    let snapshots = tmp_root().join("policy_problems_snapshots");
+    let _ = std::fs::remove_dir_all(&snapshots);
+    write(&snapshots.join("site.txt"), "== src/calls.rs plain_calls\n");
+    write(&snapshots.join("stale.txt"), "== a def that is gone\n");
     let table = |rows: &str| {
         format!(
             "| Row | Feature | Policy | Changed by | Fixture |\n|---|---|---|---|---|\n{rows}\n"
         )
     };
-    let one = |row: &str| problems(&table(row), &tests);
+    let one = |row: &str| problems(&table(row), &tests, &snapshots);
     let said = |found: Vec<String>, sentence: &str| {
         assert!(
             found.iter().any(|p| p == sentence),
@@ -315,10 +321,10 @@ fn the_check_finds_every_kind_of_problem() {
         ),
         "row `site`: the id is empty or used twice",
     );
-    // every snapshot of the real table is stale in a table that has one row only
+    // a snapshot that no row builds
     said(
         one("| `site` | text | | | `policy` `src/calls.rs` `plain_calls` |"),
-        "snapshot `branches.txt`: no row of the table builds it",
+        "snapshot `stale.txt`: no row of the table builds it",
     );
     // a group that begins with a file keeps the workspace of the group before it, and a row that is right has no problem of its own
     let right = one(

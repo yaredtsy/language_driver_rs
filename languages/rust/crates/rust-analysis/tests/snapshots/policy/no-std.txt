@@ -6,9 +6,23 @@ edges:
 go | Thing::new | call Thing::new
 go | run | call Thing::run
 counters: layout_skipped=1, warning_cargo_failed=1
+== src/lib.rs uses_std
+uses_std
+edges:
+uses_std | String::new | unresolved unknown_callee
+uses_std | len | unresolved unknown_method
+uses_std | Some | unresolved unknown_callee
+counters: layout_skipped=1, macro_not_expanded=1, unknown_callee=2, unknown_method=1, warning_cargo_failed=1
 == main.rs run
 run
   go
 edges:
 run | child::go | call go
 counters: warning_no_manifest=1
+== main.rs uses_std
+uses_std
+edges:
+uses_std | String::new | unresolved unknown_callee
+uses_std | len | unresolved unknown_method
+uses_std | Some | unresolved unknown_callee
+counters: macro_not_expanded=1, unknown_callee=2, unknown_method=1, warning_no_manifest=1
