@@ -13,6 +13,7 @@ analyzer-testkit = { path = "../../core/analyzer-testkit" }
 
 # the engine: ONE version, written once (ENGINE.md records why this one). `hir`, `ide`, `ide_db`, `load-cargo` and `project_model` stop at 0.0.358
 # on crates.io, so every `ra_ap_*` crate is pinned to it, with `=`: the set moves together. `ra_ap_hir` and the rest are used from RS3 on.
+ra_ap_cfg           = "=0.0.358"
 ra_ap_syntax        = "=0.0.358"
 ra_ap_hir           = "=0.0.358"
 ra_ap_ide_db        = "=0.0.358"

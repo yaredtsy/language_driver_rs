@@ -1,4 +1,4 @@
-//! Loading a Cargo workspace into the engine's database. The only file that names `ra_ap_load_cargo`, `ra_ap_project_model` and `ra_ap_vfs`.
+//! Loading a Cargo workspace into the engine's database. The only file that names `ra_ap_cfg`, `ra_ap_load_cargo`, `ra_ap_project_model` and `ra_ap_vfs`.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -8,15 +8,16 @@ use crate::toolchain::Tool;
 use crate::warning::Warning;
 use crate::{LoadOptions, paths, toolchain};
 
-use ra_ap_hir::{Semantics, attach_db};
+use ra_ap_cfg::{CfgAtom, CfgDiff};
+use ra_ap_hir::{Semantics, Symbol, attach_db};
 use ra_ap_ide_db::RootDatabase;
 use ra_ap_load_cargo::{
     LoadCargoConfig, ProcMacroServerChoice, ProjectFolders, SourceRootConfig, load_workspace,
 };
 use ra_ap_project_model::project_json::{ProjectJson, ProjectJsonData};
 use ra_ap_project_model::{
-    CargoConfig, ProjectManifest, ProjectWorkspace, ProjectWorkspaceKind, RustLibSource,
-    TargetDirectoryConfig, TargetKind,
+    CargoConfig, CfgOverrides, ProjectManifest, ProjectWorkspace, ProjectWorkspaceKind,
+    RustLibSource, TargetDirectoryConfig, TargetKind,
 };
 use ra_ap_vfs::loader::Entry;
 use ra_ap_vfs::{AbsPathBuf, Vfs, VfsPath};
@@ -453,6 +454,18 @@ fn load_json(
     Ok(Loaded::from_engine(db, vfs, folders, root, rung))
 }
 
+/// D48: what a default `cargo build` compiles has `debug_assertions` on, and `miri` stays off (rust-analyzer's own default turns both on). Applied to every
+/// crate of the load, as rust-analyzer applies its `rust-analyzer.cargo.cfgs` setting. Rungs 3 and 4 say the same through `manifest::host_cfgs`.
+fn debug_build_cfgs() -> CfgOverrides {
+    CfgOverrides {
+        global: CfgDiff::new(
+            vec![CfgAtom::Flag(Symbol::intern("debug_assertions"))],
+            Vec::new(),
+        ),
+        ..CfgOverrides::default()
+    }
+}
+
 /// Loads the Cargo workspace of `manifest` (absolute, clean, inside `root`) with std and `cfg(test)` on. Build scripts, proc macros and cache
 /// prefill are off unless `opts` turns the first two on (§3); what is off and cuts something is counted in `Loaded::skipped`. `Err` carries the engine's message; the ladder that turns most of these into a warning is RS3 step 7.
 ///
@@ -484,6 +497,7 @@ fn load_cargo(root: &Path, manifest: &Path, opts: &LoadOptions) -> Result<Loaded
         sysroot: sysroot.clone().map(RustLibSource::Path),
         // without it `#[cfg(test)]` code is inactive and no call inside it resolves (S-RS2)
         set_test: true,
+        cfg_overrides: debug_build_cfgs(),
         ..CargoConfig::default()
     };
     if let Some(toolchain) = chosen {
