@@ -857,6 +857,21 @@ mod tests {
         SCOUTED.with(Cell::get)
     }
 
+    /// Waits until the file system's clock has moved since the last change a stamp could have seen. A folder's stamp is its modified time, which NTFS takes
+    /// from a clock that ticks about every 16 ms: two entries created within one tick leave the same time, and the second is not seen (`stamps::Stamp`,
+    /// the clock's resolution). A person is slower than that; this test is not. The file system's own clock is read the only way it can be: by writing a file
+    /// beside `root` (not in it) until its modified time is new.
+    fn wait_for_a_new_clock_tick(root: &Path) {
+        let probe = root.with_extension("tick");
+        let modified = |probe: &Path| std::fs::metadata(probe).and_then(|meta| meta.modified());
+        write(&probe, "tick\n");
+        let first = modified(&probe).unwrap();
+        while modified(&probe).unwrap() == first {
+            std::thread::sleep(Duration::from_millis(4));
+            write(&probe, "tick\n");
+        }
+    }
+
     /// The root changes (a file is created in it) while `vendor/x`, with a manifest, was there before the open: the root is read, once, and nothing is
     /// walked. (4b walked every sub-folder no stamp accounted for, `vendor/x` among them, and reloaded.)
     #[test]
@@ -866,6 +881,7 @@ mod tests {
         let mut session = open(&root, "crates/a/src/lib.rs");
 
         let before = scouted();
+        wait_for_a_new_clock_tick(&root);
         write(&root.join("notes.md"), "not a crate\n");
         assert!(!session.refresh().reopened);
         assert_eq!(
@@ -875,11 +891,13 @@ mod tests {
         );
 
         // a name the root did not have is new, and is walked
+        wait_for_a_new_clock_tick(&root);
         write(&root.join("fresh/readme.md"), "a new folder\n");
         let before = scouted();
         assert!(!session.refresh().reopened);
         assert_eq!(scouted(), before + 2, "the root, and the new folder");
         // and it is known afterwards
+        wait_for_a_new_clock_tick(&root);
         write(&root.join("more-notes.md"), "not a crate either\n");
         let before = scouted();
         assert!(!session.refresh().reopened);
