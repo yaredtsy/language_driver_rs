@@ -725,3 +725,17 @@ loaded it with `ProjectWorkspace::load_inline`, sysroot `None`.
 | peak footprint | 0.52 GB | 0.98 GB |
 
   Decided (RS5 §4): prime the local crates after every load and look at the flag before `Sem::entry` (step 5b); no engine-side cancel.
+
+## RS5 4c, 5b, step 6, D45, D47 (1f0312e, 16389db, 540ca48, 79f19d0, b78733f; reviewed 2026-11-20)
+
+- **Re-run:** `core/` 174 passed, 0 failed; the Rust workspace 246 passed, 0 failed, 14 ignored (`-j2`, `--test-threads=2`);
+  `check-all --static` passes with D47's line. Slowest programs: the library tests 93 s, `tests/refresh.rs` 75 s (each open now primes).
+- **4c probed:** an excluded `vendor/x` there before the open: `notes.md`, `todo.txt` at the root are no reload (fixed). **But** a
+  `fuzz/` crate with its own `[workspace]` created after the open reloads once (right), and then every later change at the root reloads
+  again (`more.md`, and `last.md` after an unrelated reload): a scout keeps names older than its stamp. Fix 4d.
+- **Priming measured by the reviewer** on `core/` + `languages/typescript/` (cancel measurement): open 6.4 s, 36 crates primed; cold
+  first request 1.53 s (`Sem::entry` 12 ms, first body 1.16 s); a cancel at 100 / 500 / 1000 ms honoured 0.99 / 0.97 / 0.22 s later;
+  peak footprint 0.99 GB. Before priming: open 2.3 s, first request 9.0 s, cancel up to 4.9 s.
+- **D45 and Python:** not run (no Python build here; 5.4 GB free). Checked instead: Python's code names only `DefKind::Class`,
+  `Function`, `Method`, whose prefixes the rule leaves as they were, and `DefKind` is `#[non_exhaustive]`, so a new variant cannot break
+  its compile. To be run by the Python session or CI before Python's next tag.
