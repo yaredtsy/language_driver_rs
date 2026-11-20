@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+analyzer-core    = { path = "../../core/analyzer-core" }
+analyzer-testkit = { path = "../../core/analyzer-testkit" }
+
+# no engine pin: bend-parser is the engine and it is ours (BD-D1). ENGINE.md carries the grammar pin, a bend commit, instead.
+bend-parser = { path = "crates/bend-parser" }
+
+bend-syntax   = { path = "crates/bend-syntax" }
+bend-analysis = { path = "crates/bend-analysis" }
+
+[workspace.lints.rust]
+unreachable_pub = "warn"
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
