@@ -453,11 +453,13 @@ mod tests {
     /// covered, at the root and below it, and a path outside the root is not.
     #[test]
     fn every_environment_glob_covers_a_name_written_from_it() {
+        // An absolute path is spelled with a drive on Windows; `/abs` alone is not absolute there.
+        let abs = if cfg!(windows) { "C:/abs" } else { "/abs" };
         for glob in ENVIRONMENT_GLOBS {
             let name = glob.strip_prefix("**/").unwrap().replace('*', "-base");
             assert!(matches_a_glob(&name), "{glob}: {name}");
             assert!(matches_a_glob(&format!("a/b/{name}")), "{glob}: a/b/{name}");
-            assert!(!matches_a_glob(&format!("/abs/{name}")), "{glob}: /abs");
+            assert!(!matches_a_glob(&format!("{abs}/{name}")), "{glob}: {abs}");
             assert!(
                 !matches_a_glob(&format!("{name}.bak")),
                 "{glob}: {name}.bak"
