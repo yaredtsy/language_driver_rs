@@ -143,7 +143,7 @@ diff of `bend.ts` between two pins names the Rust functions to touch.
 |---|---|
 | `bend2/bend.ts` | 4,021 lines: grammar 8–160, parser 1540–2700 (about 1,150), the rest theory and checker |
 | `bend2/base.bend` | 3,525 lines, 541 top-level declarations (`def`, `type`, `law`, `@unsafe def`) |
-| `.bend` files in the repo | 1,982 (772,414 lines, most of them generated benchmarks): `tests/` (24 namespaces, among them `parse/` with files meant to fail), `demos/` (16 programs with `LAWS.bend` / `PROOF.bend`), `bench/` |
+| `.bend` files in the repo | 1,982 (772,414 lines, most of them generated benchmarks): `tests/` (24 namespaces; `parse/` holds 173 positive parse tests; a negative test is one whose trailing `#|` lines are an error message), `demos/` (16 programs with `LAWS.bend` / `PROOF.bend`), `bench/` |
 | releases | 2.0.40 on 2026-11-05; the clone's last commit 2026-11-18; the `CHANGELOG` names parser changes under "Clearer errors" and "Fixes" in most releases |
 
 **[measure]** in BD0: how many of the 1,982 files `bend` itself accepts (the parse-failure tests are negatives), and how long parsing them
