@@ -739,3 +739,16 @@ loaded it with `ProjectWorkspace::load_inline`, sysroot `None`.
 - **D45 and Python:** not run (no Python build here; 5.4 GB free). Checked instead: Python's code names only `DefKind::Class`,
   `Function`, `Method`, whose prefixes the rule leaves as they were, and `DefKind` is `#[non_exhaustive]`, so a new variant cannot break
   its compile. To be run by the Python session or CI before Python's next tag.
+
+## RS5 4d, 5c, 6b (83ed738, 7e22a84, 2447928; reviewed 2026-11-20)
+
+- **Re-run:** the Rust workspace 250 passed, 0 failed, 14 ignored, 26 programs (`-j2`, `--test-threads=2`).
+- **4d probed** with the sequence that looped: `notes.md` no reload; `fuzz/` (own `[workspace]`, excluded) created: a reload; `more.md`,
+  `last.md`, a file inside `fuzz/`, `final.md`: none; `crates/b` created: a reload, and its file is in `files()`.
+- **6b read on `core/`** (`rust-cli calls core analyzer-core/src/wire.rs --entry wire --depth 1 --max-nodes 3`): `cuts in the graph: the
+  budget stopped at 4 (listed, not walked)`, then `cuts in the tree: at 3 nodes (--max-nodes); the graph has its own cuts, above`:
+  TypeScript's words (`typescript-cli/src/main.rs:227`).
+- **The target directory** (`languages/rust/target`) was 6.6 GB on 2026-11-20: `deps/` 5.7 GB, of which 4.4 GB are 22,443 `.o` files (on
+  macOS a debug build leaves each codegen unit's object beside the library for the debugger: `split-debuginfo = "unpacked"`), 45
+  dependency crates in more than one build (`syn` seven times), 0.08 GB stale test binaries. S-RS1 measured 0.9 GB with `debug = 0`.
+  The profile gives every dependency full debug info (`[profile.dev.package."*"]` sets only `opt-level`).
