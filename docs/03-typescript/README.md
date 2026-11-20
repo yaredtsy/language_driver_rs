@@ -12,7 +12,8 @@ typescript
 │     ├── row M: the module def ── 09-module-def.md
 │     ├── rows R, D, H: the fixes from the 2026-11-16 review ── 10-review-fixes.md
 │     └── step 6: refresh and reload: following the disk (unsaved text: not now, D42) ── 11-step6-text-and-disk.md
-└── later: context-sensitive ────── 08-later-context-sensitive.md
+├── the context layer (TC0–TC10) ── 12-context-layer/          the plan; nothing built
+└── later: context-sensitive ────── 08-later-context-sensitive.md   the first direction, replaced by 12-context-layer/
 ```
 
 One language id, `typescript`, covers `.ts .tsx .mts .cts .js .jsx .mjs .cjs`. JavaScript is not a second analyzer: tsrs parses and checks it
@@ -31,7 +32,7 @@ with the same code, as the TypeScript compiler does.
 | | **tag `typescript-v0.2.0`** | | | | |
 | **TS5** | budget, expand, cancel, cache, following the disk | `typescript-analysis` | TS4 | the driver's tier-3 conformance checks | M |
 | | **tag `typescript-v0.3.0`** | | | | |
-| later | context sensitivity | `typescript-analysis` | TS5, and a decision | the scenarios match `expected.precise.tree` | XL |
+| TC0–TC6 | the context layer, one phase at a time, off by default ([`12-context-layer/`](12-context-layer/README.md)) | `typescript-analysis`; core in TC2 (small) and TC6 | TS5 | each phase's fixtures flip; the scenarios match `expected.precise.tree` one by one | XL in all, S to L each |
 
 S, M, L are relative sizes, not times. **[measure]** I did not build anything.
 

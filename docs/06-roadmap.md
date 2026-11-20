@@ -24,7 +24,7 @@ B0  bootstrap ── repo skeleton · analyzer-core · analyzer-testkit · CI ·
  └── RUST        RS0 spikes ─ RS1 outline ─ RS2 markers ─▶ rust-v0.1.0
                  └─ RS3 project ─ RS4 call graph ─▶ rust-v0.2.0 ─ RS5 driver needs ─▶ rust-v0.3.0
 
-later, not scheduled:   C1–C6 context sensitivity for TypeScript (03-typescript/08) · RC0–RC6 the context layer for Rust
+later, not scheduled:   TC0–TC10 the context layer for TypeScript (03-typescript/12-context-layer, planned 2026-11-20) · RC0–RC6 the context layer for Rust
                         (04-rust/05-context-layer, designed in detail, built only after RC0's numbers) · C / C++ · the solver moving into core
 ```
 
@@ -85,7 +85,7 @@ The goal of B0 is a repo where "add a language" is a known, small job, and where
 | RS4 | TS4 | Rust is the second user of the flat solver: that is when the rule of two tests the core's shape |
 | RS5 | TS5 steps 1–2 | Rust reuses them |
 | V-NOC's TypeScript driver | `typescript-v0.1.0` **and** the V-NOC-side items for a second language: drivers chosen by file extension, an open `DefKind`, the comment `style` (`06-drivers.md` §3) | those are `vnoc` work, not this repo's |
-| context sensitivity (C3+) | TS5, numbers from real projects, and a decision | [`03-typescript/08`](03-typescript/08-later-context-sensitive.md) §5 |
+| TypeScript's context layer (TC1+) | TS5, and TC0's counts | [`03-typescript/12-context-layer/`](03-typescript/12-context-layer/README.md) |
 
 ## 4. A suggested order for one person
 

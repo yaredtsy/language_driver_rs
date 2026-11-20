@@ -11,6 +11,10 @@ later
 
 This file is a **direction, not a plan**. Nothing here is scheduled. It exists so that the phases before it do not close a door by accident.
 
+**Replaced on 2026-11-20 by the plan in [`12-context-layer/`](12-context-layer/README.md)** (phases TC0–TC10). The steps C1–C6 below are mapped
+to those phases in [`12-context-layer/01-where-we-start.md`](12-context-layer/01-where-we-start.md) §6; the measurements of §5 stay here and are what
+that plan starts from. Where the two disagree, the plan is right.
+
 ## 1. What the user would gain
 
 From TS4's policy table, the rows that context sensitivity changes:
