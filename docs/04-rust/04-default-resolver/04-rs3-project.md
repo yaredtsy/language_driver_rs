@@ -102,6 +102,25 @@ and holds five workspaces (`core/`, one per language). So, as TypeScript finds t
   TypeScript's `config_files` are. **Not** copied into `Stats.language` (corrected 2026-11-17: it holds counts, and these are strings;
   TypeScript does not copy its `config_files` either). `skipped()` is copied (RS4 §2).
 
+### Which `cfg` set a load reads (D48, owner, 2026-11-20)
+
+**Now:** `test` (since RS3, S-RS2) and **`debug_assertions`** are on, `miri` is off: the code a default `cargo build` / `cargo test`
+compiles. On the cargo rung through `CargoConfig::cfg_overrides` (`CfgOverrides { global: CfgDiff::new(enable, disable) }`, the field
+rust-analyzer fills from its `rust-analyzer.cargo.cfgs` setting; the engine applies it to every crate, as a dev build compiles the
+dependencies with debug assertions too); on D37's reader and the lone file through `manifest::host_cfgs()`. Not a `LoadOptions` field yet.
+
+**Later, not scheduled (look at it again when a user asks to choose):**
+
+| Choice | What it would show | What it takes |
+|---|---|---|
+| what a debug build compiles | the default above | built |
+| what a release build compiles | `debug_assertions` off: debug-only functions are no defs, debug-only statements no sites | a `LoadOptions` field; the same `CfgOverrides` with `debug_assertions` disabled |
+| `miri` on / off | code written for the Miri interpreter, in place of its `not(miri)` twins | a `LoadOptions` switch; `miri` in the override's enable list |
+| show all | every branch of every `cfg`: the Linux and the Windows version of a function, debug and release | **one load cannot give it**: the engine reads one `cfg` set, and code under a `cfg` that is off has no body for it (no def to enter, no site to resolve: `cfg_off.rs`). Either one load per `cfg` set, with the graphs joined (memory and time times the number of sets), or the off branches drawn from the syntax alone, unresolved and marked. A design of its own |
+
+A change of the default changes which defs exist (a marker on a debug-only function), never a qualname, so it is not frozen by a tag;
+it is a policy change (`policy.md`, row `cfg-off`).
+
 ## 4. What is project code
 
 | A def is project code when | Else |
