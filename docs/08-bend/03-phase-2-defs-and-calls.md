@@ -98,11 +98,11 @@ imports**, and the namespace rule of [`01-what-bend-is.md`](01-what-bend-is.md) 
 | Step | Rule | Comes from |
 |---|---|---|
 | read the entry file; parse; read its imports | relative paths resolve against the importing file's directory; `import Base` loads nothing and marks Base as present | `book_load` 973–1035 |
-| follow imports transitively | a cycle is recorded (`Stats.language["import_cycle"]`) and not followed twice; a missing file is recorded (`import_missing`) and its alias becomes an external module | the same |
+| follow imports transitively | a cycle is recorded (`Stats.language["import_cycle"]`) and not followed twice; a missing file is recorded (`import_missing`) and its alias resolves to `Unknown` | the same |
 | a hub import (`0x…/`, `name@ver/`) | **never fetched, never read from `~/.bend/lib`**: an external module; every `P.x` is `External` named `P.x` | row BD-D7 |
 | build the tables | `tlds: ns:name → (file, decl)`, `ctrs: ns:Name → (file, type)`, `aliases per file`; Base's names from the generated list (Q-BD3) | `parse_fresh`, `parse_qual` |
 | resolve a name at a site | `parse_reso`'s rule, over the whole book (order of declaration ignored: never fail) | 1724–1735 |
-| the root (D26) | the folder asked for; files outside it are still read when imported (a `../lib.bend`), and their defs are `External`? No: they are project defs with a path outside the root, as Rust's path dependencies are. **[check]** what the V-NOC contract wants for a def outside the root; Python's answer (D26) is the model | [`../05-python-migration/07-the-root.md`](../05-python-migration/07-the-root.md) |
+| the root (D26, D33) | the folder asked for; an entry outside it is no book (`None`). A file outside the root that an import reaches (`../lib.bend`) is **read** (its names resolve) but **its defs are not project code**: a call into it is an `External` named by the path from the root with `..` (`../lib.bend`'s `f`), counted `outside_root`, exactly as TypeScript (D33) and Rust (`policy.md` row `outside-root`) do. Decided at BD3's review (2026-11-20); the first draft of this row said project defs, against D33 | D33; [`../05-python-migration/07-the-root.md`](../05-python-migration/07-the-root.md) |
 
 What `Book` holds is owned: file texts, trees, tables. No salsa, no database, no memory question: a book of the whole Bend corpus is a few
 megabytes. **[measure]** in BD3: open the largest demo and the whole of `tests/` as one book each; time and bytes.
@@ -168,7 +168,7 @@ two languages do (and Rust's `policy.md` is a test: the file is read by a test t
 | recursion | `f(p)` inside `f` | `Call` to self (the renderer marks it) | |
 | below | `g()` where `g` is declared below (only legal in `@unsafe`) | `Call` | |
 | alias | `M.f(a)` | `Call` to the def in the other file | |
-| no-shadow | `def show(x)` in a file where Base has `show`: `bend` refuses the declaration (`parse_fresh`), we outline it and resolve `show(x)` to **this file's** def (never fail) | `Call` to this file's | `duplicate_of_base` |
+| no-shadow | `def show(x)` in a file where Base has `show`: `bend` refuses the declaration (`parse_fresh`), we outline it and resolve `show(x)` to **this file's** def (never fail) | `Call` to this file's | `duplicate_declaration` (the book's counter, once per declaration) |
 | binder-wins | `f(x)` where `f` is a parameter and a def `f` exists | `Unresolved` (the binder shadows the def: `parse_var` looks binders up first) | `function_typed_value` |
 | base | `IO.print(s)`, `U32.show(a)`, `List.map(…)` | `External("IO.print")` | |
 | hub | `P.f(a)` with `import 0x…/main.bend as P` | `External("P.f")` | `hub_import` once per import |
@@ -215,7 +215,7 @@ engine to keep warm and no database to patch; rebuilding a book of a few hundred
 | 1 | BD2 | `sem::parse`, `outline` with rows D1–D10, `languages/bend/docs/qualnames.md` | fixture snapshots; `cargo tree -p bend-syntax` shows `bend-parser` and `analyzer-core` only. **Done 2026-11-20 (08bdce7), accepted:** 15 fixtures, 160,916 defs on the corpus (= declarations − constructors), `qualnames.md` written; the blank-line rule of §1.2 confirmed by the measurement (61 of the 103 blocks a blank line away are section banners) |
 | 2 | BD2 | core: `Placement::Above` + `plan` (after Q-BD1); `bend-syntax`'s `marker`, `plan_marker`, `header_slot`; `markers.md` | `marker_round_trip`, `cut_every_50_bytes`; every other language's tests green. **Done 2026-11-20 (01f622e core, 692dfa0), accepted:** core 160 tests, the three other `*-syntax` crates green; round trip on 33 fixtures; corpus: 1,744 file markers and 13,468 def markers read back, declarations unchanged; `markers.md` written. Names follow Rust's (`header_marker`, `plan_header_marker`, `Result<Edit, Skip>`); the header is read before the first import or, with none, before the first declaration's range; G37: a leading byte-order mark is whitespace to `bend-parser` |
 | | | **tag `bend-v0.1.0`** (the owner's) | |
-| 3 | BD3 | `Book::open`, the tables, `base_names.rs` + its script | the 16 demos open; `tests/import/` opens with its cycles and misses counted; the measurement |
+| 3 | BD3 | `Book::open`, the tables, `base_names.rs` + its script | the 16 demos open; `tests/import/` opens with its cycles and misses counted; the measurement. **Done 2026-11-20 (03de29f, 66695e6), accepted:** 13 fixture books; all 1,744 accepted files open with Bend's names (and the 214 refused ones too); the Ref oracle (S-BD4, `scripts/bend-refs.ts`) prints 32,805 Refs over the 56 demo entries, every one resolving to the right def or to Base, zero mismatches; the largest book opens in 8.5 ms. Load order is post-order with the entry last; a proof's qualified name is the law's namespace; outlines carry no markers (BD4's `describe` reads them with the caller's style); Base resolves only when some file wrote `import Base` |
 | 4 | BD4 | `walk`, `calls`, `Lang`, `call_graph`, the wire view | the policy rows' fixtures; `scenarios/*/bend/` for the six scenarios + `law-across-files`; `expected.default.tree` matches |
 | 5 | BD4 | `bend-cli`, `policy.md` as a test, a sweep over the demos reporting counters | the sweep's counters in `ENGINE.md` |
 | | | **tag `bend-v0.2.0`** | |

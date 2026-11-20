@@ -73,7 +73,9 @@ This is the part that makes the default layer exact, so it is worth being precis
 
 - A **book** is one entry file plus everything it imports, transitively, plus Base. Imports come first in a file; a cycle is an error.
 - A file's **namespace** is its real path, relative to the **entry file's directory**, without `.bend` (`demos/x/SPEC.bend` imported from
-  `demos/x/main.bend` is `SPEC`). Base's namespace is `""`. A hub package (`import 0x<hash>/main.bend as P`, or `<name>@<version>/…`) is
+  `demos/x/main.bend` is `SPEC`). **The entry file's own namespace is `""`, the same as Base's** (`book_read` loads it with `ns = ""`; found in
+  BD3), so a bare name in the tables is the entry's or Base's. Bend parses each file with its import lines emptied, so its own spans are shifted
+  by those lines' length; the Ref oracle puts it back. A hub package (`import 0x<hash>/main.bend as P`, or `<name>@<version>/…`) is
   fetched from the network into `~/.bend/lib` and gets a namespace of its own. **We never fetch** (row BD-D7): a hub import is an external
   module, every call through its alias a named `External`.
 - A declared name is **qualified** as `ns:name` (`parse_qual`), Base's names stay bare. A name is a lexeme that may contain dots: `Nat.add`
