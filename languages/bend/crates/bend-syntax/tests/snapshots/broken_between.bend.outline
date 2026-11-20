@@ -1,0 +1,4 @@
+Function first [0..21] name [4..9]
+Function broken [23..88] name [47..53] (a) SYNTAX-ERROR
+Function last [90..110] name [94..98]
+syntax error [62..88]: expected a name, found ','

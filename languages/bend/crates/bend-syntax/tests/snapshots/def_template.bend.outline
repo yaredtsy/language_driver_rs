@@ -1,0 +1,2 @@
+Function twice [0..49] name [4..9] (~f, x)
+Function replicate [50..110] name [54..63] (-A, n, +x)

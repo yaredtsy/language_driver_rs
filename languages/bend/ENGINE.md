@@ -111,6 +111,30 @@ Rows G31–G36, found reading these functions again, are in the grammar table be
 
 Choices in the tree where the surface could be read two ways are listed in the BD1 step 4 report, not here: they are decisions, not facts about `bend.ts`.
 
+## BD2
+
+### The comment block above a declaration (05 §4 [check] 5)
+
+2026-11-20, `cargo test -p bend-syntax --release --test corpus -- --ignored --nocapture`. Over the accepted corpus (1,744 files), the outline finds **160,916 defs**: the
+176,229 declarations less the 15,313 constructors, in Bend's order, with Bend's names and kinds (a def that fills a law of an imported file is named through its
+alias, `M.name`, where Bend says `<namespace>:name`).
+
+For each declaration, what is above it (the def's range starts at its doc, so "doc" is read from the range):
+
+| Folder | Declarations | `#` block ending on the line directly above (the doc) | block, exactly one blank line between | the same, not counting a block at the very top of the file | two blank lines between |
+|---|---|---|---|---|---|
+| `bench/` | 147,301 | 175 | 19 | 19 | 0 |
+| `bend2/` (`base.bend`) | 541 | 55 | 23 | 22 | 0 |
+| `demos/` | 1,208 | 581 | 54 | 54 | 0 |
+| `tests/` | 11,866 | 325 | 7 | 5 | 0 |
+| **all** | **160,916** | **1,136** | **103** | **100** | **0** |
+
+The second number is **not near zero**: 103 against 1,136 (8% of the declarations with a comment block just above or one blank line above are in the second group); outside the generated `bench/`, 84
+against 961. What they are: 61 of the 100 are a **section banner**, a title and an underline (`# Array` / `# -----`, then a
+blank line, then the first def of the section; counted over all accepted files, bench included, 61 of the 100 blocks end in a rule line). A banner is not the doc of the def under it,
+so **the range rule of 03 §1.2 (a blank line between makes the block not the def's) is right as written** and nothing has to change before the tag; a rule that took "the
+block that ends on the line above, blank or not" would put a section title into the first def's range. Two blank lines between never occur.
+
 ## grammar
 
 S-BD2 (G1–G30, step 2; G31–G36 found in step 4): every form `bend.ts` reads that the BNF comment (lines 8–160) does not name, or names differently. Read 2026-11-20 from `parse_book` (2593), `parse_def`
