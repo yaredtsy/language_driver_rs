@@ -1,0 +1,6 @@
+by_use_as
+  Call 96..97 "h"
+by_pub_use
+  Call 83..104 "crate::aliases::shown"
+by_type_alias
+  Call 92..97 "A::mk"

@@ -125,6 +125,31 @@ fn what_is_not_an_entry_is_none() {
     assert!(graph(&project, "src/calls.rs", "nested_items::{fn}::inner", 0).is_some());
 }
 
+/// A union is built like a struct (D45): the edge is a `Construct` of the union's def, with nothing to enter, and the def is a `Union`.
+#[test]
+fn a_union_built_is_a_construct_of_its_def() {
+    let project = policy();
+    let graph = graph(&project, "src/foreign_union.rs", "builds_union", 0).unwrap();
+    let bits = StableDef::Path {
+        module: "src/shapes.rs".to_owned(),
+        qname: "Bits".to_owned(),
+        nth: 0,
+    };
+    let [edge] = graph.edges.as_slice() else {
+        panic!("{:?}", graph.edges);
+    };
+    assert!(
+        matches!(&edge.to, EdgeTo::Construct { class, init: None, .. } if *class == bits),
+        "{:?}",
+        edge.to
+    );
+    let found = project
+        .defs_named("src/shapes.rs", "Bits", MarkerStyle::docstring("ID"))
+        .unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].kind, DefKind::Union);
+}
+
 /// `defs_named`: a qualname is not unique (D15), and the list is what a tool shows. `None` for a file the load does not hold.
 #[test]
 fn defs_named_lists_the_matches_and_picks_none() {

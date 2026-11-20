@@ -39,6 +39,12 @@ src/macros.rs two_project_levels: none
 src/macros.rs unknown_in_unknown: none
 src/macros.rs derived_methods: none
 src/macros.rs calls_made_functions: none
+src/aliases.rs by_use_as: none
+src/aliases.rs by_pub_use: none
+src/aliases.rs by_type_alias: none
+src/lib.rs tests::a_test: none
+src/foreign_union.rs calls_foreign: none
+src/foreign_union.rs builds_union: none
 # context
 src/generic.rs both: type_param 1
 src/generic.rs emit: type_param 1

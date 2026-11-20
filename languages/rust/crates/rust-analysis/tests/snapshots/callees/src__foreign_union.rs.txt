@@ -1,0 +1,4 @@
+calls_foreign
+  Call "shapes::foreign" -> Def src/shapes.rs:foreign
+builds_union
+  Record "Bits" -> Construct src/shapes.rs:Bits

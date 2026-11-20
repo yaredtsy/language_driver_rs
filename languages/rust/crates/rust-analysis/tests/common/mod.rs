@@ -94,7 +94,7 @@ pub(crate) fn rs_files(base: &Path, dir: &Path, out: &mut Vec<String>) {
 
 /// Every entry of the first-trees snapshot: a function, a method, a const's initializer, a struct and an enum (a construction with nothing to enter),
 /// recursion, a project macro defined elsewhere, an `impl Trait` the engine sees through, one it does not, a built-in derive, a std call, a duplicate marker.
-pub(crate) const POLICY_ENTRIES: [(&str, &str, u16); 40] = [
+pub(crate) const POLICY_ENTRIES: [(&str, &str, u16); 46] = [
     ("src/calls.rs", "plain_calls", 0),
     ("src/calls.rs", "method_chain", 0),
     ("src/calls.rs", "constructions", 0),
@@ -138,6 +138,13 @@ pub(crate) const POLICY_ENTRIES: [(&str, &str, u16); 40] = [
     ("src/macros.rs", "unknown_in_unknown", 0),
     ("src/macros.rs", "derived_methods", 0),
     ("src/macros.rs", "calls_made_functions", 0),
+    // the rows that had no fixture: an alias by `use as`, by `pub use` and in a type path; a test as an entry; a foreign function called; a union built
+    ("src/aliases.rs", "by_use_as", 0),
+    ("src/aliases.rs", "by_pub_use", 0),
+    ("src/aliases.rs", "by_type_alias", 0),
+    ("src/lib.rs", "tests::a_test", 0),
+    ("src/foreign_union.rs", "calls_foreign", 0),
+    ("src/foreign_union.rs", "builds_union", 0),
 ];
 
 /// (file, qualname, what the program is about). The entries are the callers, and the generics, callbacks and trait objects they reach.

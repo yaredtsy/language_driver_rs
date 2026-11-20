@@ -400,3 +400,57 @@ breakdown:
   contexts 1, bodies walked 1, summaries reused 0
   cuts in the graph: none
 
+=== src/aliases.rs by_use_as
+by_use_as
+  helper
+
+breakdown:
+  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts in the graph: none
+
+=== src/aliases.rs by_pub_use
+by_pub_use
+  helper
+
+breakdown:
+  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts in the graph: none
+
+=== src/aliases.rs by_type_alias
+by_type_alias
+  Rec::mk
+    Rec
+
+breakdown:
+  edges: 1 call, 1 construct, 0 external, 0 unresolved
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts in the graph: none
+
+=== src/lib.rs tests::a_test
+tests::a_test
+
+breakdown:
+  edges: 0 call, 0 construct, 0 external, 0 unresolved
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts in the graph: none
+
+=== src/foreign_union.rs calls_foreign
+calls_foreign
+  foreign
+
+breakdown:
+  edges: 1 call, 0 construct, 0 external, 0 unresolved
+  contexts 2, bodies walked 2, summaries reused 0
+  cuts in the graph: none
+
+=== src/foreign_union.rs builds_union
+builds_union
+  Bits
+
+breakdown:
+  edges: 0 call, 1 construct, 0 external, 0 unresolved
+  contexts 1, bodies walked 1, summaries reused 0
+  cuts in the graph: none
+

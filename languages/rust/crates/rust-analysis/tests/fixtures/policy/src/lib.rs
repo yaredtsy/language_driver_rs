@@ -96,3 +96,6 @@ make_fn!(generated);
 pub fn calls_generated() {
     generated();
 }
+
+mod aliases;
+mod foreign_union;

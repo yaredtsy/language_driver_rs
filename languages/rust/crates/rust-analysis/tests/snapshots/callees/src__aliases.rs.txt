@@ -1,0 +1,6 @@
+by_use_as
+  Call "h" -> Def src/calls.rs:helper
+by_pub_use
+  Call "crate::aliases::shown" -> Def src/calls.rs:helper
+by_type_alias
+  Call "A::mk" -> Def src/shapes.rs:Rec::mk

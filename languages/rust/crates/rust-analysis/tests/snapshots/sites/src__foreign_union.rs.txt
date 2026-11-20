@@ -1,0 +1,4 @@
+calls_foreign
+  Call 81..96 "shapes::foreign"
+builds_union
+  Record 78..82 "Bits"

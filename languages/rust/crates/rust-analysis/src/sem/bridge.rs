@@ -524,12 +524,14 @@ mod tests {
         assert_eq!(
             files,
             [
+                "src/aliases.rs",
                 "src/bom.rs",
                 "src/calls.rs",
                 "src/cfg_off.rs",
                 "src/constructions.rs",
                 "src/dispatch.rs",
                 "src/external.rs",
+                "src/foreign_union.rs",
                 "src/lib.rs",
                 "src/macros.rs",
                 "src/nested/deep.rs",
@@ -614,6 +616,7 @@ mod tests {
         assert_eq!(
             names,
             [
+                "src/aliases.rs:A",
                 "src/calls.rs:Declared",
                 "src/constructions.rs:make_tuple!",
                 "src/dispatch.rs:Step",
@@ -635,11 +638,11 @@ mod tests {
                 "src/shapes.rs:Alias",
                 "src/shared.rs:from_elsewhere!",
             ],
-            "the five traits, the inline module, the thirteen macros, the type alias"
+            "the five traits, the inline module, the thirteen macros, the two type aliases"
         );
-        // every other def: 18 in lib.rs, 8 in constructions.rs, 16 in shapes.rs, 34 in calls.rs, 32 in dispatch.rs, 21 in macros.rs, 11 in cfg_off.rs, 19 in passed.rs, 2 in external.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
+        // every other def: 18 in lib.rs, 8 in constructions.rs, 16 in shapes.rs, 34 in calls.rs, 32 in dispatch.rs, 21 in macros.rs, 11 in cfg_off.rs, 19 in passed.rs, 2 in external.rs, 3 in aliases.rs, 2 in foreign_union.rs, 1 in shared.rs, 1 in nested/mod.rs, 3 in deep.rs, 3 after a
         // byte-order mark
-        assert_eq!(joined, 169);
+        assert_eq!(joined, 174);
     }
 
     /// The join (RS4 §8) over the context workspace, which has no `#[cfg]`-disabled def and no exception but the kinds that cannot be an entry: every def the

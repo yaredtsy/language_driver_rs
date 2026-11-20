@@ -5,7 +5,7 @@ pub fn macro_from_another_module() {
     from_elsewhere!(helper());
 }
 
-fn helper() -> u8 {
+pub(crate) fn helper() -> u8 {
     1
 }
 
