@@ -1,0 +1,98 @@
+Tree {
+    imports: [],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "add",
+                    span: 50..53 "add",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "a",
+                            span: 54..55 "a",
+                        },
+                        ty: Some(
+                            57..60 "Nat",
+                        ),
+                        span: 54..60 "a: Nat",
+                    },
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "b",
+                            span: 62..63 "b",
+                        },
+                        ty: Some(
+                            65..68 "Nat",
+                        ),
+                        span: 62..68 "b: Nat",
+                    },
+                ],
+                ret: Some(
+                    73..76 "Nat",
+                ),
+                body: Source(
+                    80..141 "match a:⏎    case Zero{}: b⏎    case Succ{p}: Su"…,
+                ),
+                span: 46..141 "def add(a: Nat, b: Nat) -> Nat:⏎  match a:⏎    c"…,
+                doc: Some(
+                    0..45 "# Adds two numbers.⏎# Second line of the doc.",
+                ),
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "main",
+                    span: 214..218 "main",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    224..227 "Nat",
+                ),
+                body: Source(
+                    229..240 "add(1n, 2n)",
+                ),
+                span: 210..240 "def main() -> Nat: add(1n, 2n)",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "one",
+                    span: 245..248 "one",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    254..257 "Nat",
+                ),
+                body: Source(
+                    261..263 "1n",
+                ),
+                span: 241..263 "def one() -> Nat:⏎  1n",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [
+        0..19 "# Adds two numbers.",
+        20..45 "# Second line of the doc.",
+        143..208 "# a blank line follows this comment, so it is no"…,
+    ],
+    errors: [],
+}

@@ -1,0 +1,288 @@
+Tree {
+    imports: [],
+    decls: [
+        Type(
+            TypeDecl {
+                name: Name {
+                    text: "Unit",
+                    span: 5..9 "Unit",
+                },
+                params: [],
+                kind: Some(
+                    13..17 "Data",
+                ),
+                ctrs: [
+                    CtrDecl {
+                        name: Name {
+                            text: "Unit",
+                            span: 21..25 "Unit",
+                        },
+                        fields: [],
+                        span: 21..27 "Unit{}",
+                    },
+                ],
+                span: 0..27 "type Unit is Data:⏎  Unit{}",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Type(
+            TypeDecl {
+                name: Name {
+                    text: "Pair",
+                    span: 34..38 "Pair",
+                },
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "A",
+                            span: 39..40 "A",
+                        },
+                        ty: None,
+                        span: 39..40 "A",
+                    },
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "B",
+                            span: 42..43 "B",
+                        },
+                        ty: None,
+                        span: 42..43 "B",
+                    },
+                ],
+                kind: Some(
+                    48..52 "Data",
+                ),
+                ctrs: [
+                    CtrDecl {
+                        name: Name {
+                            text: "MkPair",
+                            span: 56..62 "MkPair",
+                        },
+                        fields: [
+                            Bind {
+                                quant: Plain,
+                                template: false,
+                                name: Name {
+                                    text: "fst",
+                                    span: 63..66 "fst",
+                                },
+                                ty: Some(
+                                    68..69 "A",
+                                ),
+                                span: 63..69 "fst: A",
+                            },
+                            Bind {
+                                quant: Plain,
+                                template: false,
+                                name: Name {
+                                    text: "snd",
+                                    span: 71..74 "snd",
+                                },
+                                ty: Some(
+                                    76..77 "B",
+                                ),
+                                span: 71..77 "snd: B",
+                            },
+                        ],
+                        span: 56..78 "MkPair{fst: A, snd: B}",
+                    },
+                ],
+                span: 29..78 "type Pair<A, B> is Data:⏎  MkPair{fst: A, snd: B"…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Type(
+            TypeDecl {
+                name: Name {
+                    text: "List",
+                    span: 85..89 "List",
+                },
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "a",
+                            span: 90..91 "a",
+                        },
+                        ty: None,
+                        span: 90..91 "a",
+                    },
+                    Bind {
+                        quant: Erased,
+                        template: false,
+                        name: Name {
+                            text: "A",
+                            span: 94..95 "A",
+                        },
+                        ty: Some(
+                            97..104 "Kind(a)",
+                        ),
+                        span: 93..104 "-A: Kind(a)",
+                    },
+                ],
+                kind: Some(
+                    109..116 "Kind(a)",
+                ),
+                ctrs: [
+                    CtrDecl {
+                        name: Name {
+                            text: "Nil",
+                            span: 120..123 "Nil",
+                        },
+                        fields: [],
+                        span: 120..125 "Nil{}",
+                    },
+                    CtrDecl {
+                        name: Name {
+                            text: "Con",
+                            span: 128..131 "Con",
+                        },
+                        fields: [
+                            Bind {
+                                quant: Plain,
+                                template: false,
+                                name: Name {
+                                    text: "head",
+                                    span: 132..136 "head",
+                                },
+                                ty: Some(
+                                    138..139 "A",
+                                ),
+                                span: 132..139 "head: A",
+                            },
+                            Bind {
+                                quant: Plain,
+                                template: false,
+                                name: Name {
+                                    text: "tail",
+                                    span: 141..145 "tail",
+                                },
+                                ty: Some(
+                                    147..157 "List<a, A>",
+                                ),
+                                span: 141..157 "tail: List<a, A>",
+                            },
+                        ],
+                        span: 128..158 "Con{head: A, tail: List<a, A>}",
+                    },
+                ],
+                span: 80..158 "type List<a, -A: Kind(a)> is Kind(a):⏎  Nil{}⏎  "…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Type(
+            TypeDecl {
+                name: Name {
+                    text: "Either",
+                    span: 165..171 "Either",
+                },
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "a",
+                            span: 172..173 "a",
+                        },
+                        ty: None,
+                        span: 172..173 "a",
+                    },
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "b",
+                            span: 175..176 "b",
+                        },
+                        ty: None,
+                        span: 175..176 "b",
+                    },
+                    Bind {
+                        quant: Erased,
+                        template: false,
+                        name: Name {
+                            text: "A",
+                            span: 179..180 "A",
+                        },
+                        ty: Some(
+                            182..189 "Kind(a)",
+                        ),
+                        span: 178..189 "-A: Kind(a)",
+                    },
+                    Bind {
+                        quant: Erased,
+                        template: false,
+                        name: Name {
+                            text: "B",
+                            span: 192..193 "B",
+                        },
+                        ty: Some(
+                            195..202 "Kind(b)",
+                        ),
+                        span: 191..202 "-B: Kind(b)",
+                    },
+                ],
+                kind: Some(
+                    207..220 "Kind(a <&> b)",
+                ),
+                ctrs: [
+                    CtrDecl {
+                        name: Name {
+                            text: "Left",
+                            span: 224..228 "Left",
+                        },
+                        fields: [
+                            Bind {
+                                quant: Plain,
+                                template: false,
+                                name: Name {
+                                    text: "value",
+                                    span: 229..234 "value",
+                                },
+                                ty: Some(
+                                    236..237 "A",
+                                ),
+                                span: 229..237 "value: A",
+                            },
+                        ],
+                        span: 224..238 "Left{value: A}",
+                    },
+                    CtrDecl {
+                        name: Name {
+                            text: "Right",
+                            span: 241..246 "Right",
+                        },
+                        fields: [
+                            Bind {
+                                quant: Plain,
+                                template: false,
+                                name: Name {
+                                    text: "value",
+                                    span: 247..252 "value",
+                                },
+                                ty: Some(
+                                    254..255 "B",
+                                ),
+                                span: 247..255 "value: B",
+                            },
+                        ],
+                        span: 241..256 "Right{value: B}",
+                    },
+                ],
+                span: 160..256 "type Either<a, b, -A: Kind(a), -B: Kind(b)> is K"…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [],
+    errors: [],
+}

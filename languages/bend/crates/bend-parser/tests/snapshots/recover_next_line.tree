@@ -1,0 +1,62 @@
+Tree {
+    imports: [],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "a",
+                    span: 4..5 "a",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "x",
+                            span: 6..7 "x",
+                        },
+                        ty: None,
+                        span: 6..7 "x",
+                    },
+                ],
+                ret: None,
+                body: Source(
+                    5..5 "",
+                ),
+                span: 0..7 "def a(x",
+                doc: None,
+                syntax_error: true,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "b",
+                    span: 12..13 "b",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    19..22 "Nat",
+                ),
+                body: Source(
+                    24..25 "0",
+                ),
+                span: 8..25 "def b() -> Nat: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [],
+    errors: [
+        ParseError {
+            span: 8..8 "",
+            expected: "a name (got the keyword 'def')",
+            observed: "'def'",
+        },
+    ],
+}

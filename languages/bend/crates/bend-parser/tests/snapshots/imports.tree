@@ -1,0 +1,71 @@
+Tree {
+    imports: [
+        Import {
+            path: "Base",
+            path_span: 25..29 "Base",
+            alias: None,
+            span: 18..29 "import Base",
+        },
+        Import {
+            path: "./vec.bend",
+            path_span: 37..47 "./vec.bend",
+            alias: Some(
+                Name {
+                    text: "Vec",
+                    span: 51..54 "Vec",
+                },
+            ),
+            span: 30..54 "import ./vec.bend as Vec",
+        },
+        Import {
+            path: "../lib/nat.bend",
+            path_span: 111..126 "../lib/nat.bend",
+            alias: Some(
+                Name {
+                    text: "N",
+                    span: 130..131 "N",
+                },
+            ),
+            span: 104..131 "import ../lib/nat.bend as N",
+        },
+        Import {
+            path: "Base",
+            path_span: 139..143 "Base",
+            alias: Some(
+                Name {
+                    text: "B",
+                    span: 147..148 "B",
+                },
+            ),
+            span: 132..148 "import Base as B",
+        },
+    ],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "main",
+                    span: 154..158 "main",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    164..167 "Nat",
+                ),
+                body: Source(
+                    169..170 "0",
+                ),
+                span: 150..170 "def main() -> Nat: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [
+        0..16 "# header comment",
+        57..75 "# trailing comment",
+        76..103 "# a comment between imports",
+    ],
+    errors: [],
+}

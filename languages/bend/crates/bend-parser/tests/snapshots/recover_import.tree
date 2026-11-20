@@ -1,0 +1,87 @@
+Tree {
+    imports: [
+        Import {
+            path: "./ok.bend",
+            path_span: 92..101 "./ok.bend",
+            alias: Some(
+                Name {
+                    text: "Ok",
+                    span: 105..107 "Ok",
+                },
+            ),
+            span: 85..107 "import ./ok.bend as Ok",
+        },
+    ],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "a",
+                    span: 112..113 "a",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    119..122 "Nat",
+                ),
+                body: Source(
+                    124..125 "0",
+                ),
+                span: 108..125 "def a() -> Nat: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "b",
+                    span: 142..143 "b",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    149..152 "Nat",
+                ),
+                body: Source(
+                    154..155 "1",
+                ),
+                span: 138..155 "def b() -> Nat: 1",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [
+        0..12 "# the header",
+    ],
+    errors: [
+        ParseError {
+            span: 13..19 "import",
+            expected: "an import ('import Base', or 'import <path> as <Name>')",
+            observed: "'import'",
+        },
+        ParseError {
+            span: 20..35 "import ./x.bend",
+            expected: "an import ('import Base', or 'import <path> as <Name>')",
+            observed: "'import ./x.bend'",
+        },
+        ParseError {
+            span: 36..57 "import ./y.bend as 9x",
+            expected: "an import ('import Base', or 'import <path> as <Name>')",
+            observed: "'import ./y.bend as 9x'",
+        },
+        ParseError {
+            span: 58..84 "import ./z.bend as Z extra",
+            expected: "an import ('import Base', or 'import <path> as <Name>')",
+            observed: "'import ./z.bend as Z extra'",
+        },
+        ParseError {
+            span: 126..137 "import Base",
+            expected: "'def', 'type' or 'law'",
+            observed: "'i'",
+        },
+    ],
+}

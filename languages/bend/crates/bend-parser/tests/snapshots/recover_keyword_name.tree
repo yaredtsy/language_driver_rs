@@ -1,0 +1,63 @@
+Tree {
+    imports: [],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "ok",
+                    span: 20..22 "ok",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    28..31 "Nat",
+                ),
+                body: Source(
+                    33..34 "0",
+                ),
+                span: 16..34 "def ok() -> Nat: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "after",
+                    span: 86..91 "after",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    97..100 "Nat",
+                ),
+                body: Source(
+                    102..103 "0",
+                ),
+                span: 82..103 "def after() -> Nat: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [],
+    errors: [
+        ParseError {
+            span: 4..15 "match(x): x",
+            expected: "a name (got the keyword 'match')",
+            observed: "'match'",
+        },
+        ParseError {
+            span: 40..54 "is Data:⏎  A{}",
+            expected: "a name (got the keyword 'is')",
+            observed: "'is'",
+        },
+        ParseError {
+            span: 59..81 "for:⏎  Eq(Nat, 1n, 1n)",
+            expected: "a name (got the keyword 'for')",
+            observed: "'for'",
+        },
+    ],
+}

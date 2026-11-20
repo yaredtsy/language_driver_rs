@@ -1,0 +1,124 @@
+Tree {
+    imports: [],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "f",
+                    span: 88..89 "f",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    95..98 "Nat",
+                ),
+                body: Source(
+                    100..101 "0",
+                ),
+                span: 84..101 "def f() -> Nat: 0",
+                doc: Some(
+                    37..83 "# doc of f, first line⏎# doc of f, second line",
+                ),
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "g",
+                    span: 226..227 "g",
+                },
+                unsafe_: true,
+                question: false,
+                params: [],
+                ret: Some(
+                    233..236 "Nat",
+                ),
+                body: Source(
+                    260..261 "1",
+                ),
+                span: 214..261 "@unsafe def g() -> Nat:⏎  # inside the body⏎  1",
+                doc: Some(
+                    203..213 "# doc of g",
+                ),
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "h",
+                    span: 319..320 "h",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    326..329 "Nat",
+                ),
+                body: Source(
+                    331..334 "\"#\"",
+                ),
+                span: 315..334 "def h() -> Nat: \"#\"",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "i",
+                    span: 377..378 "i",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    384..387 "Nat",
+                ),
+                body: Source(
+                    389..392 "'#'",
+                ),
+                span: 373..392 "def i() -> Nat: '#'",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "j",
+                    span: 397..398 "j",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    404..407 "Nat",
+                ),
+                body: Source(
+                    409..413 "'\\''",
+                ),
+                span: 393..413 "def j() -> Nat: '\\''",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [
+        0..35 "# file header, a blank line follows",
+        37..59 "# doc of f, first line",
+        60..83 "# doc of f, second line",
+        102..146 "# trailing comment on the declaration's line",
+        147..201 "# a comment between declarations, a blank line f"…,
+        203..213 "# doc of g",
+        240..257 "# inside the body",
+        262..274 "# after code",
+        277..313 "# last comment of the body, indented",
+        335..372 "# a hash in a string is not a comment",
+        414..432 "#| expected output",
+        433..447 "#| second line",
+    ],
+    errors: [],
+}

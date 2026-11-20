@@ -1,0 +1,352 @@
+Tree {
+    imports: [],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "a",
+                    span: 4..5 "a",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "x",
+                            span: 6..7 "x",
+                        },
+                        ty: Some(
+                            9..24 "List<List<Nat>>",
+                        ),
+                        span: 6..24 "x: List<List<Nat>>",
+                    },
+                ],
+                ret: Some(
+                    29..32 "Nat",
+                ),
+                body: Source(
+                    34..35 "0",
+                ),
+                span: 0..35 "def a(x: List<List<Nat>>) -> Nat: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "b",
+                    span: 40..41 "b",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "x",
+                            span: 42..43 "x",
+                        },
+                        ty: Some(
+                            45..56 "(Nat & Nat)",
+                        ),
+                        span: 42..56 "x: (Nat & Nat)",
+                    },
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "y",
+                            span: 58..59 "y",
+                        },
+                        ty: Some(
+                            61..75 "{n == m : Nat}",
+                        ),
+                        span: 58..75 "y: {n == m : Nat}",
+                    },
+                ],
+                ret: Some(
+                    80..83 "Nat",
+                ),
+                body: Source(
+                    85..86 "0",
+                ),
+                span: 36..86 "def b(x: (Nat & Nat), y: {n == m : Nat}) -> Nat:"…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "c",
+                    span: 91..92 "c",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "f",
+                            span: 93..94 "f",
+                        },
+                        ty: Some(
+                            96..113 "Nat -> Nat -> Nat",
+                        ),
+                        span: 93..113 "f: Nat -> Nat -> Nat",
+                    },
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "g",
+                            span: 115..116 "g",
+                        },
+                        ty: Some(
+                            118..133 "@n: Nat -> P(n)",
+                        ),
+                        span: 115..133 "g: @n: Nat -> P(n)",
+                    },
+                ],
+                ret: Some(
+                    138..141 "Nat",
+                ),
+                body: Source(
+                    143..144 "0",
+                ),
+                span: 87..144 "def c(f: Nat -> Nat -> Nat, g: @n: Nat -> P(n)) "…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "d",
+                    span: 149..150 "d",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "x",
+                            span: 151..152 "x",
+                        },
+                        ty: Some(
+                            154..175 "Vec<(Nat & Bool), 3n>",
+                        ),
+                        span: 151..175 "x: Vec<(Nat & Bool), 3n>",
+                    },
+                ],
+                ret: Some(
+                    180..183 "Nat",
+                ),
+                body: Source(
+                    185..186 "0",
+                ),
+                span: 145..186 "def d(x: Vec<(Nat & Bool), 3n>) -> Nat: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "e",
+                    span: 191..192 "e",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "n",
+                            span: 193..194 "n",
+                        },
+                        ty: Some(
+                            196..199 "Nat",
+                        ),
+                        span: 193..199 "n: Nat",
+                    },
+                ],
+                ret: Some(
+                    204..220 "Eq(Nat, n, 1n+n)",
+                ),
+                body: Source(
+                    222..223 "0",
+                ),
+                span: 187..223 "def e(n: Nat) -> Eq(Nat, n, 1n+n): 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "f",
+                    span: 228..229 "f",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "s",
+                            span: 230..231 "s",
+                        },
+                        ty: Some(
+                            233..239 "String",
+                        ),
+                        span: 230..239 "s: String",
+                    },
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "c",
+                            span: 241..242 "c",
+                        },
+                        ty: Some(
+                            244..248 "Char",
+                        ),
+                        span: 241..248 "c: Char",
+                    },
+                ],
+                ret: Some(
+                    253..295 "Or(Eq(String, \"a:b\", s), Eq(Char, ':', c))",
+                ),
+                body: Source(
+                    297..298 "0",
+                ),
+                span: 224..298 "def f(s: String, c: Char) -> Or(Eq(String, \"a:b\""…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "g",
+                    span: 303..304 "g",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "xs",
+                            span: 305..307 "xs",
+                        },
+                        ty: Some(
+                            309..322 "List<&2, F32>",
+                        ),
+                        span: 305..322 "xs: List<&2, F32>",
+                    },
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "p",
+                            span: 324..325 "p",
+                        },
+                        ty: Some(
+                            327..338 "Audio & U32",
+                        ),
+                        span: 324..338 "p: Audio & U32",
+                    },
+                ],
+                ret: Some(
+                    343..359 "& k: Nat -> P(k)",
+                ),
+                body: Source(
+                    361..362 "0",
+                ),
+                span: 299..362 "def g(xs: List<&2, F32>, p: Audio & U32) -> & k:"…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "h",
+                    span: 367..368 "h",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "a",
+                            span: 369..370 "a",
+                        },
+                        ty: Some(
+                            372..375 "Nat",
+                        ),
+                        span: 369..375 "a: Nat",
+                    },
+                ],
+                ret: Some(
+                    380..401 "Kind(a <&> a) -> Data",
+                ),
+                body: Source(
+                    403..404 "0",
+                ),
+                span: 363..404 "def h(a: Nat) -> Kind(a <&> a) -> Data: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "i",
+                    span: 409..410 "i",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "x",
+                            span: 411..412 "x",
+                        },
+                        ty: Some(
+                            414..418 "A[0]",
+                        ),
+                        span: 411..418 "x: A[0]",
+                    },
+                ],
+                ret: Some(
+                    423..430 "{y : T}",
+                ),
+                body: Source(
+                    432..433 "0",
+                ),
+                span: 405..433 "def i(x: A[0]) -> {y : T}: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [],
+    errors: [],
+}

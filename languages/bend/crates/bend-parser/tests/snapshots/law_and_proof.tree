@@ -1,0 +1,93 @@
+Tree {
+    imports: [],
+    decls: [
+        Law(
+            LawDecl {
+                name: Name {
+                    text: "add_zero",
+                    span: 4..12 "add_zero",
+                },
+                clauses: [
+                    Clause {
+                        exists: false,
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "n",
+                            span: 20..21 "n",
+                        },
+                        ty: 23..26 "Nat",
+                        where_: None,
+                        span: 16..26 "for n: Nat",
+                    },
+                ],
+                claim: Some(
+                    29..51 "Eq(Nat, add(n, 0n), n)",
+                ),
+                span: 0..51 "law add_zero:⏎  for n: Nat⏎  Eq(Nat, add(n, 0n),"…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "add_zero",
+                    span: 57..65 "add_zero",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "n",
+                            span: 66..67 "n",
+                        },
+                        ty: None,
+                        span: 66..67 "n",
+                    },
+                ],
+                ret: None,
+                body: Source(
+                    72..125 "match n:⏎    case Zero{}: {==}⏎    case Succ{p}:"…,
+                ),
+                span: 53..125 "def add_zero(n):⏎  match n:⏎    case Zero{}: {=="…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "Laws.sorted",
+                    span: 131..142 "Laws.sorted",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "xs",
+                            span: 143..145 "xs",
+                        },
+                        ty: None,
+                        span: 143..145 "xs",
+                    },
+                ],
+                ret: None,
+                body: Source(
+                    148..150 "xs",
+                ),
+                span: 127..150 "def Laws.sorted(xs): xs",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [],
+    errors: [],
+}

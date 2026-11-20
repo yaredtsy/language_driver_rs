@@ -1,0 +1,114 @@
+Tree {
+    imports: [
+        Import {
+            path: "Base",
+            path_span: 7..11 "Base",
+            alias: None,
+            span: 0..11 "import Base",
+        },
+    ],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "sin",
+                    span: 17..20 "sin",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "x",
+                            span: 21..22 "x",
+                        },
+                        ty: Some(
+                            24..27 "F32",
+                        ),
+                        span: 21..27 "x: F32",
+                    },
+                ],
+                ret: Some(
+                    32..39 "IO(F32)",
+                ),
+                body: Foreign(
+                    [
+                        StrLit {
+                            value: "./sin.c",
+                            span: 50..59 "\"./sin.c\"",
+                        },
+                        StrLit {
+                            value: "./sin.js",
+                            span: 69..79 "\"./sin.js\"",
+                        },
+                    ],
+                ),
+                span: 13..79 "def sin(x: F32) -> IO(F32):⏎  import \"./sin.c\"⏎ "…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "cos",
+                    span: 85..88 "cos",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "x",
+                            span: 89..90 "x",
+                        },
+                        ty: Some(
+                            92..95 "F32",
+                        ),
+                        span: 89..95 "x: F32",
+                    },
+                ],
+                ret: Some(
+                    100..107 "IO(F32)",
+                ),
+                body: Foreign(
+                    [
+                        StrLit {
+                            value: "./cos.c",
+                            span: 116..125 "\"./cos.c\"",
+                        },
+                    ],
+                ),
+                span: 81..125 "def cos(x: F32) -> IO(F32): import \"./cos.c\"",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "after",
+                    span: 130..135 "after",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    141..144 "U32",
+                ),
+                body: Source(
+                    146..147 "1",
+                ),
+                span: 126..147 "def after() -> U32: 1",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [],
+    errors: [],
+}

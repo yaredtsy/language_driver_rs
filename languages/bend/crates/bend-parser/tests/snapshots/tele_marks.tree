@@ -1,0 +1,205 @@
+Tree {
+    imports: [],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "f",
+                    span: 4..5 "f",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: true,
+                        name: Name {
+                            text: "g",
+                            span: 7..8 "g",
+                        },
+                        ty: Some(
+                            10..20 "Nat -> Nat",
+                        ),
+                        span: 6..20 "~g: Nat -> Nat",
+                    },
+                    Bind {
+                        quant: Reusable,
+                        template: false,
+                        name: Name {
+                            text: "x",
+                            span: 23..24 "x",
+                        },
+                        ty: Some(
+                            26..29 "Nat",
+                        ),
+                        span: 22..29 "+x: Nat",
+                    },
+                    Bind {
+                        quant: Erased,
+                        template: false,
+                        name: Name {
+                            text: "y",
+                            span: 32..33 "y",
+                        },
+                        ty: Some(
+                            35..38 "Nat",
+                        ),
+                        span: 31..38 "-y: Nat",
+                    },
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "z",
+                            span: 40..41 "z",
+                        },
+                        ty: None,
+                        span: 40..41 "z",
+                    },
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "w",
+                            span: 43..44 "w",
+                        },
+                        ty: Some(
+                            46..49 "Nat",
+                        ),
+                        span: 43..49 "w: Nat",
+                    },
+                ],
+                ret: Some(
+                    55..58 "Nat",
+                ),
+                body: Source(
+                    60..61 "0",
+                ),
+                span: 0..61 "def f(~g: Nat -> Nat, +x: Nat, -y: Nat, z, w: Na"…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Type(
+            TypeDecl {
+                name: Name {
+                    text: "T",
+                    span: 67..68 "T",
+                },
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "a",
+                            span: 69..70 "a",
+                        },
+                        ty: None,
+                        span: 69..70 "a",
+                    },
+                    Bind {
+                        quant: Reusable,
+                        template: false,
+                        name: Name {
+                            text: "b",
+                            span: 73..74 "b",
+                        },
+                        ty: Some(
+                            76..80 "Data",
+                        ),
+                        span: 72..80 "+b: Data",
+                    },
+                    Bind {
+                        quant: Erased,
+                        template: false,
+                        name: Name {
+                            text: "c",
+                            span: 83..84 "c",
+                        },
+                        ty: Some(
+                            86..90 "Data",
+                        ),
+                        span: 82..90 "-c: Data",
+                    },
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "d",
+                            span: 92..93 "d",
+                        },
+                        ty: Some(
+                            95..96 "a",
+                        ),
+                        span: 92..96 "d: a",
+                    },
+                ],
+                kind: Some(
+                    101..105 "Data",
+                ),
+                ctrs: [
+                    CtrDecl {
+                        name: Name {
+                            text: "K",
+                            span: 109..110 "K",
+                        },
+                        fields: [
+                            Bind {
+                                quant: Plain,
+                                template: false,
+                                name: Name {
+                                    text: "x",
+                                    span: 111..112 "x",
+                                },
+                                ty: Some(
+                                    114..115 "a",
+                                ),
+                                span: 111..115 "x: a",
+                            },
+                            Bind {
+                                quant: Reusable,
+                                template: false,
+                                name: Name {
+                                    text: "y",
+                                    span: 118..119 "y",
+                                },
+                                ty: Some(
+                                    121..122 "b",
+                                ),
+                                span: 117..122 "+y: b",
+                            },
+                            Bind {
+                                quant: Erased,
+                                template: false,
+                                name: Name {
+                                    text: "z",
+                                    span: 125..126 "z",
+                                },
+                                ty: Some(
+                                    128..129 "c",
+                                ),
+                                span: 124..129 "-z: c",
+                            },
+                            Bind {
+                                quant: Plain,
+                                template: false,
+                                name: Name {
+                                    text: "w",
+                                    span: 131..132 "w",
+                                },
+                                ty: None,
+                                span: 131..132 "w",
+                            },
+                        ],
+                        span: 109..133 "K{x: a, +y: b, -z: c, w}",
+                    },
+                ],
+                span: 62..133 "type T<a, +b: Data, -c: Data, d: a> is Data:⏎  K"…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [],
+    errors: [],
+}

@@ -1,0 +1,88 @@
+Tree {
+    imports: [],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "ok1",
+                    span: 4..7 "ok1",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    13..16 "Nat",
+                ),
+                body: Source(
+                    18..19 "0",
+                ),
+                span: 0..19 "def ok1() -> Nat: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "broken",
+                    span: 45..51 "broken",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "a",
+                            span: 52..53 "a",
+                        },
+                        ty: Some(
+                            55..58 "Nat",
+                        ),
+                        span: 52..58 "a: Nat",
+                    },
+                ],
+                ret: None,
+                body: Source(
+                    51..51 "",
+                ),
+                span: 41..100 "def broken(a: Nat, , b) -> Nat:⏎  body line 1⏎  "…,
+                doc: Some(
+                    21..40 "# the doc of broken",
+                ),
+                syntax_error: true,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "ok2",
+                    span: 106..109 "ok2",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    115..118 "Nat",
+                ),
+                body: Source(
+                    120..121 "1",
+                ),
+                span: 102..121 "def ok2() -> Nat: 1",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [
+        21..40 "# the doc of broken",
+    ],
+    errors: [
+        ParseError {
+            span: 60..100 ", b) -> Nat:⏎  body line 1⏎  body line 2",
+            expected: "a name",
+            observed: "','",
+        },
+    ],
+}

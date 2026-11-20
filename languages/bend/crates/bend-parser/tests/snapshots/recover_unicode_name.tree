@@ -1,0 +1,51 @@
+Tree {
+    imports: [],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "na",
+                    span: 4..6 "na",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: None,
+                body: Source(
+                    6..6 "",
+                ),
+                span: 0..22 "def naïve() -> Nat: 0",
+                doc: None,
+                syntax_error: true,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "next",
+                    span: 27..31 "next",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    37..40 "Nat",
+                ),
+                body: Source(
+                    42..43 "1",
+                ),
+                span: 23..43 "def next() -> Nat: 1",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [],
+    errors: [
+        ParseError {
+            span: 6..22 "ïve() -> Nat: 0",
+            expected: "'('",
+            observed: "'ï'",
+        },
+    ],
+}

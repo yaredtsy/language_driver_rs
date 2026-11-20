@@ -51,7 +51,20 @@ What these say about the plan:
   `legacy_data_annotation.bend`): in the accepted corpus every file starts with comments, then imports, then declarations. 127 files have code as their first non-blank line
   (an `import` or a declaration): the header marker's slot is "offset 0" for them (`03` §1.3).
 
-Declaration count (the parser's, over the accepted files): filled in by the corpus test, below.
+### BD1 step 3: the outline-shaped parser against the corpus
+
+2026-11-20, `cargo test -p bend-parser --release --test corpus -- --ignored` (needs `BEND_CLONE` and the lists above). Every file of `parse-accepted.txt`
+(1,744; 13,715,509 bytes) parses with **zero `ParseError`s**, and the declarations found are Bend's own, in order, for every file: the same kind and name,
+the same number of parameters (a def's, a type's, a constructor's fields) and, for a def with a `->`, of templates. **176,229 declarations** (78,754 defs,
+74,427 laws, 7,735 types, 15,313 constructors), the loader's count exactly. Parsing alone took 57–76 ms over all of it (release; this is the step 5
+measure, taken early because it was free).
+
+- A def with no `->` fills a law, and its template count is the law's (`for ~k`), so the test does not compare it: 32 files showed that, all of them
+  law-filling defs. A def that fills a law of another file is named `<Alias>.<name>` in the text and `<namespace>:<name>` by Bend; the test accepts
+  that pair when the alias is one of the file's own.
+- The test is not vacuous: breaking one rule of the term skipper (`>` glued never ends a term) makes 372 declarations disagree.
+- Parameter and return types are **skipped, not read**, in step 3 (`stopgap.rs`, deleted in step 4): `Bind.ty`, `DefDecl.ret`, `TypeDecl.kind`, a clause's
+  type and a body are `Span`s for now. Step 4 turns each into the term it covers; the corpus numbers above are the proof that the extent of each was right.
 
 ## grammar
 

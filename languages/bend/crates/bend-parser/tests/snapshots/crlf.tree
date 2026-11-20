@@ -1,0 +1,65 @@
+Tree {
+    imports: [],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "a",
+                    span: 31..32 "a",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "x",
+                            span: 33..34 "x",
+                        },
+                        ty: Some(
+                            36..39 "Nat",
+                        ),
+                        span: 33..39 "x: Nat",
+                    },
+                ],
+                ret: Some(
+                    44..47 "Nat",
+                ),
+                body: Source(
+                    52..53 "x",
+                ),
+                span: 27..53 "def a(x: Nat) -> Nat:\r⏎  x",
+                doc: Some(
+                    0..25 "# crlf\r⏎# second doc line",
+                ),
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "b",
+                    span: 61..62 "b",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    68..71 "Nat",
+                ),
+                body: Source(
+                    73..74 "0",
+                ),
+                span: 57..74 "def b() -> Nat: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [
+        0..6 "# crlf",
+        8..25 "# second doc line",
+    ],
+    errors: [],
+}

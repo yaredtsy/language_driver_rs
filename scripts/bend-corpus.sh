@@ -8,7 +8,7 @@
 #   parse-accepted.txt    Bend's loader (book_load: imports, parse_book, name resolution; no checker) accepts. THE LIST A PARSER MUST ACCEPT:
 #                         a file that only fails to type-check still parses
 #   parse-refused.txt     <file> TAB <UTF-16 offset or -> TAB <what Bend expected>  (also refused: forms the loader rejects after parsing, e.g. a match on a non-parameter)
-#   parse-decls.tsv       for each parse-accepted file, the names Bend sees, in order: <file> TAB type|law|def|ctr TAB <name> (a def that fills a law is `def`)
+#   parse-decls.tsv       for each parse-accepted file, the names Bend sees, in order: <file> TAB type|law|def|ctr TAB <name> TAB <parameters or fields> TAB <templates> (a def that fills a law is `def`; a law of another file that it fills is named `<namespace>:<name>`)
 #   declared-negative.txt files whose first `#|` line says SOME PROOFS FAIL or Error: (gates/test.ts FAILS); the cross-check and the fallback
 # The oracle is, in order: `bun <clone>/bend2/main.ts` (the pinned clone: the grammar's source of truth), then an installed `bend` (warns:
 # it may be newer than the pin), then the `#|` convention (no check or parse lists, only declared-negative.txt). Nothing is fetched, nothing
@@ -108,10 +108,13 @@ for (const f of files) {
       const tld = book.tlds[k];
       const first = !seen.has(k);
       seen.add(k);
-      decls.push(f + "\t" + (tld.$ === "ADT" ? "type" : first && tld.l === true ? "law" : "def") + "\t" + k);
+      // a name with a `:` is `<namespace>:<name>`, a law of another file that this file's def fills (`def Laws.x(..)` through an alias)
+      const kind = tld.$ === "ADT" ? "type" : first && tld.l === true && !k.includes(":") ? "law" : "def";
+      // columns 4 and 5: the parameters (a type's, a def's, a constructor's fields) and, for a def, how many of them are templates; `-` for a law
+      decls.push(f + "\t" + kind + "\t" + k + "\t" + (kind === "law" ? "-" : tld.n) + "\t" + (kind === "def" ? tld.x : "-"));
       if (tld.$ === "ADT") {
         for (const c of tld.c) {
-          decls.push(f + "\tctr\t" + c.k);
+          decls.push(f + "\tctr\t" + c.k + "\t" + c.n + "\t-");
         }
       }
     }

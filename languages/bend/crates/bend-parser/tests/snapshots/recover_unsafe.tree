@@ -1,0 +1,33 @@
+Tree {
+    imports: [],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "ok",
+                    span: 28..30 "ok",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    36..39 "Nat",
+                ),
+                body: Source(
+                    41..42 "0",
+                ),
+                span: 24..42 "def ok() -> Nat: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [],
+    errors: [
+        ParseError {
+            span: 8..23 "foo() -> Nat: 0",
+            expected: "'def' (@unsafe marks the def below it)",
+            observed: "'f'",
+        },
+    ],
+}

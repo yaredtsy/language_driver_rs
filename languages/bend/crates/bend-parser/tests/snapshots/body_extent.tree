@@ -1,0 +1,110 @@
+Tree {
+    imports: [],
+    decls: [
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "a",
+                    span: 4..5 "a",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    11..14 "Nat",
+                ),
+                body: Source(
+                    18..119 "1⏎⏎  2   # after a blank line, still the body⏎⏎#"…,
+                ),
+                span: 0..119 "def a() -> Nat:⏎  1⏎⏎  2   # after a blank line,"…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "b",
+                    span: 124..125 "b",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    131..137 "String",
+                ),
+                body: Source(
+                    139..177 "\"multi⏎line string⏎with column-0 text\"",
+                ),
+                span: 120..177 "def b() -> String: \"multi⏎line string⏎with colum"…,
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "c",
+                    span: 182..183 "c",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    189..192 "Nat",
+                ),
+                body: Source(
+                    194..195 "0",
+                ),
+                span: 178..195 "def c() -> Nat: 0",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "empty",
+                    span: 200..205 "empty",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    211..214 "Nat",
+                ),
+                body: Source(
+                    215..215 "",
+                ),
+                span: 196..215 "def empty() -> Nat:",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "last",
+                    span: 220..224 "last",
+                },
+                unsafe_: false,
+                question: false,
+                params: [],
+                ret: Some(
+                    230..233 "Nat",
+                ),
+                body: Source(
+                    235..236 "9",
+                ),
+                span: 216..236 "def last() -> Nat: 9",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [
+        27..63 "# after a blank line, still the body",
+        65..115 "# a column-0 comment inside a body does not end "…,
+    ],
+    errors: [],
+}

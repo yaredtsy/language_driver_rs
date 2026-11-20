@@ -1,0 +1,73 @@
+Tree {
+    imports: [],
+    decls: [
+        Type(
+            TypeDecl {
+                name: Name {
+                    text: "Bool",
+                    span: 5..9 "Bool",
+                },
+                params: [],
+                kind: Some(
+                    13..17 "Data",
+                ),
+                ctrs: [
+                    CtrDecl {
+                        name: Name {
+                            text: "True",
+                            span: 19..23 "True",
+                        },
+                        fields: [],
+                        span: 19..25 "True{}",
+                    },
+                    CtrDecl {
+                        name: Name {
+                            text: "False",
+                            span: 26..31 "False",
+                        },
+                        fields: [],
+                        span: 26..33 "False{}",
+                    },
+                ],
+                span: 0..33 "type Bool is Data:⏎True{}⏎False{}",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+        Def(
+            DefDecl {
+                name: Name {
+                    text: "not",
+                    span: 38..41 "not",
+                },
+                unsafe_: false,
+                question: false,
+                params: [
+                    Bind {
+                        quant: Plain,
+                        template: false,
+                        name: Name {
+                            text: "b",
+                            span: 42..43 "b",
+                        },
+                        ty: Some(
+                            45..49 "Bool",
+                        ),
+                        span: 42..49 "b: Bool",
+                    },
+                ],
+                ret: Some(
+                    54..58 "Bool",
+                ),
+                body: Source(
+                    60..61 "b",
+                ),
+                span: 34..61 "def not(b: Bool) -> Bool: b",
+                doc: None,
+                syntax_error: false,
+            },
+        ),
+    ],
+    comments: [],
+    errors: [],
+}

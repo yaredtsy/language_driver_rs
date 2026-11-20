@@ -1,0 +1,10 @@
+Tree {
+    imports: [],
+    decls: [],
+    comments: [
+        0..22 "# nothing but comments",
+        24..42 "# and a blank line",
+        43..68 "#| and an expected output",
+    ],
+    errors: [],
+}
