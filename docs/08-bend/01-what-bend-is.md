@@ -63,7 +63,8 @@ The parser (lines 1540–2700) is **scanner-less recursive descent**: no token l
 (`parse_skip`), tracks the column of a block's first statement (`parse_body(p, col)`), and fails at the first error (`parse_fail` throws).
 Every word it dispatches on is reserved (`def type law match case do return for exs where is import Type Data Kind Quant`).
 
-Every term carries a `Span { file, beg, end }` (byte offsets). Good: the shape of a `Site` is already there.
+Every term carries a `Span { file, beg, end }`. Its offsets are **UTF-16 code units** (JavaScript string indices), not bytes (found in BD0): ours are
+bytes, so a column from `bend`'s own error text differs from ours on a line with a non-ASCII character before it. The shape of a `Site` is there.
 
 ## 3. Names: how a call finds its def without a type checker
 
@@ -92,8 +93,11 @@ This is the part that makes the default layer exact, so it is worth being precis
 - A `def f(x):` with no `->` **fills the law `f`** in scope (same qualified name, possibly through an alias: `def M.name(..)`): the law and the
   proof are one TLD to Bend. §4 says what they are to us.
 
-A type checker is never needed for any of this. The one place Bend's parser looks beyond syntax is `parse_reso` consulting the tables of names
-seen so far, and we have those tables after parsing the book.
+A type checker is never needed for any of this. Bend's parser does look beyond syntax in **four** places, all of them table lookups we have after
+parsing the book (found in BD0, `ENGINE.md` §grammar): `parse_reso` for a name; `+Name` is a quantified datatype `+D<A>` if `Name` is a declared
+`type`, else a reusable variable; `f(~g, a)` takes as many `~` arguments as the callee's template count; and `parse_patt` asks whether a name is a
+constructor. Our tree keeps both readings open where they differ (`+` applies to a term; `~` is accepted on any call argument) and resolution decides
+in BD3/BD4.
 
 ## 4. What is a def, what is a call, what is neither
 
@@ -145,9 +149,9 @@ diff of `bend.ts` between two pins names the Rust functions to touch.
 
 | What | At `0e2f38f` |
 |---|---|
-| `bend2/bend.ts` | 4,021 lines: grammar 8–160, parser 1540–2700 (about 1,150), the rest theory and checker |
+| `bend2/bend.ts` | 4,021 lines: grammar 8–160, parser 1540–2700 (about 1,150), the rest theory and checker. A name's characters are ASCII letters, digits, `_` and `.` (`char_is_name` 503): **not** `-` |
 | `bend2/base.bend` | 3,525 lines, 541 top-level declarations (`def`, `type`, `law`, `@unsafe def`) |
-| `.bend` files in the repo | 1,982 (772,414 lines, most of them generated benchmarks): `tests/` (24 namespaces; `parse/` holds 173 positive parse tests; a negative test is one whose trailing `#|` lines are an error message), `demos/` (16 programs with `LAWS.bend` / `PROOF.bend`), `bench/` |
+| `.bend` files in the repo | 1,982 (772,414 lines, most of them generated benchmarks). **The corpus** (BD0): `tests/` 1,879 + `demos/` 56 + `bench/` 22 + `base.bend` = 1,958; Bend's loader accepts **1,744** (`--check-only` accepts only 1,252: it refuses every program that relies on `@unsafe` or foreign code, so the loader's list is the parser's). `tests/parse/` is mixed: 86 of its 173 files expect an error. 176,229 declarations in the accepted files |
 | releases | 2.0.40 on 2026-11-05; the clone's last commit 2026-11-18; the `CHANGELOG` names parser changes under "Clearer errors" and "Fixes" in most releases |
 
 **[measure]** in BD0: how many of the 1,982 files `bend` itself accepts (the parse-failure tests are negatives), and how long parsing them

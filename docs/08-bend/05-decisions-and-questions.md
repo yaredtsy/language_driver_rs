@@ -58,16 +58,16 @@ Bend tree is its own file and the scenario README says why.
 
 Checked while writing (2026-11-20): `bend <file> --check-only` exists (`bend2/main.ts` 43: "check the file and its imports; run nothing"), and core's `Basis::Name` is the variant Bend's edges rest on.
 
+Checked by BD0 and BD1 step 3 (2026-11-20, `languages/bend/ENGINE.md`): every accepted file starts with comments, then imports, then declarations (127 start with code on their first non-blank line: the header slot is offset 0); parsing the accepted corpus takes 57 ms in release; a name has no `-`; `bend.ts` spans are UTF-16 units; the parser consults the book's tables in four places, not one. Open from BD1: `scripts/check-all.sh` runs clippy on `*-syntax`, `*-analysis` and `*-cli` only, so `bend-parser` needs a line (step 4's task).
+
 | # | Claim | Where it is used | How to check |
 |---|---|---|---|
 | 13 | `HigherOrderCO/tree-sitter-bend` predates the Bend2 syntax (last push 2024) | 01 §7 | look at the repository |
 | 14 | the demos' call-site counts (5,900 sites, 64 with a local head) | 04 §2 | BC0 |
 | 2 | the grammar comment at `bend.ts` 8–160 names every form the parser reads | the fixture list of BD1 | S-BD2 |
-| 3 | no corpus file starts with something other than a comment or an import | the header slot | a grep over the corpus in S-BD1's script |
 | 5 | the demos never put a blank line between a doc comment block and its def | the range rule, 03 §1.2 | grep the demos |
 | 6 | `base.bend` sits on disk in an install, or only inside the binary | Q-BD3 | install `bend`; look |
 | 7 | the renderer prints a `Construct` with `init: None` as the other languages' scenario trees show | §2 | run the scenario in BD4 |
-| 8 | parsing the accepted corpus takes well under a second in release | 02 §4 | BD1 step 5 |
 | 9 | a book of the whole `tests/` is a few megabytes and opens in milliseconds | BD3, BD5 | BD3 step 3 |
 | 10 | TC's answer on lambdas as values (Q-TC) is one Bend can share | BC1 | read 12-context-layer when Q-TC1..5 are answered |
 | 11 | the term-level `Error` node is worth its drift cost | BD-D10 | BD1 step 4 |

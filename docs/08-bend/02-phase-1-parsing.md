@@ -103,12 +103,12 @@ says which Rust functions to look at. The ones that carry the rules of §2 in [`
 | `bend.ts` | Ours | Carries |
 |---|---|---|
 | `parse_skip` (1595) | `skip` | whitespace and `#` comments; **we also record each comment's span** (markers and docs need them; `bend` throws them away) |
-| `parse_lexeme`, `parse_name` (1636, 1652) | `lexeme`, `name` | a name's characters (`char_is_head`, `char_is_name`: letters, digits, `_`, `-`, `.`); the reserved words |
+| `parse_lexeme`, `parse_name` (1636, 1652) | `lexeme`, `name` | a name's characters (`char_is_head`, `char_is_name`: ASCII letters, digits, `_`, `.`; not `-`); the reserved words |
 | `parse_term` (1810, about 560 lines) | `term(lvl)` | the term grammar with precedence levels, the `<` rule, glued `-`/`+`, juxtaposition, the operator-needs-spaces rule |
 | `parse_body` (2376) | `body(col)` | statements at a block's column; `match`, lets, parallel lets, `a[i] <- v` re-binding, the do-block |
 | `parse_tele` (2487) | `tele(close)` | a parameter list: quantities, `~`, bare quant names, the `:` type |
 | `parse_book` (2583) | `book` | the top level: `@unsafe`, `def`, `type`, `law`; this is where recovery lives (§3) |
-| `book_load`'s import loop (973–1035) | `imports` | the `import` lines, their alias; **no file is read here**: the parser hands back paths, `bend-analysis` opens them |
+| `book_load`'s import loop (973–1000) | `imports` | the `import` lines, read by a **regex per trimmed line** (not by `parse_*`), their alias; **no file is read here**: the parser hands back paths, `bend-analysis` opens them |
 
 Reading `bend.ts` once more before writing each function is the method; the plan does not copy the parser into the doc.
 
@@ -149,6 +149,11 @@ every declaration name and every reference `bend` sees, with its span. BD1's cor
 sites. The tree's shape itself is checked by reviewed snapshots against `GUIDE.md`'s syntax reference.
 
 ## 5. Steps
+
+**State (2026-11-20):** BD0 done (c8742de), steps 1–3 done (aeef3fc, f1ed5f6) and accepted; the corpus proof reproduced by the reviewer (1,744
+files, 176,229 declarations, 57 ms release). Step 3 reads types and bodies as spans through a throwaway `stopgap.rs` (313 lines) that step 4
+deletes; the 30 grammar items the BNF does not name are `ENGINE.md` §grammar G1–G30, each a step 4 fixture. S-BD4 (the Ref oracle) was added to
+the plan after the step 3 prompt went out and is not done: it moves to BD4, where its output (callee spans) is compared.
 
 | # | Do | Proof |
 |---|---|---|
