@@ -1,0 +1,43 @@
+== src/passed.rs named
+named
+  parse [Passed]
+edges:
+named | into_iter | external alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+named | map | external core iter::traits::iterator::Iterator::map
+named | parse | pass parse
+named | count | external core iter::traits::iterator::Iterator::count
+parse | len | external core str::str::len
+== src/passed.rs handed_to_a_function
+handed_to_a_function
+  spawn
+  worker [Passed]
+edges:
+handed_to_a_function | spawn | call spawn
+handed_to_a_function | worker | pass worker
+spawn | f | unresolved function_typed_value
+counters: function_typed_value=1, open_fn_pointer=1
+== src/passed.rs called_and_passed
+called_and_passed
+  worker
+  spawn
+  worker [Passed]
+edges:
+called_and_passed | worker | call worker
+called_and_passed | spawn | call spawn
+called_and_passed | worker | pass worker
+spawn | f | unresolved function_typed_value
+counters: function_typed_value=1, open_fn_pointer=1
+== src/passed.rs Parser::run
+Parser::run
+  Parser::helper [Passed]
+  Parser::helper [Passed]
+edges:
+Parser::run | iter | external core slice::[T]::iter
+Parser::run | copied | external core iter::traits::iterator::Iterator::copied
+Parser::run | map | external core iter::traits::iterator::Iterator::map
+Parser::run | Self::helper | pass Parser::helper
+Parser::run | count | external core iter::traits::iterator::Iterator::count
+Parser::run | into_iter | external alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+Parser::run | map | external core iter::traits::iterator::Iterator::map
+Parser::run | Parser::helper | pass Parser::helper
+Parser::run | count | external core iter::traits::iterator::Iterator::count

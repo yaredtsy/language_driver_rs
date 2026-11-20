@@ -1,0 +1,11 @@
+== src/dispatch.rs unknown_callee
+unknown_callee
+edges:
+unknown_callee | missing | unresolved unknown_callee
+unknown_callee | missing() | unresolved unknown_callee
+counters: unknown_callee=2
+== src/dispatch.rs unknown_method
+unknown_method
+edges:
+unknown_method | nothing | unresolved unknown_method
+counters: unknown_method=1

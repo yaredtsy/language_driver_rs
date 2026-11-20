@@ -1,0 +1,7 @@
+== src/dispatch.rs projection_receiver
+projection_receiver
+edges:
+projection_receiver | next | external core iter::traits::iterator::Iterator::next
+projection_receiver | unwrap | external core option::Option::unwrap
+projection_receiver | write | unresolved function_typed_value
+counters: function_typed_value=1, open_projection=1, open_type_param=1

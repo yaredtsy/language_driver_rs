@@ -1,0 +1,5 @@
+== app/src/lib.rs use_it
+use_it
+edges:
+use_it | hello | unresolved unknown_method
+counters: build_scripts_skipped=1, proc_macros_skipped=1, unknown_method=1

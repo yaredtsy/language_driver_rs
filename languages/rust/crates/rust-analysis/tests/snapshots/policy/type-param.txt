@@ -1,0 +1,28 @@
+== src/dispatch.rs generic_by_reference
+generic_by_reference
+edges:
+generic_by_reference | write | unresolved function_typed_value
+counters: function_typed_value=1, open_type_param=1
+== src/dispatch.rs generic_by_value
+generic_by_value
+edges:
+generic_by_value | write | unresolved function_typed_value
+counters: function_typed_value=1, open_type_param=1
+== src/dispatch.rs default_method_through_a_parameter
+default_method_through_a_parameter
+  Writer::twice
+edges:
+Writer::twice | write | unresolved function_typed_value
+Writer::twice | write | unresolved function_typed_value
+default_method_through_a_parameter | twice | call Writer::twice
+counters: function_typed_value=2, open_self_in_trait=2, open_type_param=1
+== src/dispatch.rs static_through_a_parameter
+static_through_a_parameter
+edges:
+static_through_a_parameter | W::make | unresolved function_typed_value
+counters: function_typed_value=1, open_type_param=1
+== src/dispatch.rs qualified_through_a_parameter
+qualified_through_a_parameter
+edges:
+qualified_through_a_parameter | <W as Make>::make | unresolved function_typed_value
+counters: function_typed_value=1, open_type_param=1

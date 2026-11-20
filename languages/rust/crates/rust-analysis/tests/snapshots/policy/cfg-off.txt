@@ -1,0 +1,45 @@
+== src/cfg_off.rs statement
+statement
+  f
+edges:
+statement | f | call f
+== src/cfg_off.rs block
+block
+  f
+edges:
+block | f | call f
+== src/cfg_off.rs let_statement
+let_statement
+edges: none
+== src/cfg_off.rs match_arm
+match_arm
+edges: none
+== src/cfg_off.rs macro_statement
+macro_statement
+  f
+edges:
+macro_statement | f | call f
+== src/cfg_off.rs method_statement
+method_statement
+edges:
+method_statement | len | external alloc vec::Vec::len
+== src/cfg_off.rs closure_statement
+closure_statement
+edges: none
+== src/cfg_off.rs on_statement
+on_statement
+  f
+edges:
+on_statement | f | call f
+== src/cfg_off.rs struct_expression
+struct_expression
+  Rec
+edges:
+struct_expression | crate::shapes::Rec | construct Rec no init
+== src/cfg_off.rs handed_statement
+handed_statement
+  f [Passed]
+edges:
+handed_statement | f | pass f
+== src/lib.rs disabled
+no def

@@ -1,0 +1,25 @@
+== src/calls.rs plain_calls
+plain_calls
+  twice
+  helper
+edges:
+plain_calls | twice | call twice
+plain_calls | helper | call helper
+== src/calls.rs path_calls
+path_calls
+  Rec::mk
+    Rec
+  helper
+edges:
+Rec::mk | Self | construct Rec no init
+path_calls | crate::shapes::Rec::mk | call Rec::mk
+path_calls | self::helper | call helper
+== src/calls.rs order
+order
+  twice
+  Rec::value
+  helper
+edges:
+order | twice | call twice
+order | value | call Rec::value
+order | helper | call helper

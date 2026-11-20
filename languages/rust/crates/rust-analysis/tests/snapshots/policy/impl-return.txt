@@ -1,0 +1,22 @@
+== src/dispatch.rs impl_return
+impl_return
+  make_writer
+  <Json as Writer>::write
+edges:
+impl_return | make_writer | call make_writer
+impl_return | write | call <Json as Writer>::write
+== src/dispatch.rs impl_return_of_a_parameter
+impl_return_of_a_parameter
+  make_generic
+edges:
+impl_return_of_a_parameter | make_generic::<W> | call make_generic
+impl_return_of_a_parameter | write | unresolved function_typed_value
+make_generic | W::default | external core default::Default::default
+counters: function_typed_value=1, open_opaque=1, open_type_param=1
+== src/factory.rs use_impl_factory
+use_impl_factory
+  make_impl
+  <Json as Writer>::write
+edges:
+use_impl_factory | make_impl | call make_impl
+use_impl_factory | write | call <Json as Writer>::write

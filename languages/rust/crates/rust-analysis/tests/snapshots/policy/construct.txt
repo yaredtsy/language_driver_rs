@@ -1,0 +1,50 @@
+== src/calls.rs constructions
+constructions
+  Pair
+  E
+  Rec
+  E
+edges:
+constructions | Pair | construct Pair no init
+constructions | E::V | construct E no init
+constructions | Rec | construct Rec no init
+constructions | E::R | construct E no init
+== src/calls.rs Wrapper::make
+Wrapper::make
+  Wrapper
+edges:
+Wrapper::make | Self | construct Wrapper no init
+== src/calls.rs Wrapper::from_record
+Wrapper::from_record
+  Rec
+  helper
+edges:
+Wrapper::from_record | Rec | construct Rec no init
+Wrapper::from_record | helper | call helper
+== src/constructions.rs build_marked
+build_marked
+  MarkedStruct
+edges:
+build_marked | MarkedStruct | construct MarkedStruct no init
+== src/constructions.rs build_tuple
+build_tuple
+  Tuple
+edges:
+build_tuple | Tuple | construct Tuple no init
+== src/constructions.rs build_variants
+build_variants
+  Shape
+  Shape
+edges:
+build_variants | Shape::Pair | construct Shape no init
+build_variants | Shape::Named | construct Shape no init
+== src/shapes.rs Rec::mk
+Rec::mk
+  Rec
+edges:
+Rec::mk | Self | construct Rec no init
+== src/foreign_union.rs builds_union
+builds_union
+  Bits
+edges:
+builds_union | Bits | construct Bits no init

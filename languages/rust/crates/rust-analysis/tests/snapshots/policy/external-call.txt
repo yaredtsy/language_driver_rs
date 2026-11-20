@@ -1,0 +1,24 @@
+== src/external.rs std_calls
+std_calls
+  derived
+    Derived
+edges:
+derived | Derived::default | external policy shapes::<Derived as Default>::default
+derived | Derived | construct Derived no init
+derived | clone | external policy shapes::<Derived as Clone>::clone
+std_calls | String::new | external alloc string::String::new
+std_calls | push | external alloc string::String::push
+std_calls | len | external alloc string::String::len
+std_calls | Vec::new | external alloc vec::Vec::new
+std_calls | Some | external core option::Option::Some
+std_calls | Ok::<u8, ()> | external core result::Result::Ok
+std_calls | std::ops::Range | external core ops::range::Range
+std_calls | Default::default | external core default::<u8 as Default>::default
+std_calls | crate::shapes::derived | call derived
+counters: macro_generated_target=2
+== src/external.rs std_naming
+std_naming
+edges:
+std_naming | String::from | external alloc string::<String as From<&str>>::from
+std_naming | len | external core slice::[T]::len
+std_naming | std::mem::swap | external core mem::swap

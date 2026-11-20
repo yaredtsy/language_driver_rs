@@ -1,0 +1,5 @@
+== src/foreign_union.rs calls_foreign
+calls_foreign
+  foreign
+edges:
+calls_foreign | shapes::foreign | call foreign

@@ -1,0 +1,4 @@
+== src/calls.rs operators
+operators
+edges:
+operators | Some | external core option::Option::Some

@@ -1,0 +1,14 @@
+== src/macros.rs derived_methods
+derived_methods
+edges:
+derived_methods | Plain::default | external policy macros::<Plain as Default>::default
+derived_methods | clone | external policy macros::<Plain as Clone>::clone
+counters: macro_generated_target=2
+== src/shapes.rs derived
+derived
+  Derived
+edges:
+derived | Derived::default | external policy shapes::<Derived as Default>::default
+derived | Derived | construct Derived no init
+derived | clone | external policy shapes::<Derived as Clone>::clone
+counters: macro_generated_target=2

@@ -1,0 +1,57 @@
+== src/dispatch.rs closure_value
+closure_value
+edges:
+closure_value | f | unresolved function_typed_value
+counters: function_typed_value=1, open_closure=1
+== src/dispatch.rs fn_pointer
+fn_pointer
+edges:
+fn_pointer | f | unresolved function_typed_value
+counters: function_typed_value=1, open_fn_pointer=1
+== src/dispatch.rs fn_pointer_field
+fn_pointer_field
+edges:
+fn_pointer_field | (h.cb) | unresolved function_typed_value
+counters: function_typed_value=1, open_fn_pointer=1
+== src/dispatch.rs fn_bound
+fn_bound
+edges:
+fn_bound | f | unresolved function_typed_value
+counters: function_typed_value=1, open_fn_param=1
+== src/dispatch.rs dyn_fn
+dyn_fn
+edges:
+dyn_fn | f | unresolved function_typed_value
+counters: function_typed_value=1, open_fn_param=1
+== src/passed.rs locals
+locals
+edges:
+locals | c | unresolved function_typed_value
+locals | g | unresolved function_typed_value
+counters: function_typed_value=2, open_closure=1, open_fn_pointer=1
+== src/callback.rs use_callbacks
+use_callbacks
+  apply
+  double [Passed]
+  apply_generic
+  double [Passed]
+  apply_generic
+edges:
+apply | f | unresolved function_typed_value
+apply_generic | f | unresolved function_typed_value
+use_callbacks | apply | call apply
+use_callbacks | double | pass double
+use_callbacks | apply_generic | call apply_generic
+use_callbacks | double | pass double
+use_callbacks | apply_generic | call apply_generic
+counters: function_typed_value=2, open_fn_param=1, open_fn_pointer=1
+== src/callback.rs apply
+apply
+edges:
+apply | f | unresolved function_typed_value
+counters: function_typed_value=1, open_fn_pointer=1
+== src/callback.rs apply_generic
+apply_generic
+edges:
+apply_generic | f | unresolved function_typed_value
+counters: function_typed_value=1, open_fn_param=1

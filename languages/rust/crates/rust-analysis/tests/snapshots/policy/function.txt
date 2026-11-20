@@ -1,0 +1,24 @@
+== src/calls.rs plain_calls
+plain_calls
+  twice
+  helper
+edges:
+plain_calls | twice | call twice
+plain_calls | helper | call helper
+== src/calls.rs path_calls
+path_calls
+  Rec::mk
+    Rec
+  helper
+edges:
+Rec::mk | Self | construct Rec no init
+path_calls | crate::shapes::Rec::mk | call Rec::mk
+path_calls | self::helper | call helper
+== src/calls.rs callee_expressions
+callee_expressions
+  helper
+edges:
+callee_expressions | (h.cb) | unresolved function_typed_value
+callee_expressions | f | unresolved function_typed_value
+callee_expressions | (helper) | call helper
+counters: function_typed_value=2, open_fn_param=1, open_fn_pointer=1

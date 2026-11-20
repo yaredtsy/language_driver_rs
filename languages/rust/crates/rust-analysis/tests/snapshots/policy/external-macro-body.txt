@@ -1,0 +1,5 @@
+== src/macros.rs project_wrapping_external
+project_wrapping_external
+  f
+edges:
+project_wrapping_external | f | call f

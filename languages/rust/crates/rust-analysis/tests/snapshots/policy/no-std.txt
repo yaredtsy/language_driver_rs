@@ -1,0 +1,14 @@
+== src/lib.rs go
+go
+  Thing::new
+  Thing::run
+edges:
+go | Thing::new | call Thing::new
+go | run | call Thing::run
+counters: layout_skipped=1, warning_cargo_failed=1
+== main.rs run
+run
+  go
+edges:
+run | child::go | call go
+counters: warning_no_manifest=1

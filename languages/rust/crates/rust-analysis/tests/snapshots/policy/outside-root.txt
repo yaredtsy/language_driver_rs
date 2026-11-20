@@ -1,0 +1,11 @@
+== src/lib.rs run
+run
+  local
+edges:
+run | local | call local
+run | member::in_member | external member in_member
+run | member::generated | external member generated
+run | inside::in_inside | external inside in_inside
+run | String::new | external alloc string::String::new
+run | len | external alloc string::String::len
+counters: macro_generated_target=1, outside_root=2

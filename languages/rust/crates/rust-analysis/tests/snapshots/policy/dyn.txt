@@ -1,0 +1,39 @@
+== src/dispatch.rs dyn_reference
+dyn_reference
+edges:
+dyn_reference | write | unresolved function_typed_value
+counters: function_typed_value=1, open_dyn=1
+== src/dispatch.rs boxed_dyn
+boxed_dyn
+edges:
+boxed_dyn | write | unresolved function_typed_value
+counters: function_typed_value=1, open_dyn=1
+== src/dispatch.rs default_method_through_dyn
+default_method_through_dyn
+  Writer::twice
+edges:
+Writer::twice | write | unresolved function_typed_value
+Writer::twice | write | unresolved function_typed_value
+default_method_through_dyn | twice | call Writer::twice
+counters: function_typed_value=2, open_dyn=1, open_self_in_trait=2
+== src/dyn_local.rs dyn_in_a_local
+dyn_in_a_local
+edges:
+dyn_in_a_local | Box::new | external alloc boxed::Box::new
+dyn_in_a_local | Box::new | external alloc boxed::Box::new
+dyn_in_a_local | write | unresolved function_typed_value
+counters: function_typed_value=1, open_dyn=1
+== src/dyn_param.rs call_dyn
+call_dyn
+  dyn_parameter
+  dyn_parameter
+edges:
+call_dyn | dyn_parameter | call dyn_parameter
+call_dyn | dyn_parameter | call dyn_parameter
+dyn_parameter | write | unresolved function_typed_value
+counters: function_typed_value=1, open_dyn=1
+== src/holder.rs Holder::run
+Holder::run
+edges:
+Holder::run | write | unresolved function_typed_value
+counters: function_typed_value=1, open_dyn=1

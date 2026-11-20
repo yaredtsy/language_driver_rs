@@ -1,0 +1,19 @@
+== src/calls.rs recurse_a
+recurse_a
+  recurse_b
+    recurse_a [Recursive]
+edges:
+recurse_a | recurse_b | call recurse_b
+recurse_b | recurse_a | call recurse_a
+== src/recursive.rs start
+start
+  countdown
+    countdown [Recursive]
+  countdown
+    countdown [Recursive]
+edges:
+countdown | write | unresolved function_typed_value
+countdown | countdown | call countdown
+start | countdown | call countdown
+start | countdown | call countdown
+counters: function_typed_value=1, open_type_param=1

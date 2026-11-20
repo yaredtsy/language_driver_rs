@@ -1,0 +1,7 @@
+== src/passed.rs Parser::as_value
+Parser::as_value
+  Parser::helper [Passed]
+  Parser::helper
+edges:
+Parser::as_value | Self::helper | pass Parser::helper
+Parser::as_value | f | call Parser::helper

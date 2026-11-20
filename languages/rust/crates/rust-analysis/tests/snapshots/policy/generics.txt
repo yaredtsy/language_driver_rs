@@ -1,0 +1,18 @@
+== src/generic.rs both
+both
+  from_json
+    emit
+  from_csv
+    emit
+edges:
+both | from_json | call from_json
+both | from_csv | call from_csv
+emit | write | unresolved function_typed_value
+from_csv | emit | call emit
+from_json | emit | call emit
+counters: function_typed_value=1, open_type_param=1
+== src/generic.rs emit
+emit
+edges:
+emit | write | unresolved function_typed_value
+counters: function_typed_value=1, open_type_param=1

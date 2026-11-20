@@ -1,0 +1,3 @@
+== src/bom.rs after_bom
+after_bom
+edges: none

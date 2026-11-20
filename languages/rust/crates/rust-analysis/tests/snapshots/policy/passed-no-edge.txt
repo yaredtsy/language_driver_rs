@@ -1,0 +1,39 @@
+== src/passed.rs externals
+externals
+edges:
+externals | into_iter | external alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+externals | map | external core iter::traits::iterator::Iterator::map
+externals | count | external core iter::traits::iterator::Iterator::count
+counters: external_passed=1
+== src/passed.rs generated_handed_over
+generated_handed_over
+  spawn
+edges:
+generated_handed_over | spawn | call spawn
+spawn | f | unresolved function_typed_value
+counters: external_passed=1, function_typed_value=1, open_fn_pointer=1
+== src/passed.rs constructors
+constructors
+edges:
+constructors | iter | external core slice::[T]::iter
+constructors | copied | external core iter::traits::iterator::Iterator::copied
+constructors | map | external core iter::traits::iterator::Iterator::map
+constructors | count | external core iter::traits::iterator::Iterator::count
+constructors | into_iter | external alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+constructors | map | external core iter::traits::iterator::Iterator::map
+constructors | count | external core iter::traits::iterator::Iterator::count
+counters: constructor_passed=3
+== src/passed.rs Wrapper::all
+Wrapper::all
+edges:
+Wrapper::all | into_iter | external alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+Wrapper::all | map | external core iter::traits::iterator::Iterator::map
+Wrapper::all | count | external core iter::traits::iterator::Iterator::count
+counters: constructor_passed=1
+== src/passed.rs through_a_parameter
+through_a_parameter
+edges:
+through_a_parameter | into_iter | external alloc vec::<Vec<T, A> as IntoIterator>::into_iter
+through_a_parameter | map | external core iter::traits::iterator::Iterator::map
+through_a_parameter | count | external core iter::traits::iterator::Iterator::count
+counters: open_type_param=1, signature_passed=1

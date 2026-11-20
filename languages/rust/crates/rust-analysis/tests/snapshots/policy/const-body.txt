@@ -1,0 +1,15 @@
+== src/calls.rs FROM_CONST
+FROM_CONST
+  helper_const
+edges:
+FROM_CONST | helper_const | call helper_const
+== src/calls.rs FROM_STATIC
+FROM_STATIC
+  helper_const
+edges:
+FROM_STATIC | helper_const | call helper_const
+== src/shapes.rs LIMIT
+LIMIT
+  limit
+edges:
+LIMIT | limit | call limit

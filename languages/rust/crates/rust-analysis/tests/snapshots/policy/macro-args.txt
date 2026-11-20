@@ -1,0 +1,24 @@
+== src/macros.rs std_arguments
+std_arguments
+  f
+  g
+  f
+edges:
+std_arguments | f | call f
+std_arguments | g | call g
+std_arguments | f | call f
+== src/macros.rs project_wrapping_external
+project_wrapping_external
+  f
+edges:
+project_wrapping_external | f | call f
+== src/macros.rs argument_twice
+argument_twice
+  f
+edges:
+argument_twice | f | call f
+== src/macros.rs argument_through_external
+argument_through_external
+  g
+edges:
+argument_through_external | g | call g

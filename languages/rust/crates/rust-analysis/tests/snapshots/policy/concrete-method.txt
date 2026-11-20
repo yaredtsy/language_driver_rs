@@ -1,0 +1,17 @@
+== src/dispatch.rs concrete
+concrete
+  <Json as Writer>::write
+  Writer::twice
+edges:
+Writer::twice | write | unresolved function_typed_value
+Writer::twice | write | unresolved function_typed_value
+concrete | write | call <Json as Writer>::write
+concrete | twice | call Writer::twice
+counters: function_typed_value=2, open_self_in_trait=2
+== src/calls.rs method_chain
+method_chain
+  Rec::value
+edges:
+method_chain | value | call Rec::value
+method_chain | checked_add | external core num::u8::checked_add
+method_chain | unwrap_or | external core option::Option::unwrap_or

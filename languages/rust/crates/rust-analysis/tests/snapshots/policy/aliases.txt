@@ -1,0 +1,17 @@
+== src/aliases.rs by_use_as
+by_use_as
+  helper
+edges:
+by_use_as | h | call helper
+== src/aliases.rs by_pub_use
+by_pub_use
+  helper
+edges:
+by_pub_use | crate::aliases::shown | call helper
+== src/aliases.rs by_type_alias
+by_type_alias
+  Rec::mk
+    Rec
+edges:
+Rec::mk | Self | construct Rec no init
+by_type_alias | A::mk | call Rec::mk

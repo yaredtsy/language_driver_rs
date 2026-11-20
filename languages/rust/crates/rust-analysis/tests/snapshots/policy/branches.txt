@@ -1,0 +1,14 @@
+== src/recursive.rs countdown
+countdown
+  countdown [Recursive]
+edges:
+countdown | write | unresolved function_typed_value
+countdown | countdown | call countdown
+counters: function_typed_value=1, open_type_param=1
+== src/dyn_local.rs dyn_in_a_local
+dyn_in_a_local
+edges:
+dyn_in_a_local | Box::new | external alloc boxed::Box::new
+dyn_in_a_local | Box::new | external alloc boxed::Box::new
+dyn_in_a_local | write | unresolved function_typed_value
+counters: function_typed_value=1, open_dyn=1

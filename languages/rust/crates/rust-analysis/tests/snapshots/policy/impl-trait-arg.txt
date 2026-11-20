@@ -1,0 +1,5 @@
+== src/dispatch.rs impl_argument
+impl_argument
+edges:
+impl_argument | write | unresolved function_typed_value
+counters: function_typed_value=1, open_impl_trait=1

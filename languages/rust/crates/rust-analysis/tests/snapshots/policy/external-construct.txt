@@ -1,0 +1,7 @@
+== src/constructions.rs build_external
+build_external
+edges:
+build_external | Some | external core option::Option::Some
+build_external | Ok::<u8, u8> | external core result::Result::Ok
+build_external | Err::<u8, u8> | external core result::Result::Err
+build_external | std::ops::Range | external core ops::range::Range

@@ -1,0 +1,8 @@
+== src/lib.rs uses_the_twins
+uses_the_twins
+  twin_a
+  twin_b
+edges:
+uses_the_twins | twin_a | call twin_a
+uses_the_twins | twin_b | call twin_b
+counters: duplicate_marker=1

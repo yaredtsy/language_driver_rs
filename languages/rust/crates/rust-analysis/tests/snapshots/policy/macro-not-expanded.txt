@@ -1,0 +1,28 @@
+== src/macros.rs not_expanded
+not_expanded
+  g
+edges:
+not_expanded | g | call g
+counters: macro_not_expanded=1
+== src/macros.rs unknown_around_a_call
+unknown_around_a_call
+edges: none
+counters: macro_not_expanded=1
+== src/macros.rs unknown_in_unknown
+unknown_in_unknown
+  g
+edges:
+unknown_in_unknown | g | call g
+counters: macro_not_expanded=1
+== src/macros.rs unknown_in_known
+unknown_in_known
+edges: none
+counters: macro_not_expanded=1
+== src/macros.rs unknown_in_a_repeated_argument
+unknown_in_a_repeated_argument
+edges: none
+counters: macro_not_expanded=1
+== src/macros.rs unknown_in_a_project_macros_body
+unknown_in_a_project_macros_body
+edges: none
+counters: macro_not_expanded=2

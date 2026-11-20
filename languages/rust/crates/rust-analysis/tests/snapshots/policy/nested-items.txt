@@ -1,0 +1,12 @@
+== src/calls.rs nested_items
+nested_items
+  nested_items::{fn}::inner
+    helper
+edges:
+nested_items | inner | call nested_items::{fn}::inner
+nested_items::{fn}::inner | helper | call helper
+== src/lib.rs with_inner
+with_inner
+  with_inner::{fn}::inner
+edges:
+with_inner | inner | call with_inner::{fn}::inner

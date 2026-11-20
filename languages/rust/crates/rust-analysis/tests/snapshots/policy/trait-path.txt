@@ -1,0 +1,24 @@
+== src/dispatch.rs trait_path_on_a_concrete_type
+trait_path_on_a_concrete_type
+  <Json as Writer>::write
+edges:
+trait_path_on_a_concrete_type | Writer::write | call <Json as Writer>::write
+== src/dispatch.rs trait_path_through_a_parameter
+trait_path_through_a_parameter
+edges:
+trait_path_through_a_parameter | Writer::write | unresolved function_typed_value
+counters: function_typed_value=1, open_type_param=1
+== src/dispatch.rs trait_path_through_an_iterator
+trait_path_through_an_iterator
+edges:
+trait_path_through_an_iterator | Iterator::next | external core iter::traits::iterator::Iterator::next
+counters: open_type_param=1
+== src/dispatch.rs default_through_a_parameter
+default_through_a_parameter
+edges:
+default_through_a_parameter | Default::default | external core default::Default::default
+counters: open_type_param=1
+== src/dispatch.rs default_on_a_concrete_type
+default_on_a_concrete_type
+edges:
+default_on_a_concrete_type | Default::default | external core default::<u8 as Default>::default

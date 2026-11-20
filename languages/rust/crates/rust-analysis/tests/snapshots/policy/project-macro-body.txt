@@ -1,0 +1,34 @@
+== src/macros.rs project_body
+project_body
+  emit
+edges:
+project_body | log | call emit
+== src/macros.rs macro_in_macro
+macro_in_macro
+  emit
+edges:
+macro_in_macro | nested | call emit
+== src/macros.rs statements_in_a_body
+statements_in_a_body
+  emit
+  f
+edges:
+statements_in_a_body | statements | call emit
+statements_in_a_body | f | call f
+== src/macros.rs project_macro_around_external
+project_macro_around_external
+  g
+edges:
+project_macro_around_external | wrap | call g
+== src/macros.rs two_project_levels
+two_project_levels
+  g
+edges:
+two_project_levels | nest_wrap | call g
+== src/calls.rs macro_from_another_module
+macro_from_another_module
+  elsewhere
+  helper
+edges:
+macro_from_another_module | from_elsewhere | call elsewhere
+macro_from_another_module | helper | call helper

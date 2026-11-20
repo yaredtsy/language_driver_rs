@@ -1,0 +1,25 @@
+== src/lib.rs Writer::twice
+Writer::twice
+edges:
+Writer::twice | write | unresolved function_typed_value
+Writer::twice | write | unresolved function_typed_value
+counters: function_typed_value=2, open_self_in_trait=2
+== src/calls.rs Declared::defaulted
+Declared::defaulted
+  helper
+edges:
+Declared::defaulted | declared | unresolved function_typed_value
+Declared::defaulted | helper | call helper
+counters: function_typed_value=1, open_self_in_trait=1
+== src/dispatch.rs Step::twice
+Step::twice
+edges:
+Step::twice | step | unresolved function_typed_value
+Step::twice | step | unresolved function_typed_value
+counters: function_typed_value=2, open_self_in_trait=2
+== src/dispatch.rs Step::pair
+Step::pair
+edges:
+Step::pair | Self::fresh | unresolved function_typed_value
+Step::pair | Self::fresh | unresolved function_typed_value
+counters: function_typed_value=2, open_self_in_trait=2

@@ -1,0 +1,24 @@
+== src/lib.rs entry
+entry
+  dbg_only
+    leaf
+  not_miri
+    leaf
+edges:
+dbg_only | leaf | call leaf
+entry | dbg_only | call dbg_only
+entry | release_only | unresolved unknown_callee
+entry | under_miri | unresolved unknown_callee
+entry | not_miri | call not_miri
+not_miri | leaf | call leaf
+counters: unknown_callee=2
+== src/lib.rs dbg_only
+dbg_only
+  leaf
+edges:
+dbg_only | leaf | call leaf
+== src/lib.rs not_miri
+not_miri
+  leaf
+edges:
+not_miri | leaf | call leaf

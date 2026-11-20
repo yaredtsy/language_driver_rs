@@ -1,0 +1,11 @@
+== src/lib.rs calls_generated
+calls_generated
+edges:
+calls_generated | generated | external policy generated
+counters: macro_generated_target=1
+== src/macros.rs calls_made_functions
+calls_made_functions
+edges:
+calls_made_functions | by_macro | external policy macros::by_macro
+calls_made_functions | by_macro | external policy macros::by_macro
+counters: macro_generated_target=2

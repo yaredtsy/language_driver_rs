@@ -1,0 +1,20 @@
+== src/calls.rs closures
+closures
+  helper
+  twice
+  helper
+edges:
+closures | helper | call helper
+closures | twice | call twice
+closures | (|| helper()) | unresolved function_typed_value
+closures | helper | call helper
+closures | a | unresolved function_typed_value
+closures | b | unresolved function_typed_value
+counters: function_typed_value=3, open_closure=3
+== src/calls.rs asynchronous
+asynchronous
+  helper
+  helper
+edges:
+asynchronous | helper | call helper
+asynchronous | helper | call helper

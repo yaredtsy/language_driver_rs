@@ -222,3 +222,100 @@ pub(crate) fn shared<T>(
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
 }
+
+/// The policy table's grammar (`docs/policy.md`, "Where a row is checked"). A row is its id and the last cell, read as groups.
+pub(crate) struct Row {
+    pub(crate) id: String,
+    pub(crate) cell: Cell,
+}
+
+/// What the last cell says.
+pub(crate) enum Cell {
+    /// No word, or a shape the grammar does not have: the sentence says which.
+    Broken(String),
+    /// A folder alone (row `def`): it must exist, and there is no graph and no snapshot.
+    Folder(String),
+    Groups(Vec<Group>),
+}
+
+/// A workspace (a folder under `tests/fixtures/`, which is also the root it is opened at), one file of it, and the entries (qualnames) built from that
+/// file. A second def of one name is `name#1`.
+pub(crate) struct Group {
+    pub(crate) workspace: String,
+    pub(crate) file: String,
+    pub(crate) entries: Vec<String>,
+}
+
+/// The text between pairs of backticks, in order.
+pub(crate) fn backticked(text: &str) -> Vec<String> {
+    text.split('`')
+        .enumerate()
+        .filter(|(n, _)| n % 2 == 1)
+        .map(|(_, word)| word.to_owned())
+        .collect()
+}
+
+/// The rows of the first table: from the line that begins `| Row |` to the first line that does not begin with `|`. The fixture is the last cell.
+pub(crate) fn rows(table: &str) -> Vec<Row> {
+    table
+        .lines()
+        .skip_while(|line| !line.starts_with("| Row |"))
+        .skip(2)
+        .take_while(|line| line.starts_with('|'))
+        .map(|line| {
+            let id = backticked(line).into_iter().next().unwrap_or_default();
+            let last = line
+                .trim_end()
+                .trim_end_matches('|')
+                .rsplit_once(" | ")
+                .map_or("", |(_, cell)| cell);
+            Row {
+                id,
+                cell: groups(last),
+            }
+        })
+        .collect()
+}
+
+/// A file is a word that ends in `.rs`; any other word that begins a group is a workspace. A group that begins with a file keeps the workspace of the
+/// group before it.
+fn groups(cell: &str) -> Cell {
+    if !cell.contains('`') {
+        return Cell::Broken("no fixture".to_owned());
+    }
+    let words: Vec<Vec<String>> = cell.split("; ").map(backticked).collect();
+    if let [only] = words.as_slice()
+        && let [folder] = only.as_slice()
+    {
+        return Cell::Folder(folder.clone());
+    }
+    let mut found: Vec<Group> = Vec::new();
+    for group in words {
+        let mut group = group.into_iter().peekable();
+        let workspace = match group.peek() {
+            None => return Cell::Broken("an empty group".to_owned()),
+            Some(first) if !first.ends_with(".rs") => group.next().unwrap_or_default(),
+            Some(first) => match found.last() {
+                Some(before) => before.workspace.clone(),
+                None => return Cell::Broken(format!("the file `{first}` has no workspace")),
+            },
+        };
+        let Some(file) = group.next() else {
+            return Cell::Broken(format!("the workspace `{workspace}` has no file"));
+        };
+        if !file.ends_with(".rs") {
+            return Cell::Broken(format!(
+                "`{file}` is where the file of `{workspace}` should be"
+            ));
+        }
+        found.push(Group {
+            workspace,
+            file,
+            entries: group.collect(),
+        });
+    }
+    if found.is_empty() {
+        return Cell::Broken("no fixture".to_owned());
+    }
+    Cell::Groups(found)
+}
