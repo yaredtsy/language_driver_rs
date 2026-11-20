@@ -1,0 +1,7 @@
+(def a 0..29 "def a() -> @…t -> P(x): 0" (params) (ret (all x Nat (call P x))) (body (u32 0)))
+(def b 30..60 "def b() -> @…t -> P(x): 0" (params) (ret (all -x Nat (call P x))) (body (u32 0)))
+(def c 61..91 "def c() -> @…t -> P(x): 0" (params) (ret (all +x Nat (call P x))) (body (u32 0)))
+(def d 92..122 "def d() -> &…t -> P(x): 0" (params) (ret (exists x Nat (call P x))) (body (u32 0)))
+(def e 123..152 "def e() -> @…-> B -> C: 0" (params) (ret (all x A (-> B C))) (body (u32 0)))
+(def f 153..184 "def f() -> @…> B) -> C: 0" (params) (ret (all x (group (-> A B)) C)) (body (u32 0)))
+(def g 185..220 "def g() -> @…> B) -> C: 0" (params) (ret (all x (group (all y A B)) C)) (body (u32 0)))

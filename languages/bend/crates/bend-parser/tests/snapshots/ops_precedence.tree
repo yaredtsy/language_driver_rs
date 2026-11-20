@@ -1,0 +1,24 @@
+(def a 0..33 "def a() -> A…C & D | E: 0" (params) (ret (-> A (-> B (op & C (op | D E))))) (body (u32 0)))
+(def
+  b
+  34..79 "def b() -> U…e % f : U32)"
+  (params)
+  (ret U32)
+  (body (group (op - (op + a (op * b c)) (op % (op / d e) f)) (ns U32))))
+(def c 80..117 "def c() -> B…&& c : Bool)" (params) (ret Bool) (body (group (op || a (op && b c)) (ns Bool))))
+(def
+  d
+  118..171 "def d() -> U… >> f : U32)"
+  (params)
+  (ret U32)
+  (body (group (op .|. a (op .^. b (op .&. c (op >> (op << d e) f)))) (ns U32))))
+(def
+  e
+  172..222 "def e() -> B… <= f : U32)"
+  (params)
+  (ret Bool)
+  (body (group (op || (op && (op < a b) (op >= c d)) (op <= e f)) (ns U32))))
+(def f 223..251 "def f() -> L… a <> b <> c" (params) (ret List) (body (op <> a (op <> b c))))
+(def g 252..282 "def g() -> S… a ++ b ++ c" (params) (ret String) (body (op ++ a (op ++ b c))))
+(def h 283..310 "def h() -> T… <&> b <&> c" (params) (ret T) (body (op <&> a (op <&> b c))))
+(def i 311..340 "def i() -> B…f(a) <> g(b)" (params) (ret Bool) (body (op <> (call f a) (call g b))))

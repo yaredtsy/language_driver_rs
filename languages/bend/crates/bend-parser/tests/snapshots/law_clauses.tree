@@ -1,90 +1,9 @@
-Tree {
-    imports: [],
-    decls: [
-        Law(
-            LawDecl {
-                name: Name {
-                    text: "sorted_insert",
-                    span: 4..17 "sorted_insert",
-                },
-                clauses: [
-                    Clause {
-                        exists: false,
-                        quant: Plain,
-                        template: true,
-                        name: Name {
-                            text: "k",
-                            span: 26..27 "k",
-                        },
-                        ty: 29..32 "Nat",
-                        where_: None,
-                        span: 21..32 "for ~k: Nat",
-                    },
-                    Clause {
-                        exists: false,
-                        quant: Erased,
-                        template: false,
-                        name: Name {
-                            text: "A",
-                            span: 40..41 "A",
-                        },
-                        ty: 43..47 "Data",
-                        where_: None,
-                        span: 35..47 "for -A: Data",
-                    },
-                    Clause {
-                        exists: false,
-                        quant: Plain,
-                        template: false,
-                        name: Name {
-                            text: "xs",
-                            span: 54..56 "xs",
-                        },
-                        ty: 58..67 "List<Nat>",
-                        where_: Some(
-                            74..84 "Sorted(xs)",
-                        ),
-                        span: 50..84 "for xs: List<Nat> where Sorted(xs)",
-                    },
-                    Clause {
-                        exists: true,
-                        quant: Plain,
-                        template: false,
-                        name: Name {
-                            text: "ys",
-                            span: 91..93 "ys",
-                        },
-                        ty: 95..104 "List<Nat>",
-                        where_: Some(
-                            111..121 "Sorted(ys)",
-                        ),
-                        span: 87..121 "exs ys: List<Nat> where Sorted(ys)",
-                    },
-                ],
-                claim: Some(
-                    124..139 "Eq(Nat, 1n, 1n)",
-                ),
-                span: 0..139 "law sorted_insert:⏎  for ~k: Nat⏎  for -A: Data⏎"…,
-                doc: None,
-                syntax_error: false,
-            },
-        ),
-        Law(
-            LawDecl {
-                name: Name {
-                    text: "plain",
-                    span: 145..150 "plain",
-                },
-                clauses: [],
-                claim: Some(
-                    154..169 "Eq(Nat, 1n, 1n)",
-                ),
-                span: 141..169 "law plain:⏎  Eq(Nat, 1n, 1n)",
-                doc: None,
-                syntax_error: false,
-            },
-        ),
-    ],
-    comments: [],
-    errors: [],
-}
+(law
+  sorted_insert
+  0..139 "law sorted_i…Nat, 1n, 1n)"
+  (for ~k Nat)
+  (for -A Data)
+  (for xs (tapp List Nat) (where (call Sorted xs)))
+  (exs ys (tapp List Nat) (where (call Sorted ys)))
+  (claim (call Eq Nat (nat 1) (nat 1))))
+(law plain 141..169 "law plain:⏎ …Nat, 1n, 1n)" (claim (call Eq Nat (nat 1) (nat 1))))

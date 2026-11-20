@@ -5,12 +5,13 @@
 //! here reads a file or the network; the `import` lines come back as data.
 
 mod parse;
-mod stopgap;
+mod term;
 mod tree;
 
 pub use tree::{
-    Bind, Clause, CtrDecl, Decl, DefBody, DefDecl, Import, LawDecl, Name, ParseError, Quant,
-    StrLit, Tree, TypeDecl,
+    Arg, ArraySize, Bind, Body, Case, Clause, CtrDecl, Decl, DefBody, DefDecl, Do, DoKind, DoStmt,
+    Import, LawDecl, Let, Lit, Match, MatchArm, Name, Op, ParseError, Quant, StrLit, Term,
+    TermKind, Tree, TypeDecl,
 };
 
 /// Reads a Bend source text into its surface tree. Spans are byte offsets into `text`.

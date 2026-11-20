@@ -1,0 +1,7 @@
+(def
+  Nat.add
+  0..51 "def Nat.add(….succ(a.b.c)"
+  (params (a Nat) (b Nat))
+  (ret Nat)
+  (body (call Nat.succ a.b.c)))
+(def A.B.C 52..86 "def A.B.C(x:…at: A.B.C{x}" (params (x Nat)) (ret Nat) (body (ctr A.B.C x)))

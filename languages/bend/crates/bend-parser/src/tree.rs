@@ -1,8 +1,9 @@
 //! The tree: what the user wrote, at the surface level (docs/08-bend/02-phase-1-parsing.md §2.2). Sugar is kept, nothing is desugared, every node has a
 //! [`Span`] (byte offsets into the text that was parsed), a dotted name is one [`Name`].
 //!
-//! Step 3 of BD1 fills the outline-shaped half: imports, the three declarations with their names and parameter lists, and the extent of each body. The
-//! places where a term will go (a parameter's type, a return type, a body) hold a `Span` for now; step 4 turns each into the term or body it covers.
+//! Terms and bodies are the surface forms of `bend.ts`: `f(a, b)` is one [`TermKind::Call`] with two arguments, an operator keeps the operator that was
+//! written, a list stays a list. Nothing is resolved: a [`TermKind::Name`] is a name, whether it is a binder, a def, Base's or a constructor is for the
+//! analysis (BD4); `+x` is a [`TermKind::Plus`] that the walk decides; a `~` is accepted on any call argument. Binder scopes are not computed.
 
 use analyzer_core::text::Span;
 
@@ -97,8 +98,9 @@ pub struct DefDecl {
     pub params: Vec<Bind>,
     /// The `-> T` of the header. `None` is the form that fills a law (`def f(x):`, its parameters bare names): the parser cannot tell whether such a law
     /// exists, that is a book's question.
-    pub ret: Option<Span>,
-    pub body: DefBody,
+    pub ret: Option<Term>,
+    /// `None` only when the declaration is broken before its body (`syntax_error`).
+    pub body: Option<DefBody>,
     pub span: Span,
     /// The `#` comment block directly above the declaration (no blank line between), from its first `#` to the end of its last line.
     pub doc: Option<Span>,
@@ -110,9 +112,8 @@ pub struct DefDecl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DefBody {
-    /// The text of the body, from its first token to its last: lines indented past the declaration's column, the rest of the header's line included.
-    /// Step 4 reads it into a body. Empty when the declaration ends after the `:` (a broken or unfinished def).
-    Source(Span),
+    /// The body: lets, then a reply; or a match.
+    Code(Body),
     /// `import "./e.c"` lines: a foreign effect, code we cannot read.
     Foreign(Vec<StrLit>),
 }
@@ -134,7 +135,7 @@ pub struct TypeDecl {
     pub name: Name,
     pub params: Vec<Bind>,
     /// The term after `is`: `Data`, `Kind(a)`, …
-    pub kind: Option<Span>,
+    pub kind: Option<Term>,
     pub ctrs: Vec<CtrDecl>,
     pub span: Span,
     pub doc: Option<Span>,
@@ -157,8 +158,8 @@ pub struct CtrDecl {
 pub struct LawDecl {
     pub name: Name,
     pub clauses: Vec<Clause>,
-    /// The claim after the clauses (a body): from its first token to its last. Step 4 reads it.
-    pub claim: Option<Span>,
+    /// The claim after the clauses.
+    pub claim: Option<Body>,
     pub span: Span,
     pub doc: Option<Span>,
     pub syntax_error: bool,
@@ -174,8 +175,8 @@ pub struct Clause {
     /// `for ~k: T`.
     pub template: bool,
     pub name: Name,
-    pub ty: Span,
-    pub where_: Option<Span>,
+    pub ty: Term,
+    pub where_: Option<Term>,
     /// From `for` / `exs` to the end of the clause.
     pub span: Span,
 }
@@ -189,7 +190,7 @@ pub struct Bind {
     pub template: bool,
     pub name: Name,
     /// `None` for a bare name. (To Bend a bare name is `-name: Quant`; the surface form keeps it as written.)
-    pub ty: Option<Span>,
+    pub ty: Option<Term>,
     /// From the first mark (`~`, `-`, `+`) or the name to the end of the type.
     pub span: Span,
 }
@@ -225,4 +226,334 @@ pub struct ParseError {
     pub expected: String,
     /// What was there: `'x'`, or `end of input`.
     pub observed: String,
+}
+
+/// A body: `Local ::= (Quant Name | Term)+ "=" Term+ ";"? Body`, `Match`, or a reply term (`bend.ts` `parse_body`, 2376).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Body {
+    Match(Match),
+    Let(Let),
+    /// The reply.
+    Term(Term),
+}
+
+impl Body {
+    pub fn span(&self) -> Span {
+        match self {
+            Body::Match(m) => m.span,
+            Body::Let(l) => l.span,
+            Body::Term(t) => t.span,
+        }
+    }
+}
+
+/// `match a b: case p q: body …`: one pattern per scrutinee in every case.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Match {
+    pub scrutinees: Vec<Term>,
+    pub cases: Vec<Case>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Case {
+    /// Terms read as patterns: a binder is a [`TermKind::Name`], a constructor pattern a [`TermKind::Ctr`], a literal a [`TermKind::Lit`]. Whether a
+    /// name is a binder or a constructor is for the analysis.
+    pub patterns: Vec<Term>,
+    pub body: Body,
+    /// From `case` to the end of the body.
+    pub span: Span,
+}
+
+/// `pat = value` and the body after it. `x y z = a b c` is one `Let` with three patterns and three values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Let {
+    /// `-x = v`: the binder is erased (written with a `-`).
+    pub erased: bool,
+    /// The left-hand terms, read as patterns: `x`, `+x`, `K{a, b}`, `3n`, … A name stays a name.
+    pub pats: Vec<Term>,
+    /// `x : T = v`: the written type.
+    pub ty: Option<Term>,
+    pub values: Vec<Term>,
+    /// The statement form `a[i] <- v` followed by another statement: Bend reads it as the let `a = a[i] <- v`. `pats` is `[a]`, `values` is the index
+    /// term with its write.
+    pub array_write: bool,
+    pub rest: Box<Body>,
+    pub span: Span,
+}
+
+/// A term. `span` runs from its first token to its last.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Term {
+    pub kind: TermKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TermKind {
+    /// A name, dots included. Not resolved: a binder, a def, Base's, a constructor or a type is the analysis's question.
+    Name(String),
+    Type,
+    Data,
+    /// The word `Quant`.
+    Quant,
+    /// `Kind(t)`.
+    Kind(Box<Term>),
+    /// `&0`, `&1`, `&2`: the quantity as its digit.
+    Qua(u8),
+    /// `?Name`.
+    Hole(Name),
+    Lit(Lit),
+    /// `3n+t`: a Nat literal and the term after the glued `+`.
+    NatPlus {
+        n: String,
+        rest: Box<Term>,
+    },
+    /// `[a, b]` (commas optional).
+    List(Vec<Term>),
+    /// `[v : T * n]` and `[v : T ^ d]`.
+    ArrayNew {
+        elem: Box<Term>,
+        ty: Box<Term>,
+        size: ArraySize,
+    },
+    /// `K{a, b}`, with the `{` glued to the name.
+    Ctr {
+        name: Name,
+        args: Vec<Term>,
+    },
+    /// `D<A, B>`: a name followed by type arguments.
+    TypeApp {
+        name: Name,
+        args: Vec<Term>,
+    },
+    /// `+t`: a quantified datatype (`+D<A>`) or a reusable variable (`+x`). Which one is for the analysis.
+    Plus(Box<Term>),
+    /// `f(a, b)`: one call with two arguments. `f(a)(b)` is a call whose callee is a call. `f!(a)` has `gpu` set.
+    Call {
+        callee: Box<Term>,
+        gpu: bool,
+        args: Vec<Arg>,
+    },
+    /// `x[i]` and `x[i] <- v`.
+    Index {
+        array: Box<Term>,
+        index: Box<Term>,
+        write: Option<Box<Term>>,
+    },
+    /// An infix operator as written. Inside parens that carry a `: T`, `T` names the operator's namespace ([`TermKind::Group`], [`TermKind::Tuple`]).
+    Op {
+        lhs: Box<Term>,
+        op: Op,
+        rhs: Box<Term>,
+    },
+    /// `A -> B`.
+    Arrow {
+        from: Box<Term>,
+        to: Box<Term>,
+    },
+    /// `@ Quant name : A -> B`, and with `exists` the prefix `& name : A -> B`.
+    All {
+        exists: bool,
+        quant: Quant,
+        name: Name,
+        domain: Box<Term>,
+        body: Box<Term>,
+    },
+    /// `x => body`, `+x => body`: one binder. The body is a body (lets and matches allowed). A binder in parens, `(x : T) => body`, keeps its `: T` in
+    /// `annot`: `bend.ts` reads a group as the term inside it, so the parens are no more than that.
+    Lam {
+        reusable: bool,
+        binder: Name,
+        annot: Option<Box<Term>>,
+        body: Box<Body>,
+    },
+    /// `\{ K: a; L: b; tail }`: arms, then an optional tail term; `\{}` has neither.
+    LamMatch {
+        arms: Vec<MatchArm>,
+        tail: Option<Box<Term>>,
+    },
+    /// `{e : T}`.
+    Annot {
+        term: Box<Term>,
+        ty: Box<Term>,
+    },
+    /// `{a == b : T}`, and with `negated` `{a != b : T}`.
+    Eq {
+        lhs: Box<Term>,
+        rhs: Box<Term>,
+        ty: Box<Term>,
+        negated: bool,
+    },
+    /// `{==}`.
+    Refl,
+    /// `%e : P; body` and `%e@E : P; body` (`named` is the name before the `@`).
+    Rewrite {
+        eq: Box<Term>,
+        named: Option<Name>,
+        motive: Box<Term>,
+        rest: Box<Body>,
+    },
+    /// `( body )`, with the `: T` that may follow the body (`(a + b : T)`).
+    Group {
+        body: Box<Body>,
+        ns: Option<Box<Term>>,
+    },
+    /// `(a, b, c)`: two or more bodies; `ns` is the `: T` after the last.
+    Tuple {
+        items: Vec<Body>,
+        ns: Option<Box<Term>>,
+    },
+    Do(Do),
+}
+
+/// `Name ":" Term` in `\{ … }`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct MatchArm {
+    pub ctr: Name,
+    pub body: Term,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Arg {
+    /// Written `~t`.
+    pub template: bool,
+    pub term: Term,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ArraySize {
+    /// `* n`.
+    Count(Box<Term>),
+    /// `^ d`.
+    Depth(Box<Term>),
+}
+
+/// A literal as written: the digits (without the `n`), the whole float, or the text between the quotes (escapes not decoded).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Lit {
+    U32(String),
+    Nat(String),
+    F32(String),
+    Char(String),
+    Str(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Op {
+    /// `&`.
+    Pair,
+    /// `|`.
+    Either,
+    /// `||`.
+    Or,
+    /// `&&`.
+    And,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    /// `<>`.
+    Cons,
+    /// `++`.
+    Append,
+    /// `<&>`.
+    Min,
+    /// `.|.`.
+    BitOr,
+    /// `.^.`.
+    BitXor,
+    /// `.&.`.
+    BitAnd,
+    Shl,
+    Shr,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+}
+
+impl Op {
+    /// The operator as written.
+    pub fn text(self) -> &'static str {
+        match self {
+            Op::Pair => "&",
+            Op::Either => "|",
+            Op::Or => "||",
+            Op::And => "&&",
+            Op::Lt => "<",
+            Op::Le => "<=",
+            Op::Gt => ">",
+            Op::Ge => ">=",
+            Op::Cons => "<>",
+            Op::Append => "++",
+            Op::Min => "<&>",
+            Op::BitOr => ".|.",
+            Op::BitXor => ".^.",
+            Op::BitAnd => ".&.",
+            Op::Shl => "<<",
+            Op::Shr => ">>",
+            Op::Add => "+",
+            Op::Sub => "-",
+            Op::Mul => "*",
+            Op::Div => "/",
+            Op::Mod => "%",
+        }
+    }
+}
+
+/// `do M<ts>:` and its statements, in order. The last is a [`DoKind::Return`] or a [`DoKind::Value`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Do {
+    pub monad: Name,
+    /// The terms between `<` and `>`.
+    pub args: Vec<Term>,
+    pub stmts: Vec<DoStmt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct DoStmt {
+    pub kind: DoKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DoKind {
+    /// `x : T = v`.
+    Let {
+        reusable: bool,
+        name: Name,
+        ty: Term,
+        value: Term,
+    },
+    /// `x : A <- v`.
+    Bind {
+        reusable: bool,
+        name: Name,
+        ty: Term,
+        value: Term,
+    },
+    /// `t <- v`: `t` is the type, the binder is `_`.
+    Exec { ty: Term, value: Term },
+    /// A term followed by `;` or by a line at the block's column: a step of type `Unit`.
+    Step(Term),
+    /// `return t`: the last statement.
+    Return(Term),
+    /// A final value: the last statement.
+    Value(Term),
 }

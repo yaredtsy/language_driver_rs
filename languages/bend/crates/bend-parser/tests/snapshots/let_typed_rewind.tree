@@ -1,0 +1,13 @@
+(def a 0..31 "def a(x: Nat…t: (x : Nat)" (params (x Nat)) (ret Nat) (body (group x (ns Nat))))
+(def
+  b
+  32..71 "def b(x: Nat… Nat) : Nat)"
+  (params (x Nat))
+  (ret Nat)
+  (body (group (group x (ns Nat)) (ns Nat))))
+(def
+  c
+  72..122 "def c(x: Nat…  (y : Nat))"
+  (params (x Nat))
+  (ret Nat)
+  (body (group (let (pats y) (ty Nat) (values x) (group y (ns Nat))))))

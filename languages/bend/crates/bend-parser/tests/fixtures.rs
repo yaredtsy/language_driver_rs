@@ -3,7 +3,7 @@
 
 mod common;
 
-use bend_parser::{Decl, DefBody, parse};
+use bend_parser::{Decl, parse};
 
 #[test]
 fn every_fixture_matches_its_snapshot() {
@@ -19,7 +19,7 @@ fn every_fixture_matches_its_snapshot() {
         assert!(bad.is_empty(), "{name}: {}", bad.join("\n"));
         common::expect_file(
             &common::snapshots_dir().join(format!("{name}.tree")),
-            &common::debug_print(&tree, &text),
+            &common::render(&tree, &text),
         );
     }
 }
@@ -68,5 +68,5 @@ fn a_broken_declaration_does_not_hide_the_next_ones() {
         "the parameters read before the error are kept"
     );
     assert!(broken.doc.is_some(), "so is the doc above it");
-    assert!(matches!(broken.body, DefBody::Source(_)));
+    assert!(broken.body.is_none(), "no body was read");
 }

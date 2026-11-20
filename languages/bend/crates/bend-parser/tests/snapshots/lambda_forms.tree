@@ -1,0 +1,13 @@
+(def a 0..30 "def a() -> N…x => y => x)" (params) (ret Nat) (body (call f (lam x (lam y x)))))
+(def
+  b
+  31..66 "def b() -> N…  z = x⏎  z)"
+  (params)
+  (ret Nat)
+  (body (call f (lam x (let (pats z) (values x) z)))))
+(def
+  c
+  67..117 "def c() -> N… w, _ => 0n)"
+  (params)
+  (ret Nat)
+  (body (call f (lam y (ty Nat) y) (lam +w w) (lam _ (nat 0)))))

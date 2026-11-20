@@ -1,0 +1,8 @@
+def a() -> List: [a b]
+def b() -> List: [a, b, c]
+def c() -> List: []
+def d() -> Array: [0 : U32 * 4n]
+def e() -> Array: [0 : U32 ^ 2n]
+def f() -> List: [[1, 2], [3]]
+def g() -> Array: [0 : U32*8n]
+def h() -> Array: [0 : U32^3n]

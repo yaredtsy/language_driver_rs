@@ -1,0 +1,5 @@
+(def a 0..23 "def a() -> Nat: {e : T}" (params) (ret Nat) (body (annot e T)))
+(def b 24..52 "def b() -> N…{a == b : T}" (params) (ret Nat) (body (eq a b T)))
+(def c 53..81 "def c() -> N…{a != b : T}" (params) (ret Nat) (body (neq a b T)))
+(def d 82..102 "def d() -> Nat: {==}" (params) (ret Nat) (body refl))
+(def e 103..140 "def e() -> {… -> Empty: 0" (params) (ret (-> (eq x y Nat) Empty)) (body (u32 0)))

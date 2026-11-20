@@ -1,0 +1,6 @@
+(def a 0..58 "def a() -> I…    return x" SYNTAX-ERROR (params) (ret (call IO Unit)))
+(def ok 59..77 "def ok() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR
+  42..58 "= 1⏎    return x"
+  expected "a do-block let with its type (write \"x : T = ...\")"
+  observed "'='")

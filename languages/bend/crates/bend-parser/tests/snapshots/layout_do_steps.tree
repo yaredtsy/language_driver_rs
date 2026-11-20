@@ -1,0 +1,21 @@
+(def
+  main
+  0..163 "def main() -…    return m"
+  (params)
+  (ret (call IO Unit))
+  (body
+    (do
+      IO
+      (args Unit)
+      (step (call IO.print (str "a")))
+      (step (call IO.print (str "b")))
+      (bind n U32 (call IO.read))
+      (exec Unit (call IO.print (call U32.show n)))
+      (let m U32 (u32 3))
+      (return m))))
+(def
+  last
+  165..217 "def last() -… IO.pure(1n)"
+  (params)
+  (ret (call IO Nat))
+  (body (do IO (args Nat) (value (call IO.pure (nat 1))))))

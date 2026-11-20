@@ -1,88 +1,9 @@
-Tree {
-    imports: [],
-    decls: [
-        Type(
-            TypeDecl {
-                name: Name {
-                    text: "Dup",
-                    span: 5..8 "Dup",
-                },
-                params: [],
-                kind: Some(
-                    12..16 "Data",
-                ),
-                ctrs: [
-                    CtrDecl {
-                        name: Name {
-                            text: "K",
-                            span: 20..21 "K",
-                        },
-                        fields: [
-                            Bind {
-                                quant: Plain,
-                                template: false,
-                                name: Name {
-                                    text: "x",
-                                    span: 22..23 "x",
-                                },
-                                ty: Some(
-                                    25..28 "Nat",
-                                ),
-                                span: 22..28 "x: Nat",
-                            },
-                            Bind {
-                                quant: Plain,
-                                template: false,
-                                name: Name {
-                                    text: "y",
-                                    span: 30..31 "y",
-                                },
-                                ty: Some(
-                                    33..36 "Nat",
-                                ),
-                                span: 30..36 "y: Nat",
-                            },
-                        ],
-                        span: 20..39 "K{x: Nat, y: Nat, x",
-                    },
-                ],
-                span: 0..45 "type Dup is Data:⏎  K{x: Nat, y: Nat, x: Nat}",
-                doc: None,
-                syntax_error: true,
-            },
-        ),
-        Type(
-            TypeDecl {
-                name: Name {
-                    text: "Fine",
-                    span: 52..56 "Fine",
-                },
-                params: [],
-                kind: Some(
-                    60..64 "Data",
-                ),
-                ctrs: [
-                    CtrDecl {
-                        name: Name {
-                            text: "F",
-                            span: 68..69 "F",
-                        },
-                        fields: [],
-                        span: 68..71 "F{}",
-                    },
-                ],
-                span: 47..71 "type Fine is Data:⏎  F{}",
-                doc: None,
-                syntax_error: false,
-            },
-        ),
-    ],
-    comments: [],
-    errors: [
-        ParseError {
-            span: 38..45 "x: Nat}",
-            expected: "a fresh field name (duplicate declaration: x)",
-            observed: "'x'",
-        },
-    ],
-}
+(type
+  Dup
+  0..45 "type Dup is …Nat, x: Nat}"
+  SYNTAX-ERROR
+  (params)
+  (kind Data)
+  (ctr K (params (x Nat) (y Nat))))
+(type Fine 47..71 "type Fine is Data:⏎  F{}" (params) (kind Data) (ctr F (params)))
+(ERROR 38..45 "x: Nat}" expected "a fresh field name (duplicate declaration: x)" observed "'x'")

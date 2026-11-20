@@ -1,0 +1,5 @@
+def a() -> Nat: f(a, b)
+def b() -> Nat: f(a)(b)(c)
+def c() -> Nat: Nat.add(f(1n), g(2n))
+def d() -> Nat: f(a b c)
+def e() -> Nat: f()

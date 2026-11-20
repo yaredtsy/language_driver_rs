@@ -4,7 +4,7 @@
 //! `bend` is scanner-less recursive descent that throws at its first error. Here a step that can fail returns `Option` (rule 8) and records what went wrong
 //! in `Parser::failure` (`fail`): `None` is the throw. The only catch is in `book`, which resumes at the next declaration (BD-D10).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use analyzer_core::text::Span;
 
@@ -50,13 +50,22 @@ pub(crate) struct Parser<'a> {
     skip_end: usize,
     /// Every comment, start → end. A map so that reading the same text twice (a rewind) records it once.
     comments: BTreeMap<usize, usize>,
+    /// Positions where a typed let was tried and did not hold (`bend.ts` `p.ann`): without it, nested annotations are read twice at every level.
+    pub(crate) ann: BTreeSet<usize>,
     failure: Option<Failure>,
 }
 
-/// What `scan_lines` found: where it stopped (a line start, or the end of the text), and the first and the last byte of code it passed.
+/// What `scan_lines` found: where it stopped (a line start, or the end of the text), and the end of the last code it passed.
+/// A place in the text that `Parser::reset` can go back to.
+#[derive(Clone, Copy)]
+pub(crate) struct Mark {
+    pub(crate) pos: usize,
+    tail: usize,
+    skip_end: usize,
+}
+
 pub(crate) struct Scan {
     pub(crate) stop: usize,
-    pub(crate) first: Option<usize>,
     pub(crate) last: Option<usize>,
 }
 
@@ -101,6 +110,7 @@ impl<'a> Parser<'a> {
             tail: 0,
             skip_end: usize::MAX,
             comments: BTreeMap::new(),
+            ann: BTreeSet::new(),
             failure: None,
         }
     }
@@ -278,9 +288,41 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// The column (in bytes) of the first byte of the line that `at` is on, to `at`.
-    fn col_of(&self, at: usize) -> usize {
-        at - self.line_start(at)
+    /// `bend.ts` 1557 `parse_col`: the 1-based column of `at`, in bytes.
+    pub(crate) fn col(&self, at: usize) -> usize {
+        at - self.line_start(at) + 1
+    }
+
+    /// The end of what has been read: where the last token ended. Right after a `skip` that is `tail` (the whitespace and comments it passed are not
+    /// part of the term before them); after a token taken without one it is `pos`.
+    pub(crate) fn end(&self) -> usize {
+        if self.pos == self.skip_end {
+            self.tail
+        } else {
+            self.pos
+        }
+    }
+
+    /// `bend.ts` 1561 `parse_span`: from `beg` to the end of what has been read.
+    pub(crate) fn span_from(&self, beg: usize) -> Span {
+        self.span(beg, self.end())
+    }
+
+    pub(crate) fn text_at(&self, at: usize) -> Option<&'a str> {
+        self.text.get(at..)
+    }
+
+    /// The reader's place, for a rewind (`bend.ts` `[p.pos, …] = [at, …]`, 2411).
+    pub(crate) fn mark(&self) -> Mark {
+        Mark {
+            pos: self.pos,
+            tail: self.tail,
+            skip_end: self.skip_end,
+        }
+    }
+
+    pub(crate) fn reset(&mut self, m: Mark) {
+        (self.pos, self.tail, self.skip_end) = (m.pos, m.tail, m.skip_end);
     }
 
     fn line_start(&self, at: usize) -> usize {
@@ -288,14 +330,6 @@ impl<'a> Parser<'a> {
             .get(..at)
             .and_then(|before| before.iter().rposition(|&b| b == b'\n'))
             .map_or(0, |i| i + 1)
-    }
-
-    /// One term's extent as a span: from its first token to its last. Step 3 only skips terms (`stopgap.rs`); step 4 builds them.
-    pub(crate) fn term_span(&mut self) -> Option<Span> {
-        self.skip();
-        let beg = self.pos;
-        self.skip_term(0)?;
-        Some(self.span(beg, self.tail))
     }
 
     /// `bend.ts` 2487 `parse_tele`: a parameter list, up to and including its `close`. `out` keeps the binders read so far if it gives up.
@@ -332,12 +366,12 @@ impl<'a> Parser<'a> {
                 None
             } else {
                 self.eat(":")?;
-                Some(self.term_span()?)
+                Some(self.term(0)?)
             };
             let end = if bare {
                 name.span.end as usize
             } else {
-                self.tail
+                self.end()
             };
             out.push(Bind {
                 quant,
@@ -470,7 +504,7 @@ impl<'a> Parser<'a> {
             let floor = self
                 .tail
                 .max(decl.as_ref().map_or(start, |d| d.span().end as usize));
-            let scan = self.scan_lines(f.beg.max(start), None, start);
+            let scan = self.scan_lines(f.beg.max(start), start);
             let last = scan.last.unwrap_or(0).max(floor);
             if let Some(mut d) = decl {
                 d.set_span(self.span(start, last));
@@ -512,7 +546,6 @@ impl<'a> Parser<'a> {
     /// `bend.ts` 2535 `parse_def`.
     fn def(&mut self, start: usize, unsafe_: bool) -> Option<Decl> {
         let name = self.name()?;
-        let name_end = name.span.end as usize;
         let mut d = DefDecl {
             span: self.span(start, name.span.end as usize),
             name,
@@ -520,7 +553,7 @@ impl<'a> Parser<'a> {
             question: false,
             params: Vec::new(),
             ret: None,
-            body: DefBody::Source(self.span(name_end, name_end)),
+            body: None,
             doc: self.doc_above(start),
             syntax_error: false,
         };
@@ -535,12 +568,11 @@ impl<'a> Parser<'a> {
         self.tele(b')', &mut d.params)?;
         self.skip();
         if self.take("->") {
-            d.ret = Some(self.term_span()?);
+            d.ret = Some(self.term(0)?);
         }
         self.eat(":")?;
         let colon_end = self.pos;
         d.span = self.span(start, colon_end);
-        d.body = DefBody::Source(self.span(colon_end, colon_end));
         if self.at_word("import") {
             if d.params.iter().any(|b| b.template) {
                 return self.fail("a body (a template is not foreign)", self.pos, self.pos);
@@ -553,6 +585,10 @@ impl<'a> Parser<'a> {
                     self.pos += 1;
                 }
                 let value = self.slice(beg + 1, self.pos);
+                if self.pos >= self.bytes.len() {
+                    // the error starts at the opening quote: that is where reading resumes from
+                    return self.fail("a closing \"", beg, beg + 1);
+                }
                 self.eat("\"")?;
                 if !(value.ends_with(".c") || value.ends_with(".js")) {
                     return self.fail("a .c or .js path", beg, self.pos);
@@ -563,15 +599,12 @@ impl<'a> Parser<'a> {
                 });
                 d.span = self.span(start, self.pos);
             }
-            d.body = DefBody::Foreign(lits);
+            d.body = Some(DefBody::Foreign(lits));
             return Some(());
         }
-        self.pos = colon_end;
-        let scan = self.scan_lines(colon_end, Some(self.col_of(start)), start);
-        let last = scan.last.unwrap_or(colon_end);
-        d.body = DefBody::Source(self.span(scan.first.unwrap_or(colon_end), last));
-        d.span = self.span(start, last);
-        self.pos = scan.stop;
+        let body = self.body(0)?;
+        d.span = self.span(start, body.span().end as usize);
+        d.body = Some(DefBody::Code(body));
         Some(())
     }
 
@@ -599,7 +632,7 @@ impl<'a> Parser<'a> {
         if !self.word("is") {
             return self.fail("'is'", self.pos, self.pos);
         }
-        d.kind = Some(self.term_span()?);
+        d.kind = Some(self.term(0)?);
         self.eat(":")?;
         d.span = self.span(start, self.pos);
         loop {
@@ -623,7 +656,7 @@ impl<'a> Parser<'a> {
         Some(())
     }
 
-    /// The `law` arm of `parse_book` (2631): name, `:`, the clauses, then the claim, a body (skipped in step 3).
+    /// The `law` arm of `parse_book` (2631): name, `:`, the clauses, then the claim, a body.
     fn law(&mut self, start: usize) -> Option<Decl> {
         let name = self.name()?;
         let mut d = LawDecl {
@@ -664,9 +697,9 @@ impl<'a> Parser<'a> {
             };
             let name = self.name()?;
             self.eat(":")?;
-            let ty = self.term_span()?;
+            let ty = self.term(0)?;
             let where_ = if self.word("where") {
-                Some(self.term_span()?)
+                Some(self.term(0)?)
             } else {
                 None
             };
@@ -678,67 +711,49 @@ impl<'a> Parser<'a> {
                 name,
                 ty,
                 where_,
-                span: self.span(beg, self.tail),
+                span: self.span(beg, self.end()),
             });
-            d.span = self.span(start, self.tail);
+            d.span = self.span(start, self.end());
         }
-        let from = self.tail;
-        self.pos = from;
-        let scan = self.scan_lines(from, Some(self.col_of(start)), start);
-        if let Some(first) = scan.first {
-            let last = scan.last.unwrap_or(first);
-            d.claim = Some(self.span(first, last));
-            d.span = self.span(start, last);
-        }
-        self.pos = scan.stop;
+        let claim = self.block()?;
+        d.span = self.span(start, claim.span().end as usize);
+        d.claim = Some(claim);
         Some(())
     }
 
-    /// Passes lines from `from` (which may be in the middle of a line) until one that ends the declaration: with `body_col` set, the first code line
-    /// indented no deeper than that column (a body is the lines indented past its declaration's column); with `None`, the first line that starts at
-    /// column 0 with `def`, `type`, `law`, `@unsafe` or `import` (the resync of BD-D10). Blank and comment-only lines pass either way. Strings and
-    /// chars are read as one token, so a `#` or a newline inside one is not a comment or a line. Every comment on the way is recorded.
-    pub(crate) fn scan_lines(
-        &mut self,
-        from: usize,
-        body_col: Option<usize>,
-        decl_start: usize,
-    ) -> Scan {
+    /// The recovery scan (BD-D10): passes lines from `from` (which may be in the middle of a line) up to the first line that starts at column 0 with `def`,
+    /// `type`, `law`, `@unsafe` or `import`, or the end of the text. Blank and comment-only lines pass. Strings and chars are read as one token on their line, so a `#` inside one is
+    /// not a comment. Every comment on the way is recorded.
+    pub(crate) fn scan_lines(&mut self, from: usize, decl_start: usize) -> Scan {
         let n = self.bytes.len();
         let mut i = from;
-        let (mut first, mut last) = (None, None);
-        if body_col.is_none() && i > decl_start && self.is_resync_line(i) {
-            return Scan {
-                stop: i,
-                first,
-                last,
-            };
+        let mut last = None;
+        if i > decl_start && self.is_resync_line(i) {
+            return Scan { stop: i, last };
         }
         while i < n {
             match self.byte(i) {
                 b'\n' => {
                     i += 1;
-                    let mut j = i;
-                    while matches!(self.byte(j), b' ' | b'\t' | b'\r') {
-                        j += 1;
-                    }
-                    if j < n && !matches!(self.byte(j), b'\n' | b'#') {
-                        let ends = match body_col {
-                            Some(col) => j - i <= col,
-                            None => self.is_resync_line(i),
-                        };
-                        if ends {
-                            return Scan {
-                                stop: i,
-                                first,
-                                last,
-                            };
-                        }
+                    if self.is_resync_line(i) {
+                        return Scan { stop: i, last };
                     }
                 }
-                b'"' | b'\'' => {
-                    let end = self.quoted_end(i).unwrap_or(n);
-                    first.get_or_insert(i);
+                quote @ (b'"' | b'\'') => {
+                    // a string or a char runs to its close or to the end of its line: a body is read for real, so a string that spans lines
+                    // is not looked for here, and one that never closes cannot swallow the declarations below it
+                    let mut j = i + 1;
+                    while j < n && self.byte(j) != b'\n' {
+                        match self.byte(j) {
+                            b'\\' if self.byte(j + 1) != b'\n' => j += 2,
+                            c if c == quote => {
+                                j += 1;
+                                break;
+                            }
+                            _ => j += 1,
+                        }
+                    }
+                    let end = j.min(n);
                     last = Some(end);
                     i = end;
                 }
@@ -749,32 +764,12 @@ impl<'a> Parser<'a> {
                 }
                 b' ' | b'\t' | b'\r' => i += 1,
                 _ => {
-                    first.get_or_insert(i);
                     last = Some(i + 1);
                     i += 1;
                 }
             }
         }
-        Scan {
-            stop: n,
-            first,
-            last,
-        }
-    }
-
-    /// The index just past the quote that closes the string or char that opens at `open`; `None` when it never closes. A backslash escapes the next
-    /// byte.
-    pub(crate) fn quoted_end(&self, open: usize) -> Option<usize> {
-        let quote = self.byte(open);
-        let mut i = open + 1;
-        while i < self.bytes.len() {
-            match self.byte(i) {
-                b'\\' => i += 2,
-                b if b == quote => return Some(i + 1),
-                _ => i += 1,
-            }
-        }
-        None
+        Scan { stop: n, last }
     }
 
     /// Whether `at` starts a line that begins at column 0 with `def`, `type`, `law`, `@unsafe` or `import`.

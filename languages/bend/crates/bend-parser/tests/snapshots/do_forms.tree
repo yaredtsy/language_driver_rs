@@ -1,0 +1,27 @@
+(def
+  a
+  0..147 "def a() -> I…eturn Unit{}"
+  (params)
+  (ret (call IO Unit))
+  (body
+    (do
+      IO
+      (args Unit)
+      (bind x Nat (call IO.read))
+      (let y Nat (nat 2))
+      (step (call IO.print (call show x)))
+      (exec Unit (call IO.print (call show y)))
+      (return (ctr Unit)))))
+(def
+  b
+  149..225 "def b() -> P…   return 1n"
+  (params)
+  (ret (call Parser Nat))
+  (body (do Parser (args Nat) (bind c Char item) (return (nat 1)))))
+(def
+  c
+  227..274 "def c() -> M…A <- m⏎    x"
+  (params)
+  (ret (call M A))
+  (body (do M (args) (bind x A m) (value x))))
+(def d 275..318 "def d() -> M…    return v" (params) (ret (call M A)) (body (do M (args L R) (return v))))

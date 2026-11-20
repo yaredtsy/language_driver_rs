@@ -1,51 +1,9 @@
-Tree {
-    imports: [],
-    decls: [
-        Def(
-            DefDecl {
-                name: Name {
-                    text: "s",
-                    span: 50..51 "s",
-                },
-                unsafe_: false,
-                question: false,
-                params: [],
-                ret: Some(
-                    57..63 "String",
-                ),
-                body: Source(
-                    65..94 "\"héllo 🌍 # not a comment\"",
-                ),
-                span: 46..94 "def s() -> String: \"héllo 🌍 # not a comment\"",
-                doc: Some(
-                    0..45 "# café — ünïcode in a comment, 日本語",
-                ),
-                syntax_error: false,
-            },
-        ),
-        Def(
-            DefDecl {
-                name: Name {
-                    text: "c",
-                    span: 99..100 "c",
-                },
-                unsafe_: false,
-                question: false,
-                params: [],
-                ret: Some(
-                    106..110 "Char",
-                ),
-                body: Source(
-                    112..116 "'é'",
-                ),
-                span: 95..116 "def c() -> Char: 'é'",
-                doc: None,
-                syntax_error: false,
-            },
-        ),
-    ],
-    comments: [
-        0..45 "# café — ünïcode in a comment, 日本語",
-    ],
-    errors: [],
-}
+(def
+  s
+  46..94 "def s() -> S…t a comment\""
+  (doc 0..45 "# café — ünï…comment, 日本語")
+  (params)
+  (ret String)
+  (body (str "héllo 🌍 # not a comment")))
+(def c 95..116 "def c() -> Char: 'é'" (params) (ret Char) (body (char "é")))
+(comment 0..45 "# café — ünï…comment, 日本語")

@@ -1,0 +1,26 @@
+(def
+  a
+  0..43 "def a(x: U32…x + y : U32)"
+  (params (x U32) (y U32))
+  (ret U32)
+  (body (group (op + x y) (ns U32))))
+(def
+  b
+  44..99 "def b(x: U32…y * z : U32)"
+  (params (x U32) (y U32) (z U32))
+  (ret U32)
+  (body (group (op + x (op * y z)) (ns U32))))
+(def
+  c
+  100..161 "def c(x: U32… - y : U32))"
+  (params (x U32) (y U32))
+  (ret U32)
+  (body (call f (group (op + x y) (ns U32)) (group (op - x y) (ns U32)))))
+(def d 162..193 "def d(x: Nat…t: (x : Nat)" (params (x Nat)) (ret Nat) (body (group x (ns Nat))))
+(def e 194..237 "def e(x: Nat…(x, y : Nat)" (params (x Nat) (y Nat)) (ret Pair) (body (tuple x y (ns Nat))))
+(def
+  f
+  238..285 "def f(x: U32…) * 2 : U32)"
+  (params (x U32))
+  (ret U32)
+  (body (group (op * (group (op + x (u32 1)) (ns U32)) (u32 2)) (ns U32))))

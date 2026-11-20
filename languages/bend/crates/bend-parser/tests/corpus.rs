@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use bend_parser::{Decl, Tree, parse};
+use bend_parser::{Body, Decl, DoKind, TermKind, Tree, parse};
 
 /// One declaration as both sides state it: kind, name, parameters (`None` for a law: Bend's count for it is the proof's), templates (a def's, when it
 /// has a `->`; `None` is "not stated").
@@ -102,6 +102,7 @@ fn every_accepted_file_parses_and_its_declarations_are_found() {
         });
     }
 
+    let mut kinds: BTreeMap<String, usize> = BTreeMap::new();
     let (mut files, mut found, mut bytes) = (0usize, 0usize, 0usize);
     let mut problems: Vec<String> = Vec::new();
     let mut elapsed = std::time::Duration::ZERO;
@@ -146,11 +147,68 @@ fn every_accepted_file_parses_and_its_declarations_are_found() {
             ));
             continue;
         }
+        for root in common::roots(&tree) {
+            common::walk(root, &mut |n| match n {
+                common::Node::Term(t) => {
+                    *kinds
+                        .entry(format!("term {}", common::kind_name(t)))
+                        .or_default() += 1;
+                    match &t.kind {
+                        TermKind::Op { op, .. } => {
+                            *kinds.entry(format!("  op {}", op.text())).or_default() += 1
+                        }
+                        TermKind::Call { gpu, args, .. } => {
+                            if *gpu {
+                                *kinds.entry("  call!".to_string()).or_default() += 1;
+                            }
+                            *kinds.entry("  call args".to_string()).or_default() += args.len();
+                            *kinds.entry("  call ~args".to_string()).or_default() +=
+                                args.iter().filter(|a| a.template).count();
+                        }
+                        TermKind::Do(d) => {
+                            for s in &d.stmts {
+                                let k = match s.kind {
+                                    DoKind::Let { .. } => "let",
+                                    DoKind::Bind { .. } => "bind",
+                                    DoKind::Exec { .. } => "exec",
+                                    DoKind::Step(_) => "step",
+                                    DoKind::Return(_) => "return",
+                                    DoKind::Value(_) => "value",
+                                    _ => "other",
+                                };
+                                *kinds.entry(format!("  do {k}")).or_default() += 1;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                common::Node::Body(b) => {
+                    let kind = match b {
+                        Body::Match(m) => {
+                            *kinds.entry("  match cases".to_string()).or_default() += m.cases.len();
+                            Some("match")
+                        }
+                        Body::Let(l) if l.array_write => Some("let (array write)"),
+                        Body::Let(_) => Some("let"),
+                        // a reply is its term, counted as that term
+                        _ => None,
+                    };
+                    if let Some(k) = kind {
+                        *kinds.entry(format!("body {k}")).or_default() += 1;
+                    }
+                }
+            });
+        }
         problems.extend(
             common::invariants(&text, &tree)
                 .into_iter()
                 .map(|v| format!("{file}: {v}")),
         );
+    }
+    let mut by_count: Vec<(&String, &usize)> = kinds.iter().collect();
+    by_count.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    for (k, n) in by_count {
+        println!("{n:>9}  {k}");
     }
     println!(
         "corpus: {files} files, {bytes} bytes, {found} declarations (types, laws, defs and constructors), parsed in {elapsed:?}"
@@ -166,4 +224,35 @@ fn every_accepted_file_parses_and_its_declarations_are_found() {
             .collect::<Vec<_>>()
             .join("\n")
     );
+}
+
+/// The corpus cut (docs/08-bend/02 §4): every accepted file of at most 20 kB, cut at every 53rd byte (moved back to a character boundary), still gives a
+/// tree whose spans are slices of the text it was given, and nothing panics.
+#[test]
+#[ignore = "needs BEND_CLONE and the lists of scripts/bend-corpus.sh"]
+fn the_corpus_cut_everywhere_never_panics() {
+    let clone =
+        PathBuf::from(std::env::var("BEND_CLONE").expect("BEND_CLONE: the path to the bend clone"));
+    let out = std::env::var("BEND_CORPUS_OUT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spikes/out"));
+    let accepted = read_list(&out, "parse-accepted.txt");
+    let (mut files, mut cuts) = (0usize, 0usize);
+    for file in accepted.lines() {
+        let text = fs::read_to_string(clone.join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
+        if text.len() > 20_000 {
+            continue;
+        }
+        files += 1;
+        for mut at in (0..=text.len()).step_by(53) {
+            while !text.is_char_boundary(at) {
+                at -= 1;
+            }
+            let cut = &text[..at];
+            let bad = common::invariants(cut, &parse(cut));
+            assert!(bad.is_empty(), "{file} cut at {at}: {}", bad.join("\n"));
+            cuts += 1;
+        }
+    }
+    println!("cut corpus: {files} files, {cuts} cuts");
 }

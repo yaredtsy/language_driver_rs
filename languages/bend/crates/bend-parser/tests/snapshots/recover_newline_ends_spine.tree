@@ -1,0 +1,3 @@
+(def c 0..19 "def c() -> Nat:⏎  f" (params) (ret Nat) (body f))
+(def ok 26..44 "def ok() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR 22..25 "(a)" expected "'def', 'type' or 'law'" observed "'('")

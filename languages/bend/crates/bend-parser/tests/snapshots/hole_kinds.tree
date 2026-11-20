@@ -1,0 +1,3 @@
+(def h 0..22 "def h() -> Type: ?TODO" (params) (ret Type) (body ?TODO))
+(def k 23..62 "def k(A: Kin… -> Data: &1" (params (A (Kind a)) (B Quant)) (ret Data) (body &1))
+(def q 63..96 "def q(x: Lis…>) -> &0: ?x" (params (x (tapp List &2 F32))) (ret &0) (body ?x))
