@@ -412,6 +412,110 @@ fn measure() {
     row("bend2/base.bend", &clone.join("bend2/base.bend"), 100);
 }
 
+/// BD5: what a `Session` costs on the largest book of the demos (`demos/app_slash_boss_3d/PROOF.bend`, 5 files): a cold open, a `refresh` with nothing changed,
+/// and a `refresh` after the entry file changed. The folder is copied to a scratch folder first: the clone is only ever read.
+#[test]
+#[ignore = "needs BEND_CLONE; run with --release, one at a time"]
+fn session_measure() {
+    use bend_analysis::{Budget, Cancel, Entry, Session};
+
+    let demo = clone_dir().join("demos/app_slash_boss_3d");
+    let root = std::env::temp_dir().join(format!("bend-session-measure-{}", std::process::id()));
+    fs::create_dir_all(&root).expect("scratch folder");
+    for file in fs::read_dir(&demo).expect("demo") {
+        let file = file.expect("entry").path();
+        if file.extension().is_some_and(|e| e == "bend") {
+            fs::copy(&file, root.join(file.file_name().expect("name"))).expect("copy");
+        }
+    }
+    let entry = Path::new("PROOF.bend");
+    let open = || Session::open(&root, entry, options()).expect("opens");
+
+    // the request: the def of the entry file whose tree is the largest, found once
+    let session = open();
+    let book = session.book().expect("a book");
+    let at = book.file_at(entry).expect("the entry is in the book");
+    let outline = &book.file(at).expect("a file").outline;
+    let occurrences = bend_syntax::occurrences(outline);
+    let defs: Vec<(String, u16)> = outline
+        .defs
+        .iter()
+        .zip(&occurrences)
+        .map(|(def, &n)| (def.qualname.clone(), n as u16))
+        .collect();
+    let summary = (book.files().len(), book.decls().len());
+    let ask = |session: &Session, def: usize| {
+        let entry = Entry::Def {
+            qualname: &defs[def].0,
+            occurrence: defs[def].1,
+        };
+        session.graph("PROOF.bend", &entry, &Budget::default(), &Cancel::new())
+    };
+    let biggest = (0..defs.len())
+        .max_by_key(|&def| ask(&session, def).map_or(0, |g| g.stats.contexts))
+        .expect("a def");
+    let contexts = ask(&session, biggest).expect("a graph").stats.contexts;
+    println!(
+        "book: {} files, {} defs; request: `{}`, {contexts} contexts",
+        summary.0, summary.1, defs[biggest].0
+    );
+    drop(session);
+
+    let ms = |d: Duration| d.as_secs_f64() * 1000.0;
+    let cold_open = median(
+        (0..30)
+            .map(|_| {
+                let start = Instant::now();
+                std::hint::black_box(open());
+                start.elapsed()
+            })
+            .collect(),
+    );
+    let cold_request = median(
+        (0..30)
+            .map(|_| {
+                let session = open();
+                let start = Instant::now();
+                std::hint::black_box(ask(&session, biggest));
+                start.elapsed()
+            })
+            .collect(),
+    );
+    let mut session = open();
+    let nothing = median(
+        (0..300)
+            .map(|_| {
+                let start = Instant::now();
+                std::hint::black_box(session.refresh());
+                start.elapsed()
+            })
+            .collect(),
+    );
+    // one file changed: the entry, rewritten to a text of another length each time (a stamp is the length and the modified time)
+    let path = root.join("PROOF.bend");
+    let text = fs::read_to_string(&path).expect("PROOF.bend");
+    let (mut changed, mut changed_and_asked) = (Vec::new(), Vec::new());
+    for run in 0..30 {
+        fs::write(&path, format!("{text}{}", "\n".repeat(run % 2 + 1))).expect("rewrite");
+        let start = Instant::now();
+        assert!(session.refresh().reopened);
+        changed.push(start.elapsed());
+        let start = Instant::now();
+        std::hint::black_box(ask(&session, biggest));
+        changed_and_asked.push(start.elapsed());
+    }
+    let (changed, first_request) = (median(changed), median(changed_and_asked));
+    println!(
+        "| measure | median, ms |\n|---|---|\n| Session::open (cold: the files read, the tables built) | {:.3} |\n| the first request on a fresh session | {:.3} |\n| refresh, nothing changed | {:.3} |\n| refresh, the entry file changed (the book built again) | {:.3} |\n| the first request after that refresh | {:.3} |",
+        ms(cold_open),
+        ms(cold_request),
+        ms(nothing),
+        ms(changed),
+        ms(first_request),
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
 fn options() -> Options {
     Options::new(MarkerStyle::above("ID"))
 }

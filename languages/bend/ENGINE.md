@@ -299,6 +299,32 @@ and the markers with the caller's style: two parses of a 216 kB file). The book 
 (D22) would draw as a passed edge, and which the walk reads as a nested term because it sees the statement and not the call it stands for. So the thirteen are a policy row owed (`do-project`: a bare def as a bind's value is
 handed over to `M.bind`), not BC-level work; the fifteen are types and owe a row only if Q-BD5 changes what a type position is.
 
+## BD5
+
+`Session` (`bend-analysis/src/session.rs`): a book kept open, followed to the disk by stamps (D41), lost when the entry is gone (D46), no `set_text` (D42). Measured 2026-11-20, macOS, the owner's machine, release,
+`cargo test --release --test corpus -- --ignored session_measure` (the demo's folder is copied to a scratch folder: the clone is only read), medians of 30 runs (300 for the refresh that changes nothing), on
+`demos/app_slash_boss_3d/PROOF.bend` (5 files, 514 defs, 216 kB). The request is `Laws.live_after`, the def of that file with the largest tree (115 contexts). Two runs:
+
+| | median, ms |
+|---|---|
+| `Session::open` (cold: the files read, the tables built) | 7.8 – 9.6 |
+| the first request on a fresh session (the bodies of the files read) | 8.8 – 9.6 |
+| `refresh`, nothing changed (one stat call per watched path) | **0.007** |
+| `refresh`, the entry file changed (the book built again) | 8.0 – 8.2 |
+| the first request after that `refresh` | 9.2 |
+
+A change costs about 17 ms end to end (the load, then the bodies read again by the first request), and nothing costs 7 µs: the driver can call `refresh` before every request. The rebuild is the open of BD3 (8.5 ms, the table
+above): there is no partial reparse because there is no need of one.
+
+**What is stamped** (`stamps.rs`; the length and the modified time of each, `Missing` for a path that is not there; a folder only for a path an import asked for that turned out to be one): every file the load read, by its
+real path, and every path an **import asked for**, as written from the importing file's folder, found or not. The second is what sees a file created where an import looked. The entry
+file's path as the session was given it is stamped too, so a session that is lost (no book, so nothing else to watch) waits on that one. Hub imports are never looked up and so never stamped. A path is stamped **when the
+loader asks for it, before the read**: a file saved while the load runs keeps a stamp older than the text the book holds and is read once more by the next `refresh` (TypeScript's `Stamps::after_build` does the
+same thing from outside the load, because its engine reads the files; here the loader is ours and stamps each path itself).
+
+**Limits, written down:** a file saved to the same length within the file system's clock tick of the last look is not seen by `refresh` (tested: `a_stamp_is_the_length_and_the_modified_time`); `reload` sees it. A file the
+editor holds unsaved is not seen (D42).
+
 ## grammar
 
 S-BD2 (G1–G30, step 2; G31–G36 found in step 4): every form `bend.ts` reads that the BNF comment (lines 8–160) does not name, or names differently. Read 2026-11-20 from `parse_book` (2593), `parse_def`
