@@ -657,6 +657,12 @@ mod tests {
     /// reason of the test below.
     #[test]
     fn with_cargo_off_the_path_the_engines_rule_finds_it_and_std_resolves() {
+        // the rule under test is `$CARGO_HOME/bin/cargo`: a rustup that keeps its proxies elsewhere (Homebrew's, on a CI runner) has nothing to find
+        // there, and a driver without `PATH` truthfully gets `NoToolchain` (the next test)
+        if ra_ap_toolchain::Tool::Cargo.proxy().is_none() {
+            eprintln!("no cargo in $CARGO_HOME/bin here: the engine's rule has nothing to find");
+            return;
+        }
         let nothing = common::tmp_root().join("empty_path");
         let _ = std::fs::remove_dir_all(&nothing);
         std::fs::create_dir_all(&nothing).unwrap();
