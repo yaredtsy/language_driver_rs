@@ -31,8 +31,10 @@ dependencies = [
 name = "bend-cli"
 version = "0.0.0"
 dependencies = [
+ "analyzer-core",
  "bend-analysis",
  "bend-syntax",
+ "serde_json",
 ]
 
 [[package]]
