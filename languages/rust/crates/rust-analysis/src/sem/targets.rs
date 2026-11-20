@@ -90,8 +90,19 @@ mod tests {
 
     const ALL: [ChangeKind; 3] = [ChangeKind::Create, ChangeKind::Modify, ChangeKind::Delete];
 
+    /// `/w/src/lib.rs` is absolute where paths start at the root, and not on Windows, which wants a drive: `C:/w/src/lib.rs`. The cases below are written
+    /// with the short form; the rule matches the text with `/`, as the engine's paths have it, so the forward slashes stay.
+    fn platform_absolute(path: &str) -> String {
+        if cfg!(windows) {
+            format!("C:{path}")
+        } else {
+            path.to_owned()
+        }
+    }
+
     fn refresh(path: &str, kind: ChangeKind, additional: &[&str]) -> bool {
-        let path = AbsPathBuf::try_from(path).expect("an absolute path");
+        let path =
+            AbsPathBuf::try_from(platform_absolute(path).as_str()).expect("an absolute path");
         should_refresh_for_change(&path, kind, additional)
     }
 
