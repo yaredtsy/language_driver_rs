@@ -167,6 +167,17 @@ impl Stamps {
         self.scouts.retain(|path, _| seen.contains_key(path));
     }
 
+    /// Takes every scout's names again, after the stamps this holds (each is kept only if its folder has not moved since: `record_names`). `restamped`
+    /// replaces a scout's stamp and leaves its names from the look before, so a `Stamps` that is about to be kept past a reload (which makes no look at the
+    /// scouts) must have its names taken at its own moment: a stamp from one moment with names from another would show a folder that the reload went past
+    /// as new, for ever, and every change in the scout would reload (4d).
+    pub(crate) fn retake_names(&mut self) {
+        let scouts: Vec<String> = self.scouts.keys().cloned().collect();
+        for path in scouts {
+            self.record_names(&path, names_in(&path));
+        }
+    }
+
     /// The same paths, stamped again now: what the disk says at this moment.
     pub(crate) fn restamped(&self) -> Stamps {
         Stamps {

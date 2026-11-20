@@ -111,7 +111,9 @@ impl Session {
     }
 
     /// `before` is what the disk said of the session's paths just now, before anything is loaded.
-    fn rebuild(&mut self, before: Stamps) -> Refreshed {
+    fn rebuild(&mut self, mut before: Stamps) -> Refreshed {
+        // the scouts' names are taken after their stamps: a reload makes no look at them, and it is what they are kept with from here on (4d)
+        before.retake_names();
         // The old project is freed first, so two databases are never alive at once.
         self.project = None;
         match Project::open(&self.root, &self.file, &self.load) {

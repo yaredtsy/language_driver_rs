@@ -458,6 +458,86 @@ fn a_new_folder_inside_vendor_is_no_reload() {
     assert!(!session.refresh().reopened);
 }
 
+/// A crate that is no package of the load, created after the open at the root (4d). It makes one reload, because a manifest is an input; and the reload does
+/// not make it a package, so the root's names must be taken again with the stamp the reload keeps, or it stays "new" and every change at the root reloads.
+fn assert_one_reload_then_none(name: &str, create: &dyn Fn(&Path)) {
+    let (root, mut session) = open_in("members", name, "crates/a/src/lib.rs");
+
+    create(&root);
+    let first = session.refresh();
+    assert!(first.reopened, "a manifest was created under the root");
+    assert_eq!(first.lost, None);
+    for file in ["notes.md", "more.md", "last.md"] {
+        write(&root, file, "not a crate\n");
+        assert!(
+            !session.refresh().reopened,
+            "{file} at the root, after the reload"
+        );
+    }
+}
+
+/// `fuzz/`, with a `[workspace]` of its own: cargo's own shape for a crate a workspace does not own.
+#[test]
+fn a_crate_with_its_own_workspace_created_after_the_open_is_one_reload_and_no_more() {
+    let _load = one_load();
+    assert_one_reload_then_none("refresh_fuzz", &|root| {
+        write(
+            root,
+            "fuzz/Cargo.toml",
+            &format!("{MEMBER_MANIFEST}\n[workspace]\n").replace("\"b\"", "\"fuzz\""),
+        );
+        write(root, "fuzz/src/lib.rs", "pub fn fuzz() {}\n");
+    });
+}
+
+/// What `cargo new scratch` makes next to a workspace's members, outside `members`: a manifest and `src/main.rs`.
+#[test]
+fn cargo_news_shape_outside_the_members_is_one_reload_and_no_more() {
+    let _load = one_load();
+    assert_one_reload_then_none("refresh_scratch", &|root| {
+        write(
+            root,
+            "scratch/Cargo.toml",
+            &MEMBER_MANIFEST.replace("\"b\"", "\"scratch\""),
+        );
+        write(root, "scratch/src/main.rs", "fn main() {}\n");
+    });
+}
+
+/// An unrelated reload between the two (a manifest saved) does not bring the loop back: the names are taken again with the stamp each time.
+#[test]
+fn an_unrelated_reload_between_them_does_not_bring_the_loop_back() {
+    let _load = one_load();
+    let (root, mut session) = open_in(
+        "members",
+        "refresh_fuzz_and_a_manifest",
+        "crates/a/src/lib.rs",
+    );
+
+    write(
+        &root,
+        "fuzz/Cargo.toml",
+        &format!("{MEMBER_MANIFEST}\n[workspace]\n").replace("\"b\"", "\"fuzz\""),
+    );
+    write(&root, "fuzz/src/lib.rs", "pub fn fuzz() {}\n");
+    assert!(session.refresh().reopened, "the first reload");
+
+    let manifest = root.join("crates/a/Cargo.toml");
+    let text = std::fs::read_to_string(&manifest).unwrap();
+    write(&root, "crates/a/Cargo.toml", &format!("{text}\n# saved\n"));
+    assert!(session.refresh().reopened, "an environment input moved");
+
+    for file in ["notes.md", "more.md"] {
+        write(&root, file, "not a crate\n");
+        assert!(!session.refresh().reopened, "{file} at the root");
+    }
+    // and a package that is one still reloads, after all that
+    write(&root, "crates/b/Cargo.toml", MEMBER_MANIFEST);
+    write(&root, "crates/b/src/lib.rs", "pub fn b() {}\n");
+    assert!(session.refresh().reopened);
+    assert!(files(&session).contains(&"crates/b/src/lib.rs".to_owned()));
+}
+
 /// A session moves to a worker thread (RS5 §2), so it must be `Send`: checked when this compiles.
 #[test]
 fn a_session_is_send() {
