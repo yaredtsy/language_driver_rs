@@ -2,5 +2,5 @@
 main
   Vec2.add
 edges:
-main | a + b | call Vec2.add
+main | + | call Vec2.add
 counters: type_position=7

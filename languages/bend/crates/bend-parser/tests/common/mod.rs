@@ -412,6 +412,20 @@ fn node_invariants(text: &str, n: Node<'_>, bad: &mut Vec<String>) {
                     "operator {s:?} does not run from its left to its right"
                 ));
             }
+            TermKind::Op {
+                lhs,
+                op,
+                op_span,
+                rhs,
+            } if op_span.start < lhs.span.end
+                || rhs.span.start < op_span.end
+                || text.get(op_span.start as usize..op_span.end as usize) != Some(op.text()) =>
+            {
+                bad.push(format!(
+                    "operator {s:?}: its token {op_span:?} is not `{}` between its sides",
+                    op.text()
+                ));
+            }
             TermKind::Plus(_) if !s.starts_with('+') => {
                 bad.push(format!("plus {s:?} does not start with +"))
             }
@@ -527,7 +541,7 @@ fn s_term(t: &Term) -> S {
             }
             list("index", v)
         }
-        TermKind::Op { lhs, op, rhs } => {
+        TermKind::Op { lhs, op, rhs, .. } => {
             list("op", vec![atom(op.text()), s_term(lhs), s_term(rhs)])
         }
         TermKind::Arrow { from, to } => list("->", vec![s_term(from), s_term(to)]),

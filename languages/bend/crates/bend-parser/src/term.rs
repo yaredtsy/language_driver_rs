@@ -2,6 +2,8 @@
 //! `bend.ts` builds `App(App(Ref f, a), b)` or desugars a list into `Con{…}`, this keeps `f(a, b)` and `[a, b]` as written. Four things `bend.ts` decides by
 //! looking at the book's tables are left open (a name's role, `+Name`, `~` arguments, a pattern's head), and no binder scope is computed.
 
+use analyzer_core::text::Span;
+
 use crate::parse::{Parser, is_head, is_keyword, is_name};
 use crate::tree::{
     Arg, ArraySize, Body, Case, Do, DoKind, DoStmt, Let, Lit, Match, MatchArm, Name, Op, Quant,
@@ -596,7 +598,9 @@ impl Parser<'_> {
             if ends {
                 return Some(out);
             }
+            let op_start = self.pos;
             self.pos += op.len();
+            let op_span = Span::new(op_start as u32, self.pos as u32);
             let rhs = self.term(if right { prc } else { prc + 1 })?;
             let span = self.span_from(beg);
             self.skip();
@@ -639,6 +643,7 @@ impl Parser<'_> {
                     kind: TermKind::Op {
                         lhs: Box::new(out),
                         op,
+                        op_span,
                         rhs: Box::new(rhs),
                     },
                     span,

@@ -465,6 +465,9 @@ fn every_ref_the_oracle_prints_is_accounted_for() {
     let mut buckets: BTreeMap<String, usize> = BTreeMap::new();
     let mut none: Vec<String> = Vec::new();
     let mut wrong: Vec<String> = Vec::new();
+    // the sites of sugar against the spans of Bend's own Refs: (matched, mismatched) for an operator's token and for an index
+    let (mut operator_spans, mut index_spans) = ((0usize, 0usize), (0usize, 0usize));
+    let mut span_mismatches: Vec<String> = Vec::new();
     let mut total = 0;
     for table in &tables {
         let stem = table
@@ -520,6 +523,30 @@ fn every_ref_the_oracle_prints_is_accounted_for() {
                 continue;
             };
             *buckets.entry(bucket(found)).or_default() += 1;
+            // an operator's Ref is on its token, which has no letter and no space in it; an index's is `Array.get` / `Array.set`: the place must be the same bytes
+            let text = &book.files()[at.index()].text[beg as usize..end as usize];
+            let operator = !text.is_empty()
+                && text
+                    .chars()
+                    .all(|c| !c.is_alphanumeric() && c != '_' && !c.is_whitespace());
+            let index = callee == "Array.get" || callee == "Array.set";
+            if operator || index {
+                let same = found.span.start == beg && found.span.end == end;
+                let tally = if operator {
+                    &mut operator_spans
+                } else {
+                    &mut index_spans
+                };
+                if same {
+                    tally.0 += 1;
+                } else {
+                    tally.1 += 1;
+                    span_mismatches.push(format!(
+                        "{stem}: {file} {def} -> {callee} {beg}..{end} ({text:?}), ours {}..{}",
+                        found.span.start, found.span.end
+                    ));
+                }
+            }
             // what a place says it reaches is what Bend says
             let agrees = match &found.kind {
                 WalkedKind::Call(to) | WalkedKind::Passed(to) => {
@@ -543,6 +570,13 @@ fn every_ref_the_oracle_prints_is_accounted_for() {
     println!("oracle: {total} refs in {} tables", tables.len());
     for (name, n) in &buckets {
         println!("  {n:6}  {name}");
+    }
+    println!(
+        "  operator tokens: {} spans equal, {} differ; indexes: {} equal, {} differ",
+        operator_spans.0, operator_spans.1, index_spans.0, index_spans.1
+    );
+    for line in span_mismatches.iter().take(10) {
+        println!("    {line}");
     }
     println!("  {:6}  in none", none.len());
     for line in none.iter().take(10) {

@@ -244,9 +244,10 @@ read (`walked`): a site, a term skipped as a type, a counted sugar, or data. **N
 | in none | **0** |
 
 How the oracle's spans and ours meet (found by running it): Bend's `Ref` of a sugar is at the **operator token** for an infix (`Ref(f, op === "&" ? s : t)`), at the whole sugar for `a[i]` and `3n+p`, and at a do statement's
-span **ended after the white space that follows it** (`parse_span` after `parse_skip`): the statement's end is not ours. The test therefore compares **starts**, takes the innermost place that holds a Ref's start, and of those the one
-whose end is nearest. A do block's final value has two Refs that start together (the monad's, over the whole value, and the call's inside it). Our site for an infix sugar is the whole `a + b` (the tree has no operator
-span), so a project operator's edge reads `a + b` in a snapshot.
+span **ended after the white space that follows it** (`parse_span` after `parse_skip`): the statement's end is not ours. So the test compares **starts** for a statement, takes the innermost place that holds a Ref's start,
+and of those the one whose end is nearest (a do block's final value has two Refs that start together: the monad's, over the whole value, and the call's inside it). Since BD4 step 5 `Op` has an `op_span` (the token) and
+an infix sugar's site is that token: **11,399 operator Refs of the oracle (every one whose text has no letter and no space) are at exactly our site's bytes, 0 differ**; the 46 `Array.get` / `Array.set` Refs are at exactly the
+bytes of our site, the whole `a[i]` (for `a[i] <- v` too: 22 of the 46), so an index stays the whole expression. A do statement stays the statement: Bend's end differs and cannot be matched.
 
 ### What the walk counted over every def of each demo's largest book (`demos_counters`)
 

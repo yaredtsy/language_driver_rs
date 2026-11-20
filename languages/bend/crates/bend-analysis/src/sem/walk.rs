@@ -296,15 +296,26 @@ impl Walker {
                     self.term(value, &Ns::None);
                 }
             }
-            TermKind::Op { lhs, op, rhs } => {
+            TermKind::Op {
+                lhs,
+                op,
+                op_span,
+                rhs,
+            } => {
+                // the operator token, where `bend` puts its own `Ref` (`Ref(f, op === "&" || op === "|" ? s : t)`): the whole term for `&` and `|`
+                let at = op_span;
                 // the namespace reaches the operands of an operator that takes it, and of `&&`, `||` and `++`, which `parse_term_ns` looks through
                 let through = match op {
                     Op::And | Op::Or | Op::Append => {
-                        self.push(term.span, What::BaseFixed);
+                        self.push(*at, What::BaseFixed);
                         ns.clone()
                     }
-                    Op::Pair | Op::Either | Op::Cons => {
+                    Op::Pair | Op::Either => {
                         self.push(term.span, What::BaseFixed);
+                        Ns::None
+                    }
+                    Op::Cons => {
+                        self.push(*at, What::BaseFixed);
                         Ns::None
                     }
                     Op::Min => Ns::None,
@@ -313,7 +324,7 @@ impl Walker {
                             Some(verb) => Self::sugar_of(ns, verb),
                             None => Sugar::Unknown,
                         };
-                        self.push(term.span, What::Sugar(sugar));
+                        self.push(*at, What::Sugar(sugar));
                         ns.clone()
                     }
                 };

@@ -351,6 +351,8 @@ pub enum TermKind {
     Op {
         lhs: Box<Term>,
         op: Op,
+        /// The operator token alone (`+` of `a + b`): where `bend` puts its own `Ref` for the operator's def.
+        op_span: Span,
         rhs: Box<Term>,
     },
     /// `A -> B`.
