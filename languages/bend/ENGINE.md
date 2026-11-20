@@ -255,6 +255,48 @@ Over the 16 books (all their defs, walked once each): **3,679** calls to defs of
 counted and not drawn: **6,667 `type_position`**, **3,072 `sugar_base`**, **28 `passed_deep`**, 84 `type_passed`, **0 `open_law`** (every law of a demo has its proof), 0 `external_passed`. Per demo, the largest are
 `app_slash_boss_3d` (1,998 calls, 3,552 `type_position`, 22 `function_typed_value`, 13 `passed_deep`) and `pure_hvm5_mini` (656 calls, 590 constructs, 21 `function_typed_value`, 15 `passed_deep`).
 
+### The sweep (BD4 step 5)
+
+`scripts/bend-sweep.sh <root> <entry>` builds `bend-cli` in release and runs `bend-cli calls <root> <entry> --all` under `/usr/bin/time -l`. `--all` enters **every def of every file of the book once, at depth 1**, so each
+site and each body's counters are seen once (the same way Rust's sweep was run: a def's own body), and sums them (the book's own counters once). 2026-11-20, macOS, the owner's machine. The 16 entries are each demo's
+`main.bend`, except `io_rollback_netcode` (no `main.bend`: its largest book, `walkers_test.bend`); the last row is the largest book of the corpus, entered at `PROOF.bend` (510 entered, 4 laws with a proof skipped: `call_graph`
+enters the proof by that name). Columns: edges `call`, `construct`, `external`, `passed`, `unresolved` (all of them `function_typed_value`: **no `unknown_name`, no `unknown_constructor`, no `external_passed`, no `open_law` in
+any of them**), then the counters, then the time of the 16 requests' loop (open excluded, ms; the slowest single request of the big book is 8 ms) and the peak memory footprint (MB, `peak memory footprint` of `time -l`; the
+maximum resident set size is 2–8 MB).
+
+| entry | files | defs | contexts | call | construct | external | passed | unresolved | `type_position` | `sugar_base` | `type_passed` | `passed_deep` | `function_typed_value` | ms | MB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| app_pong_game_2d/main.bend | 1 | 20 | 18 | 44 | 6 | 13 | 2 | 0 | 85 | 53 | 5 | 0 | 0 | 1 | 1.3 |
+| app_ray_tracer_3d/main.bend | 1 | 35 | 33 | 75 | 6 | 34 | 2 | 0 | 214 | 177 | 5 | 0 | 0 | 1 | 1.4 |
+| app_slash_boss_3d/main.bend | 2 | 471 | 436 | 1954 | 444 | 697 | 22 | 20 | 3425 | 2372 | 17 | 13 | 20 | 17 | 4.9 |
+| app_triangle_2d/main.bend | 1 | 12 | 12 | 34 | 0 | 10 | 2 | 0 | 61 | 38 | 0 | 0 | 0 | 0 | 1.2 |
+| app_win_is_bug_2d/main.bend | 1 | 30 | 28 | 73 | 14 | 13 | 0 | 0 | 66 | 14 | 1 | 0 | 0 | 1 | 1.2 |
+| io_hello_world/main.bend | 1 | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1.1 |
+| io_http_fetch/main.bend | 1 | 14 | 13 | 21 | 5 | 51 | 0 | 0 | 55 | 11 | 3 | 0 | 0 | 0 | 1.2 |
+| io_http_server/main.bend | 1 | 7 | 7 | 7 | 0 | 12 | 0 | 0 | 25 | 10 | 0 | 0 | 0 | 0 | 1.1 |
+| io_rollback_netcode/walkers_test.bend | 3 | 172 | 160 | 276 | 56 | 175 | 4 | 13 | 886 | 195 | 16 | 0 | 13 | 4 | 2.0 |
+| io_tcp_echos/main.bend | 1 | 8 | 8 | 9 | 0 | 12 | 0 | 1 | 32 | 9 | 0 | 0 | 1 | 0 | 1.1 |
+| proof_insertion_sort/main.bend | 2 | 10 | 10 | 13 | 0 | 2 | 0 | 0 | 29 | 4 | 0 | 0 | 0 | 0 | 1.1 |
+| proof_numerics/main.bend | 1 | 7 | 7 | 9 | 0 | 0 | 0 | 0 | 21 | 1 | 0 | 0 | 0 | 0 | 1.1 |
+| proof_typed_eval/main.bend | 1 | 13 | 11 | 21 | 28 | 2 | 0 | 0 | 36 | 0 | 0 | 0 | 0 | 0 | 1.2 |
+| pure_hvm5_mini/main.bend | 1 | 188 | 161 | 611 | 590 | 60 | 1 | 21 | 931 | 132 | 34 | 15 | 21 | 5 | 2.8 |
+| pure_par_sort/main.bend | 1 | 8 | 8 | 18 | 0 | 11 | 0 | 0 | 32 | 0 | 0 | 0 | 0 | 0 | 1.1 |
+| pure_par_sum/main.bend | 1 | 3 | 3 | 5 | 0 | 5 | 0 | 0 | 6 | 0 | 0 | 0 | 0 | 0 | 1.1 |
+| **the 16 `main` entries** | 20 | 999 | 916 | 3,170 | 1,149 | 1,098 | 33 | 55 | 5,905 | 3,016 | 81 | 28 | 55 | 29 | 4.9 (max) |
+| **app_slash_boss_3d/PROOF.bend** (the largest book) | 5 | 514 | 475 | 1,998 | 444 | 708 | 22 | 22 | 3,524 | 2,385 | 17 | 13 | 22 | 21 | 4.9 |
+
+Contexts are the distinct contexts of the union of the graphs: the defs entered and the defs, types and leaves they reach. Everything is milliseconds and a few MB: a book of these sizes is rebuilt, and every def of it walked, in less than
+a frame (BD5's `refresh` can drop the book).
+
+**The sweep found a cost the tests did not.** The first run of `app_slash_boss_3d/main.bend` took **2,333 ms** (471 requests, about 5 ms each): a request made a new `Bend`, which read the file it touched again (the places of the bodies,
+and the markers with the caller's style: two parses of a 216 kB file). The book now keeps both (`OnceLock` per file, markers per label behind a `Mutex`): **34 ms**, and 17 ms for the table's run.
+
+**What the 28 `passed_deep` are** (`app_slash_boss_3d` 13, `pure_hvm5_mini` 15; each read at its site): **15 are project type names**, operands of `->` or `&` in a value position (`@+f: F -> Cam`, the type argument `Sound & Audio` of
+`IO.pure(…)`): a type written where the walk does not know it is a type (an arrow's or a pair's operands are walked, as the plan says). **13 are one thing: the value of a do bind or exec** (`w : String <- name`, `Unit <- pop`,
+`e : Bool <- eof`, `h : Hc <- peek`, all in `pure_hvm5_mini`'s parser), a bare project def used as the **value argument of the sugar's `P.bind`**: a def **handed over** to `M.bind`, which the rule for a direct argument
+(D22) would draw as a passed edge, and which the walk reads as a nested term because it sees the statement and not the call it stands for. So the thirteen are a policy row owed (`do-project`: a bare def as a bind's value is
+handed over to `M.bind`), not BC-level work; the fifteen are types and owe a row only if Q-BD5 changes what a type position is.
+
 ## grammar
 
 S-BD2 (G1–G30, step 2; G31–G36 found in step 4): every form `bend.ts` reads that the BNF comment (lines 8–160) does not name, or names differently. Read 2026-11-20 from `parse_book` (2593), `parse_def`
