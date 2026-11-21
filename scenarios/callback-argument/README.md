@@ -14,10 +14,12 @@ Pins **rule 3's anonymous-function row** and its named twin: a function handed t
 **Bend** (`bend/`, the context layer's step 5) wrote the folder first: `docs/08-bend/06-context-layer-design.md` §11, and §6 for why the
 lambda's calls stay with their writer (BC-D6).
 
-**TypeScript** and **Rust** give the same two trees by their own designs (`docs/03-typescript/12-context-layer/03-design.md` §2, lines a
-and i; `docs/04-rust/05-context-layer/01-design.md` §8): the shared trees are theirs to match when their layers are built. If Q-TC1 and
-Q-RC1 are later answered the other way (an anonymous function's calls move under the function that calls it), the precise tree changes for
-every language at once.
+**Decided 2026-11-21 (D54): an anonymous function's calls are drawn under the function that calls it.** So the precise tree will change: the
+second `each` will draw `work`, and `main` will no longer list it. The file here is the tree of Bend's first layer (the anonymous function known,
+its calls with its writer) and is replaced in the step that builds the rule (`docs/08-bend/07-value-layer-design.md` §12, step V4).
 
-**Python** already follows the other rule (its solver draws a lambda's calls where the lambda is called), so its precise tree will be a file of
-its own, `expected.precise.python.tree`, when its folder is added.
+**TypeScript** and **Rust** give the default tree today; D54 answers their Q-TC1 and Q-RC1 too, so the shared precise tree is theirs to match when
+their layers reach it.
+
+**Python** evaluates a `lambda` to unknown (it follows nested `def`s, which have a node of their own), so its precise tree for this program will
+be a file of its own when its folder is added.

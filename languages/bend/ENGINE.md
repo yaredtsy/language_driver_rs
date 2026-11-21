@@ -525,8 +525,8 @@ binder `k2` in `String.word(R, t, k2)`, counted once in each of `String.word`'s 
 
 - **no `let` holds a function that is then passed** (BC3's `g = work; each(g, 1)`: 0 sites), and no Base def is passed to a parameter that is called;
 - a call's result called is 3 sites, a constructor's field 3 (BC0's c and d, unchanged);
-- **the one unbuilt thing that would change the demos' trees is drawing a lambda's calls under the function that calls it** (TypeScript's TC7, Q-TC1 and Q-RC1's other answer, Python's rule): the 12 sites, and the 3 of
-  `String.word` whose binder would then have a value. 15 of 55, against 16 drawn by this step. It is a tree rule shared by every language, so it is asked as Q-BD9, not decided here.
+- **the one unbuilt thing that would change the demos' trees is drawing a lambda's calls under the function that calls it** (TypeScript's TC7, Q-TC1 and Q-RC1's other answer; Python does it for a nested `def` and not for a `lambda`): the 12 sites, and the 3 of
+  `String.word` whose binder would then have a value. 15 of 55, against 16 drawn by this step. It is a tree rule shared by every language, so it was asked as Q-BD9; **answered yes the same day (D54), and designed in `docs/08-bend/07-value-layer-design.md`**.
 
 ## grammar
 

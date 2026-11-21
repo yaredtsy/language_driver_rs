@@ -341,8 +341,10 @@ main
 
 **`callback-argument`** is new, the scenario the seam's list names for rule 3's anonymous-function row ([`../02-tree-rules/03-the-seam.md`](../02-tree-rules/03-the-seam.md)
 §5). Bend writes the folder first: `README.md`, `bend/main.bend`, and the **shared** `expected.default.tree` and `expected.precise.tree`, which are the
-trees TypeScript's design gives for the same program (03-design §2, lines a and i); Python's rule draws the lambda's call under `each` (B), so
-its tree will be its own file when its folder is added, and the README says so.
+trees TypeScript's design gives for the same program (03-design §2, lines a and i); Python evaluates a `lambda` to unknown (corrected 2026-11-21:
+this file first said Python draws it under `each`; that is true of a nested `def`, not of a lambda), so its tree will be its own file when its
+folder is added. **D54 has since moved a lambda's calls under the function that calls it: [`07-value-layer-design.md`](07-value-layer-design.md)
+replaces BC-D6 for the lambdas that move, and this scenario's precise tree with it.**
 
 ```bend
 import Base

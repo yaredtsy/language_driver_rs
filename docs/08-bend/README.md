@@ -6,7 +6,8 @@ bend
 ├── PHASE 1: READING ─────────────── 02-phase-1-parsing.md         BD0 spikes · BD1 the parser crate and its tree
 ├── PHASE 2: DEFS AND CALLS ──────── 03-phase-2-defs-and-calls.md  BD2 outline + markers · BD3 the book · BD4 call graph · BD5 driver needs
 ├── PHASE 3: THE CONTEXT LAYER ───── 04-phase-3-context-layer.md   BC0 measure · BC1 templates · BC2 function-typed parameters · BC3–BC5
-│   └── the design ───────────────── 06-context-layer-design.md    BC1+BC2 as one step: Known · the key · flow-down · the rows · the proof · the steps
+│   ├── the design ───────────────── 06-context-layer-design.md    BC1+BC2 as one step: Known · the key · flow-down · the rows · the proof · the steps
+│   └── the value layer ──────────── 07-value-layer-design.md      on by default · lambdas under their caller · variables · returns · factories · constructor fields
 └── decisions and questions ──────── 05-decisions-and-questions.md draft rows BD-D1… · what needs your yes · what I did not check
 ```
 
@@ -61,7 +62,7 @@ known number in the table.
 **State (2026-11-20): BD0 and BD1 complete** (aeef3fc, c8742de, f1ed5f6, e67f328, 379b909), every proof reproduced at review; `bend-parser` is
 2,030 code lines, 85 fixtures; `languages/bend/ENGINE.md` has the corpus numbers, the term-node counts and the grammar list G1–G36. **BD2 complete** (08bdce7, 01f622e, 692dfa0): `qualnames.md` and `markers.md` are the contract.
 **Tag `bend-v0.1.0` is the owner's, after Q-BD2 (law and proof: one qualname or a suffix).** **BD3 complete** (03de29f, 66695e6): the book, Base's names as a generated list (Q-BD3 answered as recommended), the Ref oracle at zero mismatches. **BD4 and BD5 complete** (0adfc30 … 80f3390, 2026-11-21): **layer 1 of Bend is built**, every proof reproduced at review. The three tags
-(`bend-v0.1.0`, `bend-v0.2.0`, `bend-v0.3.0`) are the owner's, Q-BD2 before the first. BC0 done (6f4cff0): 55 unresolved sites in 4,323 on the demos. **D51, D52: the context layer is built, BC1+BC2 as one step** ([`06-context-layer-design.md`](06-context-layer-design.md); 89a07ba … 2c03f3b, 2026-11-21, every step's proof reproduced at review), **off by default**. On the demos it draws 16 of the 55 unresolved sites and knows 12 more to be a lambda (`languages/bend/ENGINE.md` §BC1+BC2). Open: Q-BD9 (draw a lambda's calls under its caller), and when the layer is on by default. Every other Q-BD is answered (05 §3).
+(`bend-v0.1.0`, `bend-v0.2.0`, `bend-v0.3.0`) are the owner's, Q-BD2 before the first. BC0 done (6f4cff0): 55 unresolved sites in 4,323 on the demos. **D51, D52: the context layer is built, BC1+BC2 as one step** ([`06-context-layer-design.md`](06-context-layer-design.md); 89a07ba … 2c03f3b, 2026-11-21, every step's proof reproduced at review), **off by default**. On the demos it draws 16 of the 55 unresolved sites and knows 12 more to be a lambda (`languages/bend/ENGINE.md` §BC1+BC2). **D53, D54, D55 (owner, 2026-11-21): the layer goes on by default, a lambda's calls are drawn under the function that calls it, and the layer follows values as Python's does** (variables, returns, factories, partial application, constructor fields): [`07-value-layer-design.md`](07-value-layer-design.md), four phases V0 to V9, nothing of it built. Every other Q-BD is answered (05 §3).
 
 The user asked for three phases. They map so: **phase 1 (reading)** is BD0–BD1, the parser and its tree; **phase 2 (what can be called, and
 the call tree)** is BD2–BD5, the outline, the book and the call graph on core's flat solver; **phase 3 (the context layer)** is BC0–BC5.
