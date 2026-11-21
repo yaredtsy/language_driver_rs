@@ -6,7 +6,7 @@ use std::path::Path;
 
 use analyzer_core::graph::StableDef;
 use analyzer_testkit::scenarios::{Level, Subject, run};
-use bend_analysis::{Book, Cancel, Graph, Limits, call_graph};
+use bend_analysis::{Book, Cancel, Graph, Limits, Precision, call_graph};
 
 mod common;
 use common::options;
@@ -17,22 +17,43 @@ const BEND: Subject = Subject {
     graph: scenario_graph,
 };
 
-fn scenario_graph(program: &Path) -> Option<Graph> {
+/// The same program with the context layer on: what `Level::Precise` is asked of (BC-D8: precision is an option, off by default).
+const BEND_PRECISE: Subject = Subject {
+    folder: "bend",
+    scenarios: "../../../../scenarios",
+    graph: scenario_graph_precise,
+};
+
+fn scenario_graph_at(program: &Path, precision: Precision) -> Option<Graph> {
     let book = Book::open(program, Path::new("main.bend"))?;
     call_graph(
         &book,
         Path::new("main.bend"),
         "main",
-        &options(),
+        &options().with_precision(precision),
         &Limits::default(),
         &Cancel::new(),
     )
 }
 
+fn scenario_graph(program: &Path) -> Option<Graph> {
+    scenario_graph_at(program, Precision::Default)
+}
+
+fn scenario_graph_precise(program: &Path) -> Option<Graph> {
+    scenario_graph_at(program, Precision::Precise)
+}
+
 #[test]
-fn every_scenario_gives_its_tree() {
-    // the six that every language has, and `law-across-files`, which only Bend has so far
-    assert_eq!(run(&BEND, Level::Default), 7);
+fn every_scenario_gives_its_default_tree() {
+    // the six that every language has, `law-across-files`, which only Bend has so far, and `callback-argument`
+    assert_eq!(run(&BEND, Level::Default), 8);
+}
+
+#[test]
+fn every_scenario_gives_its_precise_tree() {
+    // the same eight: where the levels agree a scenario has one tree, and where they do not it has both
+    assert_eq!(run(&BEND_PRECISE, Level::Precise), 8);
 }
 
 /// What `construct-marked-class` pins: a marked type is identified by its marker alone, which holds no name, so the graph must hold a row for the type, or the

@@ -3,6 +3,7 @@
 use std::process::{Command, Output};
 
 const POLICY: &str = "../bend-analysis/tests/fixtures/policy";
+const SCENARIOS: &str = "../../../../scenarios";
 
 fn run(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_bend-cli"))
@@ -176,4 +177,56 @@ fn a_bad_request_is_an_exit_code_and_a_sentence() {
         assert!(!err(&o).contains("panicked"), "{args:?}: {}", err(&o));
         assert!(out(&o).is_empty(), "{args:?}: nothing on stdout");
     }
+}
+
+/// A scenario's expected tree, as the reviewer wrote it.
+fn expected(scenario: &str, file: &str) -> String {
+    std::fs::read_to_string(format!("{SCENARIOS}/{scenario}/{file}")).expect("an expected tree")
+}
+
+/// `--precise` is the context layer: the tree of `two-callers` is the precise one with it, the default one without, and the summary says what the layer counted.
+#[test]
+fn precise_prints_the_precise_tree_and_the_default_is_unchanged() {
+    let root = format!("{SCENARIOS}/two-callers/bend");
+    let default = run(&["calls", &root, "main.bend", "--entry", "main"]);
+    assert_eq!(default.status.code(), Some(0), "{}", err(&default));
+    let tree = expected("two-callers", "expected.default.bend.tree");
+    assert!(
+        out(&default).starts_with(&format!("{tree}\n")),
+        "{}",
+        out(&default)
+    );
+
+    let precise = run(&["calls", &root, "main.bend", "--entry", "main", "--precise"]);
+    assert_eq!(precise.status.code(), Some(0), "{}", err(&precise));
+    let tree = expected("two-callers", "expected.precise.bend.tree");
+    assert!(
+        out(&precise).starts_with(&format!("{tree}\n")),
+        "{}",
+        out(&precise)
+    );
+    // the callback scenario has a counter only the layer writes
+    let callback = out(&run(&[
+        "calls",
+        &format!("{SCENARIOS}/callback-argument/bend"),
+        "main.bend",
+        "--entry",
+        "main",
+        "--precise",
+    ]));
+    assert!(
+        callback.contains("anonymous_function_called=1"),
+        "{callback}"
+    );
+}
+
+/// The sweep enters every def under the open key, where nobody has named anything: `--precise` with it is refused, and the sentence says why.
+#[test]
+fn precise_is_refused_with_all() {
+    let root = format!("{SCENARIOS}/two-callers/bend");
+    let o = run(&["calls", &root, "main.bend", "--all", "--precise"]);
+    assert_eq!(o.status.code(), Some(2));
+    assert!(out(&o).is_empty(), "{}", out(&o));
+    assert!(err(&o).contains("under the open key"), "{}", err(&o));
+    assert!(err(&o).contains("--precise"), "{}", err(&o));
 }

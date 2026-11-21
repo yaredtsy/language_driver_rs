@@ -1,10 +1,11 @@
 //! `bend-cli`: try the analyzer by hand.
 //!
 //! - `outline <file> [--label <label>]`: the defs of one file, with their markers.
-//! - `calls <root> <file> (--entry <qualname> | --all) [--max-contexts N] [--max-depth N] [--graph | --wire [--merged] [--function-prefix P]
+//! - `calls <root> <file> (--entry <qualname> | --all) [--precise] [--max-contexts N] [--max-depth N] [--graph | --wire [--merged] [--function-prefix P]
 //!   [--class-prefix P]] [--label <label>] [--timing]`: the call tree under a def of `file` (relative to `root`, the folder that was asked for), then a summary of
 //!   the graph (edges by kind, unresolved edges by reason, every counter). `--max-contexts` and `--max-depth` are the solver's limits: a cut is drawn and
-//!   counted. When a file has two defs of one name (a law and its proof) the one with code is the entry. `--wire` prints the wire (D17) alone on stdout as
+//!   counted. `--precise` turns the context layer on (`Precision::Precise`): a parameter a caller named is called as that def, per caller, and a context that a caller's
+//!   arguments made is drawn as a node of its own; it is refused with `--all`. When a file has two defs of one name (a law and its proof) the one with code is the entry. `--wire` prints the wire (D17) alone on stdout as
 //!   JSON, with the prefixes the caller gives for the ids of functions and classes; `--merged` joins siblings with one target. `--all` is the sweep: it enters
 //!   **every def of every file of the book once**, at depth 1 (a def's own body, so each site and each counter is seen once), and prints one table instead of a tree.
 //!
@@ -17,15 +18,16 @@ use std::time::Instant;
 
 use analyzer_core::text::{Encoding, LineIndex};
 use bend_analysis::{
-    Book, Cancel, ContextId, DefKind, EdgeTo, Graph, Limits, MarkerStyle, Options, RenderOptions,
-    WireOptions, WireStyle, call_graph, render, to_text, wire,
+    Book, Cancel, ContextId, DefKind, EdgeTo, Graph, Limits, MarkerStyle, Options, Precision,
+    RenderOptions, WireOptions, WireStyle, call_graph, render, to_text, wire,
 };
 use bend_syntax::{occurrences, outline};
 
 const USAGE: &str = "usage: bend-cli outline <file> [--label <label>]
-       bend-cli calls <root> <file> (--entry <qualname> | --all) [--max-contexts <n>] [--max-depth <n>] [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--label <label>] [--timing]
+       bend-cli calls <root> <file> (--entry <qualname> | --all) [--precise] [--max-contexts <n>] [--max-depth <n>] [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--label <label>] [--timing]
   <root> is the folder asked for; <file> is the entry file of the book, relative to it. --max-contexts and --max-depth are the solver's limits (a cut is drawn and counted).
-  --all enters every def of the book once at depth 1 and prints one table: the sweep.";
+  --all enters every def of the book once at depth 1 and prints one table: the sweep.
+  --precise turns the context layer on: a parameter a caller named is called as that def, per caller. Not with --all.";
 
 /// Remove `--name value` from `args` and return the value.
 fn take_value(args: &mut Vec<String>, name: &str) -> Option<String> {
@@ -69,12 +71,13 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let label = take_value(&mut args, "--label").unwrap_or_else(|| "ID".to_owned());
     let entry = take_value(&mut args, "--entry");
-    let (all, graph, as_wire, merged, timing) = (
+    let (all, graph, as_wire, merged, timing, precise) = (
         take_flag(&mut args, "--all"),
         take_flag(&mut args, "--graph"),
         take_flag(&mut args, "--wire"),
         take_flag(&mut args, "--merged"),
         take_flag(&mut args, "--timing"),
+        take_flag(&mut args, "--precise"),
     );
     let (function_prefix, class_prefix) = (
         take_value(&mut args, "--function-prefix"),
@@ -108,6 +111,11 @@ fn main() -> ExitCode {
                     "--all prints its own table at depth 1: no --graph, --wire or limits",
                 );
             }
+            if all && precise {
+                return usage(
+                    "--all enters every def under the open key, where no caller has named anything, so --precise would show nothing: ask for one --entry",
+                );
+            }
             let mut limits = Limits::default();
             if let Some(n) = max_contexts {
                 limits.max_contexts = n;
@@ -115,7 +123,10 @@ fn main() -> ExitCode {
             if let Some(n) = max_depth {
                 limits.max_depth = Some(n);
             }
-            let options = Options::new(MarkerStyle::above(label));
+            let mut options = Options::new(MarkerStyle::above(label));
+            if precise {
+                options = options.with_precision(Precision::Precise);
+            }
             let book = match Book::open(Path::new(root), Path::new(file)) {
                 Some(book) => book,
                 None => return fail(&format!("{root}: {file} is not a file under that folder")),
