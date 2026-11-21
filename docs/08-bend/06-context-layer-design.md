@@ -262,7 +262,7 @@ The first three are pylspt's, as the two sibling designs restate them; the rest 
 | `calls.rs` | `Options::precision: Precision` (`#[non_exhaustive]`: `Default`, `Precise`; `Default` is the default value, BC-D8); `type Key = key::Key`; `digest`; `walk` builds the `Env` from the key; the start is `Key::open()`; `walked()` matches `Target::Call(callee, _)`; **the layer-1 notes (`type_position`, `sugar_base`, `passed_deep`, `type_passed`, `external_passed`, `open_law`, `outside_root`) are added once per def**, the first time it is walked, not once per context (TypeScript's §10); the `key_slot_*` counts are per context, since they are about keys; the unresolved reasons stay what the edges say |
 | `session.rs` | keeps digest → canonical key for the contexts it listed; `graph_from` (BC-D7) |
 | `lib.rs` | exports `Precision`; nothing else |
-| `bend-cli` | `calls … --entry … --precise`; refused with `--all` (the sweep enters every def under the open key, so it would show nothing) |
+| `bend-cli` | `calls … --entry … --precise`; refused with `--all` (the sweep enters every def under the open key, so it would show nothing). Since D53 (0e1667d) the flag is `--level default\|precise`, precise unless said |
 | `tests/` | `tests/context.rs`, `tests/fixtures/context/<row>/`, `tests/snapshots/context/<row>.txt`; the scenarios test gains a precise subject; `tests/corpus.rs` gains the demos measure |
 | **unchanged** | `bend-parser`, `bend-syntax`, the outline, qualnames, markers, `book.rs` (one lookup may be added for `graph_from`: a `StableDef` back to a `DeclId`), the renderer, the wire and its merge, the policy rows and snapshots of layer 1, the scenarios' default trees, **`core/`** (no trait change, no new `Cut`, no testkit change: the scenarios already pick a language's own tree per level) |
 
@@ -487,7 +487,7 @@ touched), `cargo test -p bend-analysis` with the usual caps; no product words, n
 `ArgShape` and `What` are the owned shapes and the only ones `walk.rs` reads); never iterate a hash map to produce output; a commit per step with
 the step's number in its first line; a report per step that says what passed and what did not, with the output.
 
-After step 7 the layer can be tagged for the first time, **off by default** (BC-D8). Flipping the default is a one-line change and a minor version
+After step 7 the layer can be tagged for the first time, **off by default** (BC-D8; **D53 turned it on by default the same day, 0e1667d**). Flipping the default is a one-line change and a minor version
 step of its own, made after the demos' precise trees have been read.
 
 ## 14. The decision rows

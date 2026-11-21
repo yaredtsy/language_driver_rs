@@ -422,7 +422,7 @@ holds: no operator and no do is on a bound type name anywhere (the `Sugar::Bound
 ## BC1+BC2
 
 The context layer of `docs/08-bend/06-context-layer-design.md`, built 2026-11-21 in nine commits (89a07ba, 1030b7f, 7bc5520, 4628b69, 14248b7, 325066c, 03270d3, b334658, 2c03f3b), each reviewed with its proofs
-reproduced. It is **off by default** (`Options::precision`, `bend-cli calls --entry <q> --precise`); every number of the sections above is `Precision::Default` and did not move. Measured by
+reproduced. It was off by default when this was measured and is **on by default since D53** (0e1667d: `Options::new` gives `Precision::Precise`; `bend-cli calls --level default|precise`); every number of the sections above is `Precision::Default` and did not move. Measured by
 `context_layer_on_the_demos` (ignored, `--test corpus`, release), which pins every count below and prints the times; rerun by the reviewer with the same counts.
 
     BEND_CLONE=<the bend clone> cargo test -p bend-analysis --release --test corpus -- --ignored --nocapture context_layer_on_the_demos

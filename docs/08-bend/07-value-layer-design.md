@@ -211,6 +211,39 @@ put in a constructor, or returned; the continuation of a `do` statement (§8).
 | a lambda inside it | read when its body is read, by the same rule: it moves or it stays, relative to that body | |
 | a bare def name handed over inside it (`[Passed]`) | **stays where the name is written**, in the writer, under the open key: D22 draws a hand-over where the text names the def, and a site cannot hold both a call and a hand-over | the same |
 
+### 6.1 Found at the review of V2, before V4 is built: what this does to continuation-passing code
+
+**V4 is held until the owner has seen this.** The rule above was written for a callback (`each(x => work(x), 1)`: `each` ▸ `work`). Read against the
+demos' own lambdas it does harm, and the reviewer's recommendation of Q-BD9 did not see it. A lambda handed to a project def in the demos is nearly
+always a **continuation**, and a continuation leads back to the def it is handed to:
+
+```bend
+def Msg.read(text: String) -> Maybe<&2, Msg>:
+  String.word(Maybe<&2, Msg>, text, tag => s => Msg.read.tag(Msg.tag(tag), s))
+def Msg.read.tag(k: Nat, s: String) -> Maybe<&2, Msg>:
+  …   String.word(Maybe<&2, Msg>, s, room => r1 =>
+        String.word(Maybe<&2, Msg>, r1, time => r2 =>
+          String.word(Maybe<&2, Msg>, r2, name => data => Msg.send(room, time, name, data))))
+```
+
+| | The tree of `Msg.read` |
+|---|---|
+| today (the lambda stays) | `Msg.read` ▸ `String.word` · `Msg.read.tag` ▸ `String.word` · `String.word` · `String.word` · `Msg.send` · …: flat, complete, in the order the code reads |
+| §6 as written, with the tree's rule 8 as it is (recursion is marked **by function**) | `Msg.read` ▸ `String.word` ▸ `String.word.go` ▸ `Msg.read.tag` ▸ `String.word [Recursive]`: every `String.word` under the first is a leaf, and `Msg.send` and the rest of the parser are **not in the tree** (they are in the graph) |
+| §6 with rule 8 changed to mark by context | complete, but `String.word.go` applies `k` at two sites, so the rest of the chain is drawn under each: twice per level, 16 copies of the last call under a chain of four |
+
+Rule 8 is core's and every language's ([`../02-tree-rules/02-the-rules.md`](../02-tree-rules/02-the-rules.md)); the wire tree is the output that is used (D17).
+So "no call can be lost" above is true of the graph and **false of the tree** for a lambda whose body leads back to the def it is handed to. Three ways out,
+the owner's to choose (asked 2026-11-21):
+
+1. **A lambda moves only when its body cannot lead back to the def it is handed to** (a code-only reachability over the calls that are fixed by name): a
+   callback moves (`each` ▸ `work`), a continuation or a loop body stays flat as today. Recommended. Most of the demos' 15 lambda sites are continuations and
+   would stay as they are: known, their calls under the writer.
+2. **Leave every lambda with its writer** (BC-D6 as built): D54 is not built in Bend; phases 2 and 3 are unaffected.
+3. **Build §6 as written** and accept the trees of the middle row, or change rule 8 in core for every language.
+
+Nothing else in this design depends on the choice: variables (V3), returns, partial application and constructor fields go on.
+
 Why this rule and not "wherever it turns out to be applied": that would be a fact about the whole graph (the plan's own worry, 06 §6 and
 TypeScript's 03-design §9), a tree that changes with the budget, and a lambda whose calls vanish when the value is lost on the way. Here the
 writer decides from the text and the callee's code, the callee's context is the target of an edge at that very site, and the position is in the
@@ -400,5 +433,16 @@ the next phase's rows and prompt are written from it.
 | BV-D6 | **A `do` statement of a project monad is its call, its value in the key; its continuation always stays and is not in the key**. BC-D5 stands for operators and indexes | §8 |
 | BV-D7 | **A project constructor is a value with its fields; a constructor pattern binds them** | §9 |
 | BV-D8 | **A slot holds a value that is neither unknown nor data; the canonical form grows by variants and no existing digest moves; depth 3, set 8, inline 8, rounds 4** | §10 |
+
+**State.** V0, V1 and V2 built (0e1667d, 4375dfc, acdeba3), reviewed 2026-11-21, every proof reproduced: 139 tests; the evaluator that knows nothing is
+layer 1 item by item over 625 items of the fixtures and scenarios and 29,846 items of the 16 demo books and 15 `PROOF.bend` books; the 21 context
+snapshots, both scenario trees, the wire snapshots and the pinned numbers of the demos' measurement untouched; both oracle tests at 0; no layer-1 snapshot
+changed by the flip of the default. Judged at review, all accepted: `Precision`'s own default is `Precise` too; `--all` refuses `--level precise` with the
+sentence naming the new flag; `Bind.binder` is an `Option`; each `=>` of a chain has its own number and its own `LamFacts` (the `Lam` node is still one,
+with all its binders); a slot is read off a bare name or a lambda only, and an `Opaque` call follows a value only when the callee is the def's own
+parameter (both are what BC1+BC2 did, so both are what V2's proof needed; V3 lifts them for variables). Owed by later steps: `mod flow`'s
+`allow(dead_code)` goes when its last field is read; `OUTSIDE_ROOT` and `OPEN_LAW` are counted once per place of the code, not once per reading; the join
+gets its cap. **`Precise` is now about 1.5 times `Default`'s time on `app_slash_boss_3d`** (it was 1.3 before the evaluator: an item is settled by the tree
+and the leftovers by the item walk); V5 says where the time goes. **V4 is held: §6.1.**
 
 Recorded in the repo's register as D53, D54 and D55 ([`../07-decisions-and-questions.md`](../07-decisions-and-questions.md)).

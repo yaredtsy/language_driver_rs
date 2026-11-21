@@ -116,9 +116,9 @@ and `law-across-files` give the shared tree; `construct-marked-class` and `two-c
 
 ## The precise rows (the context layer)
 
-**Built 2026-11-21** (89a07ba … 2c03f3b; the design is `docs/08-bend/06-context-layer-design.md`, BC1 + BC2 as one step, D51 and D52; the demos' numbers are `ENGINE.md` §BC1+BC2), and **off by
-default**: `Options::precision` is `Precision::Default` unless asked, `bend-cli calls --entry <q> --precise` asks. The rows above are the
-default level and do not change. These are what `Options::precision = Precise` draws: a def's parameter that a caller named (a `~` template or
+**Built 2026-11-21** (89a07ba … 2c03f3b; the design is `docs/08-bend/06-context-layer-design.md`, BC1 + BC2 as one step, D51 and D52; the demos' numbers are `ENGINE.md` §BC1+BC2), and **on by
+default since D53** (0e1667d): `Options::new` gives `Precision::Precise`, and `bend-cli calls --level default` asks for layer 1. The rows above are the
+default level (`Precision::Default`, which stays selectable for good) and do not change. These are what `Options::precision = Precise` draws: a def's parameter that a caller named (a `~` template or
 a plain function-typed one) is called as that def, per caller, and the key flows down through a caller's own parameter passed along. The
 last cell is read by `crates/bend-analysis/tests/context.rs` in the grammar of "Where a row is checked", with the fixtures under
 `crates/bend-analysis/tests/fixtures/context/` and one snapshot per row, `crates/bend-analysis/tests/snapshots/context/<row>.txt`, which holds a
