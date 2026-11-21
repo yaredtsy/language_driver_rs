@@ -356,6 +356,20 @@ table's test). Phase 1's rows:
 | `lambda-in-let-stays` | new | `g = y => work(y)`, then `each(g, 1)` | `main` ▸ `each` · `work`; `each`'s site says `anonymous_function_called` |
 | `limit-closure-cycle` | new | `loop(f)` is `f(f)`; `loop(g => g(g))` | the second application is not entered: `closure_cycle` |
 
+### 12.1 V3's rows, as `policy.md` takes them
+
+From V3 on, the precise table of `languages/bend/docs/policy.md` is the only living copy (06 §9 is the table as BC1+BC2 left it). These five lines go
+into it, after `passed-open`, in the commit that brings their fixtures; **the row `limit-local` is removed** in the same commit (its fixture and snapshot
+become `local-let`'s). `local-lambda` is the row the table above calls `lambda-in-let-stays`.
+
+| Precise row | Bend | Default | Precise | Counter | Where it is checked |
+|---|---|---|---|---|---|
+| `local-let` | `g = work`, then `each(g, 1)` | `each` a leaf, its `f(x)` `Unresolved` | `each@{f ↦ work}` ▸ `work`: a variable has the value of its binding (BV-D3) | layer 1's `passed_deep`, for the `work` in the `let` | `local-let` `main.bend` `main` |
+| `local-alias` | `run(f, x)` is `g = f`, then `g(x)`; `main` calls `run(work, 1)` | `run` a leaf, its `g(x)` `Unresolved` | `run@{f ↦ work}` ▸ `work`: a parameter is relevant as the value of a `let`, and the variable is called as what it holds | | `local-alias` `main.bend` `main` |
+| `local-shadow` | `run(f, x)` is `f = other`, then `f(x)`; `main` calls `run(work, 1)` | `run`'s `f(x)` `Unresolved` | `run` ▸ `other`: the innermost binder of a name decides. `run` has the open key (its parameter is never read); `work [Passed]` stays | `passed_deep` | `local-shadow` `main.bend` `main` |
+| `local-join` | `g = (match b: case True{}: work; case False{}: other)`, then `g(1)` | `g(1)` `Unresolved` | `work` and `other`, both at the one site `g(1)`: the value of a `match` is the join of its cases, no condition is evaluated | `passed_deep` | `local-join` `main.bend` `main` |
+| `local-lambda` | `g = y => work(y)`, then `each(g, 1)` | `main` ▸ `work` · `each`; `each`'s `f(x)` `Unresolved` | the same tree; `each@{f ↦ lambda 0 of main}`'s `f(x)` says `anonymous_function_called`: a lambda in a `let` stays with its writer | `anonymous_function_called` | `local-lambda` `main.bend` `main` |
+
 The rows of phases 2 and 3 are written when phase 1 has been measured. **The scenario `callback-argument`'s shared `expected.precise.tree`
 changes in phase 1** (the README says why, and that Q-TC1 and Q-RC1 are answered):
 
