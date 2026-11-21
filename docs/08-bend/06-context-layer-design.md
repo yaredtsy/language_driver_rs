@@ -116,11 +116,13 @@ def per request and memoized in `Bend`), parameter `i` is
 
 - **(a)** the callee of a site (`What::Opaque { param: Some(i) }`: `f(x)`, `f!(x)`, `f(a)(b)`'s inner call), or
 - **(b)** a direct argument (`~` or plain, through parentheses) of a call whose callee name the book resolves to a project def: passed along
-  (the flow-down of §4).
+  (the flow-down of §4), or
+- **(c)** a direct argument of a call whose callee is one of `g`'s own parameters (`h(f, x)` with `h` a parameter): when a caller names `h`, `f`
+  flows down into it, so `f` must be in `g`'s key for that to work. Added at the review of step 2.
 
 Not relevant: a parameter handed into a constructor field, into a `do` statement, into a sugar's operand, used as a type, or never used. A slot
 that is not relevant is never in a key, so `def log(f: U32 -> U32, x: U32) -> U32: x` has one context however many callers name an `f`, and its
-context id is layer 1's. (b) over-approximates Rust's fixpoint (RC1 §5): a parameter passed into an irrelevant slot of the callee still counts.
+context id is layer 1's. (b) and (c) over-approximate Rust's fixpoint (RC1 §5): a parameter passed into an irrelevant slot of the callee still counts.
 That costs a context with the same edges, never an edge, and needs no fixpoint. Measured on the demos (§12) before anything finer is considered.
 
 ### 3.3 The open key, the digest, closed keys
@@ -279,7 +281,8 @@ same table. A row that proves wrong while building is reported, and the reviewer
 | `param-def` | `each(f: U32 -> U32, x)` calls `f(x)`; `main` calls `each(work, 1)` | `each` a leaf; `work [Passed]` | `each@{f ↦ work}` ▸ `work`; `work [Passed]` stays | | `param-def` `main.bend` `main` |
 | `param-flow` | `relay(f, x)` calls `each(f, x)`; `main` calls `relay(work, 1)` | `relay` ▸ `each` (a leaf); `work [Passed]` under `main` | `relay@{f ↦ work}` ▸ `each@{f ↦ work}` ▸ `work`; no passed edge inside `relay` (BC-D4) | | `param-flow` `main.bend` `main` |
 | `param-lambda-captures` | `outer(~h, x)` calls `each(y => h(y), x)`; `main` calls `outer(~g, 1)` | `outer`'s `h(y)` `Unresolved`; `each` a leaf | `outer@{h ↦ g}` ▸ `each` · `g`: the lambda's call is `outer`'s, resolved by `outer`'s key; `each@{f ↦ lambda 0 of outer}` says `anonymous_function_called` | `anonymous_function_called` | `param-lambda-captures` `main.bend` `main` |
-| `two-keys` | `each(work, 1)`, `each(other, 2)`, `each(work, 3)` | one `each`, three times | two contexts of `each` with two digests; the third call reuses the first (`reuse_hits`); each `each` node shows its own callee | | `two-keys` `main.bend` `main` |
+| `two-keys` | `each(work, 1)`, `each(other, 2)`, `each(work, 3)` | one `each`, three times | two contexts of `each` with two digests, reached by three edges: the third call reaches the first context again; each `each` node shows its own callee | | `two-keys` `main.bend` `main` |
+| `param-through-param` | `apply(h, f, x)` is `h(f, x)`; `main` calls `apply(each, work, 1)` | `apply` a leaf, its `h(f, x)` `Unresolved`; `each [Passed]`, `work [Passed]` | `apply@{h ↦ each, f ↦ work}` ▸ `each@{f ↦ work}` ▸ `work`: `f` is relevant in `apply` as an argument of a call through `apply`'s own parameter (§3.2 c); the two passed edges stay, `each` under the open key a leaf | | `param-through-param` `main.bend` `main` |
 | `not-relevant` | `log(f: U32 -> U32, x)` never uses `f`; `log(work, 1)`, `log(other, 2)` | one `log` context | **one** `log` context, digest zeros: the slot is not relevant (§3.2) | | `not-relevant` `main.bend` `main` |
 | `entry-open` | the entry is `twice` itself | its `h` are `Unresolved` | the same: the entry is the open key (BC-D7) | `function_typed_value` | `entry-open` `main.bend` `twice` |
 | `recursion-keyed` | `f(~g, n)` is `g(f(~g, n))`; `r(~g, n)` is `r(~(y => g(y)), n)`; `main` calls both with `~work` | `f`, `r` `[Recursive]`; their `g` `Unresolved` | `f@{g ↦ work}` ▸ `work` · `f [Recursive]`; `r@{g ↦ work}` ▸ `r@{g ↦ lambda 0 of r}` ▸ `r [Recursive]`, then `work` (the lambda's `g(y)` is `r`'s site, resolved by `r`'s key; under the lambda key it is `anonymous_function_called`, and the lambda key reaches itself: finite, rule 3) | `anonymous_function_called` | `recursion-keyed` `main.bend` `main` |
@@ -373,7 +376,7 @@ agree have one `expected.tree`.
 | **never fewer edges** (`tests/context.rs`, over every policy fixture, context fixture and scenario): for each entry, the default graph's edges mapped to `(from def, site, to def-or-kind)` are a subset of the precise graph's; no site that had a target has none; the only edges the precise graph lacks are `Unresolved(function_typed_value)` ones replaced at the same site | rules 4, 5 |
 | **the snapshots' digests**: reviewed hex in a file, compared on every run | rule 1 in its cross-process form; rule 9 |
 | `assert_deterministic` on every precise graph | rule 9 |
-| the 19 rows of §9 flip from their default section to their precise section exactly as the table says (the 7 limit rows: both sections equal) | the design |
+| the 20 rows of §9 flip from their default section to their precise section exactly as the table says (the 7 limit rows: both sections equal) | the design |
 | `two-callers` and `callback-argument` at `Level::Precise` | the shared definition of done |
 | the cut-and-continue test: a tree cut at `Budget { max_depth: Some(1) }` and continued with `graph_from` at each frontier node equals the tree asked for whole | BC-D7 |
 | `every_ref_the_oracle_prints_is_accounted_for` and `every_ref_the_oracle_prints_resolves` (ignored, `--test corpus`) rerun after step 1: **0 in none, 0 differ**, as before | the walk's places did not move while `sem` learned the binders and the arguments |
@@ -388,8 +391,8 @@ The numbers go into `languages/bend/ENGINE.md` under `## BC1+BC2` (the reviewer 
 | # | Do | Proof |
 |---|---|---|
 | 1, 1b | `sem/walk.rs`: the scope knows which binder is a def parameter (innermost wins); `What::Opaque { param, args }`, `What::Call { name, args }`, `ArgShape`; lambdas numbered as entered; unit tests in `sem` for each shape (a parameter shadowed by a `let` is `Local`; a `~` lambda through parentheses is `Lambda(n)`; `f(a)(k)`'s inner call carries `[a]`) | every snapshot unchanged (`walk.rs` ignores the new fields); the two oracle tests at 0 |
-| 2 | `key.rs` (`Known`, `Key`, `Canon`, `digest`, `relevant`, `key_of`), `env.rs`, `calls.rs` (`Precision`, `type Key`, `digest`, the open start, `walked()`); `xxhash-rust` added to the workspace; every project `Call` target carries a key under `Precise` | under `Default` byte-identical; under `Precise`, `two-keys` has two contexts of `each` with two digests and **no new edge yet**; `not-relevant` has one context with digest zeros; the digest of one key is equal from two entries |
-| 3 | `resolve_from_env` answers; the `key_slot_*` counts; the layer-1 notes once per def; `tests/context.rs` reading the precise table of `policy.md` (it is there already); the 12 rows' fixtures and two-section snapshots; the never-fewer-edges test; `assert_deterministic` | the 12 rows flip as §9 says; a def with one `type_position`, reached under two keys, counts 1 |
+| 2 | `key.rs` (`Known`, `Key`, `Canon`, `digest`, `relevant`, `key_of`), `env.rs`, `calls.rs` (`Precision`, `type Key`, `digest`, the open start, `walked()`); `xxhash-rust` added to the workspace; every project `Call` target carries a key under `Precise` | under `Default` byte-identical; under `Precise`, `two-keys` has two contexts of `each` with two digests and **no edge that reaches a different def**; `not-relevant` has one context with digest zeros; the digest of one key is equal from two entries |
+| 3 | `resolve_from_env` answers; the `key_slot_*` counts; the layer-1 notes once per def; `tests/context.rs` reading the precise table of `policy.md` (it is there already); the 13 flipping rows' fixtures and two-section snapshots; relevance (c); the never-fewer-edges test; `assert_deterministic` | the 13 rows flip as §9 says; a def with one `type_position`, reached under two keys, counts 1 |
 | 4 | the 7 limit rows: fixtures, snapshots (default section equals precise section) | their counters as §9 says |
 | 5 | `two-callers`: `expected.precise.bend.tree`; the `callback-argument` folder (README, `bend/`, both shared trees); `BEND_PRECISE` at `Level::Precise`; `bend-cli calls --precise` (refused with `--all`) | 8 + 8; the CLI prints the precise tree of `two-callers` |
 | 6 | `Session` keeps digest → canonical key; `graph_from`; the lookup from a `StableDef` to a `DeclId`; `context_not_found` | the cut-and-continue test |
@@ -398,10 +401,25 @@ The numbers go into `languages/bend/ENGINE.md` under `## BC1+BC2` (the reviewer 
 
 **State.** Step 1 built (89a07ba), reviewed 2026-11-21: the unit tests, the whole suite with no snapshot touched, clippy, the static checks and
 both oracle tests (32,805 refs, 0 in none, 0 differ) reproduced. **One thing moved, and step 1b puts it back:** the item of a call is now pushed
-after its arguments are walked, and two places *can* share a span when the callee is itself a sugar: in `a[i](1)` the call of the element and the
+after its arguments are walked, and two places *can* share a span when the callee is itself a sugar: in a call of an indexed element (`a[i]` applied to `1`) the call and the
 `Array.get` it stands on are both at `a[i]`, in `(a & b)(1)` both at `a & b`. Layer 1 listed the call first and step 1 lists the sugar first
 (seen with `walked()` on both commits; no fixture has the form, so no snapshot noticed). The rule, now written down: **two places with one span
 keep the order layer 1 had, the outer one first**, as a `do` step's bind comes before the name it hands over (`policy.md`, row `passed-do`).
+
+**Steps 1b and 2 built (1030b7f, 7bc5520), reviewed 2026-11-21**, every proof reproduced (the suite with no snapshot touched, clippy on both crates
+with their tests, both oracle tests at 0). 1b takes the call's slot before anything is walked and fills its arguments in afterwards; its two pins
+fail on the old order. Step 2 is the key as §2 to §4 say, with `resolve_from_env` still silent. Three things the review changed in this file:
+
+- **Relevance gains (c)** (§3.2), found by the coder reading (b) to the letter: `apply(h, f, x)` that is `h(f, x)` passes `f` to a call through its
+  own parameter, which is no project def by name, so `f` was not relevant and `apply(each, work, 1)` lost `work` on the way down. Row
+  `param-through-param` pins it; the code change is step 3's.
+- **"No new edge" means no edge reaches a different def.** Under `Precise`, `two-keys` has one edge more than under `Default`: each of the two
+  contexts of `each` has its own copy of its one `f(x)` site. The distinct edges, digests left out, are layer 1's.
+- **The `two-keys` row said the third call shows in `reuse_hits`; it does not.** Inside one request the solver's `seen` set meets a repeated context
+  before the memo is asked, so `reuse_hits` stays 0 and the reuse shows as two contexts reached by three edges. The row is corrected.
+
+The link check failed on this paragraph as first written (ed58c43): it reads an index followed by a parenthesis as a link. My miss: I did not run
+the static checks after that edit. Fixed here.
 
 Two notes for the later steps, found at this review. Whether a parameter is a `~` template is already in the outline (`Def.params[i]` is written
 `~f`, `languages/bend/docs/qualnames.md`), so step 7's split of the answered sites into template and plain needs nothing more from `sem`. An
@@ -421,7 +439,7 @@ step of its own, made after the demos' precise trees have been read.
 | # | Row | Where |
 |---|---|---|
 | BC-D1 | **A Known is a project def with code or a lambda (writer, number); a type, a call's result, a constructor of defs, a Base or outside def is not one** and is counted where it lands in a relevant slot | §2 |
-| BC-D2 | **The key is the relevant positions of the callee that the caller named, sorted; empty is the open key, digest zeros; the digest is `xxh3_128` of the canonical form over stable ids.** A position is relevant when the def calls that parameter or passes it as a direct argument to a project def | §3 |
+| BC-D2 | **The key is the relevant positions of the callee that the caller named, sorted; empty is the open key, digest zeros; the digest is `xxh3_128` of the canonical form over stable ids.** A position is relevant when the def calls that parameter, or passes it as a direct argument to a project def or to a call through one of its own parameters | §3 |
 | BC-D3 | **The key flows down from the first commit**: a caller's own parameter passed along resolves through the caller's key | §4 |
 | BC-D4 | **A passed edge's target is walked under the open key; a parameter passed along draws no passed edge** | §4 |
 | BC-D5 | **A sugar's target gets the open key** (operators, indexes, `do` statements) | §4 |
