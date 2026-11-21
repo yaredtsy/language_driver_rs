@@ -17,10 +17,14 @@ pub(crate) struct Item {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum What {
-    /// `f(a)`: the callee is a name that is not bound. The span is the name.
-    Call { name: String },
-    /// The callee is a bound name, or no name at all (`f(a)(b)`, `(x => ..)(a)`): the value called is not a def. The span is the callee.
-    Opaque,
+    /// `f(a)`: the callee is a name that is not bound. The span is the name. `args` is what each argument is, in the order written.
+    Call { name: String, args: Vec<ArgShape> },
+    /// The callee is a bound name, or no name at all (`f(a)(b)`, `(x => ..)(a)`): the value called is not a def. The span is the callee. `param` is the
+    /// position in the def's written parameter list when the callee is one of the def's own parameters (the innermost binder of that name); `args` as for `Call`.
+    Opaque {
+        param: Option<u32>,
+        args: Vec<ArgShape>,
+    },
     /// A bare name that is not bound, as a direct argument of a call or a direct field of a constructor: handed over, if it is a def.
     Passed { name: String },
     /// A bare name that is not bound anywhere else (a call's result, a let's value, a list's item): never drawn, counted if it is a project def.
@@ -35,6 +39,22 @@ pub(crate) enum What {
     Data,
     /// A term that is a type: skipped. Counted `type_position`.
     TypePosition,
+}
+
+/// What one argument of a call is, as far as the text says: owned data, read through parentheses as `passable` does. The argument at position `i` of the written
+/// list is the callee's parameter `i` (an erased `-A: Type` is passed explicitly, so there is no mapping to make).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ArgShape {
+    /// A bare name that is not bound: a def, a type or nothing, as the book says.
+    Name(String),
+    /// A bare name bound to the def's own parameter at this position (the innermost binder of the name wins).
+    Param(u32),
+    /// A bare name bound to anything else: a `let`, a `case` pattern, a lambda's binder, a do's name, an `@` binder, a rewrite's equation.
+    Local,
+    /// A lambda (`x => ..`, `\{..}`), the `n`-th the walk of this body enters (from 0).
+    Lambda(u32),
+    /// Anything else: a call, a constructor, a literal, an operator.
+    Other,
 }
 
 /// The def a sugar calls, as far as the text says.
@@ -71,9 +91,21 @@ enum Ns {
     Bad,
 }
 
+/// What a name is, in the scopes of the body at the place it is read.
+enum Binding {
+    Unbound,
+    /// The def's own parameter at this position of its written list.
+    Param(u32),
+    /// Any other binder.
+    Local,
+}
+
 struct Walker {
     items: Vec<Item>,
-    scope: Vec<String>,
+    /// The binders in reach, innermost last, each with the position of the def's parameter it is (`None` for any other binder).
+    scope: Vec<(String, Option<u32>)>,
+    /// Lambdas entered so far: the number of the next one.
+    lambdas: u32,
 }
 
 /// The sugar of an infix operator that is a def of the namespace (`bend.ts` `INFIX`: the entries whose name starts with a dot).
@@ -113,9 +145,25 @@ impl Walker {
         self.items.push(Item { span, what });
     }
 
-    /// `parse_var`: a name is looked up in the binders first, and a dotted name is never one.
+    /// `parse_var`: a name is looked up in the binders first, and a dotted name is never one. The innermost binder of a name decides what it is.
+    fn binding(&self, name: &str) -> Binding {
+        if name.contains('.') {
+            return Binding::Unbound;
+        }
+        match self.scope.iter().rev().find(|(bound, _)| bound == name) {
+            None => Binding::Unbound,
+            Some((_, Some(at))) => Binding::Param(*at),
+            Some((_, None)) => Binding::Local,
+        }
+    }
+
     fn bound(&self, name: &str) -> bool {
-        !name.contains('.') && self.scope.iter().any(|bound| bound == name)
+        !matches!(self.binding(name), Binding::Unbound)
+    }
+
+    /// A binder that is not a parameter of the def.
+    fn bind(&mut self, name: &str) {
+        self.scope.push((name.to_owned(), None));
     }
 
     fn skip(&mut self, term: &Term) {
@@ -125,7 +173,7 @@ impl Walker {
     /// The names a pattern binds: a name, `+x`, the arguments of `K{..}`, the rest of `3n+p`, both sides of `h <> t`, the items of a list or a tuple.
     fn binders(&mut self, pattern: &Term) {
         match &pattern.kind {
-            TermKind::Name(name) if !name.contains('.') => self.scope.push(name.clone()),
+            TermKind::Name(name) if !name.contains('.') => self.bind(name),
             TermKind::Plus(inner) => self.binders(inner),
             TermKind::Ctr { args, .. } => args.iter().for_each(|a| self.binders(a)),
             TermKind::NatPlus { rest, .. } => self.binders(rest),
@@ -193,6 +241,23 @@ impl Walker {
             }
             _ => self.term(term, &Ns::None),
         }
+    }
+
+    /// A direct argument of a call: what it is (`ArgShape`), and then it is handed over or walked as `passable` does. A lambda's number is the one it gets when
+    /// the walk enters it, which is the count of lambdas before the argument is walked.
+    fn arg(&mut self, term: &Term) -> ArgShape {
+        let inner = strip_group(term);
+        let shape = match &inner.kind {
+            TermKind::Name(name) => match self.binding(name) {
+                Binding::Unbound => ArgShape::Name(name.clone()),
+                Binding::Param(at) => ArgShape::Param(at),
+                Binding::Local => ArgShape::Local,
+            },
+            TermKind::Lam { .. } | TermKind::LamMatch { .. } => ArgShape::Lambda(self.lambdas),
+            _ => ArgShape::Other,
+        };
+        self.passable(term);
+        shape
     }
 
     /// The namespace a `: T` gives: the name at the head of `T` (`Vec2`, `M.Vec`, `Vec<A>`, `Vec(A)`).
@@ -263,17 +328,26 @@ impl Walker {
             TermKind::Plus(inner) => self.term(inner, &Ns::None),
             TermKind::Call { callee, args, .. } => {
                 let head = strip_group(callee);
-                match &head.kind {
-                    TermKind::Name(name) if !self.bound(name) => {
-                        self.push(head.span, What::Call { name: name.clone() });
-                    }
-                    TermKind::Name(_) => self.push(head.span, What::Opaque),
+                // the callee is read before the arguments, and the item is pushed once the arguments are known
+                let callee_is = match &head.kind {
+                    TermKind::Name(name) => match self.binding(name) {
+                        Binding::Unbound => Ok(name.clone()),
+                        Binding::Param(at) => Err(Some(at)),
+                        Binding::Local => Err(None),
+                    },
                     _ => {
-                        self.push(head.span, What::Opaque);
                         self.term(callee, &Ns::None);
+                        Err(None)
                     }
-                }
-                args.iter().for_each(|a| self.passable(&a.term));
+                };
+                let args: Vec<ArgShape> = args.iter().map(|a| self.arg(&a.term)).collect();
+                self.push(
+                    head.span,
+                    match callee_is {
+                        Ok(name) => What::Call { name, args },
+                        Err(param) => What::Opaque { param, args },
+                    },
+                );
             }
             TermKind::Index {
                 array,
@@ -347,7 +421,7 @@ impl Walker {
                     self.push(term.span, What::Data);
                 }
                 self.skip(domain);
-                self.scope.push(name.text.clone());
+                self.bind(&name.text);
                 self.term(body, &Ns::None);
                 self.scope.pop();
             }
@@ -357,14 +431,16 @@ impl Walker {
                 body,
                 ..
             } => {
+                self.lambdas += 1;
                 if let Some(annot) = annot {
                     self.skip(annot);
                 }
-                self.scope.push(binder.text.clone());
+                self.bind(&binder.text);
                 self.body(body, &Ns::None);
                 self.scope.pop();
             }
             TermKind::LamMatch { arms, tail } => {
+                self.lambdas += 1;
                 arms.iter().for_each(|arm| self.term(&arm.body, &Ns::None));
                 if let Some(tail) = tail {
                     self.term(tail, &Ns::None);
@@ -397,7 +473,7 @@ impl Walker {
                 self.skip(motive);
                 let mark = self.scope.len();
                 if let Some(named) = named {
-                    self.scope.push(named.text.clone());
+                    self.bind(&named.text);
                 }
                 self.body(rest, &Ns::None);
                 self.scope.truncate(mark);
@@ -451,7 +527,7 @@ impl Walker {
                         } => {
                             self.skip(ty);
                             self.term(value, &Ns::None);
-                            self.scope.push(name.text.clone());
+                            self.bind(&name.text);
                         }
                         DoKind::Bind {
                             name, ty, value, ..
@@ -459,7 +535,7 @@ impl Walker {
                             self.push(stmt.span, What::Sugar(sugar("bind")));
                             self.skip(ty);
                             self.passable(value);
-                            self.scope.push(name.text.clone());
+                            self.bind(&name.text);
                         }
                         DoKind::Exec { ty, value } => {
                             self.push(stmt.span, What::Sugar(sugar("bind")));
@@ -493,14 +569,15 @@ fn walk_decl(decl: &Decl) -> Option<DefWalk> {
     let mut walker = Walker {
         items: Vec::new(),
         scope: Vec::new(),
+        lambdas: 0,
     };
     match decl {
         Decl::Def(def) => {
-            for bind in &def.params {
+            for (at, bind) in def.params.iter().enumerate() {
                 if let Some(ty) = &bind.ty {
                     walker.skip(ty);
                 }
-                walker.scope.push(bind.name.text.clone());
+                walker.scope.push((bind.name.text.clone(), Some(at as u32)));
             }
             if let Some(ret) = &def.ret {
                 walker.skip(ret);
@@ -561,8 +638,8 @@ mod tests {
             .iter()
             .map(|i| {
                 let what = match &i.what {
-                    What::Call { name } => format!("call {name}"),
-                    What::Opaque => "opaque".to_owned(),
+                    What::Call { name, .. } => format!("call {name}"),
+                    What::Opaque { .. } => "opaque".to_owned(),
                     What::Passed { name } => format!("passed {name}"),
                     What::Deep { name } => format!("deep {name}"),
                     What::Ctr { name } => format!("ctr {name}"),
@@ -749,6 +826,135 @@ mod tests {
         assert_eq!(
             whats("def g(x: Nat):\n  %lemma(x) : P(x)\n  {==}\n"),
             ["type", "call lemma", "type"]
+        );
+    }
+
+    fn shape(arg: &ArgShape) -> String {
+        match arg {
+            ArgShape::Name(name) => format!("name {name}"),
+            ArgShape::Param(at) => format!("param {at}"),
+            ArgShape::Local => "local".to_owned(),
+            ArgShape::Lambda(n) => format!("lambda {n}"),
+            ArgShape::Other => "other".to_owned(),
+        }
+    }
+
+    /// Each call or opaque callee of the one def of `text`: the text at the span, the parameter it is (opaque only), and the shapes of its arguments.
+    fn calls(text: &str) -> Vec<(String, Option<u32>, Vec<String>)> {
+        let walks = walks(text);
+        assert_eq!(walks.len(), 1, "one declaration: {text}");
+        walks[0]
+            .items
+            .iter()
+            .filter_map(|i| {
+                let (param, args) = match &i.what {
+                    What::Call { args, .. } => (None, args),
+                    What::Opaque { param, args } => (*param, args),
+                    _ => return None,
+                };
+                Some((
+                    text[i.span.start as usize..i.span.end as usize].to_owned(),
+                    param,
+                    args.iter().map(shape).collect(),
+                ))
+            })
+            .collect()
+    }
+
+    fn call(callee: &str, param: Option<u32>, args: &[&str]) -> (String, Option<u32>, Vec<String>) {
+        (
+            callee.to_owned(),
+            param,
+            args.iter().map(|a| (*a).to_owned()).collect(),
+        )
+    }
+
+    #[test]
+    fn a_callee_that_is_a_parameter_says_which_by_its_place_in_the_written_list() {
+        // templates first, then the rest, as written: `h` is 0, `x` 1, `f` 2
+        assert_eq!(
+            calls("def g(~h: U32 -> U32, x: U32, f: U32 -> U32) -> U32:\n  h(f(x))\n"),
+            [
+                call("h", Some(0), &["other"]),
+                call("f", Some(2), &["param 1"]),
+            ]
+        );
+        // a def's own name is no parameter, and neither is a name nobody binds
+        assert_eq!(
+            calls("def g(x: U32) -> U32:\n  k(x)\n"),
+            [call("k", None, &["param 0"])]
+        );
+    }
+
+    #[test]
+    fn the_innermost_binder_of_a_name_decides_what_it_is() {
+        // a `let` over a parameter: the call after it is on a local, and the name as an argument is a local
+        assert_eq!(
+            calls("def g(f: U32 -> U32) -> U32:\n  a = h(f)\n  f = a\n  f(f)\n"),
+            [call("h", None, &["param 0"]), call("f", None, &["local"]),]
+        );
+        // a lambda's binder over a parameter, and the parameter again once the lambda is closed
+        assert_eq!(
+            calls("def g(f: U32 -> U32) -> U32:\n  k(x => (f => f(x))(1), f)\n"),
+            [
+                call("k", None, &["lambda 0", "param 0"]),
+                call("f => f(x)", None, &["other"]),
+                call("f", None, &["local"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_case_variable_a_let_and_a_do_name_are_local() {
+        assert_eq!(
+            calls(
+                "def g(xs: List) -> U32:\n  match xs:\n    case Cons{h, t}:\n      k(h, t)\n    case Nil{}:\n      k(1, xs)\n"
+            ),
+            [
+                call("k", None, &["local", "local"]),
+                call("k", None, &["other", "param 0"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_argument_is_read_through_parentheses() {
+        assert_eq!(
+            calls("def g(f: U32) -> U32:\n  k((f), (a), ((x => x)), (1), ~(y => y))\n"),
+            [call(
+                "k",
+                None,
+                &["param 0", "name a", "lambda 0", "other", "lambda 1"]
+            )]
+        );
+    }
+
+    #[test]
+    fn a_lambda_is_numbered_as_the_walk_enters_it_and_a_match_lambda_is_one() {
+        // an outer lambda is entered before the ones inside it
+        assert_eq!(
+            calls("def g() -> U32:\n  k(x => m(y => y), z => z, \\{ Nil: 1 })\n"),
+            [
+                call("k", None, &["lambda 0", "lambda 2", "lambda 3"]),
+                call("m", None, &["lambda 1"]),
+            ]
+        );
+        // a lambda written in a type is not walked and not numbered
+        assert_eq!(
+            calls("def g(x: List<(a => a)>) -> U32:\n  k(z => z)\n"),
+            [call("k", None, &["lambda 0"])]
+        );
+    }
+
+    #[test]
+    fn the_inner_call_of_a_call_of_a_call_carries_its_own_arguments() {
+        // `f(a)(k)`: the inner call is `f` with `[a]`; the outer callee is a call's result, which no parameter is
+        assert_eq!(
+            calls("def g(k: U32 -> U32) -> U32:\n  f(a)(k)\n"),
+            [
+                call("f", None, &["name a"]),
+                call("f(a)", None, &["param 0"]),
+            ]
         );
     }
 }

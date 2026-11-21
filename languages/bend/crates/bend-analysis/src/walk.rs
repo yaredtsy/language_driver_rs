@@ -99,11 +99,11 @@ fn resolve_from_book<'b>(lang: &Bend<'b>, def: DeclId, item: &Item) -> Reached<'
         What::TypePosition => Reached::Counted(calls::TYPE_POSITION),
         What::BaseFixed => Reached::Counted(calls::SUGAR_BASE),
         What::Data => Reached::Quiet,
-        What::Opaque => site(
+        What::Opaque { .. } => site(
             Target::Unresolved(Reason::new(calls::FUNCTION_TYPED_VALUE)),
             false,
         ),
-        What::Call { name } => site(call_of(lang, book.resolve(file, name), name), false),
+        What::Call { name, .. } => site(call_of(lang, book.resolve(file, name), name), false),
         What::Passed { name } => match book.resolve(file, name) {
             Resolved::Project(id) => match book.decl(id) {
                 // a type handed over (`App.run(~U32, ..)`, `f(Shape)`) is a type argument: there is no code to hand over
