@@ -72,6 +72,14 @@ impl Value {
         }
     }
 
+    /// Whether a def, a lambda or a partial application is anywhere in it, however deep: the only things a call can come to.
+    pub(crate) fn holds_function(&self) -> bool {
+        self.known.iter().any(|one| match one {
+            One::Def(_) | One::Lambda { .. } | One::Partial { .. } => true,
+            One::Ctor { fields, .. } => fields.iter().any(Value::holds_function),
+        })
+    }
+
     /// The same value with what is nested deeper than [`MAX_DEPTH`] unknown, and whether anything was.
     pub(crate) fn capped(&self) -> (Value, bool) {
         let mut hit = false;

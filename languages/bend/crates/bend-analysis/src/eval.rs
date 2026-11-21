@@ -16,6 +16,8 @@
 //! (with the value so far) and `Done`. The memo sits in a `RefCell` on `Bend` so the evaluator can stay `&self`; the borrow is dropped before the evaluator is run,
 //! or the inner call would panic on a second `borrow_mut`.
 
+use std::collections::HashMap;
+
 use analyzer_core::graph::Reason;
 use analyzer_core::solve::Target;
 
@@ -37,14 +39,6 @@ pub(crate) enum Policy {
     Tracked,
     #[cfg(test)]
     Nothing,
-}
-
-/// What `Bend` keeps of the value a context returns.
-#[derive(Clone, Debug)]
-pub(crate) enum Ret {
-    /// Being evaluated, at this place of the stack of contexts being evaluated: the value so far.
-    Running(Value, usize),
-    Done(Value),
 }
 
 struct Eval<'l, 'b> {
@@ -83,6 +77,118 @@ pub(crate) fn reached<'b>(lang: &Bend<'b>, f: DeclId, env: &Env<'_>) -> Vec<Opti
     eval.reached
 }
 
+/// The contexts whose return value is being worked out, together: one request of `ret` and everything it needs that is not known yet. A context is a `(def, key)`
+/// and is numbered when it is first met.
+///
+/// The value a context returns starts as data, "nothing yet". A context that is read while the values are being worked out answers with its value so far; when a value
+/// grows, every context that read it is evaluated again, until none grows. That is the least value each context can have, whichever was met first (BV-D5), and it is the
+/// whole of "nothing computed inside a cycle is kept before that": no value is kept until all of them are final. A context met for the first time is evaluated before
+/// the one that asked, so code with no cycle is evaluated once.
+#[derive(Default)]
+pub(crate) struct Run {
+    index: HashMap<Ctx, usize>,
+    ctxs: Vec<Ctx>,
+    cells: Vec<Cell>,
+    /// Contexts to evaluate, the last first.
+    work: Vec<usize>,
+    queued: Vec<bool>,
+    /// The context being evaluated: what a read is a read by.
+    reading: Option<usize>,
+}
+
+type Ctx = (DeclId, Key);
+
+struct Cell {
+    value: Value,
+    /// The contexts that read this one, in the order they first did.
+    readers: Vec<usize>,
+    /// How many times it was evaluated.
+    evals: u32,
+    /// Its value stopped growing because it did not settle in `MAX_ROUNDS` rounds, or was too big: it is unknown, and stays so.
+    top: bool,
+}
+
+impl Run {
+    fn cell_for(&mut self, ctx: Ctx) -> usize {
+        if let Some(at) = self.index.get(&ctx) {
+            return *at;
+        }
+        let at = self.cells.len();
+        self.index.insert(ctx.clone(), at);
+        self.ctxs.push(ctx);
+        self.cells.push(Cell {
+            value: Value::data(),
+            readers: Vec::new(),
+            evals: 0,
+            top: false,
+        });
+        self.queued.push(true);
+        self.work.push(at);
+        at
+    }
+
+    /// The value of `at` so far, read by the context being evaluated.
+    fn read(&mut self, at: usize) -> Value {
+        if let Some(reader) = self.reading
+            && !self.cells[at].readers.contains(&reader)
+        {
+            self.cells[at].readers.push(reader);
+        }
+        self.cells[at].value.clone()
+    }
+
+    /// Whether `at` is read, through others, by itself: the only way a context can keep growing.
+    fn on_a_cycle(&self, at: usize) -> bool {
+        let mut seen = vec![false; self.cells.len()];
+        let mut pending: Vec<usize> = self.cells[at].readers.clone();
+        while let Some(next) = pending.pop() {
+            if next == at {
+                return true;
+            }
+            if !std::mem::replace(&mut seen[next], true) {
+                pending.extend(self.cells[next].readers.iter().copied());
+            }
+        }
+        false
+    }
+
+    /// `read` is what `at` was just evaluated to: its value grows to hold it, and what read it is evaluated again if it grew. Returns what to count: `(a set too big,
+    /// a cycle that did not settle)`.
+    fn settle(&mut self, at: usize, read: Value) -> (bool, bool) {
+        self.reading = None;
+        self.cells[at].evals += 1;
+        if self.cells[at].top {
+            return (false, false);
+        }
+        let (mut big, mut cycle) = (false, false);
+        let grown = match self.cells[at].value.join(&read) {
+            Some(grown) => grown,
+            None => {
+                big = true;
+                Value::unknown()
+            }
+        };
+        if grown == self.cells[at].value {
+            return (big, cycle);
+        }
+        let value = if self.cells[at].evals > MAX_ROUNDS && self.on_a_cycle(at) {
+            cycle = true;
+            Value::unknown()
+        } else {
+            grown
+        };
+        let cell = &mut self.cells[at];
+        cell.top = big || cycle;
+        cell.value = value;
+        for reader in cell.readers.clone() {
+            if !std::mem::replace(&mut self.queued[reader], true) {
+                self.work.push(reader);
+            }
+        }
+        (big, cycle)
+    }
+}
+
 /// What the body of `def` evaluates to under `key`, read once: no site is kept and nothing is counted.
 fn read_value(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
     let Some(walk) = lang.walk_of(def) else {
@@ -92,70 +198,58 @@ fn read_value(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
     lang.silently(|| Eval::new(lang, def, &env, walk).eval(&walk.flow.body))
 }
 
-/// The value a context returns (BV-D5), kept: `(def, key)` is evaluated once. A context asked for while it is being evaluated answers with its value so far, which
-/// starts as data, "nothing yet"; the outermost context of such a cycle is evaluated again until its value stops changing, and nothing computed inside the cycle is kept
-/// before that, because it was computed from a value that was not final. After `MAX_ROUNDS` the value is unknown, and counted.
+/// The value a context returns (BV-D5), kept: `(def, key)` is worked out once, with everything it needs (`Run`). Asked while a request is being worked out, a context
+/// answers with its value so far, which starts as data.
 pub(crate) fn ret(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
-    let id = (def, key.clone());
-    match lang.rets.borrow().get(&id) {
-        Some(Ret::Done(value)) => return value.clone(),
-        Some(Ret::Running(value, at)) => {
-            lang.ret_low.set(lang.ret_low.get().min(*at));
-            return value.clone();
-        }
-        None => {}
+    let ctx = (def, key.clone());
+    if let Some(value) = lang.rets.borrow().get(&ctx) {
+        return value.clone();
     }
-    let at = lang.ret_depth.get();
-    lang.ret_depth.set(at + 1);
-    let outer_low = lang.ret_low.replace(usize::MAX);
-    lang.rets
-        .borrow_mut()
-        .insert(id.clone(), Ret::Running(Value::data(), at));
-    let mut so_far = Value::data();
-    let mut rounds = 0;
-    let (value, low) = loop {
-        lang.ret_low.set(usize::MAX);
-        let read = read_value(lang, def, key);
-        let low = lang.ret_low.get();
-        if low < at {
-            // it read a context outside it that is not finished: this value is not final, and is not kept
-            lang.rets.borrow_mut().remove(&id);
-            break (read, low);
-        }
-        if low == usize::MAX {
-            // it asked for no unfinished context: final
-            lang.rets
-                .borrow_mut()
-                .insert(id.clone(), Ret::Done(read.clone()));
-            break (read, usize::MAX);
-        }
-        // it read itself: the values only grow, so it is final when it stops growing
-        let grown = so_far.join(&read);
-        if grown.as_ref() == Some(&so_far) {
-            lang.rets
-                .borrow_mut()
-                .insert(id.clone(), Ret::Done(so_far.clone()));
-            break (so_far, usize::MAX);
-        }
-        rounds += 1;
-        match grown {
-            Some(grown) if rounds < MAX_ROUNDS => {
-                so_far = grown;
-                lang.rets
-                    .borrow_mut()
-                    .insert(id.clone(), Ret::Running(so_far.clone(), at));
-            }
-            _ => {
-                lang.note_once(calls::RETURN_IN_CYCLE);
-                lang.rets
-                    .borrow_mut()
-                    .insert(id.clone(), Ret::Done(Value::unknown()));
-                break (Value::unknown(), usize::MAX);
-            }
-        }
+    if let Some(run) = lang.run.borrow_mut().as_mut() {
+        let at = run.cell_for(ctx);
+        return run.read(at);
+    }
+    // not inside a request: this is the first, and the others come from it
+    let root = {
+        let mut run = Run::default();
+        let root = run.cell_for(ctx);
+        *lang.run.borrow_mut() = Some(run);
+        root
     };
-    lang.ret_depth.set(at);
-    lang.ret_low.set(outer_low.min(low));
+    loop {
+        let next = {
+            let mut guard = lang.run.borrow_mut();
+            let run = guard.as_mut().expect("a request is being worked out");
+            run.work.pop().inspect(|at| {
+                run.queued[*at] = false;
+                run.reading = Some(*at);
+            })
+        };
+        let Some(at) = next else { break };
+        let (def, key) = {
+            let guard = lang.run.borrow();
+            guard.as_ref().expect("a request").ctxs[at].clone()
+        };
+        let read = read_value(lang, def, &key);
+        let (big, cycle) = lang
+            .run
+            .borrow_mut()
+            .as_mut()
+            .expect("a request")
+            .settle(at, read);
+        if big {
+            lang.note_once(calls::VALUE_WIDENED_SET);
+        }
+        if cycle {
+            lang.note_once(calls::RETURN_IN_CYCLE);
+        }
+    }
+    let run = lang.run.borrow_mut().take().expect("a request");
+    let value = run.cells[root].value.clone();
+    let mut rets = lang.rets.borrow_mut();
+    for (ctx, cell) in run.ctxs.into_iter().zip(run.cells) {
+        rets.insert(ctx, cell.value);
+    }
     value
 }
 
@@ -333,7 +427,9 @@ impl<'b> Eval<'_, 'b> {
         let Some((ty, written)) = self.ctor_of(name) else {
             return Value::unknown();
         };
-        if !self.tracks() {
+        // an object with no function anywhere inside it says nothing a call can use, and a key that held it would be a different context for every shape of data: it is
+        // as unknown as a constructor of Base's
+        if !self.tracks() || !held.iter().any(Value::holds_function) {
             return Value::unknown();
         }
         let (value, hit) = Value::one(One::Ctor {

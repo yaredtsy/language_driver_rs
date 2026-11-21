@@ -19,6 +19,7 @@ use crate::env::Env;
 use crate::eval::{self, Policy};
 use crate::key::{self, CanonKey, Key, Relevance};
 use crate::sem::{self, Item};
+use crate::value::Value;
 use crate::walk::{self, Reached};
 
 /// The keys of the counters in `Stats.language` that the walk keeps, besides the reason of each unresolved edge. Each is absent when 0.
@@ -151,10 +152,9 @@ pub(crate) struct Bend<'b> {
     pub(crate) relevant: RefCell<HashMap<DeclId, Rc<Relevance>>>,
     digests: RefCell<HashMap<Key, [u8; 16]>>,
     /// The value each context returns (`eval::ret`): kept in Bend beside the sites. Only ever looked up, never iterated (rule 9).
-    pub(crate) rets: RefCell<HashMap<(DeclId, Key), eval::Ret>>,
-    /// How many contexts are being evaluated for their value now, and the smallest place of one of them that was read while unfinished.
-    pub(crate) ret_depth: Cell<usize>,
-    pub(crate) ret_low: Cell<usize>,
+    pub(crate) rets: RefCell<HashMap<(DeclId, Key), Value>>,
+    /// The contexts whose value is being worked out now, if a request of `eval::ret` is under way.
+    pub(crate) run: RefCell<Option<eval::Run>>,
     /// While above 0 a body is read only for its value: what it counts is counted when its context is walked, not now.
     silent: Cell<u32>,
     /// The canonical key of each digest this request made.
@@ -175,8 +175,7 @@ impl<'b> Bend<'b> {
             relevant: RefCell::new(HashMap::new()),
             digests: RefCell::new(HashMap::new()),
             rets: RefCell::new(HashMap::new()),
-            ret_depth: Cell::new(0),
-            ret_low: Cell::new(usize::MAX),
+            run: RefCell::new(None),
             silent: Cell::new(0),
             canons: RefCell::new(HashMap::new()),
         }

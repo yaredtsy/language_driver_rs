@@ -643,3 +643,39 @@ fn a_value_nested_deeper_than_three_is_widened_and_counted() {
     );
     assert_eq!(counter(&graph, "value_widened_depth"), 0);
 }
+
+/// What a def returns when it depends on itself through six others settles by being evaluated again where a value grew, and a cycle that has not settled in four rounds is
+/// unknown, and counted (`return_in_cycle`): a ring of defs that each return their own def or the next one's value gives each of them a value with a member more than the
+/// round before.
+#[test]
+fn a_ring_that_does_not_settle_is_unknown_and_counted() {
+    let ring = |len: usize| {
+        let defs: String = (0..len)
+            .map(|n| {
+                format!(
+                    "def w{n}(x: U32) -> U32:\n  x\n\ndef d{n}(n: Nat) -> U32 -> U32:\n  match n:\n    case Zero{{}}:\n      w{n}\n    case Succ{{p}}:\n      d{}(p)\n\n",
+                    (n + 1) % len
+                )
+            })
+            .collect();
+        variable_graph(&defs, "def main() -> U32:\n  d0(3n)(1)\n")
+    };
+    // a ring of three settles: the outer call has all three
+    let settled = ring(3);
+    assert_eq!(counter(&settled, "return_in_cycle"), 0);
+    assert_eq!(reached_from(&settled, "main").len(), 3 + 1);
+    // a ring of eight does not settle in four rounds
+    let long = ring(8);
+    assert!(counter(&long, "return_in_cycle") >= 1);
+}
+
+/// An object with no function anywhere inside it says nothing a call can use, so it is not in a key: the same call with any data is the same context.
+#[test]
+fn a_constructor_with_no_function_in_it_is_not_in_a_key() {
+    let graph = variable_graph(
+        "type Pair is Data:\n  Pair{a: U32, b: U32}\n\ndef work(x: U32) -> U32:\n  x\n\ndef take(p: Pair) -> U32:\n  match p:\n    case Pair{a, b}:\n      a\n",
+        "def main() -> U32:\n  x = take(Pair{1, 2})\n  take(Pair{3, 4})\n",
+    );
+    assert_eq!(contexts_of(&graph, "take").len(), 1);
+    assert_eq!(contexts_of(&graph, "take")[0].digest, ZEROS);
+}
