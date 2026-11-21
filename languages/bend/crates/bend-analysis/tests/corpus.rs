@@ -14,6 +14,8 @@
 //! - `every_ref_the_oracle_prints_is_accounted_for` (BD4): each Ref that is in a def's body falls in a place the walk read: a site (a call, a construct, an
 //!   external, a passed edge, an unresolved one), a term it skipped as a type, or one it counted or knows to be data. The first ten that fall in none are printed.
 //! - `demos_counters`: what the walk counted over every def of each demo's largest book.
+//! - `context_layer_on_the_demos` (BC step 7): the 16 books of the sweep asked whole at `main`, at `Default` and at `Precise`; what each of the 55 sites of layer 1 is
+//!   in every context of its def, the classes, the cost of the layer, and why `io_rollback_netcode` has more contexts. Run it with `--release` (it times requests).
 //! - `measure`: time and bytes of opening (a) each demo, (b) the largest book of the corpus by file count, (c) `base.bend` alone.
 
 use std::collections::{BTreeMap, HashMap};
@@ -23,7 +25,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use bend_analysis::{
-    Book, DeclEntry, DefKind, FileIndex, MarkerStyle, Options, Resolved, Walked, WalkedKind, walked,
+    Book, Cancel, ContextId, DeclEntry, DefKind, EdgeTo, FileIndex, Graph, Limits, MarkerStyle,
+    Options, Precision, Resolved, StableDef, Walked, WalkedKind, call_graph, walked,
 };
 
 /// The repo's root, which a relative `BEND_CLONE` is from (a test runs in its crate's folder).
@@ -742,4 +745,635 @@ fn demos_counters() {
         }
     }
     println!("all demos: {totals:#?}");
+}
+
+// ---- BC step 7: the context layer on the demos ----
+
+/// The 16 entries of the sweep (`ENGINE.md`, "The sweep"): each demo's `main.bend`, except `io_rollback_netcode`, which has none (its largest book is `walkers_test.bend`).
+fn sweep_entries() -> Vec<(String, PathBuf)> {
+    let demos = clone_dir().join("demos");
+    let mut found = Vec::new();
+    let mut dirs: Vec<PathBuf> = fs::read_dir(&demos)
+        .expect("demos")
+        .map(|e| e.expect("entry").path())
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort();
+    for dir in dirs {
+        let name = dir
+            .file_name()
+            .expect("name")
+            .to_string_lossy()
+            .into_owned();
+        let entry = ["main.bend", "walkers_test.bend"]
+            .iter()
+            .map(|f| dir.join(f))
+            .find(|f| f.is_file())
+            .unwrap_or_else(|| panic!("{name}: no main.bend and no walkers_test.bend"));
+        found.push((name, entry));
+    }
+    found
+}
+
+/// What one site is in one context of its def, under `Precise`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Outcome {
+    /// A call of this def.
+    Drawn(String),
+    /// `Unresolved(anonymous_function_called)`: the caller named a lambda, drawn where it is written.
+    Lambda,
+    /// `Unresolved(function_typed_value)`: nobody named it.
+    Unresolved,
+}
+
+/// What the callee of a site is, from the def's own parameter list (`~f` is a template).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Callee {
+    Template,
+    Plain,
+    Neither,
+}
+
+impl Callee {
+    fn word(self) -> &'static str {
+        match self {
+            Callee::Template => "~",
+            Callee::Plain => "plain",
+            Callee::Neither => "neither",
+        }
+    }
+}
+
+const CLASSES: [&str; 6] = [
+    "drawn in every context",
+    "lambda in every context",
+    "drawn in some, lambda in others",
+    "named in some, unresolved in others",
+    "unresolved in every context",
+    "def not reached",
+];
+
+fn class_of(outcomes: &[Outcome]) -> &'static str {
+    let drawn = outcomes
+        .iter()
+        .filter(|o| matches!(o, Outcome::Drawn(_)))
+        .count();
+    let lambda = outcomes.iter().filter(|o| **o == Outcome::Lambda).count();
+    let open = outcomes.len() - drawn - lambda;
+    match (outcomes.len(), drawn, lambda, open) {
+        (0, ..) => CLASSES[5],
+        (_, _, _, 0) if lambda == 0 => CLASSES[0],
+        (_, _, _, 0) if drawn == 0 => CLASSES[1],
+        (_, _, _, 0) => CLASSES[2],
+        (n, ..) if open == n => CLASSES[4],
+        _ => CLASSES[3],
+    }
+}
+
+/// A def as the graph names it: its qualname, and `#n` for the n-th of one name in its file.
+fn def_label(graph: &Graph, id: &StableDef) -> String {
+    let def = graph.def(id).expect("a def of the graph");
+    match def.occurrence {
+        0 => def.qname.clone(),
+        n => format!("{}#{n}", def.qname),
+    }
+}
+
+/// A def for a count of contexts: its name, and its file in brackets when another def of the graph has the same name (`Mesh.of` is in two files of
+/// `app_slash_boss_3d`: counting by name would merge them).
+fn shown(graph: &Graph, id: &StableDef) -> String {
+    let name = def_label(graph, id);
+    let same = graph
+        .defs
+        .iter()
+        .filter(|d| def_label(graph, &d.id) == name)
+        .count();
+    match graph.def(id) {
+        Some(def) if same > 1 => format!("{name} [{}]", def.file),
+        _ => name,
+    }
+}
+
+fn edge_kinds(graph: &Graph) -> [u64; 5] {
+    let mut kinds = [0; 5];
+    for edge in &graph.edges {
+        kinds[match &edge.to {
+            EdgeTo::Context(..) if edge.passed => 3,
+            EdgeTo::Context(..) => 0,
+            EdgeTo::Construct { .. } => 1,
+            EdgeTo::External(..) => 2,
+            EdgeTo::Unresolved(_) => 4,
+            _ => 4,
+        }] += 1;
+    }
+    kinds
+}
+
+fn counter(graph: &Graph, key: &str) -> u64 {
+    graph.stats.language.get(key).copied().unwrap_or(0)
+}
+
+fn hex8(digest: &[u8; 16]) -> String {
+    digest.iter().take(4).map(|b| format!("{b:02x}")).collect()
+}
+
+/// The request of `main` in the file of `book`, asked `runs` times: the graph, and the median wall time in milliseconds.
+fn timed(book: &Book, file: &str, precision: Precision, runs: usize) -> (Graph, f64) {
+    let options = options().with_precision(precision);
+    let ask = || {
+        call_graph(
+            book,
+            Path::new(file),
+            "main",
+            &options,
+            &Limits::default(),
+            &Cancel::new(),
+        )
+        .expect("a graph of main")
+    };
+    let graph = ask();
+    let times = (0..runs)
+        .map(|_| {
+            let start = Instant::now();
+            std::hint::black_box(ask());
+            start.elapsed()
+        })
+        .collect();
+    (graph, median(times).as_secs_f64() * 1000.0)
+}
+
+/// The text of `at` bytes from the start of the def, its line and column (1-based, in characters), and the whole line it is on.
+fn place(
+    book: &Book,
+    graph: &Graph,
+    def: &StableDef,
+    site: (u32, u32),
+) -> (String, usize, usize, String) {
+    let info = graph.def(def).expect("a def of the graph");
+    let file = book
+        .files()
+        .iter()
+        .find(|f| f.relative == info.file)
+        .expect("the def's file");
+    let (start, end) = (
+        (info.range.start + site.0) as usize,
+        (info.range.start + site.1) as usize,
+    );
+    let before = &file.text[..start];
+    let line = before.matches('\n').count() + 1;
+    let col = before.rsplit('\n').next().map_or(0, |l| l.chars().count()) + 1;
+    let text = file.text[start..end].to_owned();
+    let whole = file
+        .text
+        .lines()
+        .nth(line - 1)
+        .unwrap_or("")
+        .trim()
+        .to_owned();
+    (text, line, col, whole)
+}
+
+/// Whether the callee `text` is a template parameter of the def (`~text` in its outline's params), a plain one, or neither.
+fn callee_of(book: &Book, graph: &Graph, def: &StableDef, text: &str) -> Callee {
+    let info = graph.def(def).expect("a def of the graph");
+    let file = book
+        .files()
+        .iter()
+        .find(|f| f.relative == info.file)
+        .expect("the def's file");
+    let outline = file
+        .outline
+        .defs
+        .iter()
+        .find(|d| d.range == info.range && d.qualname == info.qualname)
+        .expect("the def in its outline");
+    if outline
+        .params
+        .iter()
+        .any(|p| p.strip_prefix('~') == Some(text))
+    {
+        Callee::Template
+    } else if outline
+        .params
+        .iter()
+        .any(|p| p == text || p.strip_prefix(['+', '-']) == Some(text))
+    {
+        Callee::Plain
+    } else {
+        Callee::Neither
+    }
+}
+
+struct SiteRow {
+    book: String,
+    callee: Callee,
+    outcomes: Vec<Outcome>,
+}
+
+#[test]
+#[ignore = "needs BEND_CLONE; run with --release (it times requests)"]
+fn context_layer_on_the_demos() {
+    const RUNS: usize = 20;
+    let entries = sweep_entries();
+    assert_eq!(entries.len(), 16, "the sweep's 16 books");
+    let mut rows: Vec<SiteRow> = Vec::new();
+    let mut defaults_unresolved: Vec<(String, usize)> = Vec::new();
+    println!(
+        "# a. the sites of layer 1 (the unresolved edges of the Default graph), each in every context of its def under Precise\n"
+    );
+    let mut books_report = String::new();
+    let mut tops = String::new();
+    let mut rollback = String::new();
+    // (book, def, contexts) of every def that has more than one context under Precise
+    let mut many: Vec<(String, String, usize)> = Vec::new();
+    // per book: contexts under Default and Precise, and the layer's five counters under Precise
+    let mut layer: Vec<(String, u64, u64, [u64; 5])> = Vec::new();
+    for (name, entry) in &entries {
+        let file = entry
+            .file_name()
+            .expect("name")
+            .to_string_lossy()
+            .into_owned();
+        let book = open_entry(entry).expect("opens");
+        let (default, default_ms) = timed(&book, &file, Precision::Default, RUNS);
+        let (precise, precise_ms) = timed(&book, &file, Precision::Precise, RUNS);
+
+        // the sites: (def, span) of every unresolved edge of the Default graph, each once (one context per def there)
+        let mut sites: Vec<(StableDef, (u32, u32))> = default
+            .edges
+            .iter()
+            .filter_map(|e| match &e.to {
+                EdgeTo::Unresolved(reason) => {
+                    assert_eq!(
+                        reason.as_str(),
+                        "function_typed_value",
+                        "{name}: BC0 saw no other reason"
+                    );
+                    Some((e.from.func.clone(), (e.site.start, e.site.end)))
+                }
+                _ => None,
+            })
+            .collect();
+        sites.sort();
+        let before = sites.len();
+        sites.dedup();
+        assert_eq!(
+            before,
+            sites.len(),
+            "{name}: a def has one context under Default"
+        );
+        defaults_unresolved.push((name.clone(), sites.len()));
+
+        for (def, site) in &sites {
+            let contexts = precise
+                .contexts
+                .iter()
+                .filter(|c| &c.id.func == def)
+                .count();
+            let outcomes: Vec<Outcome> = precise
+                .edges
+                .iter()
+                .filter(|e| &e.from.func == def && (e.site.start, e.site.end) == *site)
+                .map(|e| match &e.to {
+                    EdgeTo::Context(id, _) if !e.passed => {
+                        Outcome::Drawn(def_label(&precise, &id.func))
+                    }
+                    EdgeTo::Unresolved(r) if r.as_str() == "anonymous_function_called" => {
+                        Outcome::Lambda
+                    }
+                    EdgeTo::Unresolved(_) => Outcome::Unresolved,
+                    other => {
+                        panic!("{name}: a site that is neither drawn nor unresolved: {other:?}")
+                    }
+                })
+                .collect();
+            assert_eq!(
+                outcomes.len(),
+                contexts,
+                "{name}: one edge for the site in each context of its def"
+            );
+            let (text, line, col, _) = place(&book, &default, def, *site);
+            let callee = callee_of(&book, &default, def, &text);
+            let label = def_label(&default, def);
+            let drawn: Vec<&str> = {
+                let mut d: Vec<&str> = outcomes
+                    .iter()
+                    .filter_map(|o| match o {
+                        Outcome::Drawn(t) => Some(t.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                d.sort();
+                d.dedup();
+                d
+            };
+            let count = |f: fn(&Outcome) -> bool| outcomes.iter().filter(|o| f(o)).count();
+            println!(
+                "{name} | {} {label} {line}:{col} `{text}` | {} | {} | drawn {} lambda {} unresolved {} of {contexts} contexts{}",
+                default.def(def).map_or("?", |d| d.file.as_str()),
+                callee.word(),
+                class_of(&outcomes),
+                count(|o| matches!(o, Outcome::Drawn(_))),
+                count(|o| *o == Outcome::Lambda),
+                count(|o| *o == Outcome::Unresolved),
+                if drawn.is_empty() {
+                    String::new()
+                } else {
+                    format!(" | -> {}", drawn.join(", "))
+                },
+            );
+            rows.push(SiteRow {
+                book: name.clone(),
+                callee,
+                outcomes,
+            });
+        }
+
+        // c. the cost of the layer
+        let counters = [
+            "anonymous_function_called",
+            "key_slot_open",
+            "key_slot_local",
+            "key_slot_value",
+            "key_slot_missing",
+        ];
+        assert!(
+            counters.iter().all(|c| counter(&default, c) == 0),
+            "{name}: the layer's counters are Precise's alone"
+        );
+        layer.push((
+            name.clone(),
+            default.stats.contexts,
+            precise.stats.contexts,
+            counters.map(|c| counter(&precise, c)),
+        ));
+        for (mode, graph, ms) in [
+            ("Default", &default, default_ms),
+            ("Precise", &precise, precise_ms),
+        ] {
+            let k = edge_kinds(graph);
+            books_report.push_str(&format!(
+                "| {name} | {mode} | {} | {} | {} / {} / {} / {} / {} | {} | {:.3} |\n",
+                graph.stats.contexts,
+                graph.stats.walks,
+                k[0],
+                k[1],
+                k[2],
+                k[3],
+                k[4],
+                counters
+                    .iter()
+                    .map(|c| counter(graph, c).to_string())
+                    .collect::<Vec<_>>()
+                    .join(" / "),
+                ms
+            ));
+        }
+
+        // d. the five defs with the most contexts under Precise
+        let mut per_def: BTreeMap<StableDef, usize> = BTreeMap::new();
+        for c in &precise.contexts {
+            *per_def.entry(c.id.func.clone()).or_default() += 1;
+        }
+        let mut order: Vec<(String, usize)> = per_def
+            .iter()
+            .map(|(d, n)| (shown(&precise, d), *n))
+            .collect();
+        order.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        many.extend(
+            per_def
+                .iter()
+                .filter(|(_, n)| **n > 1)
+                .map(|(d, n)| (name.clone(), shown(&precise, d), *n)),
+        );
+        tops.push_str(&format!(
+            "{name}: {}\n",
+            order
+                .iter()
+                .take(5)
+                .map(|(d, n)| format!("{d} {n}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+
+        // e. io_rollback_netcode: which defs have more contexts, and what their keys are made of
+        if name == "io_rollback_netcode" {
+            let mut before_count: BTreeMap<StableDef, usize> = BTreeMap::new();
+            for c in &default.contexts {
+                *before_count.entry(c.id.func.clone()).or_default() += 1;
+            }
+            rollback.push_str(&format!(
+                "contexts {} -> {} (Default -> Precise); the defs that have more:\n",
+                default.stats.contexts, precise.stats.contexts
+            ));
+            for (def_id, more) in &per_def {
+                let was = before_count.get(def_id).copied().unwrap_or(0);
+                if *more <= was {
+                    continue;
+                }
+                rollback.push_str(&format!("  {}: {was} -> {more}\n", shown(&precise, def_id)));
+                let mut mine: Vec<&ContextId> = precise
+                    .contexts
+                    .iter()
+                    .map(|c| &c.id)
+                    .filter(|id| id.func == *def_id)
+                    .collect();
+                mine.sort_by_key(|id| id.digest);
+                for id in mine {
+                    let key = if id.digest == [0; 16] {
+                        "open".to_owned()
+                    } else {
+                        hex8(&id.digest)
+                    };
+                    // what this context's own sites of layer 1 became, and where it was called from
+                    let own: Vec<String> = sites
+                        .iter()
+                        .filter(|(d, _)| *d == id.func)
+                        .map(|(d, site)| {
+                            let (text, ..) = place(&book, &default, d, *site);
+                            let out: Vec<String> = precise
+                                .edges
+                                .iter()
+                                .filter(|e| e.from == *id && (e.site.start, e.site.end) == *site)
+                                .map(|e| match &e.to {
+                                    EdgeTo::Context(t, _) => {
+                                        format!("calls {}", def_label(&precise, &t.func))
+                                    }
+                                    EdgeTo::Unresolved(r) => r.as_str().to_owned(),
+                                    _ => "?".to_owned(),
+                                })
+                                .collect();
+                            format!("`{text}` {}", out.join("+"))
+                        })
+                        .collect();
+                    rollback.push_str(&format!("    key {key}: own sites [{}]\n", own.join("; ")));
+                    let mut from: Vec<String> = precise
+                        .edges
+                        .iter()
+                        .filter(|e| matches!(&e.to, EdgeTo::Context(t, _) if t == id && !e.passed))
+                        .map(|e| {
+                            let (_, line, _, whole) =
+                                place(&book, &precise, &e.from.func, (e.site.start, e.site.end));
+                            format!(
+                                "{}@{} line {line}: {whole}",
+                                def_label(&precise, &e.from.func),
+                                if e.from.digest == [0; 16] {
+                                    "open".to_owned()
+                                } else {
+                                    hex8(&e.from.digest)
+                                }
+                            )
+                        })
+                        .collect();
+                    from.sort();
+                    from.dedup();
+                    for f in from.iter().take(3) {
+                        rollback.push_str(&format!("      called from {f}\n"));
+                    }
+                }
+            }
+        }
+    }
+
+    // the totals
+    let total: usize = defaults_unresolved.iter().map(|(_, n)| n).sum();
+    println!(
+        "\nunresolved sites under Default: {total} = {}\n",
+        defaults_unresolved
+            .iter()
+            .filter(|(_, n)| *n > 0)
+            .map(|(b, n)| format!("{b} {n}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
+    println!(
+        "# b. the classes, by what the callee is (`~` template parameter / plain parameter / neither)\n"
+    );
+    let table = |label: &str, rows: &[&SiteRow]| {
+        println!("{label}");
+        println!("| class | ~ | plain | neither | all |\n|---|---|---|---|---|");
+        for class in CLASSES {
+            let n = |c: Callee| {
+                rows.iter()
+                    .filter(|r| class_of(&r.outcomes) == class && r.callee == c)
+                    .count()
+            };
+            let all: usize = [Callee::Template, Callee::Plain, Callee::Neither]
+                .iter()
+                .map(|c| n(*c))
+                .sum();
+            println!(
+                "| {class} | {} | {} | {} | {all} |",
+                n(Callee::Template),
+                n(Callee::Plain),
+                n(Callee::Neither)
+            );
+        }
+        let n = |c: Callee| rows.iter().filter(|r| r.callee == c).count();
+        println!(
+            "| **all** | {} | {} | {} | {} |\n",
+            n(Callee::Template),
+            n(Callee::Plain),
+            n(Callee::Neither),
+            rows.len()
+        );
+    };
+    for (name, _) in entries
+        .iter()
+        .filter(|(n, _)| rows.iter().any(|r| &r.book == n))
+    {
+        let mine: Vec<&SiteRow> = rows.iter().filter(|r| &r.book == name).collect();
+        table(&format!("{name}:"), &mine);
+    }
+    let all: Vec<&SiteRow> = rows.iter().collect();
+    table("all 16 books:", &all);
+
+    println!(
+        "# c. Default against Precise, per book: contexts | bodies walked | edges call / construct / external / passed / unresolved | anonymous_function_called / key_slot_open / key_slot_local / key_slot_value / key_slot_missing | median of {RUNS} requests, ms\n"
+    );
+    println!(
+        "| book | mode | contexts | walks | edges | layer counters | ms |\n|---|---|---|---|---|---|---|"
+    );
+    print!("{books_report}");
+    println!("\n# d. the five defs with the most contexts under Precise\n");
+    print!("{tops}");
+    println!("\ndefs with more than one context under Precise, in all 16 books: {many:?}");
+    println!("\n# e. io_rollback_netcode\n");
+    print!("{rollback}");
+
+    // What the code gave on 2026-11-21, explained site by site in the report of BC step 7 and pinned here (the numbers are `ENGINE.md`'s §BC1+BC2).
+    // Layer 1: BC0's 55 sites, in four books.
+    let found: Vec<(&str, usize)> = defaults_unresolved
+        .iter()
+        .filter(|(_, n)| *n > 0)
+        .map(|(b, n)| (b.as_str(), *n))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("app_slash_boss_3d", 20),
+            ("io_rollback_netcode", 13),
+            ("io_tcp_echos", 1),
+            ("pure_hvm5_mini", 21)
+        ]
+    );
+    // The classes by what the callee is: every cell not named is 0. BC0 said 28 named (16 at a `~`, 12 at a plain parameter), 0 named in some, 27 in none. Here:
+    // the 28 are 16 drawn (all `~`) and 12 known to be a lambda (all plain: continuations written at the call); 3 of BC0's 27 are named in 14 of 15 contexts of
+    // `String.word` and `String.word.go` (the callers name a lambda; the open context is reached through a lambda's own binder, `k2 => String.word(R, t, k2)`);
+    // 24 stay unresolved in every context (17 plain parameters of `pure_hvm5_mini`'s CPS parser, 7 that are no parameter: BC0's c, d and g).
+    let cell = |class: &str, callee: Callee| {
+        rows.iter()
+            .filter(|r| class_of(&r.outcomes) == class && r.callee == callee)
+            .count()
+    };
+    let pinned = [
+        (CLASSES[0], Callee::Template, 16),
+        (CLASSES[1], Callee::Plain, 12),
+        (CLASSES[3], Callee::Plain, 3),
+        (CLASSES[4], Callee::Plain, 17),
+        (CLASSES[4], Callee::Neither, 7),
+    ];
+    for class in CLASSES {
+        for callee in [Callee::Template, Callee::Plain, Callee::Neither] {
+            let want = pinned
+                .iter()
+                .find(|(c, k, _)| *c == class && *k == callee)
+                .map_or(0, |(_, _, n)| *n);
+            assert_eq!(cell(class, callee), want, "{class}, {}", callee.word());
+        }
+    }
+    let named = |callee: Callee| cell(CLASSES[0], callee) + cell(CLASSES[1], callee);
+    assert_eq!((named(Callee::Template), named(Callee::Plain)), (16, 12));
+    // The cost: only these books have a context or a counter more under Precise: (contexts under Default, under Precise, then the layer's counters
+    // `anonymous_function_called`, `key_slot_open`, `key_slot_local`, `key_slot_value`, `key_slot_missing`).
+    for (book, default_contexts, precise_contexts, counters) in &layer {
+        let want = match book.as_str() {
+            "app_slash_boss_3d" => (424, 424, [4, 0, 0, 0, 0]),
+            "io_rollback_netcode" => (130, 160, [64, 1, 15, 0, 0]),
+            "io_tcp_echos" => (8, 8, [1, 0, 0, 0, 0]),
+            "pure_hvm5_mini" => (157, 157, [0, 5, 0, 0, 14]),
+            // nothing to resolve: the same contexts, no counter
+            _ => (*default_contexts, *default_contexts, [0; 5]),
+        };
+        assert_eq!(
+            (*default_contexts, *precise_contexts, *counters),
+            want,
+            "{book}"
+        );
+    }
+    // The only defs with more than one context under Precise: the 30 contexts `io_rollback_netcode` has more (130 to 160).
+    let many: Vec<(&str, &str, usize)> = many
+        .iter()
+        .map(|(b, d, n)| (b.as_str(), d.as_str(), *n))
+        .collect();
+    assert_eq!(
+        many,
+        [
+            ("io_rollback_netcode", "String.word", 15),
+            ("io_rollback_netcode", "String.word.go", 15),
+            ("io_rollback_netcode", "Bot.frame", 2),
+            ("io_rollback_netcode", "Bot.more", 2)
+        ]
+    );
 }
