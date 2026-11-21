@@ -45,6 +45,10 @@ Bend tree is its own file and the scenario README says why.
 
 ## 3. Questions that need your yes
 
+**All answered by 2026-11-21.** The owner delegated the open ones to the reviewer ("i do not bend that much so u chose for me"): Q-BD2 → D50 (one
+qualname), Q-BD4 and Q-BD5 → the draft rows BD-D8 and BD-D9 stand, Q-BD7 → CLAUDE.md edited, Q-BD8 → D51 (build BC1+BC2 as one step). Q-BD1
+→ D49, Q-BD3 and Q-BD6 as recommended. The table is kept as the record of what was asked.
+
 | # | Question | My recommendation |
 |---|---|---|
 | Q-BD1 | **The marker above the def.** Bend has no docstring. Build `Placement::Above` in core (a new `#[non_exhaustive]` variant and `plan`) and use it for Bend's defs; the header stays the plain comment it is everywhere. D6 said "build only `Docstring`"; this is the day it was kept for | **Answered yes (owner, 2026-11-20): D49.** Built in BD2 step 2; `languages/bend/docs/markers.md` |

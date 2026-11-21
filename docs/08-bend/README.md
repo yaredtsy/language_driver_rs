@@ -60,7 +60,8 @@ known number in the table.
 **State (2026-11-20): BD0 and BD1 complete** (aeef3fc, c8742de, f1ed5f6, e67f328, 379b909), every proof reproduced at review; `bend-parser` is
 2,030 code lines, 85 fixtures; `languages/bend/ENGINE.md` has the corpus numbers, the term-node counts and the grammar list G1–G36. **BD2 complete** (08bdce7, 01f622e, 692dfa0): `qualnames.md` and `markers.md` are the contract.
 **Tag `bend-v0.1.0` is the owner's, after Q-BD2 (law and proof: one qualname or a suffix).** **BD3 complete** (03de29f, 66695e6): the book, Base's names as a generated list (Q-BD3 answered as recommended), the Ref oracle at zero mismatches. **BD4 and BD5 complete** (0adfc30 … 80f3390, 2026-11-21): **layer 1 of Bend is built**, every proof reproduced at review. The three tags
-(`bend-v0.1.0`, `bend-v0.2.0`, `bend-v0.3.0`) are the owner's, Q-BD2 before the first. BC0 done (6f4cff0): 55 unresolved sites in 4,323 on the demos; BC1+BC2 as one step would make 28 exact. **Q-BD8: build it, or stop at layer 1?**
+(`bend-v0.1.0`, `bend-v0.2.0`, `bend-v0.3.0`) are the owner's, Q-BD2 before the first. BC0 done (6f4cff0): 55 unresolved sites in 4,323 on the demos. **D51: the context layer is built, BC1+BC2 as one step; its design is
+written first, in a fresh session** (the plan's §3–§4 of 04 are the draft to rewrite from BC0's six ways). Every Q-BD is answered (05 §3).
 
 The user asked for three phases. They map so: **phase 1 (reading)** is BD0–BD1, the parser and its tree; **phase 2 (what can be called, and
 the call tree)** is BD2–BD5, the outline, the book and the call graph on core's flat solver; **phase 3 (the context layer)** is BC0–BC5.

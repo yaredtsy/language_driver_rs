@@ -8,7 +8,8 @@ and plan disagree, say so instead of silently picking one.
 
 - **driver**: the JSON-RPC program in `vnoc/drivers/<lang>/` (another repo). Not built here.
 - **analyzer**: a language's crates in this repo (`languages/<lang>/crates/`).
-- **engine**: the compiler front end an analyzer sits on (ruff/ty, tsrs, rust-analyzer). We never write parsers or type checkers.
+- **engine**: the compiler front end an analyzer sits on (ruff/ty, tsrs, rust-analyzer). We never write parsers or type checkers. One
+  exception, decided: Bend has no Rust implementation, so its parser is ours, `bend-parser`, pinned to a Bend commit (D-rows in `docs/08-bend/05`).
 
 ## Layout
 
