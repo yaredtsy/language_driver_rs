@@ -5,7 +5,9 @@ use std::path::Path;
 
 use analyzer_core::graph::StableDef;
 use analyzer_testkit::graph::assert_deterministic;
-use bend_analysis::{Cancel, EdgeTo, Limits, RenderOptions, call_graph, render, to_text};
+use bend_analysis::{
+    Cancel, EdgeTo, Limits, RenderOptions, WalkedKind, call_graph, render, to_text, walked,
+};
 
 mod common;
 use common::{Program, edges_as_text, graph_of, options};
@@ -175,4 +177,34 @@ fn the_same_input_gives_the_same_graph() {
     ]);
     let book = program.book("main.bend");
     assert_deterministic(|| graph_of(&book, "main.bend", "main").expect("a graph"));
+}
+
+/// Two places at one span keep the order layer 1 had, the outer one first: the call of an element, then the `Array.get` it stands on (counted, not a site).
+#[test]
+fn a_call_and_the_sugar_it_stands_on_come_in_that_order() {
+    let program = Program::new(&[(
+        "main.bend",
+        "import Base\n\ndef g(a: Array, i: U32) -> U32:\n  a[i](1)\n",
+    )]);
+    let book = program.book("main.bend");
+    let g = book
+        .decls()
+        .iter()
+        .find(|d| book.def(d.id).is_some_and(|def| def.qualname == "g"))
+        .expect("g")
+        .id;
+    let text = &book.files()[g.file().index()].text;
+    let at: Vec<WalkedKind> = walked(&book, g, &options())
+        .expect("a def")
+        .into_iter()
+        .filter(|w| &text[w.span.start as usize..w.span.end as usize] == "a[i]")
+        .map(|w| w.kind)
+        .collect();
+    assert_eq!(
+        at,
+        [
+            WalkedKind::Unresolved("function_typed_value".to_owned()),
+            WalkedKind::Counted("sugar_base".to_owned())
+        ]
+    );
 }

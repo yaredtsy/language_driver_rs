@@ -328,26 +328,32 @@ impl Walker {
             TermKind::Plus(inner) => self.term(inner, &Ns::None),
             TermKind::Call { callee, args, .. } => {
                 let head = strip_group(callee);
-                // the callee is read before the arguments, and the item is pushed once the arguments are known
+                // the callee's binding is read before anything is walked, and the item's slot is taken now, so that two places at one span (`a[i](1)`: the call
+                // and the `Array.get` it stands on) keep the order layer 1 had, the outer one first; the arguments are filled in once they are walked
                 let callee_is = match &head.kind {
                     TermKind::Name(name) => match self.binding(name) {
                         Binding::Unbound => Ok(name.clone()),
                         Binding::Param(at) => Err(Some(at)),
                         Binding::Local => Err(None),
                     },
-                    _ => {
-                        self.term(callee, &Ns::None);
-                        Err(None)
-                    }
+                    _ => Err(None),
                 };
-                let args: Vec<ArgShape> = args.iter().map(|a| self.arg(&a.term)).collect();
+                let slot = self.items.len();
                 self.push(
                     head.span,
-                    match callee_is {
-                        Ok(name) => What::Call { name, args },
-                        Err(param) => What::Opaque { param, args },
+                    What::Opaque {
+                        param: None,
+                        args: Vec::new(),
                     },
                 );
+                if !matches!(head.kind, TermKind::Name(_)) {
+                    self.term(callee, &Ns::None);
+                }
+                let args: Vec<ArgShape> = args.iter().map(|a| self.arg(&a.term)).collect();
+                self.items[slot].what = match callee_is {
+                    Ok(name) => What::Call { name, args },
+                    Err(param) => What::Opaque { param, args },
+                };
             }
             TermKind::Index {
                 array,
@@ -905,6 +911,30 @@ mod tests {
     }
 
     #[test]
+    fn two_places_at_one_span_keep_the_outer_one_first() {
+        // the call of an element and the `Array.get` it stands on are both at `a[i]`; layer 1 listed the call first
+        for (text, span) in [
+            ("def g(a: Array, i: U32) -> U32:\n  a[i](1)\n", "a[i]"),
+            ("def g(a: Bool, b: Bool) -> U32:\n  (a & b)(1)\n", "a & b"),
+        ] {
+            let walks = walks(text);
+            let at: Vec<&What> = walks[0]
+                .items
+                .iter()
+                .filter(|i| &text[i.span.start as usize..i.span.end as usize] == span)
+                .map(|i| &i.what)
+                .collect();
+            assert!(
+                matches!(
+                    at[..],
+                    [What::Opaque { .. }, What::Sugar(_) | What::BaseFixed]
+                ),
+                "{text}: {at:?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_case_variable_a_let_and_a_do_name_are_local() {
         assert_eq!(
             calls(
@@ -914,6 +944,11 @@ mod tests {
                 call("k", None, &["local", "local"]),
                 call("k", None, &["other", "param 0"]),
             ]
+        );
+        // a do's name, bound after its value
+        assert_eq!(
+            calls("def g() -> IO(U32):\n  do IO<U32>:\n    x : U32 <- m()\n    k(x)\n"),
+            [call("m", None, &[]), call("k", None, &["local"])]
         );
     }
 
