@@ -6,6 +6,9 @@
 
 use analyzer_core::text::Span;
 
+// the tree of a body is read by the evaluator (V2); until then only the tests read it
+#[allow(dead_code)]
+mod flow;
 mod walk;
 
 pub(crate) use walk::{ArgShape, DefWalk, Item, Sugar, What, of as walk_of, walks};

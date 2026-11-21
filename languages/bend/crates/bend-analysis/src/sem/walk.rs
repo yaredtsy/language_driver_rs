@@ -8,6 +8,8 @@
 use analyzer_core::text::Span;
 use bend_parser::{Body, Decl, DefBody, DoKind, Op, Term, TermKind};
 
+use super::flow::{Expr, Flow, LamFacts, Pat};
+
 /// One place in a body.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Item {
@@ -76,6 +78,9 @@ pub(crate) struct DefWalk {
     /// Where the declaration's name is: how a def of the outline finds its walk.
     pub(crate) name_span: Span,
     pub(crate) items: Vec<Item>,
+    /// The same body as a tree, whose sites are `items` by index (`flow.rs`). Read by the evaluator (V2); until then only the tests read it.
+    #[allow(dead_code)]
+    pub(crate) flow: Flow,
 }
 
 /// The namespace of the operators in reach: what the `: T` of the nearest group says.
@@ -94,18 +99,42 @@ enum Ns {
 /// What a name is, in the scopes of the body at the place it is read.
 enum Binding {
     Unbound,
-    /// The def's own parameter at this position of its written list.
+    /// The def's own parameter at this position of its written list (its binder number is the position).
     Param(u32),
-    /// Any other binder.
-    Local,
+    /// Any other binder, by number.
+    Local(u32),
+}
+
+impl Binding {
+    /// The binder's number, when a binder binds the name.
+    fn number(&self) -> Option<u32> {
+        match self {
+            Binding::Unbound => None,
+            Binding::Param(at) => Some(*at),
+            Binding::Local(n) => Some(*n),
+        }
+    }
+}
+
+/// A binder in reach: its name, its number, and the position of the def's parameter it is (`None` for any other binder).
+struct Bound {
+    name: String,
+    number: u32,
+    param: Option<u32>,
 }
 
 struct Walker {
     items: Vec<Item>,
-    /// The binders in reach, innermost last, each with the position of the def's parameter it is (`None` for any other binder).
-    scope: Vec<(String, Option<u32>)>,
+    /// The binders in reach, innermost last.
+    scope: Vec<Bound>,
     /// Lambdas entered so far: the number of the next one.
     lambdas: u32,
+    /// What each lambda entered says of itself, by number (`Flow::lambdas`).
+    lams: Vec<LamFacts>,
+    /// The number the next binder takes: the parameters are `0..params`.
+    next_binder: u32,
+    /// Every binder read so far, in the order it was read: what a lambda's `reads` are cut from.
+    uses: Vec<u32>,
 }
 
 /// The sugar of an infix operator that is a def of the namespace (`bend.ts` `INFIX`: the entries whose name starts with a dot).
@@ -141,8 +170,10 @@ fn strip_group(term: &Term) -> &Term {
 }
 
 impl Walker {
-    fn push(&mut self, span: Span, what: What) {
+    /// A place in the body. Its index is what a node of the `Flow` carries (before the items are sorted by place).
+    fn push(&mut self, span: Span, what: What) -> u32 {
         self.items.push(Item { span, what });
+        (self.items.len() - 1) as u32
     }
 
     /// `parse_var`: a name is looked up in the binders first, and a dotted name is never one. The innermost binder of a name decides what it is.
@@ -150,10 +181,12 @@ impl Walker {
         if name.contains('.') {
             return Binding::Unbound;
         }
-        match self.scope.iter().rev().find(|(bound, _)| bound == name) {
+        match self.scope.iter().rev().find(|b| b.name == name) {
             None => Binding::Unbound,
-            Some((_, Some(at))) => Binding::Param(*at),
-            Some((_, None)) => Binding::Local,
+            Some(Bound {
+                param: Some(at), ..
+            }) => Binding::Param(*at),
+            Some(Bound { number, .. }) => Binding::Local(*number),
         }
     }
 
@@ -161,103 +194,154 @@ impl Walker {
         !matches!(self.binding(name), Binding::Unbound)
     }
 
-    /// A binder that is not a parameter of the def.
-    fn bind(&mut self, name: &str) {
-        self.scope.push((name.to_owned(), None));
+    /// A binder that is not a parameter of the def: its number.
+    fn bind(&mut self, name: &str) -> u32 {
+        let number = self.fresh();
+        self.scope.push(Bound {
+            name: name.to_owned(),
+            number,
+            param: None,
+        });
+        number
     }
 
-    fn skip(&mut self, term: &Term) {
+    /// A number for a binder that has no name in the text (the argument of `\{ .. }`, the `_` of a do statement).
+    fn fresh(&mut self) -> u32 {
+        self.next_binder += 1;
+        self.next_binder - 1
+    }
+
+    /// A read of the binder `number`.
+    fn var(&mut self, number: u32) -> Expr {
+        self.uses.push(number);
+        Expr::Var(number)
+    }
+
+    fn skip(&mut self, term: &Term) -> Expr {
         self.push(term.span, What::TypePosition);
+        Expr::Data
     }
 
     /// The names a pattern binds: a name, `+x`, the arguments of `K{..}`, the rest of `3n+p`, both sides of `h <> t`, the items of a list or a tuple.
-    fn binders(&mut self, pattern: &Term) {
+    fn binders(&mut self, pattern: &Term) -> Pat {
         match &pattern.kind {
-            TermKind::Name(name) if !name.contains('.') => self.bind(name),
+            TermKind::Name(name) if !name.contains('.') => Pat::Bind(self.bind(name)),
             TermKind::Plus(inner) => self.binders(inner),
-            TermKind::Ctr { args, .. } => args.iter().for_each(|a| self.binders(a)),
-            TermKind::NatPlus { rest, .. } => self.binders(rest),
-            TermKind::Op { lhs, rhs, .. } => {
-                self.binders(lhs);
-                self.binders(rhs);
-            }
-            TermKind::List(items) => items.iter().for_each(|i| self.binders(i)),
+            TermKind::Ctr { name, args } => Pat::Ctr {
+                name: name.text.clone(),
+                fields: args.iter().map(|a| self.binders(a)).collect(),
+            },
+            TermKind::NatPlus { rest, .. } => self.opaque(|w| {
+                w.binders(rest);
+            }),
+            TermKind::Op { lhs, rhs, .. } => self.opaque(|w| {
+                w.binders(lhs);
+                w.binders(rhs);
+            }),
+            TermKind::List(items) => self.opaque(|w| {
+                items.iter().for_each(|i| drop(w.binders(i)));
+            }),
             TermKind::Group { body, .. } => self.body_binders(body),
-            TermKind::Tuple { items, .. } => items.iter().for_each(|i| self.body_binders(i)),
-            _ => {}
+            TermKind::Tuple { items, .. } => self.opaque(|w| {
+                items.iter().for_each(|i| drop(w.body_binders(i)));
+            }),
+            _ => Pat::Skip,
         }
     }
 
-    fn body_binders(&mut self, body: &Body) {
-        if let Body::Term(term) = body {
-            self.binders(term);
+    /// A pattern of several parts the layer does not follow: the binders `f` made, which are the numbers it took.
+    fn opaque(&mut self, f: impl FnOnce(&mut Self)) -> Pat {
+        let first = self.next_binder;
+        f(self);
+        Pat::Opaque((first..self.next_binder).collect())
+    }
+
+    fn body_binders(&mut self, body: &Body) -> Pat {
+        match body {
+            Body::Term(term) => self.binders(term),
+            _ => Pat::Skip,
         }
     }
 
-    fn body(&mut self, body: &Body, ns: &Ns) {
+    fn body(&mut self, body: &Body, ns: &Ns) -> Expr {
         match body {
             Body::Term(term) => self.term(term, ns),
             Body::Match(m) => {
-                for scrutinee in &m.scrutinees {
-                    self.term(scrutinee, &Ns::None);
-                }
+                let on = m
+                    .scrutinees
+                    .iter()
+                    .map(|scrutinee| self.term(scrutinee, &Ns::None))
+                    .collect();
+                let mut cases = Vec::new();
                 for case in &m.cases {
                     let mark = self.scope.len();
-                    for pattern in &case.patterns {
-                        self.binders(pattern);
-                    }
-                    self.body(&case.body, &Ns::None);
+                    let pats: Box<[Pat]> = case.patterns.iter().map(|p| self.binders(p)).collect();
+                    let body = self.body(&case.body, &Ns::None);
                     self.scope.truncate(mark);
+                    cases.push((pats, body));
+                }
+                Expr::Match {
+                    on,
+                    cases: cases.into(),
                 }
             }
             Body::Let(l) => {
                 // the values are read before the names are bound: `x = f(x)` calls with the outer `x`
-                for value in &l.values {
-                    self.term(value, &Ns::None);
-                }
+                let values = l
+                    .values
+                    .iter()
+                    .map(|value| self.term(value, &Ns::None))
+                    .collect();
                 if let Some(ty) = &l.ty {
                     self.skip(ty);
                 }
                 let mark = self.scope.len();
-                for pattern in &l.pats {
-                    self.binders(pattern);
-                }
-                self.body(&l.rest, ns);
+                let pats = l.pats.iter().map(|p| self.binders(p)).collect();
+                let rest = self.body(&l.rest, ns);
                 self.scope.truncate(mark);
+                Expr::Let {
+                    pats,
+                    values,
+                    rest: Box::new(rest),
+                }
             }
-            _ => {}
+            _ => Expr::Unknown,
         }
     }
 
     /// A direct argument of a call, or a direct field of a constructor, or the value of a `do` bind, exec or step, or a `return` (a direct argument of the `bind` or `pure` the sugar
     /// stands for): a bare name that is not bound is handed over; anything else is walked.
-    fn passable(&mut self, term: &Term) {
+    fn passable(&mut self, term: &Term) -> Expr {
         let inner = strip_group(term);
         match &inner.kind {
-            TermKind::Name(name) => {
-                if !self.bound(name) {
-                    self.push(inner.span, What::Passed { name: name.clone() });
+            TermKind::Name(name) => match self.binding(name).number() {
+                Some(number) => self.var(number),
+                None => {
+                    let item = self.push(inner.span, What::Passed { name: name.clone() });
+                    Expr::Name {
+                        item: Some(item),
+                        name: name.clone(),
+                    }
                 }
-            }
+            },
             _ => self.term(term, &Ns::None),
         }
     }
 
     /// A direct argument of a call: what it is (`ArgShape`), and then it is handed over or walked as `passable` does. A lambda's number is the one it gets when
     /// the walk enters it, which is the count of lambdas before the argument is walked.
-    fn arg(&mut self, term: &Term) -> ArgShape {
+    fn arg(&mut self, term: &Term) -> (ArgShape, Expr) {
         let inner = strip_group(term);
         let shape = match &inner.kind {
             TermKind::Name(name) => match self.binding(name) {
                 Binding::Unbound => ArgShape::Name(name.clone()),
                 Binding::Param(at) => ArgShape::Param(at),
-                Binding::Local => ArgShape::Local,
+                Binding::Local(_) => ArgShape::Local,
             },
             TermKind::Lam { .. } | TermKind::LamMatch { .. } => ArgShape::Lambda(self.lambdas),
             _ => ArgShape::Other,
         };
-        self.passable(term);
-        shape
+        (shape, self.passable(term))
     }
 
     /// The namespace a `: T` gives: the name at the head of `T` (`Vec2`, `M.Vec`, `Vec<A>`, `Vec(A)`).
@@ -284,47 +368,125 @@ impl Walker {
         }
     }
 
-    fn term(&mut self, term: &Term, ns: &Ns) {
-        match &term.kind {
-            TermKind::Name(name) => {
-                if !self.bound(name) {
-                    self.push(term.span, What::Deep { name: name.clone() });
-                }
+    /// A lambda chain `w => b => body`: one node with every binder of the chain, and one number and one set of facts for each lambda of it (the walk numbers every `=>`).
+    fn lam(&mut self, term: &Term) -> Expr {
+        let (first, mark, uses_at) = (self.lambdas, self.scope.len(), self.uses.len());
+        let mut chain: Vec<u32> = Vec::new();
+        let mut at = term;
+        let body = loop {
+            let TermKind::Lam {
+                binder,
+                annot,
+                body,
+                ..
+            } = &at.kind
+            else {
+                unreachable!("`lam` is given a lambda");
+            };
+            self.lambdas += 1;
+            self.lams.push(LamFacts {
+                binders: 0,
+                reads: Box::new([]),
+            });
+            if let Some(annot) = annot {
+                self.skip(annot);
             }
+            chain.push(self.bind(&binder.text));
+            match &**body {
+                Body::Term(next) if matches!(strip_group(next).kind, TermKind::Lam { .. }) => {
+                    at = strip_group(next);
+                }
+                other => break self.body(other, &Ns::None),
+            }
+        };
+        self.scope.truncate(mark);
+        self.facts(first, &chain, uses_at);
+        Expr::Lam {
+            nth: first,
+            binders: chain.into(),
+            body: Box::new(body),
+        }
+    }
+
+    /// The facts of the lambdas `first..` of a chain whose binders are `chain`: the one at `k` has the binders from `k` on, and reads what is below its first binder.
+    fn facts(&mut self, first: u32, chain: &[u32], uses_at: usize) {
+        for (k, below) in chain.iter().enumerate() {
+            let mut reads: Vec<u32> = self.uses[uses_at..]
+                .iter()
+                .copied()
+                .filter(|used| used < below)
+                .collect();
+            reads.sort_unstable();
+            reads.dedup();
+            self.lams[first as usize + k] = LamFacts {
+                binders: (chain.len() - k) as u32,
+                reads: reads.into(),
+            };
+        }
+    }
+
+    fn term(&mut self, term: &Term, ns: &Ns) -> Expr {
+        match &term.kind {
+            TermKind::Name(name) => match self.binding(name).number() {
+                Some(number) => self.var(number),
+                None => {
+                    let item = self.push(term.span, What::Deep { name: name.clone() });
+                    Expr::Name {
+                        item: Some(item),
+                        name: name.clone(),
+                    }
+                }
+            },
             TermKind::Type
             | TermKind::Data
             | TermKind::Quant
             | TermKind::Qua(_)
-            | TermKind::Hole(_)
             | TermKind::Lit(_)
-            | TermKind::Refl => {}
+            | TermKind::Refl => Expr::Data,
+            TermKind::Hole(_) => Expr::Unknown,
             TermKind::Kind(inner) => self.skip(inner),
             TermKind::NatPlus { rest, .. } => {
                 self.push(term.span, What::Data);
-                self.term(rest, &Ns::None);
+                let rest = self.term(rest, &Ns::None);
+                Expr::Seq(Box::new([rest, Expr::Data]))
             }
-            TermKind::List(items) => items.iter().for_each(|i| self.term(i, &Ns::None)),
+            TermKind::List(items) => {
+                let mut parts: Vec<Expr> = items.iter().map(|i| self.term(i, &Ns::None)).collect();
+                parts.push(Expr::Unknown);
+                Expr::Seq(parts.into())
+            }
             TermKind::ArrayNew { elem, ty, size } => {
-                self.push(term.span, What::Sugar(Sugar::Own("Array.new".to_owned())));
-                self.term(elem, &Ns::None);
+                let item = self.push(term.span, What::Sugar(Sugar::Own("Array.new".to_owned())));
+                let mut operands = vec![self.term(elem, &Ns::None)];
                 self.skip(ty);
                 match size {
                     bend_parser::ArraySize::Count(n) | bend_parser::ArraySize::Depth(n) => {
-                        self.term(n, &Ns::None);
+                        operands.push(self.term(n, &Ns::None));
                     }
                     _ => {}
                 }
+                Expr::Sugar {
+                    item,
+                    operands: operands.into(),
+                }
             }
             TermKind::Ctr { name, args } => {
-                self.push(
+                let item = self.push(
                     name.span,
                     What::Ctr {
                         name: name.text.clone(),
                     },
                 );
-                args.iter().for_each(|a| self.passable(a));
+                Expr::Ctr {
+                    item,
+                    name: name.text.clone(),
+                    fields: args.iter().map(|a| self.passable(a)).collect(),
+                }
             }
-            TermKind::TypeApp { args, .. } => args.iter().for_each(|a| self.skip(a)),
+            TermKind::TypeApp { args, .. } => {
+                args.iter().for_each(|a| drop(self.skip(a)));
+                Expr::Data
+            }
             TermKind::Plus(inner) => self.term(inner, &Ns::None),
             TermKind::Call { callee, args, .. } => {
                 let head = strip_group(callee);
@@ -334,26 +496,42 @@ impl Walker {
                     TermKind::Name(name) => match self.binding(name) {
                         Binding::Unbound => Ok(name.clone()),
                         Binding::Param(at) => Err(Some(at)),
-                        Binding::Local => Err(None),
+                        Binding::Local(_) => Err(None),
                     },
                     _ => Err(None),
                 };
-                let slot = self.items.len();
-                self.push(
+                let slot = self.push(
                     head.span,
                     What::Opaque {
                         param: None,
                         args: Vec::new(),
                     },
                 );
-                if !matches!(head.kind, TermKind::Name(_)) {
-                    self.term(callee, &Ns::None);
-                }
-                let args: Vec<ArgShape> = args.iter().map(|a| self.arg(&a.term)).collect();
-                self.items[slot].what = match callee_is {
-                    Ok(name) => What::Call { name, args },
-                    Err(param) => What::Opaque { param, args },
+                let head_expr = match &head.kind {
+                    // a callee that is a name is the item's own: an unbound one has no place of its own, a bound one is a read of the binder
+                    TermKind::Name(name) => match self.binding(name).number() {
+                        Some(number) => self.var(number),
+                        None => Expr::Name {
+                            item: None,
+                            name: name.clone(),
+                        },
+                    },
+                    _ => self.term(callee, &Ns::None),
                 };
+                let (shapes, exprs): (Vec<ArgShape>, Vec<Expr>) =
+                    args.iter().map(|a| self.arg(&a.term)).unzip();
+                self.items[slot as usize].what = match callee_is {
+                    Ok(name) => What::Call { name, args: shapes },
+                    Err(param) => What::Opaque {
+                        param,
+                        args: shapes,
+                    },
+                };
+                Expr::Call {
+                    item: slot,
+                    head: Box::new(head_expr),
+                    args: exprs.into(),
+                }
             }
             TermKind::Index {
                 array,
@@ -365,16 +543,20 @@ impl Walker {
                 } else {
                     "Array.get"
                 };
-                self.push(term.span, What::Sugar(Sugar::Own(name.to_owned())));
-                self.term(array, &Ns::None);
+                let item = self.push(term.span, What::Sugar(Sugar::Own(name.to_owned())));
+                let mut operands = vec![self.term(array, &Ns::None)];
                 // `parse_term_ns(p, ix, U32)`: the operators of the index are U32's
                 let u32 = Ns::Name {
                     name: "U32".to_owned(),
                     bound: false,
                 };
-                self.term(index, &u32);
+                operands.push(self.term(index, &u32));
                 if let Some(value) = write {
-                    self.term(value, &Ns::None);
+                    operands.push(self.term(value, &Ns::None));
+                }
+                Expr::Sugar {
+                    item,
+                    operands: operands.into(),
                 }
             }
             TermKind::Op {
@@ -386,35 +568,45 @@ impl Walker {
                 // the operator token, where `bend` puts its own `Ref` (`Ref(f, op === "&" || op === "|" ? s : t)`): the whole term for `&` and `|`
                 let at = op_span;
                 // the namespace reaches the operands of an operator that takes it, and of `&&`, `||` and `++`, which `parse_term_ns` looks through
-                let through = match op {
+                let (through, sugar_item) = match op {
                     Op::And | Op::Or | Op::Append => {
                         self.push(*at, What::BaseFixed);
-                        ns.clone()
+                        (ns.clone(), None)
                     }
                     Op::Pair | Op::Either => {
                         self.push(term.span, What::BaseFixed);
-                        Ns::None
+                        (Ns::None, None)
                     }
                     Op::Cons => {
                         self.push(*at, What::BaseFixed);
-                        Ns::None
+                        (Ns::None, None)
                     }
-                    Op::Min => Ns::None,
+                    Op::Min => (Ns::None, None),
                     other => {
                         let sugar = match verb(*other) {
                             Some(verb) => Self::sugar_of(ns, verb),
                             None => Sugar::Unknown,
                         };
-                        self.push(*at, What::Sugar(sugar));
-                        ns.clone()
+                        (ns.clone(), Some(self.push(*at, What::Sugar(sugar))))
                     }
                 };
-                self.term(lhs, &through);
-                self.term(rhs, &through);
+                let operands = [self.term(lhs, &through), self.term(rhs, &through)];
+                match sugar_item {
+                    Some(item) => Expr::Sugar {
+                        item,
+                        operands: Box::new(operands),
+                    },
+                    // Base's own: what it builds is not ours to read
+                    None => {
+                        let [lhs, rhs] = operands;
+                        Expr::Seq(Box::new([lhs, rhs, Expr::Unknown]))
+                    }
+                }
             }
             TermKind::Arrow { from, to } => {
-                self.term(from, &Ns::None);
-                self.term(to, &Ns::None);
+                let from = self.term(from, &Ns::None);
+                let to = self.term(to, &Ns::None);
+                Expr::Seq(Box::new([from, to, Expr::Data]))
             }
             TermKind::All {
                 exists,
@@ -428,33 +620,39 @@ impl Walker {
                 }
                 self.skip(domain);
                 self.bind(&name.text);
-                self.term(body, &Ns::None);
+                let body = self.term(body, &Ns::None);
                 self.scope.pop();
+                Expr::Seq(Box::new([body, Expr::Data]))
             }
-            TermKind::Lam {
-                binder,
-                annot,
-                body,
-                ..
-            } => {
-                self.lambdas += 1;
-                if let Some(annot) = annot {
-                    self.skip(annot);
-                }
-                self.bind(&binder.text);
-                self.body(body, &Ns::None);
-                self.scope.pop();
-            }
+            TermKind::Lam { .. } => self.lam(term),
             TermKind::LamMatch { arms, tail } => {
+                let (nth, uses_at) = (self.lambdas, self.uses.len());
                 self.lambdas += 1;
-                arms.iter().for_each(|arm| self.term(&arm.body, &Ns::None));
+                self.lams.push(LamFacts {
+                    binders: 0,
+                    reads: Box::new([]),
+                });
+                // the argument the arms match on has no name in the text
+                let binder = self.fresh();
+                let mut parts: Vec<Expr> = arms
+                    .iter()
+                    .map(|arm| self.term(&arm.body, &Ns::None))
+                    .collect();
                 if let Some(tail) = tail {
-                    self.term(tail, &Ns::None);
+                    parts.push(self.term(tail, &Ns::None));
+                }
+                // which arm answers is not decided here
+                parts.push(Expr::Unknown);
+                self.facts(nth, &[binder], uses_at);
+                Expr::Lam {
+                    nth,
+                    binders: Box::new([binder]),
+                    body: Box::new(Expr::Seq(parts.into())),
                 }
             }
             TermKind::Annot { term: inner, ty } => {
                 self.skip(ty);
-                self.term(inner, &Ns::None);
+                self.term(inner, &Ns::None)
             }
             TermKind::Eq {
                 lhs,
@@ -466,8 +664,9 @@ impl Walker {
                 if *negated {
                     self.push(term.span, What::Data);
                 }
-                self.term(lhs, &Ns::None);
-                self.term(rhs, &Ns::None);
+                let lhs = self.term(lhs, &Ns::None);
+                let rhs = self.term(rhs, &Ns::None);
+                Expr::Seq(Box::new([lhs, rhs, Expr::Data]))
             }
             TermKind::Rewrite {
                 eq,
@@ -475,14 +674,15 @@ impl Walker {
                 motive,
                 rest,
             } => {
-                self.term(eq, &Ns::None);
+                let eq = self.term(eq, &Ns::None);
                 self.skip(motive);
                 let mark = self.scope.len();
                 if let Some(named) = named {
                     self.bind(&named.text);
                 }
-                self.body(rest, &Ns::None);
+                let rest = self.body(rest, &Ns::None);
                 self.scope.truncate(mark);
+                Expr::Seq(Box::new([eq, rest]))
             }
             // a group with no `: T` is the term inside it, so the namespace of the group around it reaches through
             TermKind::Group { body, ns: own } => {
@@ -493,7 +693,7 @@ impl Walker {
                     }
                     None => ns.clone(),
                 };
-                self.body(body, &ns);
+                self.body(body, &ns)
             }
             // `(a, b : T)`: the `: T` is read after the last item
             TermKind::Tuple { items, ns: own } => {
@@ -504,92 +704,183 @@ impl Walker {
                     }
                     None => Ns::None,
                 };
-                for (at, item) in items.iter().enumerate() {
-                    self.body(
-                        item,
-                        if at + 1 == items.len() {
+                let mut parts: Vec<Expr> = items
+                    .iter()
+                    .enumerate()
+                    .map(|(at, item)| {
+                        let ns = if at + 1 == items.len() {
                             &last
                         } else {
                             &Ns::None
-                        },
-                    );
-                }
+                        };
+                        self.body(item, ns)
+                    })
+                    .collect();
+                parts.push(Expr::Unknown);
+                Expr::Seq(parts.into())
             }
-            TermKind::Do(d) => {
-                let bound = self.bound(&d.monad.text);
-                let sugar = |verb: &str| {
-                    if bound {
-                        Sugar::Bound
-                    } else {
-                        Sugar::Named(format!("{}.{verb}", d.monad.text))
-                    }
-                };
-                d.args.iter().for_each(|a| self.skip(a));
-                let mark = self.scope.len();
-                for stmt in &d.stmts {
-                    match &stmt.kind {
-                        DoKind::Let {
-                            name, ty, value, ..
-                        } => {
-                            self.skip(ty);
-                            self.term(value, &Ns::None);
-                            self.bind(&name.text);
-                        }
-                        DoKind::Bind {
-                            name, ty, value, ..
-                        } => {
-                            self.push(stmt.span, What::Sugar(sugar("bind")));
-                            self.skip(ty);
-                            self.passable(value);
-                            self.bind(&name.text);
-                        }
-                        DoKind::Exec { ty, value } => {
-                            self.push(stmt.span, What::Sugar(sugar("bind")));
-                            self.skip(ty);
-                            self.passable(value);
-                        }
-                        DoKind::Step(step) => {
-                            self.push(stmt.span, What::Sugar(sugar("bind")));
-                            self.passable(step);
-                        }
-                        DoKind::Return(value) => {
-                            self.push(stmt.span, What::Sugar(sugar("pure")));
-                            self.passable(value);
-                        }
-                        DoKind::Value(value) => {
-                            // `bend` annotates the final value with the monad: a type, not a call
-                            self.push(value.span, What::Data);
-                            self.term(value, &Ns::None);
-                        }
-                        _ => {}
-                    }
-                }
-                self.scope.truncate(mark);
-            }
-            _ => {}
+            TermKind::Do(d) => self.do_block(d),
+            _ => Expr::Unknown,
         }
+    }
+
+    /// `do M<T.., B>:` and its statements: each is a node that holds the statements after it, as `bend.ts` nests them (`M.bind(.., x => rest)`).
+    fn do_block(&mut self, d: &bend_parser::Do) -> Expr {
+        /// A statement as the walk reads it, before the ones after it are known.
+        enum Stmt {
+            Let {
+                binder: u32,
+                value: Expr,
+            },
+            Bind {
+                item: u32,
+                binder: Option<u32>,
+                value: Expr,
+                pure: bool,
+            },
+            Last(Expr),
+        }
+        let bound = self.bound(&d.monad.text);
+        let sugar = |verb: &str| {
+            if bound {
+                Sugar::Bound
+            } else {
+                Sugar::Named(format!("{}.{verb}", d.monad.text))
+            }
+        };
+        d.args.iter().for_each(|a| drop(self.skip(a)));
+        let mark = self.scope.len();
+        let mut stmts = Vec::new();
+        for stmt in &d.stmts {
+            match &stmt.kind {
+                DoKind::Let {
+                    name, ty, value, ..
+                } => {
+                    self.skip(ty);
+                    let value = self.term(value, &Ns::None);
+                    let binder = self.bind(&name.text);
+                    stmts.push(Stmt::Let { binder, value });
+                }
+                DoKind::Bind {
+                    name, ty, value, ..
+                } => {
+                    let item = self.push(stmt.span, What::Sugar(sugar("bind")));
+                    self.skip(ty);
+                    let value = self.passable(value);
+                    let binder = Some(self.bind(&name.text));
+                    stmts.push(Stmt::Bind {
+                        item,
+                        binder,
+                        value,
+                        pure: false,
+                    });
+                }
+                DoKind::Exec { ty, value } => {
+                    let item = self.push(stmt.span, What::Sugar(sugar("bind")));
+                    self.skip(ty);
+                    let value = self.passable(value);
+                    let binder = Some(self.fresh());
+                    stmts.push(Stmt::Bind {
+                        item,
+                        binder,
+                        value,
+                        pure: false,
+                    });
+                }
+                DoKind::Step(step) => {
+                    let item = self.push(stmt.span, What::Sugar(sugar("bind")));
+                    let value = self.passable(step);
+                    let binder = Some(self.fresh());
+                    stmts.push(Stmt::Bind {
+                        item,
+                        binder,
+                        value,
+                        pure: false,
+                    });
+                }
+                DoKind::Return(value) => {
+                    let item = self.push(stmt.span, What::Sugar(sugar("pure")));
+                    let value = self.passable(value);
+                    stmts.push(Stmt::Bind {
+                        item,
+                        binder: None,
+                        value,
+                        pure: true,
+                    });
+                }
+                DoKind::Value(value) => {
+                    // `bend` annotates the final value with the monad: a type, not a call
+                    self.push(value.span, What::Data);
+                    stmts.push(Stmt::Last(self.term(value, &Ns::None)));
+                }
+                _ => {}
+            }
+        }
+        self.scope.truncate(mark);
+        // the type terms are types, so `Data`: `T.., A, B` for a bind and `T.., B` for a pure, in `bend.ts`'s order
+        let types = |pure: bool| -> Box<[Expr]> {
+            vec![Expr::Data; d.args.len() + usize::from(!pure)].into()
+        };
+        let mut rest = Expr::Unknown;
+        for stmt in stmts.into_iter().rev() {
+            rest = match stmt {
+                Stmt::Last(value) => value,
+                Stmt::Let { binder, value } => Expr::Let {
+                    pats: Box::new([Pat::Bind(binder)]),
+                    values: Box::new([value]),
+                    rest: Box::new(rest),
+                },
+                Stmt::Bind {
+                    item,
+                    binder,
+                    value,
+                    pure,
+                } => Expr::Bind {
+                    item,
+                    monad: d.monad.text.clone(),
+                    types: types(pure),
+                    value: Box::new(value),
+                    binder,
+                    rest: Box::new(rest),
+                    pure,
+                },
+            };
+        }
+        rest
     }
 }
 
 fn walk_decl(decl: &Decl) -> Option<DefWalk> {
+    let params = match decl {
+        Decl::Def(def) => def.params.len() as u32,
+        _ => 0,
+    };
     let mut walker = Walker {
         items: Vec::new(),
         scope: Vec::new(),
         lambdas: 0,
+        lams: Vec::new(),
+        next_binder: params,
+        uses: Vec::new(),
     };
+    let mut body = Expr::Unknown;
     match decl {
         Decl::Def(def) => {
             for (at, bind) in def.params.iter().enumerate() {
                 if let Some(ty) = &bind.ty {
                     walker.skip(ty);
                 }
-                walker.scope.push((bind.name.text.clone(), Some(at as u32)));
+                walker.scope.push(Bound {
+                    name: bind.name.text.clone(),
+                    number: at as u32,
+                    param: Some(at as u32),
+                });
             }
             if let Some(ret) = &def.ret {
                 walker.skip(ret);
             }
-            if let Some(DefBody::Code(body)) = &def.body {
-                walker.body(body, &Ns::None);
+            if let Some(DefBody::Code(code)) = &def.body {
+                body = walker.body(code, &Ns::None);
             }
         }
         // a law is a def with no code: its clauses and its claim are all types
@@ -607,10 +898,23 @@ fn walk_decl(decl: &Decl) -> Option<DefWalk> {
         Decl::Type(_) => {}
         _ => return None,
     }
-    walker.items.sort_by_key(|i| (i.span.start, i.span.end));
+    // the items go in source order, equal places in the order they were taken (the sort is stable), and the nodes of the flow are renumbered to match
+    let mut order: Vec<usize> = (0..walker.items.len()).collect();
+    order.sort_by_key(|&at| (walker.items[at].span.start, walker.items[at].span.end));
+    let mut place = vec![0u32; order.len()];
+    for (new, &old) in order.iter().enumerate() {
+        place[old] = new as u32;
+    }
+    let items = order.iter().map(|&at| walker.items[at].clone()).collect();
+    body.map_items(&|old| place[old as usize]);
     Some(DefWalk {
         name_span: decl.name().span,
-        items: walker.items,
+        items,
+        flow: Flow {
+            params,
+            lambdas: walker.lams.into(),
+            body,
+        },
     })
 }
 
