@@ -16,11 +16,17 @@ use bend_analysis::{
     call_graph, render, to_text,
 };
 
-pub(crate) fn options() -> Options {
-    Options::new(MarkerStyle::above("ID"))
+/// The options at layer 1: `Options::new` is the context layer on (D53), and layer 1's tests ask for `Default` in words.
+pub(crate) fn default_options() -> Options {
+    options_at(Precision::Default)
 }
 
-/// The graph under `entry` of `file`, checked against the graph's invariants.
+/// The options at `precision`.
+pub(crate) fn options_at(precision: Precision) -> Options {
+    Options::new(MarkerStyle::above("ID")).with_precision(precision)
+}
+
+/// The graph under `entry` of `file` at layer 1 (`Precision::Default`: `Options::new` is the layer on, D53), checked against the graph's invariants.
 pub(crate) fn graph_of(book: &Book, file: &str, entry: &str) -> Option<Graph> {
     graph_at(book, file, entry, Precision::Default)
 }
@@ -36,7 +42,7 @@ pub(crate) fn graph_at(
         book,
         Path::new(file),
         entry,
-        &options().with_precision(precision),
+        &options_at(precision),
         &Limits::default(),
         &Cancel::new(),
     )?;

@@ -15,7 +15,7 @@ use bend_analysis::{
 };
 
 mod common;
-use common::{Program, options};
+use common::{Program, default_options};
 
 /// What a `Refreshed` says: `Refreshed` is `#[non_exhaustive]`, so a test reads its fields and does not build one.
 fn said(refreshed: &Refreshed) -> (bool, Option<OpenError>) {
@@ -29,7 +29,7 @@ fn write(root: &Path, file: &str, text: &str) {
 }
 
 fn open_in(program: &Program, entry: &str) -> Session {
-    Session::open(&program.root, Path::new(entry), options()).expect("the program opens")
+    Session::open(&program.root, Path::new(entry), default_options()).expect("the program opens")
 }
 
 fn open(program: &Program) -> Session {
@@ -230,7 +230,8 @@ fn the_entry_deleted_is_lost_for_as_long_as_it_lasts_and_found_again_when_it_com
 #[test]
 fn the_entry_s_folder_deleted_is_lost_and_recovers() {
     let program = Program::new(&[("app/main.bend", MAIN), ("app/lib.bend", LIB)]);
-    let mut session = Session::open(&program.root, Path::new("app/main.bend"), options()).unwrap();
+    let mut session =
+        Session::open(&program.root, Path::new("app/main.bend"), default_options()).unwrap();
     let main = |s: &Session| tree_in(s, "app/main.bend");
     let before = main(&session).expect("main is there");
 
@@ -298,8 +299,12 @@ fn a_file_outside_the_root_that_the_entry_imports_is_followed() {
         ),
         ("shared.bend", LIB),
     ]);
-    let mut session =
-        Session::open(&program.root.join("app"), Path::new("main.bend"), options()).unwrap();
+    let mut session = Session::open(
+        &program.root.join("app"),
+        Path::new("main.bend"),
+        default_options(),
+    )
+    .unwrap();
     let before = tree(&session);
     assert!(before.contains("file_outside_root=1"), "{before}");
 

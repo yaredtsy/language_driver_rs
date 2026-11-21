@@ -432,7 +432,7 @@ fn session_measure() {
         }
     }
     let entry = Path::new("PROOF.bend");
-    let open = || Session::open(&root, entry, options()).expect("opens");
+    let open = || Session::open(&root, entry, default_options()).expect("opens");
 
     // the request: the def of the entry file whose tree is the largest, found once
     let session = open();
@@ -519,8 +519,13 @@ fn session_measure() {
     let _ = fs::remove_dir_all(&root);
 }
 
-fn options() -> Options {
-    Options::new(MarkerStyle::above("ID"))
+/// `Options::new` is the context layer on (D53): the numbers of layer 1 are asked for in words.
+fn default_options() -> Options {
+    options_at(Precision::Default)
+}
+
+fn options_at(precision: Precision) -> Options {
+    Options::new(MarkerStyle::above("ID")).with_precision(precision)
 }
 
 /// The byte offset of each UTF-16 unit of `text` (and one past the end), which is how the oracle's spans are written.
@@ -610,9 +615,9 @@ fn every_ref_the_oracle_prints_is_accounted_for() {
                 map[beg.parse::<usize>().expect("beg")],
                 map[end.parse::<usize>().expect("end")],
             );
-            let items = places
-                .entry(id)
-                .or_insert_with(|| walked(&book, id, &options()).expect("a def of the book"));
+            let items = places.entry(id).or_insert_with(|| {
+                walked(&book, id, &default_options()).expect("a def of the book")
+            });
             // a term the walk skipped as a type holds whatever is in it, whatever the smaller places inside say
             let skipped = items.iter().any(|w| {
                 w.kind == WalkedKind::Counted("type_position".into())
@@ -724,7 +729,7 @@ fn demos_counters() {
         let book = open_entry(&entry).expect("opens");
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
         for d in book.decls() {
-            for w in walked(&book, d.id, &options()).expect("a def") {
+            for w in walked(&book, d.id, &default_options()).expect("a def") {
                 *counts.entry(bucket(&w)).or_default() += 1;
                 // a call to a def with no code: the name means a law with no proof (`open_law`)
                 if let WalkedKind::Call(to) = &w.kind
@@ -879,7 +884,7 @@ fn hex8(digest: &[u8; 16]) -> String {
 
 /// The request of `main` in the file of `book`, asked `runs` times: the graph, and the median wall time in milliseconds.
 fn timed(book: &Book, file: &str, precision: Precision, runs: usize) -> (Graph, f64) {
-    let options = options().with_precision(precision);
+    let options = options_at(precision);
     let ask = || {
         call_graph(
             book,

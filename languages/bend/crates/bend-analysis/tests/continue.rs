@@ -12,7 +12,7 @@ use bend_analysis::{
 };
 
 mod common;
-use common::{Program, options};
+use common::{Program, options_at};
 
 fn entry(qualname: &str) -> Entry<'_> {
     Entry::Def {
@@ -25,12 +25,7 @@ fn open_fixture(folder: &str, precision: Precision) -> Session {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/context")
         .join(folder);
-    Session::open(
-        &root,
-        Path::new("main.bend"),
-        options().with_precision(precision),
-    )
-    .expect("the fixture opens")
+    Session::open(&root, Path::new("main.bend"), options_at(precision)).expect("the fixture opens")
 }
 
 fn whole(session: &Session, qualname: &str) -> Graph {
@@ -244,7 +239,7 @@ fn a_refresh_keeps_the_keys_until_the_book_changes() {
     let mut session = Session::open(
         &program.root,
         Path::new("main.bend"),
-        options().with_precision(Precision::Precise),
+        options_at(Precision::Precise),
     )
     .expect("opens");
     let each = whole(&session, "main")
@@ -291,7 +286,7 @@ fn a_context_of_a_marked_def_is_continued() {
     let session = Session::open(
         &program.root,
         Path::new("main.bend"),
-        options().with_precision(Precision::Precise),
+        options_at(Precision::Precise),
     )
     .expect("opens");
     let each = whole(&session, "main")

@@ -53,14 +53,14 @@ pub(crate) const CONTEXT_NOT_FOUND: &str = "context_not_found";
 /// Each digest met in a request and the canonical key it stands for: what a session keeps to continue a context later (BC-D7). Only looked up, never iterated.
 pub(crate) type Keys = HashMap<[u8; 16], CanonKey>;
 
-/// How exactly a call is answered. Off by default, and selectable for good (BC-D8).
+/// How exactly a call is answered. `Precise` is the default (D53), and `Default` stays selectable for good: it is the comparison every measurement is made against.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Precision {
     /// Layer 1: one context per def, a call through a parameter is `Unresolved(function_typed_value)`.
-    #[default]
     Default,
     /// A def's parameter that a caller named (a `~` template or a plain one) is called as that def, per caller (`docs/08-bend/06-context-layer-design.md`).
+    #[default]
     Precise,
 }
 
@@ -75,12 +75,12 @@ pub struct Options {
 }
 
 impl Options {
-    /// The default cost limits, and `marker` for reading markers.
+    /// The default cost limits, the context layer on (`Precision::Precise`, D53), and `marker` for reading markers.
     pub fn new(marker: MarkerStyle<'static>) -> Self {
         Options {
             limits: Limits::default(),
             marker,
-            precision: Precision::Default,
+            precision: Precision::Precise,
         }
     }
 

@@ -219,6 +219,7 @@ mod tests {
 
     use super::*;
     use crate::book::BUILDS;
+    use crate::calls::Precision;
     use crate::scratch::{scratch, write};
 
     fn builds() -> u32 {
@@ -234,7 +235,7 @@ mod tests {
         let mut session = Session::open(
             &root,
             Path::new("main.bend"),
-            Options::new(MarkerStyle::above("ID")),
+            Options::new(MarkerStyle::above("ID")).with_precision(Precision::Default),
         )
         .unwrap();
         let opened = builds();

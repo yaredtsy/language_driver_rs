@@ -9,7 +9,7 @@ use analyzer_testkit::scenarios::{Level, Subject, run};
 use bend_analysis::{Book, Cancel, Graph, Limits, Precision, call_graph};
 
 mod common;
-use common::options;
+use common::options_at;
 
 const BEND: Subject = Subject {
     folder: "bend",
@@ -30,7 +30,7 @@ fn scenario_graph_at(program: &Path, precision: Precision) -> Option<Graph> {
         &book,
         Path::new("main.bend"),
         "main",
-        &options().with_precision(precision),
+        &options_at(precision),
         &Limits::default(),
         &Cancel::new(),
     )

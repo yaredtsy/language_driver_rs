@@ -39,8 +39,17 @@ fn outline_lists_the_defs_with_their_markers_and_places() {
 
 #[test]
 fn calls_prints_the_tree_and_the_summary() {
+    // the policy rows are layer 1's
     let root = format!("{POLICY}/template-arg");
-    let o = run(&["calls", &root, "main.bend", "--entry", "main"]);
+    let o = run(&[
+        "calls",
+        &root,
+        "main.bend",
+        "--entry",
+        "main",
+        "--level",
+        "default",
+    ]);
     assert_eq!(o.status.code(), Some(0), "{}", err(&o));
     let text = out(&o);
     assert!(
@@ -184,49 +193,85 @@ fn expected(scenario: &str, file: &str) -> String {
     std::fs::read_to_string(format!("{SCENARIOS}/{scenario}/{file}")).expect("an expected tree")
 }
 
-/// `--precise` is the context layer: the tree of `two-callers` is the precise one with it, the default one without, and the summary says what the layer counted.
+/// `--level` is how exactly a call is answered, precise unless said (D53): the tree of `two-callers` is the precise one with nothing said and with `--level
+/// precise`, the default one with `--level default`, and the summary says what the layer counted.
 #[test]
-fn precise_prints_the_precise_tree_and_the_default_is_unchanged() {
+fn the_level_is_precise_unless_said() {
     let root = format!("{SCENARIOS}/two-callers/bend");
-    let default = run(&["calls", &root, "main.bend", "--entry", "main"]);
-    assert_eq!(default.status.code(), Some(0), "{}", err(&default));
-    let tree = expected("two-callers", "expected.default.bend.tree");
-    assert!(
-        out(&default).starts_with(&format!("{tree}\n")),
-        "{}",
-        out(&default)
-    );
-
-    let precise = run(&["calls", &root, "main.bend", "--entry", "main", "--precise"]);
-    assert_eq!(precise.status.code(), Some(0), "{}", err(&precise));
-    let tree = expected("two-callers", "expected.precise.bend.tree");
-    assert!(
-        out(&precise).starts_with(&format!("{tree}\n")),
-        "{}",
-        out(&precise)
-    );
+    let asked = |level: &[&str]| {
+        let mut args = vec!["calls", &root, "main.bend", "--entry", "main"];
+        args.extend_from_slice(level);
+        let o = run(&args);
+        assert_eq!(o.status.code(), Some(0), "{}", err(&o));
+        out(&o)
+    };
+    let precise = expected("two-callers", "expected.precise.bend.tree");
+    for level in [&[][..], &["--level", "precise"]] {
+        let text = asked(level);
+        assert!(
+            text.starts_with(&format!("{precise}\n")),
+            "{level:?}: {text}"
+        );
+    }
+    let default = expected("two-callers", "expected.default.bend.tree");
+    let text = asked(&["--level", "default"]);
+    assert!(text.starts_with(&format!("{default}\n")), "{text}");
     // the callback scenario has a counter only the layer writes
-    let callback = out(&run(&[
-        "calls",
-        &format!("{SCENARIOS}/callback-argument/bend"),
-        "main.bend",
-        "--entry",
-        "main",
-        "--precise",
-    ]));
+    let callback = |level: &[&str]| {
+        let mut args = vec![
+            "calls",
+            "../../../../scenarios/callback-argument/bend",
+            "main.bend",
+            "--entry",
+            "main",
+        ];
+        args.extend_from_slice(level);
+        out(&run(&args))
+    };
     assert!(
-        callback.contains("anonymous_function_called=1"),
-        "{callback}"
+        callback(&[]).contains("anonymous_function_called=1"),
+        "precise by default"
+    );
+    assert!(
+        !callback(&["--level", "default"]).contains("anonymous_function_called"),
+        "layer 1 has no such counter"
     );
 }
 
-/// The sweep enters every def under the open key, where nobody has named anything: `--precise` with it is refused, and the sentence says why.
+/// A level that is not one, no level after the flag, and the flag that was removed are usage errors with a sentence, never a guess.
+#[test]
+fn a_bad_level_is_a_usage_error() {
+    let root = format!("{SCENARIOS}/two-callers/bend");
+    for level in [
+        &["--level", "fast"][..],
+        &["--level"],
+        &["--level", "Precise"],
+        &["--precise"],
+    ] {
+        let mut args = vec!["calls", &root, "main.bend", "--entry", "main"];
+        args.extend_from_slice(level);
+        let o = run(&args);
+        assert_eq!(o.status.code(), Some(2), "{level:?}: {}", err(&o));
+        assert!(out(&o).is_empty(), "{level:?}");
+        assert!(err(&o).contains("--"), "{level:?}: says why: {}", err(&o));
+    }
+}
+
+/// The sweep enters every def under the open key, where nobody has named anything: it is at the default level, and `--level precise` with it is refused, and the
+/// sentence says why.
 #[test]
 fn precise_is_refused_with_all() {
     let root = format!("{SCENARIOS}/two-callers/bend");
-    let o = run(&["calls", &root, "main.bend", "--all", "--precise"]);
+    let o = run(&["calls", &root, "main.bend", "--all", "--level", "precise"]);
     assert_eq!(o.status.code(), Some(2));
     assert!(out(&o).is_empty(), "{}", out(&o));
     assert!(err(&o).contains("under the open key"), "{}", err(&o));
-    assert!(err(&o).contains("--precise"), "{}", err(&o));
+    assert!(err(&o).contains("--level precise"), "{}", err(&o));
+    // at the default level, said or not, it is the sweep
+    for level in [&[][..], &["--level", "default"]] {
+        let mut args = vec!["calls", &root, "main.bend", "--all"];
+        args.extend_from_slice(level);
+        let o = run(&args);
+        assert_eq!(o.status.code(), Some(0), "{level:?}: {}", err(&o));
+    }
 }

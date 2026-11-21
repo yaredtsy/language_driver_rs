@@ -6,12 +6,12 @@ use std::path::Path;
 
 use analyzer_testkit::graph::check_invariants;
 use bend_analysis::{
-    Budget, Cancel, Cut, Entry, Graph, Limits, MarkerStyle, OpenError, Options, RenderOptions,
-    Session, Status, render, to_text,
+    Budget, Cancel, Cut, Entry, Graph, Limits, OpenError, RenderOptions, Session, Status, render,
+    to_text,
 };
 
 mod common;
-use common::{Program, graph_of, options};
+use common::{Program, default_options, graph_of};
 
 /// `main` calls `a`, which calls `b`, which calls `c`: a chain four deep. `add_zero` is a law and its proof, for the occurrence of an entry.
 const CHAIN: &str = "\
@@ -36,7 +36,8 @@ def add_zero(x):
 ";
 
 fn open(program: &Program) -> Session {
-    Session::open(&program.root, Path::new("main.bend"), options()).expect("the program opens")
+    Session::open(&program.root, Path::new("main.bend"), default_options())
+        .expect("the program opens")
 }
 
 fn main_entry() -> Entry<'static> {
@@ -82,12 +83,12 @@ fn open_gives_the_tree_of_the_book_and_nothing_is_lost() {
 fn open_says_why_it_cannot() {
     let program = chain();
     assert!(matches!(
-        Session::open(&program.root, Path::new("nope.bend"), options()),
+        Session::open(&program.root, Path::new("nope.bend"), default_options()),
         Err(OpenError::NoSuchFile)
     ));
     let nowhere = program.root.join("not-a-folder");
     assert!(matches!(
-        Session::open(&nowhere, Path::new("main.bend"), options()),
+        Session::open(&nowhere, Path::new("main.bend"), default_options()),
         Err(OpenError::NoSuchFile)
     ));
     // a file beside the root is a file, and not the project's (D33)
@@ -96,7 +97,7 @@ fn open_says_why_it_cannot() {
         Session::open(
             &beside.root.join("app"),
             Path::new("../other.bend"),
-            options()
+            default_options()
         ),
         Err(OpenError::OutsideRoot)
     ));
@@ -211,7 +212,7 @@ fn asking_for_the_def_a_frontier_ended_at_continues_from_there() {
 #[test]
 fn a_limit_that_cuts_is_counted_in_the_stats() {
     let program = chain();
-    let mut options = Options::new(MarkerStyle::above("ID"));
+    let mut options = default_options();
     options.limits = Limits::new(2, None);
     let session = Session::open(&program.root, Path::new("main.bend"), options).unwrap();
     let graph = session

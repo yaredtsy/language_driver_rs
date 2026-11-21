@@ -7,11 +7,11 @@ use std::path::Path;
 use analyzer_core::wire::WIRE_FORMAT_VERSION;
 use analyzer_testkit::expect_file;
 use bend_analysis::{
-    Book, DefKind, Frame, Graph, RenderOptions, WireOptions, WireStyle, merge, wire,
+    Book, DefKind, Frame, Graph, Precision, RenderOptions, WireOptions, WireStyle, merge, wire,
 };
 
 mod common;
-use common::graph_of;
+use common::{graph_at, graph_of};
 
 fn style() -> WireStyle {
     WireStyle {
@@ -72,6 +72,32 @@ fn a_policy_entry_through_the_wire_unmerged_and_merged() {
         // `merge` of the unmerged frame is the merged one
         assert_eq!(merge(unmerged), merged, "{row}");
     }
+}
+
+/// D53: the context layer is on by default, so a keyed context has a digest that is not zeros, and the wire carries it: `twice` called with `~g` is a context
+/// of its own, listed with its digest in `contexts`. Every other wire snapshot is layer 1's and says `Default` in words.
+#[test]
+fn a_keyed_context_has_its_digest_on_the_wire_at_precise() {
+    let book = Book::open(
+        Path::new("tests/fixtures/context/template-def"),
+        Path::new("main.bend"),
+    )
+    .expect("the fixture opens");
+    let graph = graph_at(&book, "main.bend", "main", Precision::Precise).expect("a graph");
+    let (unmerged, merged) = (frame(&book, &graph, false), frame(&book, &graph, true));
+    let twice = &unmerged.children[0];
+    assert_eq!(twice.target_qname, "twice");
+    assert!(
+        twice.contexts.iter().all(|c| c.digest != [0; 16]),
+        "twice is called under a key: {:?}",
+        twice.contexts
+    );
+    let out = format!("unmerged\n{}\nmerged\n{}", json(&unmerged), json(&merged));
+    expect_file(
+        &Path::new("tests/snapshots/wire").join("template-def-precise.json"),
+        &out,
+    );
+    assert_eq!(merge(unmerged), merged);
 }
 
 /// D45: a marked `type` is built, not called, so the wire gives it the style's class prefix, and what it really is stays in `target_kind`: as the entry of a

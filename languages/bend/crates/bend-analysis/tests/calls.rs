@@ -10,7 +10,7 @@ use bend_analysis::{
 };
 
 mod common;
-use common::{Program, edges_as_text, graph_of, options};
+use common::{Program, default_options, edges_as_text, graph_of};
 
 fn tree(program: &Program, file: &str, entry: &str) -> String {
     let book = program.book(file);
@@ -154,7 +154,7 @@ fn a_cancel_before_the_walk_gives_a_graph_that_says_so() {
         &book,
         Path::new("main.bend"),
         "main",
-        &options(),
+        &default_options(),
         &Limits::default(),
         &Cancel::after_checks(0),
     )
@@ -194,7 +194,7 @@ fn a_call_and_the_sugar_it_stands_on_come_in_that_order() {
         .expect("g")
         .id;
     let text = &book.files()[g.file().index()].text;
-    let at: Vec<WalkedKind> = walked(&book, g, &options())
+    let at: Vec<WalkedKind> = walked(&book, g, &default_options())
         .expect("a def")
         .into_iter()
         .filter(|w| &text[w.span.start as usize..w.span.end as usize] == "a[i]")
