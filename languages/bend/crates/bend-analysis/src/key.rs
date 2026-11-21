@@ -9,7 +9,7 @@ use analyzer_core::outline::DefKind;
 use serde::Serialize;
 
 use crate::book::{DeclId, Resolved};
-use crate::calls::{Bend, Precision};
+use crate::calls::{self, Bend, Precision};
 use crate::env::Env;
 use crate::sem::{ArgShape, What};
 
@@ -80,6 +80,19 @@ pub(crate) enum Absent {
     Missing,
 }
 
+impl Absent {
+    /// The counter of `Stats.language` this absence is counted in; a type is not counted (`type_passed` has it).
+    fn counter(self) -> Option<&'static str> {
+        match self {
+            Absent::Open => Some(calls::KEY_SLOT_OPEN),
+            Absent::Type => None,
+            Absent::Local => Some(calls::KEY_SLOT_LOCAL),
+            Absent::Value => Some(calls::KEY_SLOT_VALUE),
+            Absent::Missing => Some(calls::KEY_SLOT_MISSING),
+        }
+    }
+}
+
 /// A def with code that is in the root: what a slot can hold (BC-D1). A law alone, a type, a def outside the root are not.
 fn known_def(lang: &Bend<'_>, id: DeclId) -> bool {
     let (Some(decl), Some(file)) = (lang.book.decl(id), lang.book.file(id.file())) else {
@@ -88,8 +101,9 @@ fn known_def(lang: &Bend<'_>, id: DeclId) -> bool {
     file.in_root && decl.kind == DefKind::Function
 }
 
-/// The parameters of `def` that are **relevant** (BC-D2): the def calls one (`f(x)`), or passes one as a direct argument to a call of a project def. Positions of the
-/// written parameter list, sorted. A fact of the def's own code, so computed once per def and kept.
+/// The parameters of `def` that are **relevant** (BC-D2): the def calls one (`f(x)`), or passes one as a direct argument to a call of a project def or to a call
+/// through one of its own parameters (`h(f, x)`: when a caller names `h`, `f` flows down into it). Positions of the written parameter list, sorted. A fact of the
+/// def's own code, so computed once per def and kept.
 pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<[u32]> {
     if let Some(known) = lang.relevant.borrow().get(&def) {
         return Rc::clone(known);
@@ -97,18 +111,19 @@ pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<[u32]> {
     let mut positions: BTreeSet<u32> = BTreeSet::new();
     for item in lang.items(def) {
         match &item.what {
+            // (a), and (c): a call through the def's own parameter hands its argument parameters on to whatever a caller names
             What::Opaque {
-                param: Some(at), ..
+                param: Some(at),
+                args,
             } => {
                 positions.insert(*at);
+                positions.extend(args.iter().filter_map(param_of));
             }
+            // (b)
             What::Call { name, args }
                 if matches!(lang.book.resolve(def.file(), name), Resolved::Project(_)) =>
             {
-                positions.extend(args.iter().filter_map(|a| match a {
-                    ArgShape::Param(at) => Some(*at),
-                    _ => None,
-                }));
+                positions.extend(args.iter().filter_map(param_of));
             }
             _ => {}
         }
@@ -116,6 +131,13 @@ pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<[u32]> {
     let found: Rc<[u32]> = positions.into_iter().collect();
     lang.relevant.borrow_mut().insert(def, Rc::clone(&found));
     found
+}
+
+fn param_of(arg: &ArgShape) -> Option<u32> {
+    match arg {
+        ArgShape::Param(at) => Some(*at),
+        _ => None,
+    }
 }
 
 /// What the argument `arg` of a call written in `caller` puts in a slot (06 §4's table).
@@ -151,7 +173,7 @@ fn slot(
 }
 
 /// The key of a call of `callee` written in `caller`, from the arguments as `sem` read them (06 §4): one slot for each relevant position of the callee whose argument is
-/// known. Under `Precision::Default` it is the open key and nothing is read.
+/// known; each one that is not is counted for the context being walked (`key_slot_*`). Under `Precision::Default` it is the open key and nothing is read.
 pub(crate) fn key_of(
     lang: &Bend<'_>,
     caller: DeclId,
@@ -164,10 +186,14 @@ pub(crate) fn key_of(
     }
     let slots = relevant(lang, callee)
         .iter()
-        .filter_map(|&at| {
-            slot(lang, caller, args.get(at as usize), env)
-                .ok()
-                .map(|known| (at, known))
+        .filter_map(|&at| match slot(lang, caller, args.get(at as usize), env) {
+            Ok(known) => Some((at, known)),
+            Err(absent) => {
+                if let Some(counter) = absent.counter() {
+                    lang.note_slot(counter);
+                }
+                None
+            }
         })
         .collect();
     Key::from_slots(slots)
@@ -304,7 +330,11 @@ mod tests {
         let lang = Bend::new(&book, MarkerStyle::above("ID"), Precision::Precise);
         let of = |name: &str| relevant(&lang, id(&book, name)).to_vec();
         assert_eq!(of("work"), Vec::<u32>::new(), "never called, never passed");
-        assert_eq!(of("each"), [0], "`f(x)`: called");
+        assert_eq!(
+            of("each"),
+            [0, 1],
+            "`f(x)`: `f` is called and `x` is handed to it (c)"
+        );
         assert_eq!(
             of("relay"),
             [0, 1],
@@ -314,8 +344,8 @@ mod tests {
         assert_eq!(of("shown"), Vec::<u32>::new(), "a Base def's argument");
         assert_eq!(
             of("two"),
-            [0, 1],
-            "`a(b(c))`: `a` and `b` are called, `c` is not (it is handed to a parameter)"
+            [0, 1, 2],
+            "`a(b(c))`: `a` and `b` are called, `c` is handed to `b` (c)"
         );
         assert_eq!(
             of("lam"),

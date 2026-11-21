@@ -1,0 +1,34 @@
+== main.bend main default
+main
+  log
+  work [Passed]
+  log
+  other [Passed]
+edges:
+main | log | call log
+main | work | pass work
+main | log | call log
+main | other | pass other
+contexts:
+log | open
+main | open
+other | open
+work | open
+counters: type_position=8
+== main.bend main precise
+main
+  log
+  work [Passed]
+  log
+  other [Passed]
+edges:
+main | log | call log
+main | work | pass work
+main | log | call log
+main | other | pass other
+contexts:
+log | open
+main | open
+other | open
+work | open
+counters: type_position=8

@@ -1,0 +1,16 @@
+== main.bend twice default
+twice
+edges:
+twice | h | unresolved function_typed_value
+twice | h | unresolved function_typed_value
+contexts:
+twice | open
+counters: function_typed_value=2, type_position=3
+== main.bend twice precise
+twice
+edges:
+twice | h | unresolved function_typed_value
+twice | h | unresolved function_typed_value
+contexts:
+twice | open
+counters: function_typed_value=2, type_position=3

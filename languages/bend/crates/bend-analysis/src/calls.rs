@@ -3,7 +3,7 @@
 //! One context per def under `Precision::Default` (every key is the open one, digest zeros); under `Precision::Precise` a context is a def and the parameters a caller named
 //! (`docs/08-bend/06-context-layer-design.md`). A target is `Target::Call(def, key)`, and `walk` is the only place that takes a key.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
@@ -32,8 +32,18 @@ pub(crate) const EXTERNAL_PASSED: &str = "external_passed";
 /// A `type` handed over (`f(Shape)`): a type argument, no code to hand over, so no edge, counted.
 pub(crate) const TYPE_PASSED: &str = "type_passed";
 
+/// For a parameter a callee calls or passes along, in a context being walked: the argument is the caller's own parameter and the caller's key does not know it,
+/// is a `let`, a `case` variable, a lambda's binder or a do's name, is a call's result, a constructor, a literal or a Base def, or is not there (partial
+/// application). Counted per context: they are about keys (`docs/08-bend/06-context-layer-design.md` §4).
+pub(crate) const KEY_SLOT_OPEN: &str = "key_slot_open";
+pub(crate) const KEY_SLOT_LOCAL: &str = "key_slot_local";
+pub(crate) const KEY_SLOT_VALUE: &str = "key_slot_value";
+pub(crate) const KEY_SLOT_MISSING: &str = "key_slot_missing";
+
 /// The reasons of the `Unresolved` edges; the same strings are their counters.
 pub(crate) const FUNCTION_TYPED_VALUE: &str = "function_typed_value";
+/// A call through a parameter that is known to be a lambda: its calls are drawn where the lambda is written (BC-D6).
+pub(crate) const ANONYMOUS_FUNCTION_CALLED: &str = "anonymous_function_called";
 pub(crate) const UNKNOWN_NAME: &str = "unknown_name";
 pub(crate) const UNKNOWN_CONSTRUCTOR: &str = "unknown_constructor";
 
@@ -112,6 +122,11 @@ pub(crate) struct Bend<'b> {
     /// Only ever looked up, never iterated (rule 9).
     /// Counters that are not the reason of an edge, filled as bodies are walked, once each, and put in `Stats.language` by `finish`.
     notes: RefCell<BTreeMap<&'static str, u64>>,
+    /// The defs whose body has been walked to the end: what a body counts about itself (a type skipped, Base's sugar, a name handed over below the arguments, a call
+    /// into a file outside the root, a call to a law) it counts the first time and not again under another key. Only ever looked up (rule 9).
+    noted: RefCell<HashSet<DeclId>>,
+    /// While a def that was walked before is walked again, under another key: `note` counts nothing, `note_slot` still does (a key is what differs).
+    quiet: Cell<bool>,
     /// The ids of the defs described that have a marker another def of their file owns (D34). Described more than once, so a set.
     demoted: RefCell<HashSet<StableDef>>,
     /// The relevant parameters of each def (`key::relevant`), and the digest of each key met. Only ever looked up, never iterated (rule 9).
@@ -126,16 +141,37 @@ impl<'b> Bend<'b> {
             style,
             precision,
             notes: RefCell::new(BTreeMap::new()),
+            noted: RefCell::new(HashSet::new()),
+            quiet: Cell::new(false),
             demoted: RefCell::new(HashSet::new()),
             relevant: RefCell::new(HashMap::new()),
             digests: RefCell::new(HashMap::new()),
         }
     }
 
+    /// A counter about the code of a def: counted once per def, the first time it is walked (a second context of it counts nothing).
     pub(crate) fn note(&self, key: &'static str, by: u64) {
-        if by > 0 {
+        if by > 0 && !self.quiet.get() {
             *self.notes.borrow_mut().entry(key).or_default() += by;
         }
+    }
+
+    /// A counter about a key: counted in every context that is walked.
+    pub(crate) fn note_slot(&self, key: &'static str) {
+        *self.notes.borrow_mut().entry(key).or_default() += 1;
+    }
+
+    /// Whether the body of `f` was already walked to the end; the notes of `f`'s code are quiet from then on.
+    pub(crate) fn walked_before(&self, f: DeclId) -> bool {
+        self.noted.borrow().contains(&f)
+    }
+
+    pub(crate) fn mute(&self, muted: bool) {
+        self.quiet.set(muted);
+    }
+
+    pub(crate) fn done(&self, f: DeclId) {
+        self.noted.borrow_mut().insert(f);
     }
 
     /// The places of `f`'s body (the book reads each file once).

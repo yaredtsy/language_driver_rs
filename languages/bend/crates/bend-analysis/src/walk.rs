@@ -7,9 +7,9 @@ use analyzer_core::outline::DefKind;
 use analyzer_core::solve::{Cancel, SiteCalls, Summary, Target};
 
 use crate::book::{DeclId, Resolved};
-use crate::calls::{self, Bend};
+use crate::calls::{self, Bend, Precision};
 use crate::env::Env;
-use crate::key::{self, Key};
+use crate::key::{self, Key, Known};
 use crate::sem::{Item, Sugar, What};
 
 /// What `External`s of Base's are named by: its package.
@@ -84,14 +84,35 @@ fn resolve<'b>(lang: &Bend<'b>, file: DeclId, item: &Item, env: &Env<'_>) -> Rea
         .unwrap_or_else(|| resolve_from_book(lang, file, item, env))
 }
 
-/// Nothing is answered from the env yet. Context sensitivity starts by making this return `Some`.
+/// What this context's key says about a call through one of the def's own parameters (06 §5): the def a caller named is called, under the key its own
+/// arguments make; a lambda is called where it is written, so the site says why it has no target. Anything else is the book's answer: a name the book fixes is never
+/// overridden, and a parameter nobody named is `Unresolved(function_typed_value)` as before. Off under `Precision::Default`.
 fn resolve_from_env<'b>(
-    _lang: &Bend<'b>,
-    _def: DeclId,
-    _item: &Item,
-    _env: &Env<'_>,
+    lang: &Bend<'b>,
+    def: DeclId,
+    item: &Item,
+    env: &Env<'_>,
 ) -> Option<Reached<'b>> {
-    None
+    if lang.precision == Precision::Default {
+        return None;
+    }
+    let What::Opaque {
+        param: Some(at),
+        args,
+    } = &item.what
+    else {
+        return None;
+    };
+    Some(match env.known(*at)? {
+        Known::Def(callee) => site(
+            project(lang, *callee, key::key_of(lang, def, *callee, args, env)),
+            false,
+        ),
+        Known::Lambda { .. } => site(
+            Target::Unresolved(Reason::new(calls::ANONYMOUS_FUNCTION_CALLED)),
+            false,
+        ),
+    })
 }
 
 fn resolve_from_book<'b>(lang: &Bend<'b>, def: DeclId, item: &Item, env: &Env<'_>) -> Reached<'b> {
@@ -186,13 +207,24 @@ pub(crate) fn reach<'b>(lang: &Bend<'b>, f: DeclId, env: &Env<'_>) -> Vec<(Item,
 }
 
 /// Read `f`'s body once, in the solver's terms: its sites, each with its targets. The solver does the recursion. What the walk meets and does not draw is
-/// counted here, once per place: a type skipped, Base's sugar, a name handed over below the arguments.
+/// counted here, once per place: a type skipped, Base's sugar, a name handed over below the arguments. Once per def, not once per context: the first time a def
+/// is walked to the end it counts, and under another key it does not.
 pub(crate) fn body<'b>(
     lang: &Bend<'b>,
     f: DeclId,
     env: &Env<'_>,
     cancel: &Cancel,
 ) -> Summary<Bend<'b>> {
+    lang.mute(lang.walked_before(f));
+    let summary = sites_of(lang, f, env, cancel);
+    lang.mute(false);
+    if summary.complete {
+        lang.done(f);
+    }
+    summary
+}
+
+fn sites_of<'b>(lang: &Bend<'b>, f: DeclId, env: &Env<'_>, cancel: &Cancel) -> Summary<Bend<'b>> {
     // a site is a span relative to the start of the def, so an edit above it moves nothing
     let start = lang.book.def(f).map_or(0, |d| d.range.start);
     let mut sites = Vec::new();

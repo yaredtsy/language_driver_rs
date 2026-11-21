@@ -1,0 +1,51 @@
+== main.bend main default
+main
+  f
+    f [Recursive]
+  work [Passed]
+  r
+    r [Recursive]
+  work [Passed]
+edges:
+f | g | unresolved function_typed_value
+f | f | call f
+main | f | call f
+main | work | pass work
+main | r | call r
+main | work | pass work
+r | r | call r
+r | g | unresolved function_typed_value
+contexts:
+f | open
+main | open
+r | open
+work | open
+counters: function_typed_value=2, type_position=9
+== main.bend main precise
+main
+  f
+    work
+    f [Recursive]
+  work [Passed]
+  r
+    r [Recursive]
+    work
+  work [Passed]
+edges:
+f@e5163dd2 | g | call work
+f@e5163dd2 | f | call f@e5163dd2
+main | f | call f@e5163dd2
+main | work | pass work
+main | r | call r@e5163dd2
+main | work | pass work
+r@c30757e9 | r | call r@c30757e9
+r@c30757e9 | g | unresolved anonymous_function_called
+r@e5163dd2 | r | call r@c30757e9
+r@e5163dd2 | g | call work
+contexts:
+f | e5163dd2de398288bafd317070624c16
+main | open
+r | c30757e9a47178a53f58aa72c2b9eca5
+r | e5163dd2de398288bafd317070624c16
+work | open
+counters: anonymous_function_called=1, key_slot_open=3, key_slot_value=2, type_position=9

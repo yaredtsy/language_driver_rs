@@ -1,0 +1,28 @@
+== main.bend main default
+main
+  twice
+  f
+edges:
+main | twice | call twice
+main | f | call f
+twice | h | unresolved function_typed_value
+twice | h | unresolved function_typed_value
+contexts:
+f | open
+main | open
+twice | open
+counters: function_typed_value=2, type_position=6
+== main.bend main precise
+main
+  twice
+  f
+edges:
+main | twice | call twice@7662768d
+main | f | call f
+twice@7662768d | h | unresolved anonymous_function_called
+twice@7662768d | h | unresolved anonymous_function_called
+contexts:
+f | open
+main | open
+twice | 7662768dac7816b161fe0ba4793e00a7
+counters: anonymous_function_called=2, key_slot_value=1, type_position=6

@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+pub(crate) mod table;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -10,8 +12,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use analyzer_core::graph::StableDef;
 use analyzer_testkit::graph::check_invariants;
 use bend_analysis::{
-    Book, Cancel, EdgeTo, Graph, Limits, MarkerStyle, Options, RenderOptions, call_graph, render,
-    to_text,
+    Book, Cancel, ContextId, EdgeTo, Graph, Limits, MarkerStyle, Options, Precision, RenderOptions,
+    call_graph, render, to_text,
 };
 
 pub(crate) fn options() -> Options {
@@ -20,11 +22,21 @@ pub(crate) fn options() -> Options {
 
 /// The graph under `entry` of `file`, checked against the graph's invariants.
 pub(crate) fn graph_of(book: &Book, file: &str, entry: &str) -> Option<Graph> {
+    graph_at(book, file, entry, Precision::Default)
+}
+
+/// The same at `precision`.
+pub(crate) fn graph_at(
+    book: &Book,
+    file: &str,
+    entry: &str,
+    precision: Precision,
+) -> Option<Graph> {
     let graph = call_graph(
         book,
         Path::new(file),
         entry,
-        &options(),
+        &options().with_precision(precision),
         &Limits::default(),
         &Cancel::new(),
     )?;
@@ -41,8 +53,35 @@ pub(crate) fn label(graph: &Graph, id: &StableDef) -> String {
     }
 }
 
+/// A context as a snapshot names it: its def's label, and `@` and the first eight hex digits of its digest when it is not the open one.
+pub(crate) fn context_label(graph: &Graph, id: &ContextId) -> String {
+    let def = label(graph, &id.func);
+    if id.digest == [0; 16] {
+        def
+    } else {
+        format!("{def}@{}", &hex(&id.digest)[..8])
+    }
+}
+
+/// The 16 bytes of a digest as hex, in the order of the array.
+pub(crate) fn hex(digest: &[u8; 16]) -> String {
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// Every edge of `graph` as `from | callee text | what it is`: grouped by the def they leave (sorted by its name), in site order inside a def.
 pub(crate) fn edges_as_text(graph: &Graph, root: &Path) -> Vec<String> {
+    edges_as_text_keyed(graph, root, false)
+}
+
+/// The same; with `keyed`, a context that is not the open one is written `def@xxxxxxxx` on both sides of the edge.
+pub(crate) fn edges_as_text_keyed(graph: &Graph, root: &Path, keyed: bool) -> Vec<String> {
+    let name = |id: &ContextId| {
+        if keyed {
+            context_label(graph, id)
+        } else {
+            label(graph, &id.func)
+        }
+    };
     let mut lines: Vec<(String, String)> = graph
         .edges
         .iter()
@@ -57,8 +96,8 @@ pub(crate) fn edges_as_text(graph: &Graph, root: &Path) -> Vec<String> {
                 panic!("{}: the site {start}..{end} is outside the file", from.file)
             });
             let to = match &edge.to {
-                EdgeTo::Context(id, _) if edge.passed => format!("pass {}", label(graph, &id.func)),
-                EdgeTo::Context(id, _) => format!("call {}", label(graph, &id.func)),
+                EdgeTo::Context(id, _) if edge.passed => format!("pass {}", name(id)),
+                EdgeTo::Context(id, _) => format!("call {}", name(id)),
                 EdgeTo::Construct { class, init, .. } => match init {
                     Some(init) => format!(
                         "construct {} init {}",
@@ -73,9 +112,9 @@ pub(crate) fn edges_as_text(graph: &Graph, root: &Path) -> Vec<String> {
                 EdgeTo::Unresolved(reason) => format!("unresolved {}", reason.as_str()),
                 _ => unreachable!("an edge kind this test does not know"),
             };
-            let from = label(graph, &edge.from.func);
+            let from = name(&edge.from);
             (
-                from.clone(),
+                label(graph, &edge.from.func),
                 format!("{from} | {} | {to}", String::from_utf8_lossy(callee)),
             )
         })

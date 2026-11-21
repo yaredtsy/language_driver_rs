@@ -1,0 +1,33 @@
+== main.bend main default
+main
+  relay
+    each
+  work [Passed]
+edges:
+each | f | unresolved function_typed_value
+main | relay | call relay
+main | work | pass work
+relay | each | call each
+contexts:
+each | open
+main | open
+relay | open
+work | open
+counters: function_typed_value=1, type_position=9
+== main.bend main precise
+main
+  relay
+    each
+      work
+  work [Passed]
+edges:
+each@e5163dd2 | f | call work
+main | relay | call relay@e5163dd2
+main | work | pass work
+relay@e5163dd2 | each | call each@e5163dd2
+contexts:
+each | e5163dd2de398288bafd317070624c16
+main | open
+relay | e5163dd2de398288bafd317070624c16
+work | open
+counters: key_slot_open=1, key_slot_value=1, type_position=9
