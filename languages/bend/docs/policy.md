@@ -116,7 +116,8 @@ and `law-across-files` give the shared tree; `construct-marked-class` and `two-c
 
 ## The precise rows (the context layer)
 
-**Designed 2026-11-21, not built yet** (`docs/08-bend/06-context-layer-design.md`, BC1 + BC2 as one step, D51 and D52). The rows above are the
+**Built 2026-11-21** (89a07ba … 2c03f3b; the design is `docs/08-bend/06-context-layer-design.md`, BC1 + BC2 as one step, D51 and D52; the demos' numbers are `ENGINE.md` §BC1+BC2), and **off by
+default**: `Options::precision` is `Precision::Default` unless asked, `bend-cli calls --entry <q> --precise` asks. The rows above are the
 default level and do not change. These are what `Options::precision = Precise` draws: a def's parameter that a caller named (a `~` template or
 a plain function-typed one) is called as that def, per caller, and the key flows down through a caller's own parameter passed along. The
 last cell is read by `crates/bend-analysis/tests/context.rs` in the grammar of "Where a row is checked", with the fixtures under
@@ -157,8 +158,13 @@ is the caller's own parameter and the caller's key does not know it), `key_slot_
 
 - a bare project def as the value of a `do` bind, exec, step or `return` is a passed edge since 85aee89 and 55368ce (row `passed-do`; the
   demos' `passed_deep` fell from 28 to 15, the rest being type names in value position, which owe nothing under BD-D9).
-- the sites the context layer would resolve, measured (BC0, `ENGINE.md`): 55 of the demos' 4,323 call sites; what it would not: partial
-  application in a CPS monad and a lambda's own binder (`docs/08-bend/04` §6).
-- a closure called after being stored (`add2(1)`) and a closure returned by a call (`adder(2)(…)`) are unresolved: BC3 (values through lets
-  and returns).
-- a template parameter called inside its def is unresolved for every caller: BC1 resolves it per call site, exactly.
+- at the default level a parameter called inside its def is unresolved for every caller (rows `template-arg`, `variable`, `binder-wins`). The
+  precise level names it per caller (the precise rows above). On the demos (`ENGINE.md` §BC1+BC2): of the 55 unresolved sites of the default
+  level, 16 are drawn (every template parameter), 12 are known to be a lambda, 3 are a lambda in all contexts but one, 24 stay unresolved.
+- **a lambda a caller passes is known, not drawn under the def that calls it**: its calls are under the def that writes it, at both levels
+  (BC-D6; rows `template-lambda`, `param-lambda-captures`). 12 of the demos' 55 sites. Drawing them under the caller is Q-BD9.
+- the limits of the precise level are its `limit-*` rows: a parameter no caller names, partial application and a primitive handed to a monad's
+  bind (17 demo sites, one program), a lambda's own binder, a constructor of defs, a Base def or a `let` in the slot, a type as an operator's
+  namespace.
+- a closure called after being stored (`add2(1)`) and a closure returned by a call (`adder(2)(…)`) are unresolved at both levels (row
+  `closure-call`): BC3, not built (3 demo sites, none through a `let`).

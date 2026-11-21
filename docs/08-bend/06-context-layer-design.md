@@ -467,6 +467,14 @@ unresolved edges to 70 (64 `anonymous_function_called`, 6 `function_typed_value`
 count of sites falls, which is why step 7 counts sites. **What this already says: a good part of the 28 are lambdas**, known and not drawn under
 BC-D6. Step 7 gives the split; it is the number that says what moving a lambda's calls under its caller (TC7) would be worth in Bend.
 
+**Step 7 built (2c03f3b), reviewed 2026-11-21, and step 8 written: the layer is complete as designed.** The measurement was rerun by the reviewer
+with the same counts, and its numbers are `languages/bend/ENGINE.md` §BC1+BC2. BC0's forecast held to the site: 28 of the 55 named in every context,
+16 at a template parameter and 12 at a plain one. The 16 are drawn; the 12 are lambdas, known and not drawn (BC-D6); 3 are a lambda in 14 of 15
+contexts (BC0's "a caller passes a lambda's own binder"); 24 are unresolved in every context, each in a limit row. 15 of the 16 books walk exactly
+the bodies they walked; `io_rollback_netcode` has 30 more contexts, every one keyed by a lambda. The preview's guess that `key_slot_local` 15 meant
+variables matter was wrong: it is one argument, a lambda's binder, counted in 15 contexts. What is open is not in this file: Q-BD9 (05 §3), and the
+flip of the default (BC-D8).
+
 Two notes for the later steps, found at this review. Whether a parameter is a `~` template is already in the outline (`Def.params[i]` is written
 `~f`, `languages/bend/docs/qualnames.md`), so step 7's split of the answered sites into template and plain needs nothing more from `sem`. An
 argument written `(x => x : T)` or `{f : T}` is `ArgShape::Other` (an annotation is not looked through, as `passable` does not): its slot is

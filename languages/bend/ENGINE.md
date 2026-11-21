@@ -419,6 +419,115 @@ monad; 27 in the corpus, 1 in the demos, 1 in Base) and a parameter the callers 
 count takes a bare lowercase or dotted Base name for a def). (4) §2's prior holds: 55 of 4,323 on the 16 mains (68 of 4,922 on the 56 entries) against "64 of about 5,900", and 35 of 820 in Base against "39 of about 1,000". (5) §1's "one kind of site is unresolved"
 holds: no operator and no do is on a bound type name anywhere (the `Sugar::Bound` case of the walk occurs 0 times in 1,744 files).
 
+## BC1+BC2
+
+The context layer of `docs/08-bend/06-context-layer-design.md`, built 2026-11-21 in nine commits (89a07ba, 1030b7f, 7bc5520, 4628b69, 14248b7, 325066c, 03270d3, b334658, 2c03f3b), each reviewed with its proofs
+reproduced. It is **off by default** (`Options::precision`, `bend-cli calls --entry <q> --precise`); every number of the sections above is `Precision::Default` and did not move. Measured by
+`context_layer_on_the_demos` (ignored, `--test corpus`, release), which pins every count below and prints the times; rerun by the reviewer with the same counts.
+
+    BEND_CLONE=<the bend clone> cargo test -p bend-analysis --release --test corpus -- --ignored --nocapture context_layer_on_the_demos
+
+**The input** is BC0's: the sweep's 16 books, each asked whole at its `main`, at `Default` and at `Precise`. Under `Default` they have 55 unresolved sites, all `function_typed_value`: `app_slash_boss_3d` 20,
+`io_rollback_netcode` 13, `io_tcp_echos` 1, `pure_hvm5_mini` 21; the other 12 books have none. A **site** is a def and a span; under `Precise` a def can have several contexts, so each site is read in every context
+of its def. In one context it is **drawn** (a `Call` of a def), a **lambda** (`Unresolved(anonymous_function_called)`: the parameter is known to be a lambda, whose calls are drawn where it is written, BC-D6), or
+**unresolved** (`function_typed_value`, as before).
+
+### The 55 sites
+
+| class | `~` parameter | plain parameter | not a parameter | all |
+|---|---|---|---|---|
+| drawn in every context | 16 | 0 | 0 | **16** |
+| a lambda in every context | 0 | 12 | 0 | **12** |
+| drawn in some, a lambda in others | 0 | 0 | 0 | 0 |
+| named in some, unresolved in others | 0 | 3 | 0 | **3** |
+| unresolved in every context | 0 | 17 | 7 | **24** |
+| the def is not reached | 0 | 0 | 0 | 0 |
+| all | 16 | 32 | 7 | 55 |
+
+By book (drawn / lambda / named in some / unresolved): `app_slash_boss_3d` 16 / 4 / 0 / 0; `io_rollback_netcode` 0 / 7 / 3 / 3; `io_tcp_echos` 0 / 1 / 0 / 0; `pure_hvm5_mini` 0 / 0 / 0 / 21.
+
+**BC0's forecast holds to the site: 28 named in every context, 16 at a template parameter and 12 at a plain one.** What BC0 could not say is what they are named as. **The 16 templates are all a def, and are drawn; the 12 plain
+parameters are all a lambda, and are not.** So the tree of a demo gains 16 callees, every one in `app_slash_boss_3d`'s `bend3d.bend` (the library's hooks, `~cam`, `~shade`, `~unit`, `~at`, handed down chains of `~`
+parameters from `main.bend`, which names its own `Stage.*`, `Sky.*` and `Mesh.of`; `bend3d.bend` has defs of some of the same names, and the target is the one the naming file means), and each of those defs has
+the one context it had, now with a key:
+
+| book | file | def | at | the call | is |
+|---|---|---|---|---|---|
+| `app_slash_boss_3d` | `bend3d.bend` | `Blk.at` | 1241:7 | `at` | `Sky.at` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Cloth.move` | 804:61 | `wind` | `Stage.wind` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Cloth.patch` | 901:3 | `mesh` | `Mesh.of` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Cloth.rope` | 918:53 | `cam` | `Stage.cam` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Cloth.rope` | 919:3 | `mesh` | `Mesh.of` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Grid.go` | 641:61 | `cam` | `Stage.cam` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Mesh.of` | 712:56 | `cam` | `Stage.cam` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Mesh.vert` | 532:25 | `cam` | `Stage.cam` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Mesh.vert` | 532:37 | `shade` | `Stage.shade` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Tile.b4` | 1407:5 | `col` | `Sky.col` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Tile.b4` | 1407:23 | `col` | `Sky.col` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Tile.go` | 1464:10 | `of` | `Sky.of` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Tile.go` | 1466:31 | `flat` | `Sky.mixed` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Tile.pick` | 1448:11 | `at` | `Sky.at` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Unit.fit` | 681:7 | `size` | `Stage.size` |
+| `app_slash_boss_3d` | `bend3d.bend` | `Unit.go` | 187:7 | `unit` | `Stage.unit` |
+
+The 12 lambdas, and the 3 that are a lambda in all contexts but one (the last column: the contexts where the site is a lambda):
+
+| book | file | def | at | the call | a lambda in |
+|---|---|---|---|---|---|
+| `app_slash_boss_3d` | `main.bend` | `Play.pace` | 2736:7 | `k` | 1 of 1 |
+| `app_slash_boss_3d` | `main.bend` | `Play.pace` | 2739:76 | `k` | 1 of 1 |
+| `app_slash_boss_3d` | `main.bend` | `Play.serve` | 2750:5 | `rest` | 1 of 1 |
+| `app_slash_boss_3d` | `main.bend` | `Play.turn` | 2786:23 | `rest` | 1 of 1 |
+| `io_rollback_netcode` | `netcode.bend` | `Client.sync.go` | 680:9 | `rest` | 1 of 1 |
+| `io_rollback_netcode` | `netcode.bend` | `Post.insert.go` | 155:12 | `rest` | 1 of 1 |
+| `io_rollback_netcode` | `netcode.bend` | `Post.next.go` | 170:7 | `rest` | 1 of 1 |
+| `io_rollback_netcode` | `netcode.bend` | `Post.next.go` | 172:7 | `rest` | 1 of 1 |
+| `io_rollback_netcode` | `netcode.bend` | `String.word.go` | 372:7 | `rest` | 15 of 15 |
+| `io_rollback_netcode` | `walkers_demo.bend` | `World.input.go` | 103:12 | `rest` | 1 of 1 |
+| `io_rollback_netcode` | `walkers_test.bend` | `Bot.more` | 74:7 | `rest` | 2 of 2 |
+| `io_tcp_echos` | `main.bend` | `echo_sent` | 25:7 | `next` | 1 of 1 |
+| `io_rollback_netcode` | `netcode.bend` | `String.word` | 378:7 | `k` | 14 of 15 |
+| `io_rollback_netcode` | `netcode.bend` | `String.word.go` | 370:7 | `k` | 14 of 15 |
+| `io_rollback_netcode` | `netcode.bend` | `String.word.go` | 372:22 | `k` | 14 of 15 |
+
+Each is a continuation written at the call (`Play.pace(pace, w => b => fr => Play.go(…))`, `Post.insert.go(…, u => Post.insert(P, p, t))`, `String.word(…, room => from => Msg.join(room, from))`). Its own calls are in
+the tree already, under the def that writes it. **The three `String.word` sites** are BC0's "a caller passes a lambda's own binder": 14 callers hand `String.word` a lambda, and its own recursion goes through
+`k2 => String.word(R, t, k2)`, whose call belongs to the def it is written in and passes the binder `k2`, so it makes the open context of `String.word`, where `k` is unknown. BC0 asked that every caller end at a def or
+a lambda and filed the three under "no"; per context they are named in 14 of 15.
+
+**The 24 unresolved in every context are BC0's classes, none in between**, each pinned by a limit row of `docs/policy.md`: 17 plain parameters of `pure_hvm5_mini`'s CPS parser (10 partial applications, 4 primitives
+handed to the monad's bind, 3 with no caller but the sugar: rows `limit-partial-application`, `limit-handed-to-bind`); 3 calls of a call's result (row `closure-call`); 3 variables from a constructor's fields, `Game.read`,
+`Game.show`, `Game.step` (row `limit-constructor-of-defs`); 1 lambda's own binder, `P.pure`'s `k` (row `limit-lambda-binder`). By def: `Game.read` 255:3 `read`; `Game.show` 259:3 `show`; `Game.step` 251:3 `step`; `P.bind` 524:13 `m`, 524:20 `f`, 524:20 `f(a)`; `P.pure` 521:13 `k`; `bindc.go` 617:7 `k`, 620:7 `k`, 623:7 `k`, 626:7 `k`; `bindv` 604:3 `k`; `drop` 538:3 `k`; `eof` 704:7 `k`, 706:7 `k`; `index.go` 734:3 `k`; `look.go` 690:7 `k`; `main` 1916:3 `prog()`; `name.go` 548:3 `k`; `opt.go` 565:7 `k`, 567:7 `k`; `peek` 533:3 `k`; `pop` 646:7 `pop.go(U32.is_eq(u, 1), nm, u)`, 648:7 `k`.
+
+### What it costs
+
+| book | contexts | unresolved edges | `Default` ms | `Precise` ms |
+|---|---|---|---|---|
+| `app_slash_boss_3d` | 424 → 424 | 20 → 4 | 3.06 | 3.70 |
+| `io_rollback_netcode` | 130 → 160 | 13 → 70 | 0.43 | 0.68 |
+| `pure_hvm5_mini` | 157 → 157 | 21 → 21 | 0.95 | 1.13 |
+| `io_tcp_echos` | 8 → 8 | 1 → 1 | 0.03 | 0.03 |
+
+Median of 20 requests, release, the owner's machine, the coder's run; the other 12 books are under 0.25 ms in both and gain nothing but the option's check. The reviewer's run, on a busier machine, gave the same
+counts and 1.1 to 1.4 times the `Default` time for `Precise` on the three large books. **The cost is the keys, not more bodies**: 15 books walk exactly the bodies they walked. Only `io_rollback_netcode` has more contexts,
+30 more in four defs: `String.word` and `String.word.go` have 15 each (one per lambda a caller writes, and the open one), `Bot.frame` and `Bot.more` 2 each. **Every key that multiplies a def holds a lambda; no def of
+the 16 books is reached under two different defs.** A lambda's context differs from the open one only in the reason its sites give, and in what it passes down. That is the price of knowing it, and of `Known::Lambda`
+being there for the day a lambda's calls are drawn under its caller.
+
+**Count sites, not edges.** `Stats.unresolved` and the reasons in `Stats.language` are per edge, and an edge is per context: `io_rollback_netcode` goes from 13 unresolved edges to 70 (64 `anonymous_function_called`,
+6 `function_typed_value`) while its unresolved sites stay 13 and 10 of them become known. A dashboard that shows `Stats.unresolved` would say the layer made things worse.
+
+### The counters, and what they say about the unbuilt phases
+
+`key_slot_*` count, per context walked, a parameter the callee **calls** that the caller did not name, by why (`docs/08-bend/06` §4). Over the 16 books: `key_slot_missing` 14 and `key_slot_open` 5, all in
+`pure_hvm5_mini` (the partial applications of its parser, and their parameters handed on); `key_slot_local` 15 and `key_slot_open` 1 in `io_rollback_netcode`; `key_slot_value` 0 everywhere. **The 15 locals are one argument**, the
+binder `k2` in `String.word(R, t, k2)`, counted once in each of `String.word`'s 15 contexts: a lambda's own binder, not a `let`. So in the demos:
+
+- **no `let` holds a function that is then passed** (BC3's `g = work; each(g, 1)`: 0 sites), and no Base def is passed to a parameter that is called;
+- a call's result called is 3 sites, a constructor's field 3 (BC0's c and d, unchanged);
+- **the one unbuilt thing that would change the demos' trees is drawing a lambda's calls under the function that calls it** (TypeScript's TC7, Q-TC1 and Q-RC1's other answer, Python's rule): the 12 sites, and the 3 of
+  `String.word` whose binder would then have a value. 15 of 55, against 16 drawn by this step. It is a tree rule shared by every language, so it is asked as Q-BD9, not decided here.
+
 ## grammar
 
 S-BD2 (G1–G30, step 2; G31–G36 found in step 4): every form `bend.ts` reads that the BNF comment (lines 8–160) does not name, or names differently. Read 2026-11-20 from `parse_book` (2593), `parse_def`

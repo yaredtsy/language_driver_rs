@@ -52,6 +52,11 @@ sugar. Base: 35 of 820 sites, 91% templates and parameters. The corpus's 545 are
 one mechanism and pay (28 of 55 sites, 0.65 points of all call sites, exact for templates); BC3, BC4 and BC5 do not pay today (3, 0 and 3
 sites) and wait for a program of the owner's that has them. Whether to build BC1+BC2 at all is Q-BD8 (05 §3).
 
+**BC1+BC2 built (2026-11-21, 89a07ba … 2c03f3b; `ENGINE.md` §BC1+BC2), and the forecast held to the site:** 28 of the 55 are named in every
+context, 16 at a template parameter and 12 at a plain one. What the forecast did not say: the 16 are all a def and are drawn; the 12 are all a
+lambda, which is known and stays drawn where it is written (BC-D6). 3 more are a lambda in 14 of their 15 contexts; 24 are unresolved in every
+context, in the classes of §6. No `let` holds a function in the demos (BC3: 0 sites of that form).
+
 A prior, from a regex count another reader made on the demos at the same commit (2026-11-20, not ours, **[measure]** in BC0): about 5,900
 call sites, 64 with a local variable as head; in Base, 39 of about 1,000. If that holds, layer 1 resolves about 99% of sites by name and the
 context layer is about the last 1%, which is why it is designed small and scheduled last.
