@@ -3,12 +3,17 @@
 //! invents a site: every site is an item (BV-D2), which is what makes "it knows nothing, so it is layer 1" a test that can be run item by item.
 //!
 //! What carries a value: a parameter has the one the key gives it, a def named in an argument is that def, a lambda is a lambda that **stays** (its body is read
-//! here, where it is written, its binders unknown), and, since V3, a variable has the value of its binding (BV-D3): a `let` gives its names the values of its terms,
-//! a `case` with a name pattern gives it the value of the scrutinee, and every other binder (a lambda's, a do's, the names inside a constructor or list pattern) has
-//! none. No call has a return value and no constructor has fields yet; the steps that follow give each of those a value, one at a time, with the rows that flip.
+//! here, where it is written, its binders unknown), a variable has the value of its binding (BV-D3: a `let` gives its names the values of its terms, a `case` with a
+//! name pattern gives it the value of the scrutinee), and, since V6, a call that gives a def all its written parameters has what that def's body evaluates to under
+//! the key those arguments make (`ret`, BV-D5). Every other binder has none. No constructor has fields yet; the steps that follow give each a value, one at a time,
+//! with the rows that flip.
 //!
 //! 🦀 The evaluator is a struct that borrows the book, the key's environment and the def's tree, and owns the one thing it fills in: a `Vec<Option<Reached>>`, one
 //! place for each item. `Option` because an item that is not a node (a type skipped, Base's `&&`) is not the evaluator's: the walk that calls it settles those.
+//!
+//! 🦀 `ret` asks the question "what does this context return" of a context that may be asking it of itself, so its memo has three states for a key: absent, `Running`
+//! (with the value so far) and `Done`. The memo sits in a `RefCell` on `Bend` so the evaluator can stay `&self`; the borrow is dropped before the evaluator is run,
+//! or the inner call would panic on a second `borrow_mut`.
 
 use analyzer_core::graph::Reason;
 use analyzer_core::solve::Target;
@@ -16,10 +21,13 @@ use analyzer_core::solve::Target;
 use crate::book::{DeclId, Resolved};
 use crate::calls::{self, Bend};
 use crate::env::Env;
-use crate::key::{self, Absent, Key, Known};
+use crate::key::{self, Absent, Key};
 use crate::sem::{ArgShape, DefWalk, Expr, Item, Pat, What};
 use crate::value::{One, Value};
 use crate::walk::{self, Reached};
+
+/// How many times a context that returns what it calls is evaluated again before its value is unknown (BV-D8).
+pub(crate) const MAX_ROUNDS: u32 = 4;
 
 /// What the evaluator may know. `Tracked` is the layer. `Nothing` is for the test that proves the evaluator and the item table agree: every value is unknown, so
 /// the answer must be layer 1's, site by site.
@@ -28,6 +36,14 @@ pub(crate) enum Policy {
     Tracked,
     #[cfg(test)]
     Nothing,
+}
+
+/// What `Bend` keeps of the value a context returns.
+#[derive(Clone, Debug)]
+pub(crate) enum Ret {
+    /// Being evaluated, at this place of the stack of contexts being evaluated: the value so far.
+    Running(Value, usize),
+    Done(Value),
 }
 
 struct Eval<'l, 'b> {
@@ -42,22 +58,104 @@ struct Eval<'l, 'b> {
     vars: Vec<Value>,
 }
 
+impl<'l, 'b> Eval<'l, 'b> {
+    fn new(lang: &'l Bend<'b>, def: DeclId, env: &'l Env<'l>, walk: &'b DefWalk) -> Self {
+        Eval {
+            lang,
+            def,
+            env,
+            walk,
+            reached: (0..walk.items.len()).map(|_| None).collect(),
+            vars: Vec::new(),
+        }
+    }
+}
+
 /// What each item of `f` comes to under `env`, by item: `Some` for every item that is a site and for every name (handed over, or below the arguments), `None` for the
 /// rest, which the item walk settles. Empty when `f` has no walk (not a def of the book).
 pub(crate) fn reached<'b>(lang: &Bend<'b>, f: DeclId, env: &Env<'_>) -> Vec<Option<Reached<'b>>> {
     let Some(walk) = lang.walk_of(f) else {
         return Vec::new();
     };
-    let mut eval = Eval {
-        lang,
-        def: f,
-        env,
-        walk,
-        reached: (0..walk.items.len()).map(|_| None).collect(),
-        vars: Vec::new(),
-    };
+    let mut eval = Eval::new(lang, f, env, walk);
     eval.eval(&walk.flow.body);
     eval.reached
+}
+
+/// What the body of `def` evaluates to under `key`, read once: no site is kept and nothing is counted.
+fn read_value(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
+    let Some(walk) = lang.walk_of(def) else {
+        return Value::unknown();
+    };
+    let env = Env::new(key);
+    lang.silently(|| Eval::new(lang, def, &env, walk).eval(&walk.flow.body))
+}
+
+/// The value a context returns (BV-D5), kept: `(def, key)` is evaluated once. A context asked for while it is being evaluated answers with its value so far, which
+/// starts as data, "nothing yet"; the outermost context of such a cycle is evaluated again until its value stops changing, and nothing computed inside the cycle is kept
+/// before that, because it was computed from a value that was not final. After `MAX_ROUNDS` the value is unknown, and counted.
+pub(crate) fn ret(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
+    let id = (def, key.clone());
+    match lang.rets.borrow().get(&id) {
+        Some(Ret::Done(value)) => return value.clone(),
+        Some(Ret::Running(value, at)) => {
+            lang.ret_low.set(lang.ret_low.get().min(*at));
+            return value.clone();
+        }
+        None => {}
+    }
+    let at = lang.ret_depth.get();
+    lang.ret_depth.set(at + 1);
+    let outer_low = lang.ret_low.replace(usize::MAX);
+    lang.rets
+        .borrow_mut()
+        .insert(id.clone(), Ret::Running(Value::data(), at));
+    let mut so_far = Value::data();
+    let mut rounds = 0;
+    let (value, low) = loop {
+        lang.ret_low.set(usize::MAX);
+        let read = read_value(lang, def, key);
+        let low = lang.ret_low.get();
+        if low < at {
+            // it read a context outside it that is not finished: this value is not final, and is not kept
+            lang.rets.borrow_mut().remove(&id);
+            break (read, low);
+        }
+        if low == usize::MAX {
+            // it asked for no unfinished context: final
+            lang.rets
+                .borrow_mut()
+                .insert(id.clone(), Ret::Done(read.clone()));
+            break (read, usize::MAX);
+        }
+        // it read itself: the values only grow, so it is final when it stops growing
+        let grown = so_far.join(&read);
+        if grown.as_ref() == Some(&so_far) {
+            lang.rets
+                .borrow_mut()
+                .insert(id.clone(), Ret::Done(so_far.clone()));
+            break (so_far, usize::MAX);
+        }
+        rounds += 1;
+        match grown {
+            Some(grown) if rounds < MAX_ROUNDS => {
+                so_far = grown;
+                lang.rets
+                    .borrow_mut()
+                    .insert(id.clone(), Ret::Running(so_far.clone(), at));
+            }
+            _ => {
+                lang.note_once(calls::RETURN_IN_CYCLE);
+                lang.rets
+                    .borrow_mut()
+                    .insert(id.clone(), Ret::Done(Value::unknown()));
+                break (Value::unknown(), usize::MAX);
+            }
+        }
+    };
+    lang.ret_depth.set(at);
+    lang.ret_low.set(outer_low.min(low));
+    value
 }
 
 impl<'b> Eval<'_, 'b> {
@@ -90,10 +188,7 @@ impl<'b> Eval<'_, 'b> {
             Expr::Data => Value::data(),
             // a parameter has what the key says; any other binder has the value of its binding (BV-D3)
             Expr::Var(n) if *n < self.walk.flow.params => {
-                let value = self
-                    .env
-                    .known(*n)
-                    .map_or_else(Value::unknown, Value::from_known);
+                let value = self.env.known(*n).cloned().unwrap_or_else(Value::unknown);
                 self.known(value)
             }
             Expr::Var(n) => self
@@ -124,11 +219,11 @@ impl<'b> Eval<'_, 'b> {
                     other => self.eval(other),
                 };
                 let values: Vec<Value> = args.iter().map(|a| self.eval(a)).collect();
-                // a callee that is a variable is called as what it holds; any other callee that is not a name (`f(a)(b)`, `(x => ..)(a)`) is not followed
-                let follows = matches!(&**head, Expr::Var(_));
-                self.reached[*item as usize] =
-                    Some(self.call(*item, follows.then_some(&head_value), &values));
-                Value::unknown()
+                // a callee that is a variable or a call's result is called as what it holds; any other callee that is not a name (`(x => ..)(a)`) is not followed
+                let follows = matches!(&**head, Expr::Var(_) | Expr::Call { .. });
+                let (reached, value) = self.call(*item, follows.then_some(&head_value), &values);
+                self.reached[*item as usize] = Some(reached);
+                value
             }
             Expr::Ctr { item, fields, .. } => {
                 fields.iter().for_each(|f| drop(self.eval(f)));
@@ -208,50 +303,85 @@ impl<'b> Eval<'_, 'b> {
         self.reached[at as usize] = Some(reached);
     }
 
-    /// What a call comes to: its callee is a name the book resolves, or a value. `head` is the value of the callee when the callee is a variable (a parameter or a
-    /// binder the evaluator holds a value for), `values` those of the arguments.
-    fn call(&self, at: u32, head: Option<&Value>, values: &[Value]) -> Reached<'b> {
+    /// What a def returns when it is given `given` arguments under `key`: its body's value when they are all of its written parameters, and unknown otherwise.
+    fn returned(&self, callee: DeclId, key: &Key, given: usize) -> Value {
+        let all = self
+            .lang
+            .walk_of(callee)
+            .is_some_and(|w| w.flow.params as usize == given);
+        if all && key::known_def(self.lang, callee) {
+            ret(self.lang, callee, key)
+        } else {
+            Value::unknown()
+        }
+    }
+
+    /// What a call comes to, and the value it has. Its callee is a name the book resolves, or a value: `head` is the value of the callee when the callee is a variable
+    /// or a call's result, `values` those of the arguments.
+    fn call(&self, at: u32, head: Option<&Value>, values: &[Value]) -> (Reached<'b>, Value) {
         let item = self.item(at);
         match (&item.what, head) {
             // an unbound name: the book fixes what it is (a name it fixes is never overridden), and the key is made of the arguments
             (What::Call { name, args }, _) => {
                 let resolved = self.lang.book.resolve(self.def.file(), name);
-                let key = match &resolved {
-                    Resolved::Project(id) => self.key(*id, args, values),
-                    _ => Key::open(),
-                };
-                walk::site(walk::call_of(self.lang, resolved, name, key), false)
+                match &resolved {
+                    Resolved::Project(id) => {
+                        let key = self.key(*id, args, values);
+                        let value = self.returned(*id, &key, values.len());
+                        let reached =
+                            walk::site(walk::call_of(self.lang, resolved, name, key), false);
+                        (reached, value)
+                    }
+                    _ => (
+                        walk::site(walk::call_of(self.lang, resolved, name, Key::open()), false),
+                        Value::unknown(),
+                    ),
+                }
             }
-            // a call through a variable: one answer for each member of what it holds, and the book's own beside them when something else may be there
+            // a call through a value: one answer for each member of what it holds, and the book's own beside them when something else may be there
             (What::Opaque { args, .. }, Some(head)) => {
                 let mut targets = Vec::new();
+                let mut value: Option<Value> = None;
                 let mut lambda = false;
+                let mut add = |this: &Self, v: Value| {
+                    value = Some(match value.take() {
+                        None => v,
+                        Some(so_far) => this.join(&so_far, &v),
+                    });
+                };
                 for one in head.members() {
                     match one {
-                        One::Def(callee) => targets.push(walk::project(
-                            self.lang,
-                            *callee,
-                            self.key(*callee, args, values),
-                        )),
-                        // known, and drawn where it is written: one answer however many lambdas the variable may hold
-                        One::Lambda { .. } if !lambda => {
-                            lambda = true;
-                            targets.push(Target::Unresolved(Reason::new(
-                                calls::ANONYMOUS_FUNCTION_CALLED,
-                            )));
+                        One::Def(callee) => {
+                            let key = self.key(*callee, args, values);
+                            add(self, self.returned(*callee, &key, values.len()));
+                            targets.push(walk::project(self.lang, *callee, key));
                         }
-                        One::Lambda { .. } => {}
+                        // known, and drawn where it is written: one answer however many lambdas the variable may hold
+                        One::Lambda { .. } => {
+                            add(self, Value::unknown());
+                            if !lambda {
+                                lambda = true;
+                                targets.push(Target::Unresolved(Reason::new(
+                                    calls::ANONYMOUS_FUNCTION_CALLED,
+                                )));
+                            }
+                        }
                     }
                 }
                 if head.is_open() || targets.is_empty() {
                     targets.push(Target::Unresolved(Reason::new(calls::FUNCTION_TYPED_VALUE)));
+                    add(self, Value::unknown());
                 }
-                Reached::Site {
+                let reached = Reached::Site {
                     targets,
                     passed: false,
-                }
+                };
+                (reached, value.unwrap_or_else(Value::unknown))
             }
-            _ => walk::resolve_from_book(self.lang, self.def, item, self.env),
+            _ => (
+                walk::resolve_from_book(self.lang, self.def, item, self.env),
+                Value::unknown(),
+            ),
         }
     }
 
@@ -262,30 +392,21 @@ impl<'b> Eval<'_, 'b> {
         })
     }
 
-    /// What the argument at a position puts in a slot. A slot is read off a bare name, a lambda or a variable: `shape` (what the text says the argument is) decides
-    /// whether the value counts, and the value says what is in it. A value that is exactly one def or lambda is a slot (keys are single-valued); any other has none,
-    /// and counts why: a set is a value, an unknown variable is a local.
-    fn slot(&self, shape: Option<&ArgShape>, value: Option<&Value>) -> Result<Known, Absent> {
+    /// What the argument at a position puts in a slot: its value, whatever the argument is, when that is neither unknown nor data. A set is a value, and a slot may hold
+    /// one. When there is nothing to put, `shape` (what the text says the argument is) says why, and it is counted as it always was.
+    fn slot(&self, shape: Option<&ArgShape>, value: Option<&Value>) -> Result<Value, Absent> {
         let Some(shape) = shape else {
             return Err(Absent::Missing);
         };
-        let known = match shape {
-            ArgShape::Lambda(_) | ArgShape::Param(_) | ArgShape::Name(_) | ArgShape::Local => {
-                value.and_then(Known::of)
-            }
-            ArgShape::Other => None,
-        };
-        known.ok_or_else(|| {
-            if value.is_some_and(|v| v.members().len() > 1) && !matches!(shape, ArgShape::Other) {
-                return Absent::Value;
-            }
-            match shape {
+        match value {
+            Some(value) if !value.members().is_empty() => Ok(value.clone()),
+            _ => Err(match shape {
                 ArgShape::Param(_) => Absent::Open,
                 ArgShape::Local => Absent::Local,
                 ArgShape::Name(name) => key::absent_name(self.lang, self.def, name),
                 ArgShape::Lambda(_) | ArgShape::Other => Absent::Value,
-            }
-        })
+            }),
+        }
     }
 }
 

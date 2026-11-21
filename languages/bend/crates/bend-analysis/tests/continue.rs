@@ -115,6 +115,7 @@ fn the_pieces_make_the_tree_asked_for_whole() {
         "template-flow",
         "param-through-param",
         "recursion-keyed",
+        "return-set-argument",
     ] {
         let session = open_fixture(folder, Precision::Precise);
         let asked = whole(&session, "main");

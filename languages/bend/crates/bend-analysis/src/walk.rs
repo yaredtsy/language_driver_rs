@@ -10,8 +10,9 @@ use crate::book::{DeclId, Resolved};
 use crate::calls::{self, Bend, Precision};
 use crate::env::Env;
 use crate::eval;
-use crate::key::{self, Key, Known};
+use crate::key::{self, Key};
 use crate::sem::{Item, Sugar, What};
+use crate::value::One;
 
 /// What `External`s of Base's are named by: its package.
 const BASE: &str = "Base";
@@ -109,12 +110,12 @@ fn resolve_from_env<'b>(
     else {
         return None;
     };
-    Some(match env.known(*at)? {
-        Known::Def(callee) => site(
-            project(lang, *callee, key::key_of(lang, def, *callee, args, env)),
+    Some(match env.known(*at)?.single()? {
+        One::Def(callee) => site(
+            project(lang, callee, key::key_of(lang, def, callee, args, env)),
             false,
         ),
-        Known::Lambda { .. } => site(
+        One::Lambda { .. } => site(
             Target::Unresolved(Reason::new(calls::ANONYMOUS_FUNCTION_CALLED)),
             false,
         ),

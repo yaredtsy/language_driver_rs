@@ -1,10 +1,9 @@
 //! What a place can hold (`docs/08-bend/07-value-layer-design.md` §3, BV-D1): a closed set of the things that can be there, and whether the set is complete.
 //!
 //! This step has two members, the two BC1+BC2 knows: a def of the book with code, and a lambda that stays with the def that writes it. The closure, the partial
-//! application and the constructor are added with the steps that make them (V4, V7, V8), and `key.rs`'s `Known` becomes a `Value` with them.
+//! application and the constructor are added with the steps that make them (V4, V7, V8). A key's slot is a `Value`.
 
 use crate::book::DeclId;
-use crate::key::Known;
 
 /// The most members a set may have (BV-D8): a larger one is unknown.
 pub(crate) const MAX_SET: usize = 8;
@@ -22,7 +21,7 @@ pub(crate) enum One {
 ///
 /// 🦀 `#[derive(PartialOrd, Ord)]` on `One` is what lets the members be kept sorted: two values with the same members are then equal as bytes, which is what a
 /// later key needs ("the same input, same output"). The derive orders by variant first, then by the fields in the order they are written.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct Value {
     known: Box<[One]>,
     open: bool,
@@ -51,14 +50,6 @@ impl Value {
             known: Box::new([one]),
             open: false,
         }
-    }
-
-    /// What a key's slot holds.
-    pub(crate) fn from_known(known: &Known) -> Value {
-        Value::one(match *known {
-            Known::Def(def) => One::Def(def),
-            Known::Lambda { writer, nth } => One::Lambda { writer, nth },
-        })
     }
 
     /// The one thing this is, when it is exactly one and nothing else can be there: what a key's slot can hold.
@@ -96,16 +87,6 @@ impl Value {
         Some(Value {
             known: known.into(),
             open: self.open || other.open,
-        })
-    }
-}
-
-impl Known {
-    /// A slot is a value that is exactly one def or lambda; `None` for any other.
-    pub(crate) fn of(value: &Value) -> Option<Known> {
-        value.single().map(|one| match one {
-            One::Def(def) => Known::Def(def),
-            One::Lambda { writer, nth } => Known::Lambda { writer, nth },
         })
     }
 }
@@ -176,17 +157,5 @@ mod tests {
         // one more member of the same set, or none, is no change; a ninth def is over
         assert_eq!(set.join(&Value::one(def(3))), Some(set.clone()));
         assert_eq!(set.join(&Value::one(def(MAX_SET))), None);
-    }
-
-    #[test]
-    fn a_key_slot_and_a_value_are_the_same_thing() {
-        let known = Known::Def(DeclId::new(0, 5));
-        assert_eq!(Known::of(&Value::from_known(&known)), Some(known));
-        let lambda = Known::Lambda {
-            writer: DeclId::new(0, 5),
-            nth: 1,
-        };
-        assert_eq!(Known::of(&Value::from_known(&lambda)), Some(lambda));
-        assert_eq!(Known::of(&Value::unknown()), None);
     }
 }

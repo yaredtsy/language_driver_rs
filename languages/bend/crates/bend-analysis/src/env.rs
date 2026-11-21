@@ -2,7 +2,8 @@
 //! inside one body in this step, so the env **is** the context's key seen as a map: what the callers named for the def's parameters. This file stays the one place a
 //! later phase would add locals (BC3).
 
-use crate::key::{Key, Known};
+use crate::key::Key;
+use crate::value::Value;
 
 pub(crate) struct Env<'k> {
     key: &'k Key,
@@ -14,7 +15,7 @@ impl<'k> Env<'k> {
     }
 
     /// What the context's callers put in the def's parameter at `position`, when they named it.
-    pub(crate) fn known(&self, position: u32) -> Option<&'k Known> {
+    pub(crate) fn known(&self, position: u32) -> Option<&'k Value> {
         self.key.known(position)
     }
 }

@@ -1,0 +1,70 @@
+== main.bend from_a default
+from_a
+  a
+    b
+      a [Recursive]
+edges:
+a | b | call b
+b | a | call a
+from_a | a | call a
+from_a | a(2n) | unresolved function_typed_value
+contexts:
+a | open
+b | open
+from_a | open
+counters: function_typed_value=1, passed_deep=2, type_position=5
+== main.bend from_a precise
+from_a
+  a
+    b
+      a [Recursive]
+  work
+  other
+edges:
+a | b | call b
+b | a | call a
+from_a | a | call a
+from_a | a(2n) | call other
+from_a | a(2n) | call work
+contexts:
+a | open
+b | open
+from_a | open
+other | open
+work | open
+counters: passed_deep=2, type_position=9
+== main.bend from_b default
+from_b
+  b
+    a
+      b [Recursive]
+edges:
+a | b | call b
+b | a | call a
+from_b | b | call b
+from_b | b(2n) | unresolved function_typed_value
+contexts:
+a | open
+b | open
+from_b | open
+counters: function_typed_value=1, passed_deep=2, type_position=5
+== main.bend from_b precise
+from_b
+  b
+    a
+      b [Recursive]
+  work
+  other
+edges:
+a | b | call b
+b | a | call a
+from_b | b | call b
+from_b | b(2n) | call other
+from_b | b(2n) | call work
+contexts:
+a | open
+b | open
+from_b | open
+other | open
+work | open
+counters: passed_deep=2, type_position=9

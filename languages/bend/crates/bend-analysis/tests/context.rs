@@ -117,8 +117,8 @@ fn every_precise_row_has_a_fixture_and_a_snapshot() {
     let found = table::problems(TABLE, HEADER, &fixtures_dir(), &snapshots_dir());
     assert!(found.is_empty(), "{}", found.join("\n"));
     let all = rows();
-    assert_eq!(all.len(), 25, "the table was not read");
-    assert_eq!(all.iter().filter(|r| is_limit(r)).count(), 7);
+    assert_eq!(all.len(), 35, "the table was not read");
+    assert_eq!(all.iter().filter(|r| is_limit(r)).count(), 8);
 }
 
 fn is_limit(row: &Row) -> bool {
@@ -189,7 +189,7 @@ fn a_limit_row_draws_the_same_in_both_sections() {
             }
         }
     }
-    assert_eq!(checked, 7);
+    assert_eq!(checked, 8);
 }
 
 /// An edge as (the def it leaves, the site, what it reaches by def or kind): digests left out, and a site that is in several contexts of one def once.
@@ -510,9 +510,9 @@ fn reached_from(graph: &Graph, from: &str) -> Vec<String> {
     reached
 }
 
-/// Keys are single-valued (V3): a variable that holds two defs is called as both, but as an argument it has no slot, and says so as a value, not as a local.
+/// A slot may hold a set (V6): a variable that holds two defs is one slot, one context of the callee, and the callee's one site has both targets.
 #[test]
-fn a_set_in_an_argument_has_no_slot() {
+fn a_set_in_an_argument_is_one_slot() {
     let graph = variable_graph(
         DEFS,
         concat!(
@@ -522,12 +522,9 @@ fn a_set_in_an_argument_has_no_slot() {
         ),
     );
     assert_eq!(contexts_of(&graph, "each").len(), 1);
-    assert_eq!(contexts_of(&graph, "each")[0].digest, ZEROS);
-    assert_eq!(
-        reached_from(&graph, "each"),
-        ["unresolved function_typed_value"]
-    );
-    assert_eq!(counter(&graph, "key_slot_value"), 1);
+    assert_ne!(contexts_of(&graph, "each")[0].digest, ZEROS);
+    assert_eq!(reached_from(&graph, "each"), ["other", "work"]);
+    assert_eq!(counter(&graph, "key_slot_value"), 0);
     assert_eq!(counter(&graph, "key_slot_local"), 0);
 }
 

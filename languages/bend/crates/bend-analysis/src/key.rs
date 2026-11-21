@@ -12,24 +12,16 @@ use crate::book::{DeclId, Resolved};
 use crate::calls::{self, Bend, Precision};
 use crate::env::Env;
 use crate::sem::{ArgShape, Expr, What};
+use crate::value::{One, Value};
 
-/// What a caller is known to have put in a function-shaped parameter. Closed: it names no variable of any def (BC-D1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum Known {
-    /// A def of the book with code, in the root.
-    Def(DeclId),
-    /// A lambda (`x => ..`, `\{..}`) written in `writer`'s body: the `nth` one the walk enters there, in source order.
-    Lambda { writer: DeclId, nth: u32 },
-}
-
-/// What a context holds besides the def: the parameters a caller named, sorted by position, relevant ones only, never an unknown slot. Empty is the open key.
+/// What a context holds besides the def: the parameters a caller named, sorted by position, relevant ones only, never an unknown slot and never data. Empty is the open key.
 ///
 /// 🦀 A sorted slice and not a `BTreeMap`: a key is built once, then compared, hashed (the solver's memo is a `HashMap` keyed by it) and cloned. `Box<[T]>` is one pointer
 /// and a length, `#[derive(Hash, Eq)]` works on it, and two keys with the same slots in the same order are equal; sorting by position at construction is what makes the
 /// order canonical.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct Key {
-    slots: Box<[(u32, Known)]>,
+    slots: Box<[(u32, Value)]>,
 }
 
 impl Key {
@@ -41,7 +33,7 @@ impl Key {
     }
 
     /// A key of these slots, in any order. A position is given once.
-    pub(crate) fn from_slots(mut slots: Vec<(u32, Known)>) -> Key {
+    pub(crate) fn from_slots(mut slots: Vec<(u32, Value)>) -> Key {
         slots.sort_by_key(|(at, _)| *at);
         debug_assert!(slots.windows(2).all(|w| w[0].0 != w[1].0));
         Key {
@@ -53,14 +45,14 @@ impl Key {
         self.slots.is_empty()
     }
 
-    pub(crate) fn known(&self, position: u32) -> Option<&Known> {
+    pub(crate) fn known(&self, position: u32) -> Option<&Value> {
         self.slots
             .binary_search_by_key(&position, |(at, _)| *at)
             .ok()
             .map(|at| &self.slots[at].1)
     }
 
-    pub(crate) fn slots(&self) -> &[(u32, Known)] {
+    pub(crate) fn slots(&self) -> &[(u32, Value)] {
         &self.slots
     }
 }
@@ -143,9 +135,11 @@ pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<Relevance> {
             _ => {}
         }
     }
-    // (d) a parameter that is the value of a `let` is read through the variable: `g = f`, then `g(x)` calls what a caller named for `f`
+    // (d) a parameter that is the value of a `let` is read through the variable: `g = f`, then `g(x)` calls what a caller named for `f`; (e) a parameter that reaches the
+    // reply is the value of every call of the def
     if let Some(walk) = lang.walk_of(def) {
         let params = walk.flow.params;
+        value_params(&walk.flow.body, params, &mut passed);
         walk.flow.body.walk(&mut |expr| {
             if let Expr::Let { values, .. } = expr {
                 values
@@ -190,25 +184,25 @@ fn param_of(arg: &ArgShape) -> Option<u32> {
     }
 }
 
-/// What the argument `arg` of a call written in `caller` puts in a slot (06 §4's table).
+/// What the argument `arg` of a call written in `caller` puts in a slot (06 §4's table), as the item walk reads it off the shapes.
 fn slot(
     lang: &Bend<'_>,
     caller: DeclId,
     arg: Option<&ArgShape>,
     env: &Env<'_>,
-) -> Result<Known, Absent> {
+) -> Result<Value, Absent> {
     match arg {
         None => Err(Absent::Missing),
-        Some(ArgShape::Lambda(nth)) => Ok(Known::Lambda {
+        Some(ArgShape::Lambda(nth)) => Ok(Value::one(One::Lambda {
             writer: caller,
             nth: *nth,
-        }),
+        })),
         // the caller's own parameter passed along: whatever the caller's key says for it
-        Some(ArgShape::Param(at)) => env.known(*at).copied().ok_or(Absent::Open),
+        Some(ArgShape::Param(at)) => env.known(*at).cloned().ok_or(Absent::Open),
         Some(ArgShape::Local) => Err(Absent::Local),
         Some(ArgShape::Other) => Err(Absent::Value),
         Some(ArgShape::Name(name)) => match lang.book.resolve(caller.file(), name) {
-            Resolved::Project(id) if known_def(lang, id) => Ok(Known::Def(id)),
+            Resolved::Project(id) if known_def(lang, id) => Ok(Value::one(One::Def(id))),
             _ => Err(absent_name(lang, caller, name)),
         },
     }
@@ -249,7 +243,7 @@ pub(crate) fn key_of(
 pub(crate) fn key_with(
     lang: &Bend<'_>,
     callee: DeclId,
-    slot: impl Fn(u32) -> Result<Known, Absent>,
+    slot: impl Fn(u32) -> Result<Value, Absent>,
 ) -> Key {
     if lang.precision == Precision::Default {
         return Key::open();
@@ -273,18 +267,42 @@ pub(crate) fn key_with(
     Key::from_slots(slots)
 }
 
-/// One slot written with nothing request-local in it: a def is its stable id, never a `DeclId` (an index into this request's book).
+/// One slot written with nothing request-local in it: a def is its stable id, never a `DeclId` (an index into this request's book). A value that is exactly one
+/// closed def or lambda is written as it always was (`Def`, `Lambda`), so no digest made before moves; any other is a `Set` of what it can be and whether something
+/// else can be there too.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) enum Canon {
     Def(StableDef),
     Lambda(StableDef, u32),
+    Set { known: Vec<Canon>, open: bool },
 }
 
-/// A key written out with nothing request-local in it, in position order. A later `Known` adds a variant, and a later field of this struct is
-/// `skip_serializing_if` its empty form, so a key that does not use it keeps the digest it had.
+/// A key written out with nothing request-local in it, in position order. A later field of this struct is `skip_serializing_if` its empty form, so a key that does not use it
+/// keeps the digest it had.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct CanonKey {
     slots: Vec<(u32, Canon)>,
+}
+
+fn canon_one(lang: &Bend<'_>, one: &One) -> Canon {
+    match one {
+        One::Def(def) => Canon::Def(lang.stable_def(*def)),
+        One::Lambda { writer, nth } => Canon::Lambda(lang.stable_def(*writer), *nth),
+    }
+}
+
+fn canon_value(lang: &Bend<'_>, value: &Value) -> Canon {
+    match value.single() {
+        Some(one) => canon_one(lang, &one),
+        None => Canon::Set {
+            known: value
+                .members()
+                .iter()
+                .map(|one| canon_one(lang, one))
+                .collect(),
+            open: value.is_open(),
+        },
+    }
 }
 
 pub(crate) fn canon(lang: &Bend<'_>, key: &Key) -> CanonKey {
@@ -292,14 +310,36 @@ pub(crate) fn canon(lang: &Bend<'_>, key: &Key) -> CanonKey {
         slots: key
             .slots()
             .iter()
-            .map(|(at, known)| {
-                let canon = match known {
-                    Known::Def(def) => Canon::Def(lang.stable_def(*def)),
-                    Known::Lambda { writer, nth } => Canon::Lambda(lang.stable_def(*writer), *nth),
-                };
-                (*at, canon)
-            })
+            .map(|(at, value)| (*at, canon_value(lang, value)))
             .collect(),
+    }
+}
+
+fn rebuild_one(lang: &Bend<'_>, canon: &Canon) -> Option<One> {
+    Some(match canon {
+        Canon::Def(def) => One::Def(lang.decl_of(def)?),
+        Canon::Lambda(writer, nth) => One::Lambda {
+            writer: lang.decl_of(writer)?,
+            nth: *nth,
+        },
+        Canon::Set { .. } => return None,
+    })
+}
+
+fn rebuild_value(lang: &Bend<'_>, canon: &Canon) -> Option<Value> {
+    match canon {
+        Canon::Set { known, open } => {
+            let mut value = if *open {
+                Value::unknown()
+            } else {
+                Value::data()
+            };
+            for one in known {
+                value = value.join(&Value::one(rebuild_one(lang, one)?))?;
+            }
+            Some(value)
+        }
+        single => Some(Value::one(rebuild_one(lang, single)?)),
     }
 }
 
@@ -309,16 +349,7 @@ pub(crate) fn rebuild(lang: &Bend<'_>, canon: &CanonKey) -> Option<Key> {
     let slots = canon
         .slots
         .iter()
-        .map(|(at, slot)| {
-            let known = match slot {
-                Canon::Def(def) => Known::Def(lang.decl_of(def)?),
-                Canon::Lambda(writer, nth) => Known::Lambda {
-                    writer: lang.decl_of(writer)?,
-                    nth: *nth,
-                },
-            };
-            Some((*at, known))
-        })
+        .map(|(at, slot)| Some((*at, rebuild_value(lang, slot)?)))
         .collect::<Option<Vec<_>>>()?;
     Some(Key::from_slots(slots))
 }
@@ -368,10 +399,11 @@ mod tests {
             Book::open(&root, std::path::Path::new("main.bend")).expect("opens")
         };
         let (work, each) = (id(&book, "work"), id(&book, "each"));
-        let a = Key::from_slots(vec![(2, Known::Def(each)), (0, Known::Def(work))]);
-        let b = Key::from_slots(vec![(0, Known::Def(work)), (2, Known::Def(each))]);
+        let (work, each) = (Value::one(One::Def(work)), Value::one(One::Def(each)));
+        let a = Key::from_slots(vec![(2, each.clone()), (0, work.clone())]);
+        let b = Key::from_slots(vec![(0, work.clone()), (2, each)]);
         assert_eq!(a, b);
-        assert_eq!(a.known(0), Some(&Known::Def(work)));
+        assert_eq!(a.known(0), Some(&work));
         assert_eq!(a.known(1), None);
         assert!(Key::open().is_open() && !a.is_open());
         assert_eq!(Key::from_slots(Vec::new()), Key::open());
@@ -388,12 +420,12 @@ mod tests {
         let key = Key::from_slots(vec![
             (
                 1,
-                Known::Lambda {
+                Value::one(One::Lambda {
                     writer: each,
                     nth: 3,
-                },
+                }),
             ),
-            (0, Known::Def(work)),
+            (0, Value::one(One::Def(work))),
         ]);
         let json = serde_json::to_string(&canon(&lang, &key)).unwrap();
         assert_eq!(
@@ -412,8 +444,39 @@ mod tests {
             [0; 16],
             "the open key is zeros, not the hash of nothing"
         );
-        let other = Key::from_slots(vec![(0, Known::Def(each))]);
+        let other = Key::from_slots(vec![(0, Value::one(One::Def(each)))]);
         assert_ne!(digest(&lang, &key), digest(&lang, &other));
+    }
+
+    /// A slot that holds a set, or a def and something else, is a `Set`, written by hand here: the closed def or lambda of one member is not (the test above).
+    #[test]
+    fn the_canonical_form_of_a_set_and_of_a_def_that_something_else_may_be_beside() {
+        let root = scratch("key-canon-set");
+        write(root.join("main.bend"), PROGRAM);
+        let book = Book::open(&root, std::path::Path::new("main.bend")).expect("opens");
+        let lang = Bend::new(&book, MarkerStyle::above("ID"), Precision::Precise);
+        let (work, each) = (id(&book, "work"), id(&book, "each"));
+        let both = Value::one(One::Def(work))
+            .join(&Value::one(One::Def(each)))
+            .unwrap();
+        let key = Key::from_slots(vec![
+            (0, both.clone()),
+            (
+                2,
+                Value::one(One::Def(work)).join(&Value::unknown()).unwrap(),
+            ),
+        ]);
+        let json = serde_json::to_string(&canon(&lang, &key)).unwrap();
+        assert_eq!(
+            json,
+            concat!(
+                r#"{"slots":[[0,{"Set":{"known":[{"Def":{"Path":{"module":"main.bend","qname":"work","nth":0}}},"#,
+                r#"{"Def":{"Path":{"module":"main.bend","qname":"each","nth":0}}}],"open":false}}],"#,
+                r#"[2,{"Set":{"known":[{"Def":{"Path":{"module":"main.bend","qname":"work","nth":0}}}],"open":true}}]]}"#
+            )
+        );
+        // and it comes back as the key it was
+        assert_eq!(rebuild(&lang, &canon(&lang, &key)), Some(key));
     }
 
     #[test]
@@ -424,7 +487,11 @@ mod tests {
         let lang = Bend::new(&book, MarkerStyle::above("ID"), Precision::Precise);
         let of = |name: &str| relevant(&lang, id(&book, name)).all.to_vec();
         let called = |name: &str| relevant(&lang, id(&book, name)).called.to_vec();
-        assert_eq!(of("work"), Vec::<u32>::new(), "never called, never passed");
+        assert_eq!(
+            of("work"),
+            [0],
+            "never called, never passed, but it is the reply (V6): a caller's value for it is what the call returns"
+        );
         assert_eq!(
             of("each"),
             [0, 1],

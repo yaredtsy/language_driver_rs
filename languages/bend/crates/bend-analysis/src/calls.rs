@@ -16,7 +16,7 @@ use analyzer_core::text::Span;
 
 use crate::book::{Book, DeclId};
 use crate::env::Env;
-use crate::eval::Policy;
+use crate::eval::{self, Policy};
 use crate::key::{self, CanonKey, Key, Relevance};
 use crate::sem::{self, Item};
 use crate::walk::{self, Reached};
@@ -43,6 +43,9 @@ pub(crate) const KEY_SLOT_MISSING: &str = "key_slot_missing";
 
 /// A set of values with more than `value::MAX_SET` members was met in a context: it is unknown there. A precision limit, counted per context walked.
 pub(crate) const VALUE_WIDENED_SET: &str = "value_widened_set";
+
+/// A def whose return value depends on itself (directly or through others) did not settle in `eval::MAX_ROUNDS` rounds: its value is unknown. Counted once for the context.
+pub(crate) const RETURN_IN_CYCLE: &str = "return_in_cycle";
 
 /// The reasons of the `Unresolved` edges; the same strings are their counters.
 pub(crate) const FUNCTION_TYPED_VALUE: &str = "function_typed_value";
@@ -144,6 +147,13 @@ pub(crate) struct Bend<'b> {
     /// The relevant parameters of each def (`key::relevant`), and the digest of each key met. Only ever looked up, never iterated (rule 9).
     pub(crate) relevant: RefCell<HashMap<DeclId, Rc<Relevance>>>,
     digests: RefCell<HashMap<Key, [u8; 16]>>,
+    /// The value each context returns (`eval::ret`): kept in Bend beside the sites. Only ever looked up, never iterated (rule 9).
+    pub(crate) rets: RefCell<HashMap<(DeclId, Key), eval::Ret>>,
+    /// How many contexts are being evaluated for their value now, and the smallest place of one of them that was read while unfinished.
+    pub(crate) ret_depth: Cell<usize>,
+    pub(crate) ret_low: Cell<usize>,
+    /// While above 0 a body is read only for its value: what it counts is counted when its context is walked, not now.
+    silent: Cell<u32>,
     /// The canonical key of each digest this request made.
     canons: RefCell<Keys>,
 }
@@ -161,20 +171,39 @@ impl<'b> Bend<'b> {
             demoted: RefCell::new(HashSet::new()),
             relevant: RefCell::new(HashMap::new()),
             digests: RefCell::new(HashMap::new()),
+            rets: RefCell::new(HashMap::new()),
+            ret_depth: Cell::new(0),
+            ret_low: Cell::new(usize::MAX),
+            silent: Cell::new(0),
             canons: RefCell::new(HashMap::new()),
         }
     }
 
     /// A counter about the code of a def: counted once per def, the first time it is walked (a second context of it counts nothing).
     pub(crate) fn note(&self, key: &'static str, by: u64) {
-        if by > 0 && !self.quiet.get() {
+        if by > 0 && !self.quiet.get() && self.silent.get() == 0 {
             *self.notes.borrow_mut().entry(key).or_default() += by;
         }
     }
 
     /// A counter about a key: counted in every context that is walked.
     pub(crate) fn note_slot(&self, key: &'static str) {
+        if self.silent.get() == 0 {
+            *self.notes.borrow_mut().entry(key).or_default() += 1;
+        }
+    }
+
+    /// A counter about something that is decided once and kept (a value that did not settle): counted even when the body that met it was read only for its value.
+    pub(crate) fn note_once(&self, key: &'static str) {
         *self.notes.borrow_mut().entry(key).or_default() += 1;
+    }
+
+    /// Reads a body only for its value (`eval::ret`): nothing it counts is counted, because its context is counted when the solver walks it.
+    pub(crate) fn silently<T>(&self, read: impl FnOnce() -> T) -> T {
+        self.silent.set(self.silent.get() + 1);
+        let out = read();
+        self.silent.set(self.silent.get() - 1);
+        out
     }
 
     /// Whether the body of `f` was already walked to the end; the notes of `f`'s code are quiet from then on.
