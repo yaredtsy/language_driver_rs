@@ -370,7 +370,59 @@ become `local-let`'s). `local-lambda` is the row the table above calls `lambda-i
 | `local-join` | `g = (match b: case True{}: work; case False{}: other)`, then `g(1)` | `g(1)` `Unresolved` | `work` and `other`, both at the one site `g(1)`: the value of a `match` is the join of its cases, no condition is evaluated | `passed_deep` | `local-join` `main.bend` `main` |
 | `local-lambda` | `g = y => work(y)`, then `each(g, 1)` | `main` ▸ `work` · `each`; `each`'s `f(x)` `Unresolved` | the same tree; `each@{f ↦ lambda 0 of main}`'s `f(x)` says `anonymous_function_called`: a lambda in a `let` stays with its writer | `anonymous_function_called` | `local-lambda` `main.bend` `main` |
 
-The rows of phases 2 and 3 are written when phase 1 has been measured. **The scenario `callback-argument`'s shared `expected.precise.tree`
+### 12.2 Phase 2's rows (V6 returns, V7 partial application and `do`)
+
+Written 2026-11-21 after V3, ahead of phase 1's measurement, because none of them depends on where a lambda's calls are drawn (§6.1). Each goes into
+`policy.md` in the commit that brings its fixture. A cell is the reviewer's reading of the rules; where the code says otherwise, the coder reports the row.
+
+**V6.** The value of a call that gives a def all its written parameters is its body's value under that key (§7). A slot now takes **any** argument's
+value that is neither unknown nor data (a call's result too), and a slot may hold a set. A parameter that reaches the reply is relevant.
+
+| Precise row | Bend | Default | Precise | Counter | Where it is checked |
+|---|---|---|---|---|---|
+| `return-def` | `pick()` is `work`; `g = pick()`, then `g(1)` | `main` ▸ `pick`; `g(1)` `Unresolved` | `main` ▸ `pick` · `work`: the value of a call is what the def's body evaluates to | `passed_deep` | `return-def` `main.bend` `main` |
+| `return-join` | `pick(b)` is `match b: case True{}: work; case False{}: other`; `main` calls `pick(b)(1)` | the outer call `Unresolved` | `work` and `other` at the outer call's site, beside `pick`: a factory returns the join of its cases | `passed_deep` | `return-join` `main.bend` `main` |
+| `return-param` | `id(f)` is `f`; `main` calls `id(work)(1)` | the outer call `Unresolved`; `work [Passed]` | `id@{f ↦ work}`, and `work` called at the outer call; the passed edge stays. A parameter that reaches the reply is relevant | | `return-param` `main.bend` `main` |
+| `return-chain` | `make()` is `pick()`; `pick()` is `work`; `main` calls `make()(1)` | `main` ▸ `make` ▸ `pick`; the outer call `Unresolved` | the same, and `work` at the outer call: a value through two returns | `passed_deep` | `return-chain` `main.bend` `main` |
+| `return-as-argument` | `each(pick(), 1)` | `each` a leaf | `each@{f ↦ work}` ▸ `work`: a call's value fills a slot | `passed_deep` | `return-as-argument` `main.bend` `main` |
+| `return-set-argument` | `each(pick(b), 1)`, `pick` by case as above | `each` a leaf | one context `each@{f ↦ {other, work}}`, whose one site `f(x)` has both targets: a set stays a set, it is not two contexts | `passed_deep` | `return-set-argument` `main.bend` `main` |
+| `return-lambda` | `adder(k)` is `x => add(x, k)`; `add2 = adder(2)`, then `add2(1)` | `main` ▸ `adder` ▸ `add`; `add2(1)` `Unresolved` | the same tree; `add2(1)` says `anonymous_function_called`: a returned lambda stays with the def that writes it, where its calls are drawn | `anonymous_function_called` | `return-lambda` `main.bend` `main` |
+| `return-recursive` | `loop(n)` returns `work` at zero and `loop(p)` otherwise; `main` calls `loop(3n)(1)` | `loop` ▸ `loop [Recursive]`; the outer call `Unresolved` | `work` at the outer call: the value of a recursive def starts as nothing and is evaluated again until it stops changing | `passed_deep` | `return-recursive` `main.bend` `main` |
+| `return-cycle` | `a(n)` returns `work` or `b(p)`; `b(n)` returns `other` or `a(p)`; `from_a` calls `a(2n)(1)`, `from_b` calls `b(2n)(1)` | the outer calls `Unresolved` | both entries draw `work` and `other` at the outer call: the value of a cycle does not depend on which def was entered first | `passed_deep` | `return-cycle` `main.bend` `from_a` `from_b` |
+| `limit-return-base` | `g = List.head(fs)`-like: the result of a Base def, then `g(1)` | `g(1)` `Unresolved` | the same: what Base returns is unknown | `function_typed_value` | `limit-return-base` `main.bend` `main` |
+
+**V7.** A by-name call that gives a def fewer arguments than it has written parameters is a **passed** edge under the open key and the value
+`Partial`; the `Call` is drawn where the rest arrive, under the key of all of them. A `do` statement of a project monad is its call, with its value at
+its position in the key; its continuation stays and is not in the key (§8). The three renamed rows take their old fixtures.
+
+| Precise row | Bend | Default | Precise | Counter | Where it is checked |
+|---|---|---|---|---|---|
+| `partial-def` | `add(a, b)`; `inc = add(1)`, then `inc(2)` | `main` ▸ `add` (the under-applied call, drawn as a call); `inc(2)` `Unresolved` | `add [Passed]` at `add(1)`: the def is handed over, its body does not run there; `add` called at `inc(2)` | | `partial-def` `main.bend` `main` |
+| `partial-twice` | `add(1)(2)` | `main` ▸ `add`; the outer call `Unresolved` | `add [Passed]` at the inner call, `add` called at the outer one | | `partial-twice` `main.bend` `main` |
+| `partial-callback` | `each(add(1), 5)` | `main` ▸ `each` · `add`; `each`'s `f(x)` `Unresolved` | `each@{f ↦ add with one argument}` ▸ `add`: the partial application is in the key and `each` gives it the rest; `add [Passed]` under `main` | | `partial-callback` `main.bend` `main` |
+| `partial-keyed` | `app(f, x)` is `f(x)`; `p = app(work)`, then `p(1)` | `main` ▸ `app`; `work [Passed]`; `p(1)` `Unresolved` | `app [Passed]`, `work [Passed]`, and at `p(1)` `app@{f ↦ work}` ▸ `work`: the arguments a partial application holds make the key | | `partial-keyed` `main.bend` `main` |
+| `limit-partial-base` | `inc = U32.add(1)`, then `inc(2)` | `inc(2)` `Unresolved` | the same: a partial application of a Base def is unknown | `function_typed_value` | `limit-partial-base` `main.bend` `main` |
+| `do-flat` | a `do P<U32>:` of a project monad with two binds of `item()` and a `return` | `main` ▸ `P.bind` · `item` · `P.bind` · `item` · `P.pure` | the same shape, never one statement nested under the one before; the two binds are one context of `P.bind`: the continuation is not in the key | | `do-flat` `main.bend` `main` |
+| `do-partial` (was `limit-partial-application`) | `drop(n, k, s)` calls `k(…)`; `Unit <- drop(2n)` in a `do P<Unit>:` | `main` ▸ `P.bind` · `drop` · `P.pure`; `drop`'s `k` `Unresolved` | `drop [Passed]` under `main`; `P.bind@{m ↦ drop with one argument}` ▸ `drop@{k ↦ lambda of P.bind}`, where `k` says `anonymous_function_called`. In the open context of the passed edge `k` is still `function_typed_value`, and `P.bind`'s `f(a)` and `f(a)(k)` are too (the continuation is not in the key) | `anonymous_function_called`, `function_typed_value` | `do-partial` `main.bend` `main` |
+| `do-handed` (was `limit-handed-to-bind`) | `peek(k, s)` calls `k(…)`; `h : U32 <- peek` in a `do P<U32>:` | `peek [Passed]`; its `k` `Unresolved` | `peek [Passed]` stays; `P.bind@{m ↦ peek}` ▸ `peek@{k ↦ lambda of P.bind}`, where `k` says `anonymous_function_called` | `anonymous_function_called`, `function_typed_value` | `do-handed` `main.bend` `main` |
+
+### 12.3 Phase 3's rows (V8 constructor fields)
+
+A constructor of a project type has the value `Ctor` with its fields; a constructor pattern `K{x, y}` binds `x` to **the join of that field over the
+members of the value that are `K`**, and to unknown when the value is open or has no such member. A parameter that is a scrutinee, or the value of a
+`let` with a constructor pattern, is relevant. The first row takes the fixture of `limit-constructor-of-defs`.
+
+| Precise row | Bend | Default | Precise | Counter | Where it is checked |
+|---|---|---|---|---|---|
+| `ctor-fields` (was `limit-constructor-of-defs`) | `run(~app: App, s)` matches `case App{v, t}: t(s)`; `main` calls `run(~App{view, tick}, 0)` | `view`, `tick` `[Passed]`; `t(s)` `Unresolved` | `run@{app ↦ App{view, tick}}` ▸ `tick`; the two passed edges stay | | `ctor-fields` `main.bend` `main` |
+| `ctor-let` | `App{v, t} = App{work, other}`, then `t(1)`, in one body | `work`, `other` `[Passed]`; `t(1)` `Unresolved` | `other` called at `t(1)` | | `ctor-let` `main.bend` `main` |
+| `ctor-factory` | `game()` is `Game{step, read}`; `play(g)` is `Game{s, r} = g`, then `s(1)`; `main` calls `play(game())` | `play` a leaf; `step`, `read` `[Passed]` under `game` | `play@{g ↦ Game{step, read}}` ▸ `step`: a factory of an object, the demos' `Walkers.game()` | | `ctor-factory` `main.bend` `main` |
+| `ctor-passed-along` | `outer(g)` calls `play(g)`; `main` calls `outer(game())` | `outer` ▸ `play`, a leaf | `outer` ▸ `play` ▸ `step`, each under the key that holds the constructor: it flows down as a def does | | `ctor-passed-along` `main.bend` `main` |
+| `ctor-join` | `pick(b)` returns `Box{work}` or `Box{other}`; `Box{f} = pick(b)`, then `f(1)` | `f(1)` `Unresolved` | `work` and `other` at `f(1)`: a field of a set of one constructor is the join of that field | | `ctor-join` `main.bend` `main` |
+| `ctor-two` | `type Sum` with `L{f}` and `R{f}`; `x = L{work}`; `match x: case L{f}: f(1)` and `case R{f}: f(2)` | both `f` `Unresolved` | `work` at `f(1)`; `f(2)` stays `Unresolved`: no member of the value is an `R`, and no case is pruned | `function_typed_value` | `ctor-two` `main.bend` `main` |
+| `limit-ctor-base` | `m = Some{work}`, then `match m: case Some{f}: f(1)` | `f(1)` `Unresolved` | the same: a constructor of a Base type is unknown | `function_typed_value` | `limit-ctor-base` `main.bend` `main` |
+
+The rows of V4 (§12, the first table) wait for §6.1's answer. **The scenario `callback-argument`'s shared `expected.precise.tree`
 changes in phase 1** (the README says why, and that Q-TC1 and Q-RC1 are answered):
 
 ```
@@ -447,6 +499,13 @@ the next phase's rows and prompt are written from it.
 | BV-D6 | **A `do` statement of a project monad is its call, its value in the key; its continuation always stays and is not in the key**. BC-D5 stands for operators and indexes | §8 |
 | BV-D7 | **A project constructor is a value with its fields; a constructor pattern binds them** | §9 |
 | BV-D8 | **A slot holds a value that is neither unknown nor data; the canonical form grows by variants and no existing digest moves; depth 3, set 8, inline 8, rounds 4** | §10 |
+
+**V3 built (2f5766d), reviewed 2026-11-21**, every proof reproduced: 144 tests, the five rows of §12.1 as written (the coder's four hand-count slips
+were in the counts, the code was right), the 20 other context snapshots untouched, knows-nothing still layer 1 over the same 30,471 items, never fewer
+edges over 184 entries, the demos' measurement unchanged (no `let` holds a function there, as BC0 said), both oracle tests at 0. Two things it settled
+beyond the prompt, both kept: a `case` binds pairwise (the first pattern to the first scrutinee), and several lambdas at one site give one
+`anonymous_function_called`. One thing it left, taken up in phase 3: a parameter used only as a scrutinee is not relevant yet. **The order of the steps
+changes: V6, V7 and V8 (phases 2 and 3, rows in §12.2 and §12.3) go before V4 and V5**, since V4 waits for §6.1 and nothing in them depends on it.
 
 **State.** V0, V1 and V2 built (0e1667d, 4375dfc, acdeba3), reviewed 2026-11-21, every proof reproduced: 139 tests; the evaluator that knows nothing is
 layer 1 item by item over 625 items of the fixtures and scenarios and 29,846 items of the 16 demo books and 15 `PROOF.bend` books; the 21 context
