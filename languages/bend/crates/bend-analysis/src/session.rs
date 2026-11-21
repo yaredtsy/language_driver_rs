@@ -10,14 +10,16 @@
 //!
 //! A request builds its `Solver` fresh, because a `Solver` borrows the book and a struct cannot borrow from itself.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, PoisonError};
 
-use analyzer_core::graph::{Entry, Graph};
+use analyzer_core::graph::{ContextId, Entry, Graph};
 use analyzer_core::solve::{Budget, Cancel};
 
 use crate::book::Book;
-use crate::calls::{Options, graph_within};
+use crate::calls::{Keys, Options, continue_from, graph_within};
 use crate::stamps::Stamps;
 
 /// Why a book could not be loaded.
@@ -55,6 +57,13 @@ pub struct Session {
     lost: Option<OpenError>,
     /// The paths the last load depended on, as the disk was when each was asked for.
     stamps: Stamps,
+    /// For every context of every graph this book has answered: its digest and the canonical key it stands for (`docs/08-bend/06-context-layer-design.md` §5), which
+    /// is what lets a node that a request cut be continued under its key. Dropped with the book. Only looked up, never iterated (rule 9). Under `Precision::Default`
+    /// every digest is zeros and nothing is kept.
+    ///
+    /// A `Mutex` and not a `RefCell` or `&mut self`: `graph` takes `&self` (many requests may read one session) and a `Session` is `Send` and `Sync`, which a `RefCell`
+    /// would end. The lock is held only to look a key up or to add a request's keys, never while a graph is built.
+    keys: Mutex<Keys>,
 }
 
 /// What a [`Session::refresh`] or [`Session::reload`] did.
@@ -81,6 +90,7 @@ impl Session {
             book: Some(built?),
             lost: None,
             stamps,
+            keys: Mutex::new(HashMap::new()),
         })
     }
 
@@ -104,8 +114,12 @@ impl Session {
     }
 
     fn rebuild(&mut self) -> Refreshed {
-        // The old book is freed first, so two are never alive at once.
+        // The old book is freed first, so two are never alive at once. The keys go with it: they name defs of that book.
         self.book = None;
+        self.keys
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
         // Every path is stamped by the load itself, just before it is read: a file saved while the load runs keeps a stamp older than its text, and the next
         // look builds again. When the load fails, what it stamped is the entry's path, which is what brings the session back.
         let (built, stamps) = Book::load(&self.root, &self.entry);
@@ -142,14 +156,45 @@ impl Session {
         budget: &Budget,
         cancel: &Cancel,
     ) -> Option<Graph> {
-        graph_within(
+        let (graph, keys) = graph_within(
             self.book.as_ref()?,
             file,
             entry,
             &self.options,
             budget,
             cancel,
-        )
+        )?;
+        self.remember(keys);
+        Some(graph)
+    }
+
+    /// Continues a context: the graph that starts at `from`, which a request listed (and cut, as a frontier, or did not). Asking for the def alone would start it
+    /// under the open key and give a subtree that differs from the whole tree's; this starts it under the key it had, so that the subtree is the one the whole tree
+    /// has (BC-D7). `from.func` names the def, as the ids of a graph do (by marker, or by file, qualname and which of the name); the key is the one this session kept
+    /// for `from.digest`. Zeros are the open key. A digest this session has not made (another session, a book that was loaded again since), or a def of the key that
+    /// is gone, gives the graph under the open key with `context_not_found` counted in `Stats.language`. `None` when no def of the book has that id, and while the
+    /// session has no book. Under `Precision::Default` every digest is zeros and this is [`Session::graph`] for that def.
+    pub fn graph_from(&self, from: &ContextId, budget: &Budget, cancel: &Cancel) -> Option<Graph> {
+        let book = self.book.as_ref()?;
+        let known = self
+            .keys
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&from.digest)
+            .cloned();
+        let (graph, keys) =
+            continue_from(book, from, known.as_ref(), &self.options, budget, cancel)?;
+        self.remember(keys);
+        Some(graph)
+    }
+
+    fn remember(&self, keys: Keys) {
+        if !keys.is_empty() {
+            self.keys
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .extend(keys);
+        }
     }
 
     /// Why the session has no book, while it has none: what the last `open`, `refresh` or `reload` reported. `None` when it has one.

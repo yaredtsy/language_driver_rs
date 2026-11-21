@@ -9,14 +9,14 @@ use std::path::Path;
 use std::rc::Rc;
 
 use analyzer_core::edit::MarkerStyle;
-use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Entry, Graph, StableDef};
+use analyzer_core::graph::{Basis, ContextId, DefInfo, EdgeTo, Entry, Graph, StableDef};
 use analyzer_core::outline::DefKind;
 use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary};
 use analyzer_core::text::Span;
 
 use crate::book::{Book, DeclId};
 use crate::env::Env;
-use crate::key::{self, Key, Relevance};
+use crate::key::{self, CanonKey, Key, Relevance};
 use crate::sem::{self, Item};
 use crate::walk::{self, Reached};
 
@@ -46,6 +46,12 @@ pub(crate) const FUNCTION_TYPED_VALUE: &str = "function_typed_value";
 pub(crate) const ANONYMOUS_FUNCTION_CALLED: &str = "anonymous_function_called";
 pub(crate) const UNKNOWN_NAME: &str = "unknown_name";
 pub(crate) const UNKNOWN_CONSTRUCTOR: &str = "unknown_constructor";
+
+/// A request that continues a context (`Session::graph_from`) named a digest the session does not have, or a def of its key that is gone: it starts from the open key.
+pub(crate) const CONTEXT_NOT_FOUND: &str = "context_not_found";
+
+/// Each digest met in a request and the canonical key it stands for: what a session keeps to continue a context later (BC-D7). Only looked up, never iterated.
+pub(crate) type Keys = HashMap<[u8; 16], CanonKey>;
 
 /// How exactly a call is answered. Off by default, and selectable for good (BC-D8).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -132,6 +138,8 @@ pub(crate) struct Bend<'b> {
     /// The relevant parameters of each def (`key::relevant`), and the digest of each key met. Only ever looked up, never iterated (rule 9).
     pub(crate) relevant: RefCell<HashMap<DeclId, Rc<Relevance>>>,
     digests: RefCell<HashMap<Key, [u8; 16]>>,
+    /// The canonical key of each digest this request made.
+    canons: RefCell<Keys>,
 }
 
 impl<'b> Bend<'b> {
@@ -146,6 +154,7 @@ impl<'b> Bend<'b> {
             demoted: RefCell::new(HashSet::new()),
             relevant: RefCell::new(HashMap::new()),
             digests: RefCell::new(HashMap::new()),
+            canons: RefCell::new(HashMap::new()),
         }
     }
 
@@ -216,6 +225,25 @@ impl Bend<'_> {
     pub(crate) fn stable_def(&self, f: DeclId) -> StableDef {
         self.identity(f).0
     }
+
+    /// The def of the book that has the id `id`, found as an entry is: by marker (the def of its file that owns it, D34), or by file, qualname and which of that
+    /// name it is. `None` when no def has it: it was removed or renamed since the id was made.
+    pub(crate) fn decl_of(&self, id: &StableDef) -> Option<DeclId> {
+        self.book.decls().iter().map(|d| d.id).find(|&f| match id {
+            StableDef::Marked(marker) => self
+                .book
+                .marked(f.file(), self.style)
+                .is_some_and(|m| m.owns[f.def()] && m.markers[f.def()].as_deref() == Some(marker)),
+            StableDef::Path { module, qname, .. } => {
+                self.book.def(f).is_some_and(|d| &d.qualname == qname)
+                    && self
+                        .book
+                        .file(f.file())
+                        .is_some_and(|file| &file.relative == module)
+                    && self.stable_def(f) == *id
+            }
+        })
+    }
 }
 
 impl Lang for Bend<'_> {
@@ -249,6 +277,9 @@ impl Lang for Bend<'_> {
         }
         let digest = key::digest(self, key);
         self.digests.borrow_mut().insert(key.clone(), digest);
+        self.canons
+            .borrow_mut()
+            .insert(digest, key::canon(self, key));
         digest
     }
 
@@ -280,19 +311,24 @@ pub fn call_graph(
         .or_else(|| defs.iter().position(|d| named(&d)))?;
     let mut options = options.clone();
     options.limits = limits.clone();
-    Some(run(
-        book,
-        DeclId::new(at.index(), index),
-        &options,
-        &Budget::default(),
-        cancel,
-    ))
+    let lang = Bend::new(book, options.marker, options.precision);
+    Some(
+        solve(
+            lang,
+            DeclId::new(at.index(), index),
+            Key::open(),
+            &options,
+            &Budget::default(),
+            cancel,
+        )
+        .0,
+    )
 }
 
-/// `Session::graph`: the graph under `entry`, a def of `file` (from the root, or absolute), walked no further than `budget`. The def is named as the outline
-/// names it, by qualname and which of the same-named defs it is (D20): the law is occurrence 0 and its proof occurrence 1 when the law comes first. `None`
-/// when the file is not in the book, there is no such def, or `entry` is [`Entry::File`]: a Bend file has no code of its own to run when it is loaded. With
-/// `Budget::default()` and the same limits it is [`call_graph`]'s graph.
+/// `Session::graph`: the graph under `entry`, a def of `file` (from the root, or absolute), walked no further than `budget`, and the canonical key of every context
+/// it listed. The def is named as the outline names it, by qualname and which of the same-named defs it is (D20): the law is occurrence 0 and its proof occurrence 1
+/// when the law comes first. `None` when the file is not in the book, there is no such def, or `entry` is [`Entry::File`]: a Bend file has no code of its own to run
+/// when it is loaded. With `Budget::default()` and the same limits it is [`call_graph`]'s graph.
 pub(crate) fn graph_within(
     book: &Book,
     file: &str,
@@ -300,7 +336,7 @@ pub(crate) fn graph_within(
     options: &Options,
     budget: &Budget,
     cancel: &Cancel,
-) -> Option<Graph> {
+) -> Option<(Graph, Keys)> {
     let Entry::Def {
         qualname,
         occurrence,
@@ -316,30 +352,68 @@ pub(crate) fn graph_within(
         .iter()
         .enumerate()
         .position(|(i, d)| d.qualname == qualname && occurrences[i] == u32::from(occurrence))?;
-    Some(run(
-        book,
+    let lang = Bend::new(book, options.marker, options.precision);
+    Some(solve(
+        lang,
         DeclId::new(at.index(), index),
+        Key::open(),
         options,
         budget,
         cancel,
     ))
 }
 
-/// One request for the def `id`: what both public ways in come to.
-fn run(book: &Book, id: DeclId, options: &Options, budget: &Budget, cancel: &Cancel) -> Graph {
-    let kind = book.def(id).map_or(DefKind::Function, |d| d.kind.clone());
+/// `Session::graph_from`: the graph that starts at the context `from` (BC-D7), so that a node a request cut can be continued under the key it had. The def is the
+/// one `from.func` names; the key is the one `known` (the canonical key the session kept for `from.digest`) stands for. The open key when the digest is zeros; the
+/// open key and `context_not_found` counted when the digest is not known or a def of the key is gone. `None` when no def of the book has the id.
+pub(crate) fn continue_from(
+    book: &Book,
+    from: &ContextId,
+    known: Option<&CanonKey>,
+    options: &Options,
+    budget: &Budget,
+    cancel: &Cancel,
+) -> Option<(Graph, Keys)> {
     let lang = Bend::new(book, options.marker, options.precision);
+    let id = lang.decl_of(&from.func)?;
+    let (key, found) = if from.digest == [0; 16] {
+        (Key::open(), true)
+    } else {
+        match known.and_then(|canon| key::rebuild(&lang, canon)) {
+            Some(key) => (key, true),
+            None => (Key::open(), false),
+        }
+    };
+    let (mut graph, keys) = solve(lang, id, key, options, budget, cancel);
+    if !found {
+        graph.stats.language.insert(CONTEXT_NOT_FOUND.to_owned(), 1);
+    }
+    Some((graph, keys))
+}
+
+/// One request for the def `id` under `key`: what every public way in comes to.
+fn solve(
+    lang: Bend<'_>,
+    id: DeclId,
+    key: Key,
+    options: &Options,
+    budget: &Budget,
+    cancel: &Cancel,
+) -> (Graph, Keys) {
+    let book = lang.book;
+    let kind = book.def(id).map_or(DefKind::Function, |d| d.kind.clone());
     let start = match kind {
         DefKind::Enum => Start::Construct {
             class: id,
             init: None,
         },
-        _ => Start::Call(id, Key::open()),
+        _ => Start::Call(id, key),
     };
     let mut solver = Solver::new(lang, options.limits.clone());
     let mut graph = solver.graph_within(&[start], budget, cancel);
     finish(&mut graph, solver.lang(), book);
-    graph
+    let keys = std::mem::take(&mut *solver.lang().canons.borrow_mut());
+    (graph, keys)
 }
 
 /// What a graph has beyond its edges, in `Stats.language`: each unresolved edge's reason (a count is what the edges say), the notes the walk kept, the defs

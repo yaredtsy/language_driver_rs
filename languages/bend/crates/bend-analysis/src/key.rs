@@ -253,6 +253,26 @@ pub(crate) fn canon(lang: &Bend<'_>, key: &Key) -> CanonKey {
     }
 }
 
+/// The key a canonical form stands for in this book: each stable id looked up as an entry is (by marker, or by path, qualname and `nth`). `None` when one of the
+/// defs is gone: the key cannot be rebuilt, and the caller starts from the open key and says so.
+pub(crate) fn rebuild(lang: &Bend<'_>, canon: &CanonKey) -> Option<Key> {
+    let slots = canon
+        .slots
+        .iter()
+        .map(|(at, slot)| {
+            let known = match slot {
+                Canon::Def(def) => Known::Def(lang.decl_of(def)?),
+                Canon::Lambda(writer, nth) => Known::Lambda {
+                    writer: lang.decl_of(writer)?,
+                    nth: *nth,
+                },
+            };
+            Some((*at, known))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(Key::from_slots(slots))
+}
+
 /// The 16 bytes of `ContextId::digest`: zeros for the open key (layer 1's id), else `xxh3_128` of the canonical key as JSON, little-endian. Bytes we wrote, never
 /// `#[derive(Hash)]`: std makes no promise to keep it stable.
 pub(crate) fn digest(lang: &Bend<'_>, key: &Key) -> [u8; 16] {
