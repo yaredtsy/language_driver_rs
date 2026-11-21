@@ -116,10 +116,9 @@ and `law-across-files` give the shared tree; `construct-marked-class` and `two-c
 
 ## Known limits, each a fixture
 
-- **owed, a `do-project` fix (found by the sweep, 28 `passed_deep` of the demos):** a bare project def as the **value** of a `do` bind or exec
-  (`x : String <- name`, `Unit <- pop`) is a direct argument of the sugar's `M.bind` and should be a passed edge (D22), as `h(g)` is. The walk
-  reads the statement, not the call it stands for, and counts it `passed_deep` (13 in `pure_hvm5_mini`). The other 15 `passed_deep` are type
-  names as operands of `->` or `&` in value position and owe nothing unless Q-BD5 changes what a type position is.
+- a bare project def as the value of a `do` bind, exec or step is a passed edge since 85aee89 (row `passed-do`; the demos' `passed_deep`
+  fell from 28 to 15, the rest being type names in value position, which owe nothing under BD-D9). **Owed, small:** the same for a `return
+  name` (a direct argument of `M.pure`); no demo has one.
 - a closure called after being stored (`add2(1)`) and a closure returned by a call (`adder(2)(…)`) are unresolved: BC3 (values through lets
   and returns).
 - a template parameter called inside its def is unresolved for every caller: BC1 resolves it per call site, exactly.

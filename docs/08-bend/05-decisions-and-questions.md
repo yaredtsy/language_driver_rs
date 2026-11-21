@@ -26,6 +26,7 @@ accept them, as Rust's did. Nothing is decided until then.
 | BD-D9 | **A call in a type position is not a site in layer 1**, counted `type_position`: parameter and return types, annotations' right sides, type arguments, law clauses, rewrite motives | 01 §4, 03 §3.2 |
 | BD-D10 | **Recovery at declaration boundaries only** (a column-0 `def` / `type` / `law` / `@unsafe` / `import` line resyncs); no term-level `Error` node (decided at BD1's review, 2026-11-20: a failed term flags its declaration, whose name and range are kept) | 02 §3 |
 | BD-D11 | **The `Lang` impl's `BASIS` is `Basis::Name`** (core's "the code's own names fixed it"): every Bend edge is that kind, and the one a reader may take as certain | 03 §3.1 |
+| BD-D13 | **`environment_inputs` is the empty list for Bend**: there is no manifest, no lock file, no toolchain to watch; the files a book reads are followed by the session's own stamps (D41). An empty answer is what the contract's call means when nothing outside the sources can change the answer | BD5, 2026-11-21 |
 | BD-D12 | **Bend's call targets are resolved over the whole book, ignoring declaration order**, so a forward reference `bend` would refuse still gets its edge (never fail) | 01 §3 |
 
 ## 2. New scenarios
