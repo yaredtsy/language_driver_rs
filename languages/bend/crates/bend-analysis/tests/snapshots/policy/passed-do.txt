@@ -8,6 +8,7 @@ main
   tick [Passed]
   Parser.pure
     Parser
+  done [Passed]
 edges:
 Parser.pure | P | construct Parser no init
 main | x : U32 <- name | call Parser.bind
@@ -16,5 +17,6 @@ main | Unit <- pop | call Parser.bind
 main | pop | pass pop
 main | tick | call Parser.bind
 main | tick | pass tick
-main | return x | call Parser.pure
-counters: type_position=12
+main | return done | call Parser.pure
+main | done | pass done
+counters: type_position=13

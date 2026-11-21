@@ -16,9 +16,12 @@ def pop() -> U32:
 def tick() -> U32:
   3
 
+def done() -> U32:
+  4
+
 def main() -> Parser:
   do Parser<U32>:
     x : U32 <- name
     Unit <- pop
     tick
-    return x
+    return done
