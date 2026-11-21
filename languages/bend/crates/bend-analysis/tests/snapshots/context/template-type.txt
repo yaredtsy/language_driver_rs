@@ -24,4 +24,4 @@ contexts:
 blk | 3362308fbd657279e6abe458aae183ae
 main | open
 sky | open
-counters: key_slot_value=1, type_position=7
+counters: type_position=7

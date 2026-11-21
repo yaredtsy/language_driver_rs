@@ -32,4 +32,4 @@ each | 5f66ef3e11d5c04870a5d8664c145767
 g | open
 main | open
 outer | 529df335cc645e165017b2b2478a3ea0
-counters: anonymous_function_called=1, key_slot_open=1, key_slot_value=1, type_position=9
+counters: anonymous_function_called=1, type_position=9

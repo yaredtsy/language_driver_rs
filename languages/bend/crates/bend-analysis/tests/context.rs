@@ -335,7 +335,8 @@ fn two_keys_has_two_contexts_of_each_and_the_third_call_reaches_the_first() {
         counter(&precise, "type_position"),
         counter(&default, "type_position")
     );
-    assert_eq!(counter(&precise, "key_slot_value"), 3);
+    // `each` calls position 0, which every caller names; the literal at position 1 is only handed to `f`: not counted
+    assert_eq!(counter(&precise, "key_slot_value"), 0);
 }
 
 #[test]
@@ -410,10 +411,11 @@ fn a_type_is_in_no_key() {
     assert_eq!(blk.len(), 1, "`~U32` and `~Pix` give one context: {blk:?}");
     assert_ne!(blk[0].digest, ZEROS);
     assert_eq!(counter(&precise, "type_passed"), 1);
-    assert_eq!(counter(&precise, "key_slot_value"), 2);
+    assert_eq!(counter(&precise, "key_slot_value"), 0);
 }
 
-/// Every unnamed slot is counted where it lands, once per context walked (06 §4).
+/// A slot the caller left unnamed is counted by why, once per context walked, and only at a position the callee itself calls (06 §4). Positions it only passes along
+/// (`x` in `each(f, x)`, everything in `relay` and `open`) are not counted whatever the caller wrote there.
 #[test]
 fn an_unnamed_slot_is_counted_by_why() {
     let program = Program::new(&[(
@@ -421,18 +423,26 @@ fn an_unnamed_slot_is_counted_by_why() {
         concat!(
             "def work(x: U32) -> U32:\n  x\n\n",
             "def each(f: U32 -> U32, x: U32) -> U32:\n  f(x)\n\n",
+            "def second(x: U32, f: U32 -> U32) -> U32:\n  f(x)\n\n",
             "def relay(f: U32 -> U32) -> U32:\n  each(f)\n\n",
             "def open(f: U32 -> U32, x: U32) -> U32:\n  each(f, x)\n\n",
-            "def main(m: U32 -> U32) -> U32:\n  g = work\n  a = each(g, 1)\n  b = each(U32.show, 1)\n  c = open(m, 1)\n  relay(work)\n",
+            "def main(m: U32 -> U32) -> U32:\n",
+            "  g = work\n  a = each(g, 1)\n  b = each(U32.show, 1)\n  c = open(m, 1)\n  d = second(1)\n  e = each(m, 1)\n  relay(work)\n",
         ),
     )]);
     let book = program.book("main.bend");
     let precise = graph_at(&book, "main.bend", "main", Precision::Precise).expect("a graph");
-    // `main` walks `each(g, 1)`: a local, a literal; `each(U32.show, 1)`: a Base def, a literal; `open(m, 1)`: `m` is `main`'s own parameter and `main`'s key has no
-    // `m` (open), a literal. `open` (nothing named: the open key) walks `each(f, x)`: both are its own parameters, unknown (open, open). `relay(work)` names `f`;
-    // `relay` walks `each(f)`: `f` known, `x` missing. Open 1 + 2 = 3, local 1, missing 1, value 1 + 2 + 1 = 4
+    // `each` calls position 0, `second` position 1; `relay` and `open` call none. `main` walks:
+    //   each(g, 1)          position 0 is a `let`: local; the `1` at position 1 is not called: not counted
+    //   each(U32.show, 1)   position 0 is a Base def: value
+    //   open(m, 1)          `open` calls nothing: not counted
+    //   second(1)           position 1 is missing: missing
+    //   each(m, 1)          position 0 is `main`'s own parameter, and `main`'s key names no `m`: open
+    //   relay(work)         `relay` calls nothing: not counted; it names `f`, so `relay@{f: work}` is walked
+    // `open` is walked under the open key (nothing was named): `each(f, x)` has `f` as its own parameter, unknown: open. `relay@{f: work}` walks `each(f)`: `f` is
+    // known, and the missing `x` is not called: not counted.
     assert_eq!(counter(&precise, "key_slot_local"), 1);
+    assert_eq!(counter(&precise, "key_slot_value"), 1);
     assert_eq!(counter(&precise, "key_slot_missing"), 1);
-    assert_eq!(counter(&precise, "key_slot_open"), 3);
-    assert_eq!(counter(&precise, "key_slot_value"), 4);
+    assert_eq!(counter(&precise, "key_slot_open"), 2);
 }

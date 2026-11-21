@@ -25,4 +25,4 @@ contexts:
 f | open
 main | open
 twice | 7662768dac7816b161fe0ba4793e00a7
-counters: anonymous_function_called=2, key_slot_value=1, type_position=6
+counters: anonymous_function_called=2, type_position=6

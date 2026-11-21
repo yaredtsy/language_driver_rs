@@ -38,4 +38,4 @@ g | open
 h | open
 main | open
 work | open
-counters: function_typed_value=1, key_slot_value=1, type_position=10
+counters: function_typed_value=1, type_position=10

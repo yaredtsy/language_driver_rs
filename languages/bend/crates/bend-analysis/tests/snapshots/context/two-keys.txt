@@ -46,4 +46,4 @@ each | e5163dd2de398288bafd317070624c16
 main | open
 other | open
 work | open
-counters: key_slot_value=3, type_position=8
+counters: type_position=8

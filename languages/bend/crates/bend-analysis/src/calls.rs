@@ -16,7 +16,7 @@ use analyzer_core::text::Span;
 
 use crate::book::{Book, DeclId};
 use crate::env::Env;
-use crate::key::{self, Key};
+use crate::key::{self, Key, Relevance};
 use crate::sem::{self, Item};
 use crate::walk::{self, Reached};
 
@@ -130,7 +130,7 @@ pub(crate) struct Bend<'b> {
     /// The ids of the defs described that have a marker another def of their file owns (D34). Described more than once, so a set.
     demoted: RefCell<HashSet<StableDef>>,
     /// The relevant parameters of each def (`key::relevant`), and the digest of each key met. Only ever looked up, never iterated (rule 9).
-    pub(crate) relevant: RefCell<HashMap<DeclId, Rc<[u32]>>>,
+    pub(crate) relevant: RefCell<HashMap<DeclId, Rc<Relevance>>>,
     digests: RefCell<HashMap<Key, [u8; 16]>>,
 }
 

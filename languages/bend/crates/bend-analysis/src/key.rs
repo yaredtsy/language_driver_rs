@@ -101,14 +101,29 @@ fn known_def(lang: &Bend<'_>, id: DeclId) -> bool {
     file.in_root && decl.kind == DefKind::Function
 }
 
+/// The relevant parameters of a def (BC-D2), and which of them the def itself calls.
+pub(crate) struct Relevance {
+    /// Every relevant position: called (a), or passed along to a project def (b) or through a parameter (c). A key has a slot for each one a caller names.
+    pub(crate) all: Box<[u32]>,
+    /// The positions the def calls (a): a missing slot there leaves a site of the def unresolved, so only these are counted (`key_slot_*`, 06 §4). A subset of `all`.
+    called: Box<[u32]>,
+}
+
+impl Relevance {
+    fn is_called(&self, position: u32) -> bool {
+        self.called.binary_search(&position).is_ok()
+    }
+}
+
 /// The parameters of `def` that are **relevant** (BC-D2): the def calls one (`f(x)`), or passes one as a direct argument to a call of a project def or to a call
 /// through one of its own parameters (`h(f, x)`: when a caller names `h`, `f` flows down into it). Positions of the written parameter list, sorted. A fact of the
 /// def's own code, so computed once per def and kept.
-pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<[u32]> {
+pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<Relevance> {
     if let Some(known) = lang.relevant.borrow().get(&def) {
         return Rc::clone(known);
     }
-    let mut positions: BTreeSet<u32> = BTreeSet::new();
+    let mut called: BTreeSet<u32> = BTreeSet::new();
+    let mut passed: BTreeSet<u32> = BTreeSet::new();
     for item in lang.items(def) {
         match &item.what {
             // (a), and (c): a call through the def's own parameter hands its argument parameters on to whatever a caller names
@@ -116,19 +131,23 @@ pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<[u32]> {
                 param: Some(at),
                 args,
             } => {
-                positions.insert(*at);
-                positions.extend(args.iter().filter_map(param_of));
+                called.insert(*at);
+                passed.extend(args.iter().filter_map(param_of));
             }
             // (b)
             What::Call { name, args }
                 if matches!(lang.book.resolve(def.file(), name), Resolved::Project(_)) =>
             {
-                positions.extend(args.iter().filter_map(param_of));
+                passed.extend(args.iter().filter_map(param_of));
             }
             _ => {}
         }
     }
-    let found: Rc<[u32]> = positions.into_iter().collect();
+    let all: BTreeSet<u32> = called.union(&passed).copied().collect();
+    let found = Rc::new(Relevance {
+        all: all.into_iter().collect(),
+        called: called.into_iter().collect(),
+    });
     lang.relevant.borrow_mut().insert(def, Rc::clone(&found));
     found
 }
@@ -173,7 +192,8 @@ fn slot(
 }
 
 /// The key of a call of `callee` written in `caller`, from the arguments as `sem` read them (06 §4): one slot for each relevant position of the callee whose argument is
-/// known; each one that is not is counted for the context being walked (`key_slot_*`). Under `Precision::Default` it is the open key and nothing is read.
+/// known; each one that is not is counted for the context being walked (`key_slot_*`) when the callee calls that position (06 §4: a count of a position it only passes
+/// along says nothing). Under `Precision::Default` it is the open key and nothing is read.
 pub(crate) fn key_of(
     lang: &Bend<'_>,
     caller: DeclId,
@@ -184,12 +204,16 @@ pub(crate) fn key_of(
     if lang.precision == Precision::Default {
         return Key::open();
     }
-    let slots = relevant(lang, callee)
+    let relevance = relevant(lang, callee);
+    let slots = relevance
+        .all
         .iter()
         .filter_map(|&at| match slot(lang, caller, args.get(at as usize), env) {
             Ok(known) => Some((at, known)),
             Err(absent) => {
-                if let Some(counter) = absent.counter() {
+                if relevance.is_called(at)
+                    && let Some(counter) = absent.counter()
+                {
                     lang.note_slot(counter);
                 }
                 None
@@ -328,7 +352,8 @@ mod tests {
         write(root.join("main.bend"), PROGRAM);
         let book = Book::open(&root, std::path::Path::new("main.bend")).expect("opens");
         let lang = Bend::new(&book, MarkerStyle::above("ID"), Precision::Precise);
-        let of = |name: &str| relevant(&lang, id(&book, name)).to_vec();
+        let of = |name: &str| relevant(&lang, id(&book, name)).all.to_vec();
+        let called = |name: &str| relevant(&lang, id(&book, name)).called.to_vec();
         assert_eq!(of("work"), Vec::<u32>::new(), "never called, never passed");
         assert_eq!(
             of("each"),
@@ -347,6 +372,10 @@ mod tests {
             [0, 1, 2],
             "`a(b(c))`: `a` and `b` are called, `c` is handed to `b` (c)"
         );
+        // the positions the def calls itself, which are the ones a missing slot is counted at
+        assert_eq!(called("each"), [0]);
+        assert_eq!(called("relay"), Vec::<u32>::new());
+        assert_eq!(called("two"), [0, 1]);
         assert_eq!(
             of("lam"),
             [0],
