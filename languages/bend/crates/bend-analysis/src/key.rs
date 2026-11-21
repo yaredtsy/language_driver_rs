@@ -94,7 +94,7 @@ impl Absent {
 }
 
 /// A def with code that is in the root: what a slot can hold (BC-D1). A law alone, a type, a def outside the root are not.
-fn known_def(lang: &Bend<'_>, id: DeclId) -> bool {
+pub(crate) fn known_def(lang: &Bend<'_>, id: DeclId) -> bool {
     let (Some(decl), Some(file)) = (lang.book.decl(id), lang.book.file(id.file())) else {
         return false;
     };
@@ -178,16 +178,23 @@ fn slot(
         Some(ArgShape::Other) => Err(Absent::Value),
         Some(ArgShape::Name(name)) => match lang.book.resolve(caller.file(), name) {
             Resolved::Project(id) if known_def(lang, id) => Ok(Known::Def(id)),
-            Resolved::Project(id)
-                if lang
-                    .book
-                    .decl(id)
-                    .is_some_and(|decl| decl.kind == DefKind::Enum) =>
-            {
-                Err(Absent::Type)
-            }
-            _ => Err(Absent::Value),
+            _ => Err(absent_name(lang, caller, name)),
         },
+    }
+}
+
+/// Why a bare name in an argument is not a slot when it is not a def with code: a type is a type argument, anything else is a value.
+pub(crate) fn absent_name(lang: &Bend<'_>, caller: DeclId, name: &str) -> Absent {
+    match lang.book.resolve(caller.file(), name) {
+        Resolved::Project(id)
+            if lang
+                .book
+                .decl(id)
+                .is_some_and(|decl| decl.kind == DefKind::Enum) =>
+        {
+            Absent::Type
+        }
+        _ => Absent::Value,
     }
 }
 
@@ -201,6 +208,18 @@ pub(crate) fn key_of(
     args: &[ArgShape],
     env: &Env<'_>,
 ) -> Key {
+    key_with(lang, callee, |at| {
+        slot(lang, caller, args.get(at as usize), env)
+    })
+}
+
+/// The same key from whatever says what the argument at a position puts in its slot: the item walk reads it off the shapes (`key_of`), the evaluator off the values
+/// of the arguments (`eval.rs`). The counting is one thing, here.
+pub(crate) fn key_with(
+    lang: &Bend<'_>,
+    callee: DeclId,
+    slot: impl Fn(u32) -> Result<Known, Absent>,
+) -> Key {
     if lang.precision == Precision::Default {
         return Key::open();
     }
@@ -208,7 +227,7 @@ pub(crate) fn key_of(
     let slots = relevance
         .all
         .iter()
-        .filter_map(|&at| match slot(lang, caller, args.get(at as usize), env) {
+        .filter_map(|&at| match slot(at) {
             Ok(known) => Some((at, known)),
             Err(absent) => {
                 if relevance.is_called(at)

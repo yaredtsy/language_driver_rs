@@ -6,11 +6,12 @@
 
 use analyzer_core::text::Span;
 
-// the tree of a body is read by the evaluator (V2); until then only the tests read it
+// the evaluator reads the tree as far as BC1+BC2 goes (V2); what the later steps read (binders, patterns, a lambda's facts, a do's types) is only built and tested yet
 #[allow(dead_code)]
 mod flow;
 mod walk;
 
+pub(crate) use flow::Expr;
 pub(crate) use walk::{ArgShape, DefWalk, Item, Sugar, What, of as walk_of, walks};
 
 /// One `import` line, as written.

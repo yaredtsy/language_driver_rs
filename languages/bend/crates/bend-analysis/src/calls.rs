@@ -16,6 +16,7 @@ use analyzer_core::text::Span;
 
 use crate::book::{Book, DeclId};
 use crate::env::Env;
+use crate::eval::Policy;
 use crate::key::{self, CanonKey, Key, Relevance};
 use crate::sem::{self, Item};
 use crate::walk::{self, Reached};
@@ -125,6 +126,8 @@ pub(crate) struct Bend<'b> {
     pub(crate) book: &'b Book,
     style: MarkerStyle<'static>,
     pub(crate) precision: Precision,
+    /// What the evaluator may know: everything the layer tracks (the test that it agrees with the item walk takes it all away).
+    pub(crate) policy: Policy,
     /// Only ever looked up, never iterated (rule 9).
     /// Counters that are not the reason of an edge, filled as bodies are walked, once each, and put in `Stats.language` by `finish`.
     notes: RefCell<BTreeMap<&'static str, u64>>,
@@ -148,6 +151,7 @@ impl<'b> Bend<'b> {
             book,
             style,
             precision,
+            policy: Policy::Tracked,
             notes: RefCell::new(BTreeMap::new()),
             noted: RefCell::new(HashSet::new()),
             quiet: Cell::new(false),
@@ -183,13 +187,15 @@ impl<'b> Bend<'b> {
         self.noted.borrow_mut().insert(f);
     }
 
+    /// The walk of `f`'s body: its places and the same body as a tree (the book reads each file once).
+    pub(crate) fn walk_of(&self, f: DeclId) -> Option<&'b sem::DefWalk> {
+        let def = self.book.def(f)?;
+        sem::walk_of(self.book.walks(f.file()), def.name_range)
+    }
+
     /// The places of `f`'s body (the book reads each file once).
     pub(crate) fn items(&self, f: DeclId) -> Vec<Item> {
-        let Some(def) = self.book.def(f) else {
-            return Vec::new();
-        };
-        sem::walk_of(self.book.walks(f.file()), def.name_range)
-            .map_or_else(Vec::new, |w| w.items.clone())
+        self.walk_of(f).map_or_else(Vec::new, |w| w.items.clone())
     }
 }
 

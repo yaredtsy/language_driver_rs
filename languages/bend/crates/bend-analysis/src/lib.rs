@@ -19,6 +19,7 @@ mod base_names;
 mod book;
 mod calls;
 mod env;
+mod eval;
 mod key;
 mod paths;
 #[cfg(test)]
@@ -26,6 +27,7 @@ mod scratch;
 mod sem;
 mod session;
 mod stamps;
+mod value;
 mod walk;
 
 pub use analyzer_core::edit::{MarkerStyle, Placement};

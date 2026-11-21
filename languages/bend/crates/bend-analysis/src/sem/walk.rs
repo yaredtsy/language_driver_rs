@@ -78,8 +78,7 @@ pub(crate) struct DefWalk {
     /// Where the declaration's name is: how a def of the outline finds its walk.
     pub(crate) name_span: Span,
     pub(crate) items: Vec<Item>,
-    /// The same body as a tree, whose sites are `items` by index (`flow.rs`). Read by the evaluator (V2); until then only the tests read it.
-    #[allow(dead_code)]
+    /// The same body as a tree, whose sites are `items` by index (`flow.rs`).
     pub(crate) flow: Flow,
 }
 

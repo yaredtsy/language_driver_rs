@@ -9,6 +9,7 @@ use analyzer_core::solve::{Cancel, SiteCalls, Summary, Target};
 use crate::book::{DeclId, Resolved};
 use crate::calls::{self, Bend, Precision};
 use crate::env::Env;
+use crate::eval;
 use crate::key::{self, Key, Known};
 use crate::sem::{Item, Sugar, What};
 
@@ -33,7 +34,7 @@ fn is_law(kind: &DefKind) -> bool {
 }
 
 /// A def of the book as a target: a `Call` under `key`, unless its file is outside the root, which is an `External` named by the path from the root (D33), counted.
-fn project<'b>(lang: &Bend<'b>, id: DeclId, key: Key) -> Target<Bend<'b>> {
+pub(crate) fn project<'b>(lang: &Bend<'b>, id: DeclId, key: Key) -> Target<Bend<'b>> {
     let (Some(file), Some(def), Some(decl)) = (
         lang.book.file(id.file()),
         lang.book.def(id),
@@ -56,7 +57,12 @@ fn project<'b>(lang: &Bend<'b>, id: DeclId, key: Key) -> Target<Bend<'b>> {
 }
 
 /// What a name that is called, or that a sugar calls, resolved to; a project def is called under `key`.
-fn call_of<'b>(lang: &Bend<'b>, resolved: Resolved, written: &str, key: Key) -> Target<Bend<'b>> {
+pub(crate) fn call_of<'b>(
+    lang: &Bend<'b>,
+    resolved: Resolved,
+    written: &str,
+    key: Key,
+) -> Target<Bend<'b>> {
     match resolved {
         Resolved::Project(id) => project(lang, id, key),
         Resolved::Base => Target::External(External {
@@ -71,7 +77,7 @@ fn call_of<'b>(lang: &Bend<'b>, resolved: Resolved, written: &str, key: Key) -> 
     }
 }
 
-fn site<'b>(target: Target<Bend<'b>>, passed: bool) -> Reached<'b> {
+pub(crate) fn site<'b>(target: Target<Bend<'b>>, passed: bool) -> Reached<'b> {
     Reached::Site {
         targets: vec![target],
         passed,
@@ -115,7 +121,12 @@ fn resolve_from_env<'b>(
     })
 }
 
-fn resolve_from_book<'b>(lang: &Bend<'b>, def: DeclId, item: &Item, env: &Env<'_>) -> Reached<'b> {
+pub(crate) fn resolve_from_book<'b>(
+    lang: &Bend<'b>,
+    def: DeclId,
+    item: &Item,
+    env: &Env<'_>,
+) -> Reached<'b> {
     let book = lang.book;
     let file = def.file();
     match &item.what {
@@ -227,12 +238,31 @@ pub(crate) fn body<'b>(
 fn sites_of<'b>(lang: &Bend<'b>, f: DeclId, env: &Env<'_>, cancel: &Cancel) -> Summary<Bend<'b>> {
     // a site is a span relative to the start of the def, so an edit above it moves nothing
     let start = lang.book.def(f).map_or(0, |d| d.range.start);
+    // under `Precise` the body is evaluated, and it gives what each item comes to; an item that is not a node (a type skipped, Base's `&&`) is the item walk's. Under
+    // `Default` every item is the item walk's, as layer 1 has always had it
+    let mut evaluated = match lang.precision {
+        Precision::Default => Vec::new(),
+        Precision::Precise => eval::reached(lang, f, env),
+    };
     let mut sites = Vec::new();
-    for item in lang.items(f) {
+    for (at, item) in lang.items(f).into_iter().enumerate() {
         if cancel.is_cancelled() {
             return Summary::cut(sites);
         }
-        match resolve(lang, f, &item, env) {
+        let from_eval = evaluated.get_mut(at).and_then(Option::take);
+        let reached = match from_eval {
+            Some(reached) => reached,
+            None if lang.precision == Precision::Default => resolve(lang, f, &item, env),
+            None => {
+                debug_assert!(
+                    matches!(item.what, What::TypePosition | What::BaseFixed | What::Data),
+                    "a site no node of the flow carries: {:?}",
+                    item.what
+                );
+                resolve_from_book(lang, f, &item, env)
+            }
+        };
+        match reached {
             Reached::Quiet => {}
             Reached::Counted(key) => lang.note(key, 1),
             Reached::Site { targets, passed } => {
