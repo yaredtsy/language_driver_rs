@@ -114,6 +114,43 @@ The wire's `target_kind` is the outline's `DefKind` as core's wire writes it (`"
 and `law-across-files` give the shared tree; `construct-marked-class` and `two-callers` have a Bend tree of their own (`expected.bend.tree`,
 `expected.default.bend.tree`) because Bend has no constructor function and no receiver to dispatch on; each scenario's README says why.
 
+## The precise rows (the context layer)
+
+**Designed 2026-11-21, not built yet** (`docs/08-bend/06-context-layer-design.md`, BC1 + BC2 as one step, D51 and D52). The rows above are the
+default level and do not change. These are what `Options::precision = Precise` draws: a def's parameter that a caller named (a `~` template or
+a plain function-typed one) is called as that def, per caller, and the key flows down through a caller's own parameter passed along. The
+last cell is read by `crates/bend-analysis/tests/context.rs` in the grammar of "Where a row is checked", with the fixtures under
+`crates/bend-analysis/tests/fixtures/context/` and one snapshot per row, `crates/bend-analysis/tests/snapshots/context/<row>.txt`, which holds a
+`default` and a `precise` section for each entry. `def@{p ↦ v}` below is a context of `def` whose key has `v` at parameter `p`. The `limit-*`
+rows are the known limits of the layer: both sections are equal.
+
+| Precise row | Bend | Default | Precise | Counter | Where it is checked |
+|---|---|---|---|---|---|
+| `template-def` | `twice(~g, a)`; inside `twice`, `h(h(x))` with `~h` | `twice`'s two `h` are `Unresolved`; `g [Passed]` | two `Call g` from `twice@{h ↦ g}`; `g [Passed]` stays | | `template-def` `main.bend` `main` |
+| `template-lambda` | `twice(~(x => f(x)), 40)` | `f` is a `Call` from `main`; `twice`'s `h` are `Unresolved` | the same tree; `twice@{h ↦ lambda 0 of main}`'s two `h` are `Unresolved(anonymous_function_called)` | `anonymous_function_called` | `template-lambda` `main.bend` `main` |
+| `template-flow` | `outer(~h, x)` calls `middle(~h, x)` calls `twice(~h, x)`; `main` calls `outer(~g, 1)` | `g [Passed]` under `main`; the chain's `twice` is a leaf | `main` ▸ `outer` ▸ `middle` ▸ `twice` ▸ `g` · `g`; each context's key is `{h ↦ g}` (the demos' 15 of 16) | | `template-flow` `main.bend` `main` |
+| `template-type` | `blk(~S: Data, ~at: S -> U32, s: S)` called `blk(~U32, ~sky, 1)`; inside, `at(s)` | `at(s)` `Unresolved`; `type_passed` | `blk@{at ↦ sky}` calls `sky`; `S` is in no key, so the digest is the same with any type (`type_passed`, as today) | `type_passed` | `template-type` `main.bend` `main` |
+| `param-def` | `each(f: U32 -> U32, x)` calls `f(x)`; `main` calls `each(work, 1)` | `each` a leaf; `work [Passed]` | `each@{f ↦ work}` ▸ `work`; `work [Passed]` stays | | `param-def` `main.bend` `main` |
+| `param-flow` | `relay(f, x)` calls `each(f, x)`; `main` calls `relay(work, 1)` | `relay` ▸ `each` (a leaf); `work [Passed]` under `main` | `relay@{f ↦ work}` ▸ `each@{f ↦ work}` ▸ `work`; no passed edge inside `relay` (BC-D4) | | `param-flow` `main.bend` `main` |
+| `param-lambda-captures` | `outer(~h, x)` calls `each(y => h(y), x)`; `main` calls `outer(~g, 1)` | `outer`'s `h(y)` `Unresolved`; `each` a leaf | `outer@{h ↦ g}` ▸ `each` · `g`: the lambda's call is `outer`'s, resolved by `outer`'s key; `each@{f ↦ lambda 0 of outer}` says `anonymous_function_called` | `anonymous_function_called` | `param-lambda-captures` `main.bend` `main` |
+| `two-keys` | `each(work, 1)`, `each(other, 2)`, `each(work, 3)` | one `each`, three times | two contexts of `each` with two digests; the third call reuses the first (`reuse_hits`); each `each` node shows its own callee | | `two-keys` `main.bend` `main` |
+| `not-relevant` | `log(f: U32 -> U32, x)` never uses `f`; `log(work, 1)`, `log(other, 2)` | one `log` context | **one** `log` context, digest zeros: the slot is not relevant (§3.2) | | `not-relevant` `main.bend` `main` |
+| `entry-open` | the entry is `twice` itself | its `h` are `Unresolved` | the same: the entry is the open key (BC-D7) | `function_typed_value` | `entry-open` `main.bend` `twice` |
+| `recursion-keyed` | `f(~g, n)` is `g(f(~g, n))`; `r(~g, n)` is `r(~(y => g(y)), n)`; `main` calls both with `~work` | `f`, `r` `[Recursive]`; their `g` `Unresolved` | `f@{g ↦ work}` ▸ `work` · `f [Recursive]`; `r@{g ↦ work}` ▸ `r@{g ↦ lambda 0 of r}` ▸ `r [Recursive]`, then `work` (the lambda's `g(y)` is `r`'s site, resolved by `r`'s key; under the lambda key it is `anonymous_function_called`, and the lambda key reaches itself: finite, rule 3) | `anonymous_function_called` | `recursion-keyed` `main.bend` `main` |
+| `passed-open` | `h(g)` with `g` a def that has a function-typed parameter; and `each(work, 1)` | `g [Passed]`, `work [Passed]` | `g` is walked under the open key (its own parameter site stays `Unresolved`); `work` has **one** context, reached as passed and as called | `function_typed_value` | `passed-open` `main.bend` `main` |
+| `limit-partial-application` | `drop(n, k, s)` calls `k(…)`; a `do P<Unit>:` of a project monad has `Unit <- drop(2n)` | `drop`'s `k` `Unresolved` | the same: `k` is never passed (10 of the demos' 32 parameter sites, `pure_hvm5_mini`) | `key_slot_missing` | `limit-partial-application` `main.bend` `main` |
+| `limit-handed-to-bind` | `peek(k, s)` calls `k(…)`; `h : Hc <- peek` in a `do P<…>:` | `peek [Passed]`; its `k` `Unresolved` | the same: the sugar's `P.bind` gets the open key (BC-D5), and `P.bind` applies `peek` to a lambda's binder | `function_typed_value` | `limit-handed-to-bind` `main.bend` `main` |
+| `limit-lambda-binder` | `pure(x)` is `k => s => k(x, s)` | `k(x, s)` `Unresolved` | the same: `k` is a lambda's own binder, its value comes from whoever calls the lambda | `function_typed_value` | `limit-lambda-binder` `main.bend` `main` |
+| `limit-bound-type` | `g(-T: Data, a: T, b: T)` is `(a + b : T)`; `g(Vec2, p, q)` | `Sugar::Bound`: `Unresolved` | the same: a type is not a Known (0 sites in the corpus) | `function_typed_value` | `limit-bound-type` `main.bend` `main` |
+| `limit-constructor-of-defs` | `run(~app: App)` matches `case App{v, t}: t(s)`; `main` calls `run(~App{view, tick}, 0)` | `view`, `tick` `[Passed]`; `t(s)` `Unresolved` | the same: a constructor is not a Known (BC5: 3 demo sites) | `key_slot_value` | `limit-constructor-of-defs` `main.bend` `main` |
+| `limit-base-def` | `each(U32.show, 1)` | `each` a leaf | the same: a Base def is not a Known | `key_slot_value` | `limit-base-def` `main.bend` `main` |
+| `limit-local` | `g = work` then `each(g, 1)` | `each` a leaf | the same: a `let` is BC3's | `key_slot_local` | `limit-local` `main.bend` `main` |
+
+The counters the layer adds to `Stats.language`: `anonymous_function_called` (the reason of a call through a parameter known to be a lambda: its
+calls are drawn where the lambda is written), and, per context, for a parameter the callee calls or passes along: `key_slot_open` (the argument
+is the caller's own parameter and the caller's key does not know it), `key_slot_local` (a `let`, a `case` variable, a lambda's binder),
+`key_slot_value` (a call's result, a constructor, a literal, a Base def), `key_slot_missing` (no argument at that position).
+
 ## Known limits, each a fixture
 
 - a bare project def as the value of a `do` bind, exec, step or `return` is a passed edge since 85aee89 and 55368ce (row `passed-do`; the

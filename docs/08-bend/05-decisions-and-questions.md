@@ -28,6 +28,7 @@ accept them, as Rust's did. Nothing is decided until then.
 | BD-D11 | **The `Lang` impl's `BASIS` is `Basis::Name`** (core's "the code's own names fixed it"): every Bend edge is that kind, and the one a reader may take as certain | 03 §3.1 |
 | BD-D13 | **`environment_inputs` is the empty list for Bend**: there is no manifest, no lock file, no toolchain to watch; the files a book reads are followed by the session's own stamps (D41). An empty answer is what the contract's call means when nothing outside the sources can change the answer | BD5, 2026-11-21 |
 | BD-D12 | **Bend's call targets are resolved over the whole book, ignoring declaration order**, so a forward reference `bend` would refuse still gets its edge (never fail) | 01 §3 |
+| BC-D1 … BC-D9 | **The context layer's rows** (what a Known is, the key and its relevant positions, the flow-down, the open key for a passed edge and for a sugar, a lambda stays with its writer, the entry and `graph_from`, precision as an option, the limits) are written where they are argued: D52 | [`06-context-layer-design.md`](06-context-layer-design.md) §14 |
 
 ## 2. New scenarios
 
@@ -75,4 +76,4 @@ and a static check pins its dependency list to `analyzer-core` alone.
 | 6 | `base.bend` sits on disk in an install, or only inside the binary | Q-BD3 | install `bend`; look |
 | 7 | the renderer prints a `Construct` with `init: None` as the other languages' scenario trees show | §2 | run the scenario in BD4 |
 | 9 | a book of the whole `tests/` is a few megabytes and opens in milliseconds | BD3, BD5 | BD3 step 3 |
-| 10 | TC's answer on lambdas as values (Q-TC) is one Bend can share | BC1 | read 12-context-layer when Q-TC1..5 are answered |
+| 10 | TC's answer on lambdas as values (Q-TC) is one Bend can share | BC1 | **Checked 2026-11-21:** Q-TC1 is still open; its recommendation, and Rust's for Q-RC1, is that an anonymous function's calls stay with the def that writes it. Bend takes that (06 §6, BC-D6), so the three languages agree until TC7 moves them together |

@@ -63,6 +63,10 @@ calls Base's higher-order defs far more than it writes its own), BC1 and BC2 pay
 
 ## 3. BC1: templates (built together with BC2 as one step, per BC0)
 
+**Replaced, with §4, by [`06-context-layer-design.md`](06-context-layer-design.md) (2026-11-21).** The two sections below are the draft from before
+BC0, kept as the record. Where they and 06 disagree, 06 is the plan: the key flows down from the first commit, a Known is a def or a lambda only
+(§1's "a call, a constructor" are counted, not admitted: BC-D1), and the `[check]` on lambdas is answered (BC-D6: a lambda stays with its writer).
+
 - `walk(f, key)` reads a `Term::Call` whose callee is a `~` parameter as a `Call` to `key[param]` when the key has it; `Unresolved` otherwise.
 - At a call `t(~g, a)` in the caller's walk, the target is `Call(t, key')` with `key' = {0 ↦ g}`: the solver opens a context of `t` per distinct
   key, as it does for Rust's type arguments (RC1).
