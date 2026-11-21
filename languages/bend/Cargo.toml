@@ -10,7 +10,10 @@ publish = false
 [workspace.dependencies]
 analyzer-core    = { path = "../../core/analyzer-core" }
 analyzer-testkit = { path = "../../core/analyzer-testkit" }
+serde            = { version = "1", features = ["derive"] }
 serde_json       = "1"
+# a fixed 128-bit hash: a context's digest is stored outside the process and must not change across Rust versions or platforms (as Python's)
+xxhash-rust      = { version = "0.8", features = ["xxh3"] }
 
 # no engine pin: bend-parser is the engine and it is ours (BD-D1). ENGINE.md carries the grammar pin, a bend commit, instead.
 bend-parser = { path = "crates/bend-parser" }

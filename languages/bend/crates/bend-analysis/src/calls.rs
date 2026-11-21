@@ -1,11 +1,12 @@
 //! The call graph: `Bend` is the language the core's flat solver walks, and `call_graph` is the one public function that runs it.
 //!
-//! One context per def (`Key = ()`, digest zeros): Bend is not context sensitive yet (docs/08-bend/04-phase-3-context-layer.md). The seam is kept: a target is
-//! `Target::Call(def, key)`, and `walk` is the only place that would take a key.
+//! One context per def under `Precision::Default` (every key is the open one, digest zeros); under `Precision::Precise` a context is a def and the parameters a caller named
+//! (`docs/08-bend/06-context-layer-design.md`). A target is `Target::Call(def, key)`, and `walk` is the only place that takes a key.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
+use std::rc::Rc;
 
 use analyzer_core::edit::MarkerStyle;
 use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Entry, Graph, StableDef};
@@ -15,7 +16,7 @@ use analyzer_core::text::Span;
 
 use crate::book::{Book, DeclId};
 use crate::env::Env;
-use crate::key::Key;
+use crate::key::{self, Key};
 use crate::sem::{self, Item};
 use crate::walk::{self, Reached};
 
@@ -36,6 +37,17 @@ pub(crate) const FUNCTION_TYPED_VALUE: &str = "function_typed_value";
 pub(crate) const UNKNOWN_NAME: &str = "unknown_name";
 pub(crate) const UNKNOWN_CONSTRUCTOR: &str = "unknown_constructor";
 
+/// How exactly a call is answered. Off by default, and selectable for good (BC-D8).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Precision {
+    /// Layer 1: one context per def, a call through a parameter is `Unresolved(function_typed_value)`.
+    #[default]
+    Default,
+    /// A def's parameter that a caller named (a `~` template or a plain one) is called as that def, per caller (`docs/08-bend/06-context-layer-design.md`).
+    Precise,
+}
+
 /// How to build a graph. The marker style is how a def's marker is read (`# ID: …` in the comment block above it); the limits protect the cost of a request
 /// and cut (a cut is counted in `Stats.cuts`).
 #[derive(Clone, Debug)]
@@ -43,6 +55,7 @@ pub(crate) const UNKNOWN_CONSTRUCTOR: &str = "unknown_constructor";
 pub struct Options {
     pub limits: Limits,
     pub marker: MarkerStyle<'static>,
+    pub precision: Precision,
 }
 
 impl Options {
@@ -51,7 +64,14 @@ impl Options {
         Options {
             limits: Limits::default(),
             marker,
+            precision: Precision::Default,
         }
+    }
+
+    /// The same options at `precision`.
+    pub fn with_precision(mut self, precision: Precision) -> Self {
+        self.precision = precision;
+        self
     }
 }
 
@@ -88,20 +108,27 @@ impl Marked {
 pub(crate) struct Bend<'b> {
     pub(crate) book: &'b Book,
     style: MarkerStyle<'static>,
+    pub(crate) precision: Precision,
     /// Only ever looked up, never iterated (rule 9).
     /// Counters that are not the reason of an edge, filled as bodies are walked, once each, and put in `Stats.language` by `finish`.
     notes: RefCell<BTreeMap<&'static str, u64>>,
     /// The ids of the defs described that have a marker another def of their file owns (D34). Described more than once, so a set.
     demoted: RefCell<HashSet<StableDef>>,
+    /// The relevant parameters of each def (`key::relevant`), and the digest of each key met. Only ever looked up, never iterated (rule 9).
+    pub(crate) relevant: RefCell<HashMap<DeclId, Rc<[u32]>>>,
+    digests: RefCell<HashMap<Key, [u8; 16]>>,
 }
 
 impl<'b> Bend<'b> {
-    pub(crate) fn new(book: &'b Book, style: MarkerStyle<'static>) -> Self {
+    pub(crate) fn new(book: &'b Book, style: MarkerStyle<'static>, precision: Precision) -> Self {
         Bend {
             book,
             style,
+            precision,
             notes: RefCell::new(BTreeMap::new()),
             demoted: RefCell::new(HashSet::new()),
+            relevant: RefCell::new(HashMap::new()),
+            digests: RefCell::new(HashMap::new()),
         }
     }
 
@@ -121,6 +148,40 @@ impl<'b> Bend<'b> {
     }
 }
 
+impl Bend<'_> {
+    /// A def's identity outside this request, and which of the defs of its name in its file it is. A marker another def of the file owns is not this def's id
+    /// (D34): it is named by where it is, as a def with no marker is.
+    fn identity(&self, f: DeclId) -> (StableDef, u16) {
+        let (Some(file), Some(def)) = (self.book.file(f.file()), self.book.def(f)) else {
+            unreachable!("a DeclId of the book the solver was given");
+        };
+        let marked = self.book.marked(f.file(), self.style);
+        let occurrence = marked.as_ref().map_or(0, |m| m.occurrences[f.def()]) as u16;
+        let marker = marked.as_ref().and_then(|m| m.markers[f.def()].clone());
+        let owns = marked.as_ref().is_some_and(|m| m.owns[f.def()]);
+        let by_place = || StableDef::Path {
+            module: file.relative.clone(),
+            qname: def.qualname.clone(),
+            nth: occurrence,
+        };
+        let id = match marker {
+            Some(marker) if owns => StableDef::Marked(marker),
+            Some(_) => {
+                let id = by_place();
+                self.demoted.borrow_mut().insert(id.clone());
+                id
+            }
+            None => by_place(),
+        };
+        (id, occurrence)
+    }
+
+    /// The id a def has outside this request (what a key is written with, `key::canon`).
+    pub(crate) fn stable_def(&self, f: DeclId) -> StableDef {
+        self.identity(f).0
+    }
+}
+
 impl Lang for Bend<'_> {
     /// The code's own names fixed every edge (BD-D11).
     const BASIS: Basis = Basis::Name;
@@ -131,45 +192,32 @@ impl Lang for Bend<'_> {
         let (Some(file), Some(def)) = (self.book.file(f.file()), self.book.def(f)) else {
             unreachable!("a DeclId of the book the solver was given");
         };
-        let marked = self.book.marked(f.file(), self.style);
-        let occurrence = marked.as_ref().map_or(0, |m| m.occurrences[f.def()]);
-        let marker = marked.as_ref().and_then(|m| m.markers[f.def()].clone());
-        let owns = marked.as_ref().is_some_and(|m| m.owns[f.def()]);
-        // a marker another def of the file owns is not this def's id (D34): it is named by where it is, as a def with no marker is
-        let id = match marker {
-            Some(marker) if owns => StableDef::Marked(marker),
-            Some(_) => {
-                let id = StableDef::Path {
-                    module: file.relative.clone(),
-                    qname: def.qualname.clone(),
-                    nth: occurrence as u16,
-                };
-                self.demoted.borrow_mut().insert(id.clone());
-                id
-            }
-            None => StableDef::Path {
-                module: file.relative.clone(),
-                qname: def.qualname.clone(),
-                nth: occurrence as u16,
-            },
-        };
+        let (id, occurrence) = self.identity(f);
         DefInfo::new(
             id,
             def.qualname.clone(),
             def.qualname.clone(),
-            occurrence as u16,
+            occurrence,
             def.kind.clone(),
             file.relative.clone(),
             def.range,
         )
     }
 
-    fn digest(&self, _key: &Key) -> [u8; 16] {
-        [0; 16]
+    fn digest(&self, key: &Key) -> [u8; 16] {
+        if key.is_open() {
+            return [0; 16];
+        }
+        if let Some(digest) = self.digests.borrow().get(key) {
+            return *digest;
+        }
+        let digest = key::digest(self, key);
+        self.digests.borrow_mut().insert(key.clone(), digest);
+        digest
     }
 
-    fn walk(&mut self, f: DeclId, _key: &Key, cancel: &Cancel) -> Summary<Self> {
-        walk::body(self, f, &Env, cancel)
+    fn walk(&mut self, f: DeclId, key: &Key, cancel: &Cancel) -> Summary<Self> {
+        walk::body(self, f, &Env::new(key), cancel)
     }
 }
 
@@ -244,13 +292,13 @@ pub(crate) fn graph_within(
 /// One request for the def `id`: what both public ways in come to.
 fn run(book: &Book, id: DeclId, options: &Options, budget: &Budget, cancel: &Cancel) -> Graph {
     let kind = book.def(id).map_or(DefKind::Function, |d| d.kind.clone());
-    let lang = Bend::new(book, options.marker);
+    let lang = Bend::new(book, options.marker, options.precision);
     let start = match kind {
         DefKind::Enum => Start::Construct {
             class: id,
             init: None,
         },
-        _ => Start::Call(id, ()),
+        _ => Start::Call(id, Key::open()),
     };
     let mut solver = Solver::new(lang, options.limits.clone());
     let mut graph = solver.graph_within(&[start], budget, cancel);
@@ -323,19 +371,20 @@ pub struct Walked {
 /// when `def` is not a def of the book.
 pub fn walked(book: &Book, def: DeclId, options: &Options) -> Option<Vec<Walked>> {
     book.decl(def)?;
-    let lang = Bend::new(book, options.marker);
+    let lang = Bend::new(book, options.marker, options.precision);
+    let open = Key::open();
     Some(
-        walk::reach(&lang, def, &Env)
+        walk::reach(&lang, def, &Env::new(&open))
             .into_iter()
             .map(|(item, reached)| {
                 let kind = match reached {
                     Reached::Quiet => WalkedKind::Quiet,
                     Reached::Counted(key) => WalkedKind::Counted(key.to_owned()),
                     Reached::Site { targets, passed } => match targets.into_iter().next() {
-                        Some(analyzer_core::solve::Target::Call(callee, ())) if passed => {
+                        Some(analyzer_core::solve::Target::Call(callee, _)) if passed => {
                             WalkedKind::Passed(callee)
                         }
-                        Some(analyzer_core::solve::Target::Call(callee, ())) => {
+                        Some(analyzer_core::solve::Target::Call(callee, _)) => {
                             WalkedKind::Call(callee)
                         }
                         Some(analyzer_core::solve::Target::Construct { class, .. }) => {

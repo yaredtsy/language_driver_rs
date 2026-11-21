@@ -9,6 +9,7 @@ use analyzer_core::solve::{Cancel, SiteCalls, Summary, Target};
 use crate::book::{DeclId, Resolved};
 use crate::calls::{self, Bend};
 use crate::env::Env;
+use crate::key::{self, Key};
 use crate::sem::{Item, Sugar, What};
 
 /// What `External`s of Base's are named by: its package.
@@ -31,8 +32,8 @@ fn is_law(kind: &DefKind) -> bool {
     matches!(kind, DefKind::Other(k) if k == "law")
 }
 
-/// A def of the book as a target: a `Call`, unless its file is outside the root, which is an `External` named by the path from the root (D33), counted.
-fn project<'b>(lang: &Bend<'b>, id: DeclId) -> Target<Bend<'b>> {
+/// A def of the book as a target: a `Call` under `key`, unless its file is outside the root, which is an `External` named by the path from the root (D33), counted.
+fn project<'b>(lang: &Bend<'b>, id: DeclId, key: Key) -> Target<Bend<'b>> {
     let (Some(file), Some(def), Some(decl)) = (
         lang.book.file(id.file()),
         lang.book.def(id),
@@ -51,13 +52,13 @@ fn project<'b>(lang: &Bend<'b>, id: DeclId) -> Target<Bend<'b>> {
     if is_law(&decl.kind) {
         lang.note(calls::OPEN_LAW, 1);
     }
-    Target::Call(id, ())
+    Target::Call(id, key)
 }
 
-/// What a name that is called, or that a sugar calls, resolved to.
-fn call_of<'b>(lang: &Bend<'b>, resolved: Resolved, written: &str) -> Target<Bend<'b>> {
+/// What a name that is called, or that a sugar calls, resolved to; a project def is called under `key`.
+fn call_of<'b>(lang: &Bend<'b>, resolved: Resolved, written: &str, key: Key) -> Target<Bend<'b>> {
     match resolved {
-        Resolved::Project(id) => project(lang, id),
+        Resolved::Project(id) => project(lang, id, key),
         Resolved::Base => Target::External(External {
             package: BASE.to_owned(),
             name: written.to_owned(),
@@ -78,21 +79,22 @@ fn site<'b>(target: Target<Bend<'b>>, passed: bool) -> Reached<'b> {
 }
 
 /// The path the default resolver takes for every place of a body, and the one a later layer will answer first from what it tracked (`env`).
-fn resolve<'b>(lang: &Bend<'b>, file: DeclId, item: &Item, env: &Env) -> Reached<'b> {
-    resolve_from_env(lang, file, item, env).unwrap_or_else(|| resolve_from_book(lang, file, item))
+fn resolve<'b>(lang: &Bend<'b>, file: DeclId, item: &Item, env: &Env<'_>) -> Reached<'b> {
+    resolve_from_env(lang, file, item, env)
+        .unwrap_or_else(|| resolve_from_book(lang, file, item, env))
 }
 
-/// Nothing is tracked yet. Context sensitivity starts by making this return `Some`.
+/// Nothing is answered from the env yet. Context sensitivity starts by making this return `Some`.
 fn resolve_from_env<'b>(
     _lang: &Bend<'b>,
-    _file: DeclId,
+    _def: DeclId,
     _item: &Item,
-    _env: &Env,
+    _env: &Env<'_>,
 ) -> Option<Reached<'b>> {
     None
 }
 
-fn resolve_from_book<'b>(lang: &Bend<'b>, def: DeclId, item: &Item) -> Reached<'b> {
+fn resolve_from_book<'b>(lang: &Bend<'b>, def: DeclId, item: &Item, env: &Env<'_>) -> Reached<'b> {
     let book = lang.book;
     let file = def.file();
     match &item.what {
@@ -103,7 +105,15 @@ fn resolve_from_book<'b>(lang: &Bend<'b>, def: DeclId, item: &Item) -> Reached<'
             Target::Unresolved(Reason::new(calls::FUNCTION_TYPED_VALUE)),
             false,
         ),
-        What::Call { name, .. } => site(call_of(lang, book.resolve(file, name), name), false),
+        What::Call { name, args } => {
+            let resolved = book.resolve(file, name);
+            // the callee's own key, from the arguments (the open key under `Precision::Default`)
+            let key = match &resolved {
+                Resolved::Project(id) => key::key_of(lang, def, *id, args, env),
+                _ => Key::open(),
+            };
+            site(call_of(lang, resolved, name, key), false)
+        }
         What::Passed { name } => match book.resolve(file, name) {
             Resolved::Project(id) => match book.decl(id) {
                 // a type handed over (`App.run(~U32, ..)`, `f(Shape)`) is a type argument: there is no code to hand over
@@ -112,7 +122,8 @@ fn resolve_from_book<'b>(lang: &Bend<'b>, def: DeclId, item: &Item) -> Reached<'
                 Some(_) if book.file(id.file()).is_none_or(|f| !f.in_root) => {
                     Reached::Counted(calls::EXTERNAL_PASSED)
                 }
-                Some(_) => site(project(lang, id), true),
+                // the open key: nobody knows what the receiver will pass it (BC-D4)
+                Some(_) => site(project(lang, id, Key::open()), true),
                 None => Reached::Quiet,
             },
             _ => Reached::Quiet,
@@ -124,7 +135,7 @@ fn resolve_from_book<'b>(lang: &Bend<'b>, def: DeclId, item: &Item) -> Reached<'
         What::Ctr { name } => match book.ctor(file, name) {
             Resolved::Project(class) => match book.file(class.file()) {
                 Some(f) if f.in_root => site(Target::Construct { class, init: None }, false),
-                _ => site(project(lang, class), false),
+                _ => site(project(lang, class, Key::open()), false),
             },
             Resolved::Base => Reached::Quiet,
             Resolved::Hub(alias) => site(
@@ -156,14 +167,15 @@ fn resolve_from_book<'b>(lang: &Bend<'b>, def: DeclId, item: &Item) -> Reached<'
             match resolved {
                 // Base's own arithmetic, indexing and do blocks are the language's, not call sites (BD-D8)
                 Resolved::Base => Reached::Counted(calls::SUGAR_BASE),
-                other => site(call_of(lang, other, written), false),
+                // a sugar's target gets the open key (BC-D5)
+                other => site(call_of(lang, other, written, Key::open()), false),
             }
         }
     }
 }
 
 /// Every place of `f`'s body with what it comes to, in source order, with its absolute span in the file.
-pub(crate) fn reach<'b>(lang: &Bend<'b>, f: DeclId, env: &Env) -> Vec<(Item, Reached<'b>)> {
+pub(crate) fn reach<'b>(lang: &Bend<'b>, f: DeclId, env: &Env<'_>) -> Vec<(Item, Reached<'b>)> {
     lang.items(f)
         .into_iter()
         .map(|item| {
@@ -178,7 +190,7 @@ pub(crate) fn reach<'b>(lang: &Bend<'b>, f: DeclId, env: &Env) -> Vec<(Item, Rea
 pub(crate) fn body<'b>(
     lang: &Bend<'b>,
     f: DeclId,
-    env: &Env,
+    env: &Env<'_>,
     cancel: &Cancel,
 ) -> Summary<Bend<'b>> {
     // a site is a span relative to the start of the def, so an edit above it moves nothing
