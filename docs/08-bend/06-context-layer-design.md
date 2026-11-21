@@ -299,7 +299,7 @@ same table. A row that proves wrong while building is reported, and the reviewer
 | `limit-bound-type` | `g(-T: Data, a: T, b: T)` is `(a + b : T)`; `g(Vec2, p, q)` | `Sugar::Bound`: `Unresolved` | the same: a type is not a Known (0 sites in the corpus) | `function_typed_value`, `type_passed` | `limit-bound-type` `main.bend` `main` |
 | `limit-constructor-of-defs` | `run(~app: App)` matches `case App{v, t}: t(s)`; `main` calls `run(~App{view, tick}, 0)` | `view`, `tick` `[Passed]`; `t(s)` `Unresolved` | the same: a constructor is not a Known, and `app` is not called, so nothing is counted for it (BC5: 3 demo sites) | `function_typed_value` | `limit-constructor-of-defs` `main.bend` `main` |
 | `limit-base-def` | `each(U32.show, 1)` | `each` a leaf | the same: a Base def is not a Known | `key_slot_value` | `limit-base-def` `main.bend` `main` |
-| `limit-local` | `g = work` then `each(g, 1)` | `each` a leaf | the same: a `let` is BC3's | `key_slot_local` | `limit-local` `main.bend` `main` |
+| `limit-local` | `g = work` then `each(g, 1)` | `each` a leaf | the same: a `let` is BC3's | `function_typed_value`, `key_slot_local`, and layer 1's `passed_deep` for the `work` in the `let` | `limit-local` `main.bend` `main` |
 | `limit-open-parameter` | `relay(f, x)` is `each(f, x)`, and the entry is `relay` | `each` a leaf, its `f(x)` `Unresolved` | the same: `f` is `relay`'s own parameter and nobody named it (the entry is the open key, BC-D7) | `function_typed_value`, `key_slot_open` | `limit-open-parameter` `main.bend` `relay` |
 
 The layer-1 row `closure-call` (`adder(2)(1)`, `add2 = adder(2)`) is the limit for a call's result (class c, 3 demo sites): its default and
@@ -383,7 +383,7 @@ agree have one `expected.tree`.
 | **never fewer edges** (`tests/context.rs`, over every policy fixture, context fixture and scenario): for each entry, the default graph's edges mapped to `(from def, site, to def-or-kind)` are a subset of the precise graph's; no site that had a target has none; the only edges the precise graph lacks are `Unresolved(function_typed_value)` ones replaced at the same site | rules 4, 5 |
 | **the snapshots' digests**: reviewed hex in a file, compared on every run | rule 1 in its cross-process form; rule 9 |
 | `assert_deterministic` on every precise graph | rule 9 |
-| the 21 rows of §9 flip from their default section to their precise section exactly as the table says (the 8 limit rows: both sections equal) | the design |
+| the 21 rows of §9 flip from their default section to their precise section exactly as the table says (the 8 limit rows: both sections equal but for the `key_slot_*` counters, which only `Precise` has) | the design |
 | `two-callers` and `callback-argument` at `Level::Precise` | the shared definition of done |
 | the cut-and-continue test: a tree cut at `Budget { max_depth: Some(1) }` and continued with `graph_from` at each frontier node equals the tree asked for whole | BC-D7 |
 | `every_ref_the_oracle_prints_is_accounted_for` and `every_ref_the_oracle_prints_resolves` (ignored, `--test corpus`) rerun after step 1: **0 in none, 0 differ**, as before | the walk's places did not move while `sem` learned the binders and the arguments |
@@ -443,6 +443,13 @@ edges replaced, both oracle tests at 0, no layer-1 snapshot touched), and the 13
 - **An eighth limit row, `limit-open-parameter`**: no row showed `key_slot_open`, and "a parameter nobody named" was on the brief's list of limits.
   It is in §9 only, until step 4: the test that reads `policy.md` fails on a row with no fixture, so the row goes into `policy.md` in the commit
   that brings its fixture (the coder copies the line from §9, the one doc edit that is theirs).
+
+**Steps 3b and 4 built (14248b7, 325066c), reviewed 2026-11-21**: every proof reproduced (107 tests, never-fewer-edges over 168 entries with 26
+unresolved edges replaced, clippy and fmt clean, the static checks, and both oracle tests rerun at 0 since the coder had not), the eight limit
+snapshots read one by one, no cell contradicted. The 13 flipping snapshots lost only their `key_slot_*` counts; the two copies of the table are
+the same text again, 21 rows. A limit row's two sections differ in one thing, the `key_slot_*` counter that says why (`Precise` alone counts it).
+For step 5 the reviewer wrote the scenario's files that are not code: `scenarios/callback-argument/README.md` and its two shared trees, and
+`scenarios/two-callers/expected.precise.bend.tree`, as §11 gives them; the coder adds `bend/main.bend` and the test's precise subject.
 
 Two notes for the later steps, found at this review. Whether a parameter is a `~` template is already in the outline (`Def.params[i]` is written
 `~f`, `languages/bend/docs/qualnames.md`), so step 7's split of the answered sites into template and plain needs nothing more from `sem`. An

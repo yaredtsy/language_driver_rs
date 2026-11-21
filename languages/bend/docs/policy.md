@@ -122,7 +122,7 @@ a plain function-typed one) is called as that def, per caller, and the key flows
 last cell is read by `crates/bend-analysis/tests/context.rs` in the grammar of "Where a row is checked", with the fixtures under
 `crates/bend-analysis/tests/fixtures/context/` and one snapshot per row, `crates/bend-analysis/tests/snapshots/context/<row>.txt`, which holds a
 `default` and a `precise` section for each entry. `def@{p ↦ v}` below is a context of `def` whose key has `v` at parameter `p`. The `limit-*`
-rows are the known limits of the layer: both sections are equal.
+rows are the known limits of the layer: both sections are equal, but for the `key_slot_*` counter that says why (only `Precise` counts it).
 
 | Precise row | Bend | Default | Precise | Counter | Where it is checked |
 |---|---|---|---|---|---|
@@ -145,7 +145,7 @@ rows are the known limits of the layer: both sections are equal.
 | `limit-bound-type` | `g(-T: Data, a: T, b: T)` is `(a + b : T)`; `g(Vec2, p, q)` | `Sugar::Bound`: `Unresolved` | the same: a type is not a Known (0 sites in the corpus) | `function_typed_value`, `type_passed` | `limit-bound-type` `main.bend` `main` |
 | `limit-constructor-of-defs` | `run(~app: App)` matches `case App{v, t}: t(s)`; `main` calls `run(~App{view, tick}, 0)` | `view`, `tick` `[Passed]`; `t(s)` `Unresolved` | the same: a constructor is not a Known, and `app` is not called, so nothing is counted for it (BC5: 3 demo sites) | `function_typed_value` | `limit-constructor-of-defs` `main.bend` `main` |
 | `limit-base-def` | `each(U32.show, 1)` | `each` a leaf | the same: a Base def is not a Known | `key_slot_value` | `limit-base-def` `main.bend` `main` |
-| `limit-local` | `g = work` then `each(g, 1)` | `each` a leaf | the same: a `let` is BC3's | `key_slot_local` | `limit-local` `main.bend` `main` |
+| `limit-local` | `g = work` then `each(g, 1)` | `each` a leaf | the same: a `let` is BC3's | `function_typed_value`, `key_slot_local`, and layer 1's `passed_deep` for the `work` in the `let` | `limit-local` `main.bend` `main` |
 | `limit-open-parameter` | `relay(f, x)` is `each(f, x)`, and the entry is `relay` | `each` a leaf, its `f(x)` `Unresolved` | the same: `f` is `relay`'s own parameter and nobody named it (the entry is the open key, BC-D7) | `function_typed_value`, `key_slot_open` | `limit-open-parameter` `main.bend` `relay` |
 
 The counters the layer adds to `Stats.language`: `anonymous_function_called` (the reason of a call through a parameter known to be a lambda: its
