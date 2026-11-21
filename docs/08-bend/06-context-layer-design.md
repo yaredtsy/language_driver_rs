@@ -150,7 +150,7 @@ are workspace crates already.
 At every site whose target is a project def `g` (a name resolved by the book, or a parameter the env knows, §5), the walk of `f` under key `K`
 builds `g`'s key from `g`'s relevant positions and the arguments as `sem` read them:
 
-| The argument at a relevant position `i` is | The slot | Counted (per context, `Stats.language`) |
+| The argument at a relevant position `i` is | The slot | Counted, when the callee **calls** parameter `i` |
 |---|---|---|
 | a bare unbound name the book resolves to a project def with code, in the root | `Known::Def(d)` | |
 | a lambda (`x => …`, `\{…}`), through parentheses | `Known::Lambda { writer: f, nth }` | |
@@ -159,6 +159,12 @@ builds `g`'s key from `g`'s relevant positions and the arguments as `sem` read t
 | a name bound to a `let`, a `case` pattern, a lambda's binder, a `do` name, an `@` binder | absent | `key_slot_local` |
 | a call, a constructor, a literal, an operator, anything else | absent | `key_slot_value` |
 | no argument at that position | absent | `key_slot_missing` |
+
+**The counts are taken only at a position the callee itself calls** (case (a) of §3.2), per context walked. There a missing slot is certain to
+leave a site unresolved in the callee, and the counter says why, as far as the caller's text says. A position that is relevant only because the
+callee passes it along ((b), (c)) is not counted: `each(f, x)` makes `x` relevant, every caller passes a number there, and a count of those says
+nothing (seen at the review of step 3: `key_slot_value` in nearly every snapshot, from the literal). A loss further up a chain shows at the
+chain's end as `key_slot_open`, and its cause is one caller up.
 
 **BC-D3: the key flows down from the first commit.** The third row is the whole point: 330 of the demos' 387 `~` arguments are the caller's own
 `~` parameter passed along (`Grid.go(~F, ~cam, ~unit, ~shade, …)` → `Grid.strip(~F, ~cam, ~unit, ~shade, …)` → `Mesh.vert(…)` → `Surf.at(~unit, …)`
@@ -260,8 +266,8 @@ The first three are pylspt's, as the two sibling designs restate them; the rest 
 | **unchanged** | `bend-parser`, `bend-syntax`, the outline, qualnames, markers, `book.rs` (one lookup may be added for `graph_from`: a `StableDef` back to a `DeclId`), the renderer, the wire and its merge, the policy rows and snapshots of layer 1, the scenarios' default trees, **`core/`** (no trait change, no new `Cut`, no testkit change: the scenarios already pick a language's own tree per level) |
 
 A snapshot of a context row (`tests/snapshots/context/<row>.txt`) holds, for each entry, **two sections**, `== <file> <entry> default` and
-`== <file> <entry> precise`, each in the policy snapshot's grammar (tree, edges, counters), the `from` of an edge written `def@xxxxxxxx` (the first
-eight hex digits of the digest) when its context is not the open one, and after the edges a `contexts:` block, one line per context, `def` and the
+`== <file> <entry> precise`, each in the policy snapshot's grammar (tree, edges, counters), a context of an edge, on either side, written `def@xxxxxxxx` (the first
+eight hex digits of the digest) when its context is not the open one, and after the edges, in both sections, a `contexts:` block, one line per context, `def` and the
 full digest in hex or `open`, sorted. The digest in a reviewed file is the cross-process determinism test: a run that produced different bytes
 would fail it.
 
@@ -277,7 +283,7 @@ same table. A row that proves wrong while building is reported, and the reviewer
 | `template-def` | `twice(~g, a)`; inside `twice`, `h(h(x))` with `~h` | `twice`'s two `h` are `Unresolved`; `g [Passed]` | two `Call g` from `twice@{h ↦ g}`; `g [Passed]` stays | | `template-def` `main.bend` `main` |
 | `template-lambda` | `twice(~(x => f(x)), 40)` | `f` is a `Call` from `main`; `twice`'s `h` are `Unresolved` | the same tree; `twice@{h ↦ lambda 0 of main}`'s two `h` are `Unresolved(anonymous_function_called)` | `anonymous_function_called` | `template-lambda` `main.bend` `main` |
 | `template-flow` | `outer(~h, x)` calls `middle(~h, x)` calls `twice(~h, x)`; `main` calls `outer(~g, 1)` | `g [Passed]` under `main`; the chain's `twice` is a leaf | `main` ▸ `outer` ▸ `middle` ▸ `twice` ▸ `g` · `g`; each context's key is `{h ↦ g}` (the demos' 15 of 16) | | `template-flow` `main.bend` `main` |
-| `template-type` | `blk(~S: Data, ~at: S -> U32, s: S)` called `blk(~U32, ~sky, 1)`; inside, `at(s)` | `at(s)` `Unresolved`; `type_passed` | `blk@{at ↦ sky}` calls `sky`; `S` is in no key, so the digest is the same with any type (`type_passed`, as today) | `type_passed` | `template-type` `main.bend` `main` |
+| `template-type` | `blk(~S: Data, ~at: S -> U32, s: S)` called `blk(~U32, ~sky, 1)`; inside, `at(s)` | `at(s)` `Unresolved` | `blk@{at ↦ sky}` calls `sky`; `S` is in no key, so the digest is the same with any type. `U32` is Base's and quiet; a project type there counts `type_passed` as in layer 1 (the plain test `a_type_is_in_no_key`) | | `template-type` `main.bend` `main` |
 | `param-def` | `each(f: U32 -> U32, x)` calls `f(x)`; `main` calls `each(work, 1)` | `each` a leaf; `work [Passed]` | `each@{f ↦ work}` ▸ `work`; `work [Passed]` stays | | `param-def` `main.bend` `main` |
 | `param-flow` | `relay(f, x)` calls `each(f, x)`; `main` calls `relay(work, 1)` | `relay` ▸ `each` (a leaf); `work [Passed]` under `main` | `relay@{f ↦ work}` ▸ `each@{f ↦ work}` ▸ `work`; no passed edge inside `relay` (BC-D4) | | `param-flow` `main.bend` `main` |
 | `param-lambda-captures` | `outer(~h, x)` calls `each(y => h(y), x)`; `main` calls `outer(~g, 1)` | `outer`'s `h(y)` `Unresolved`; `each` a leaf | `outer@{h ↦ g}` ▸ `each` · `g`: the lambda's call is `outer`'s, resolved by `outer`'s key; `each@{f ↦ lambda 0 of outer}` says `anonymous_function_called` | `anonymous_function_called` | `param-lambda-captures` `main.bend` `main` |
@@ -285,15 +291,16 @@ same table. A row that proves wrong while building is reported, and the reviewer
 | `param-through-param` | `apply(h, f, x)` is `h(f, x)`; `main` calls `apply(each, work, 1)` | `apply` a leaf, its `h(f, x)` `Unresolved`; `each [Passed]`, `work [Passed]` | `apply@{h ↦ each, f ↦ work}` ▸ `each@{f ↦ work}` ▸ `work`: `f` is relevant in `apply` as an argument of a call through `apply`'s own parameter (§3.2 c); the two passed edges stay, `each` under the open key a leaf | | `param-through-param` `main.bend` `main` |
 | `not-relevant` | `log(f: U32 -> U32, x)` never uses `f`; `log(work, 1)`, `log(other, 2)` | one `log` context | **one** `log` context, digest zeros: the slot is not relevant (§3.2) | | `not-relevant` `main.bend` `main` |
 | `entry-open` | the entry is `twice` itself | its `h` are `Unresolved` | the same: the entry is the open key (BC-D7) | `function_typed_value` | `entry-open` `main.bend` `twice` |
-| `recursion-keyed` | `f(~g, n)` is `g(f(~g, n))`; `r(~g, n)` is `r(~(y => g(y)), n)`; `main` calls both with `~work` | `f`, `r` `[Recursive]`; their `g` `Unresolved` | `f@{g ↦ work}` ▸ `work` · `f [Recursive]`; `r@{g ↦ work}` ▸ `r@{g ↦ lambda 0 of r}` ▸ `r [Recursive]`, then `work` (the lambda's `g(y)` is `r`'s site, resolved by `r`'s key; under the lambda key it is `anonymous_function_called`, and the lambda key reaches itself: finite, rule 3) | `anonymous_function_called` | `recursion-keyed` `main.bend` `main` |
+| `recursion-keyed` | `f(~g, n)` is `g(f(~g, n))`; `r(~g, n)` is `r(~(y => g(y)), n)`; `main` calls both with `~work` | `f`, `r` `[Recursive]`; their `g` `Unresolved` | `f` ▸ `work` · `f [Recursive]`; `r` ▸ `r [Recursive]` · `work`. The graph has three contexts of the two: `f@{g ↦ work}`, and `r@{g ↦ work}` → `r@{g ↦ lambda 0 of r}` → itself (the lambda key reaches itself: finite, rule 3), where `g(y)` is `anonymous_function_called`. The tree marks the second `r` `[Recursive]` because the renderer marks recursion by function, not by context (tree rule 8) | `anonymous_function_called` | `recursion-keyed` `main.bend` `main` |
 | `passed-open` | `h(g)` with `g` a def that has a function-typed parameter; and `each(work, 1)` | `g [Passed]`, `work [Passed]` | `g` is walked under the open key (its own parameter site stays `Unresolved`); `work` has **one** context, reached as passed and as called | `function_typed_value` | `passed-open` `main.bend` `main` |
 | `limit-partial-application` | `drop(n, k, s)` calls `k(…)`; a `do P<Unit>:` of a project monad has `Unit <- drop(2n)` | `drop`'s `k` `Unresolved` | the same: `k` is never passed (10 of the demos' 32 parameter sites, `pure_hvm5_mini`) | `key_slot_missing` | `limit-partial-application` `main.bend` `main` |
 | `limit-handed-to-bind` | `peek(k, s)` calls `k(…)`; `h : Hc <- peek` in a `do P<…>:` | `peek [Passed]`; its `k` `Unresolved` | the same: the sugar's `P.bind` gets the open key (BC-D5), and `P.bind` applies `peek` to a lambda's binder | `function_typed_value` | `limit-handed-to-bind` `main.bend` `main` |
 | `limit-lambda-binder` | `pure(x)` is `k => s => k(x, s)` | `k(x, s)` `Unresolved` | the same: `k` is a lambda's own binder, its value comes from whoever calls the lambda | `function_typed_value` | `limit-lambda-binder` `main.bend` `main` |
-| `limit-bound-type` | `g(-T: Data, a: T, b: T)` is `(a + b : T)`; `g(Vec2, p, q)` | `Sugar::Bound`: `Unresolved` | the same: a type is not a Known (0 sites in the corpus) | `function_typed_value` | `limit-bound-type` `main.bend` `main` |
-| `limit-constructor-of-defs` | `run(~app: App)` matches `case App{v, t}: t(s)`; `main` calls `run(~App{view, tick}, 0)` | `view`, `tick` `[Passed]`; `t(s)` `Unresolved` | the same: a constructor is not a Known (BC5: 3 demo sites) | `key_slot_value` | `limit-constructor-of-defs` `main.bend` `main` |
+| `limit-bound-type` | `g(-T: Data, a: T, b: T)` is `(a + b : T)`; `g(Vec2, p, q)` | `Sugar::Bound`: `Unresolved` | the same: a type is not a Known (0 sites in the corpus) | `function_typed_value`, `type_passed` | `limit-bound-type` `main.bend` `main` |
+| `limit-constructor-of-defs` | `run(~app: App)` matches `case App{v, t}: t(s)`; `main` calls `run(~App{view, tick}, 0)` | `view`, `tick` `[Passed]`; `t(s)` `Unresolved` | the same: a constructor is not a Known, and `app` is not called, so nothing is counted for it (BC5: 3 demo sites) | `function_typed_value` | `limit-constructor-of-defs` `main.bend` `main` |
 | `limit-base-def` | `each(U32.show, 1)` | `each` a leaf | the same: a Base def is not a Known | `key_slot_value` | `limit-base-def` `main.bend` `main` |
 | `limit-local` | `g = work` then `each(g, 1)` | `each` a leaf | the same: a `let` is BC3's | `key_slot_local` | `limit-local` `main.bend` `main` |
+| `limit-open-parameter` | `relay(f, x)` is `each(f, x)`, and the entry is `relay` | `each` a leaf, its `f(x)` `Unresolved` | the same: `f` is `relay`'s own parameter and nobody named it (the entry is the open key, BC-D7) | `function_typed_value`, `key_slot_open` | `limit-open-parameter` `main.bend` `relay` |
 
 The layer-1 row `closure-call` (`adder(2)(1)`, `add2 = adder(2)`) is the limit for a call's result (class c, 3 demo sites): its default and
 precise trees are equal, and it is not repeated here.
@@ -312,8 +319,8 @@ What the 27 demo sites this step does not answer are, by BC0's classes, and the 
 | 3 | a variable from a constructor field | `limit-constructor-of-defs` |
 | 1 | a lambda's own binder called | `limit-lambda-binder` |
 
-And two limits BC0 could not count, pinned anyway: a Base def in a slot (`limit-base-def`) and a type as the operator namespace
-(`limit-bound-type`). Tracking an unfinished call through `M.bind` is a different mechanism from a key, for one program; it stays a limit.
+And three limits BC0 did not count as classes, pinned anyway: a Base def in a slot (`limit-base-def`), a type as the operator namespace
+(`limit-bound-type`), and a parameter nobody named, the entry's own or a passed def's (`limit-open-parameter`). Tracking an unfinished call through `M.bind` is a different mechanism from a key, for one program; it stays a limit.
 
 ## 11. Scenarios: the two precise trees
 
@@ -376,7 +383,7 @@ agree have one `expected.tree`.
 | **never fewer edges** (`tests/context.rs`, over every policy fixture, context fixture and scenario): for each entry, the default graph's edges mapped to `(from def, site, to def-or-kind)` are a subset of the precise graph's; no site that had a target has none; the only edges the precise graph lacks are `Unresolved(function_typed_value)` ones replaced at the same site | rules 4, 5 |
 | **the snapshots' digests**: reviewed hex in a file, compared on every run | rule 1 in its cross-process form; rule 9 |
 | `assert_deterministic` on every precise graph | rule 9 |
-| the 20 rows of §9 flip from their default section to their precise section exactly as the table says (the 7 limit rows: both sections equal) | the design |
+| the 21 rows of §9 flip from their default section to their precise section exactly as the table says (the 8 limit rows: both sections equal) | the design |
 | `two-callers` and `callback-argument` at `Level::Precise` | the shared definition of done |
 | the cut-and-continue test: a tree cut at `Budget { max_depth: Some(1) }` and continued with `graph_from` at each frontier node equals the tree asked for whole | BC-D7 |
 | `every_ref_the_oracle_prints_is_accounted_for` and `every_ref_the_oracle_prints_resolves` (ignored, `--test corpus`) rerun after step 1: **0 in none, 0 differ**, as before | the walk's places did not move while `sem` learned the binders and the arguments |
@@ -393,7 +400,8 @@ The numbers go into `languages/bend/ENGINE.md` under `## BC1+BC2` (the reviewer 
 | 1, 1b | `sem/walk.rs`: the scope knows which binder is a def parameter (innermost wins); `What::Opaque { param, args }`, `What::Call { name, args }`, `ArgShape`; lambdas numbered as entered; unit tests in `sem` for each shape (a parameter shadowed by a `let` is `Local`; a `~` lambda through parentheses is `Lambda(n)`; `f(a)(k)`'s inner call carries `[a]`) | every snapshot unchanged (`walk.rs` ignores the new fields); the two oracle tests at 0 |
 | 2 | `key.rs` (`Known`, `Key`, `Canon`, `digest`, `relevant`, `key_of`), `env.rs`, `calls.rs` (`Precision`, `type Key`, `digest`, the open start, `walked()`); `xxhash-rust` added to the workspace; every project `Call` target carries a key under `Precise` | under `Default` byte-identical; under `Precise`, `two-keys` has two contexts of `each` with two digests and **no edge that reaches a different def**; `not-relevant` has one context with digest zeros; the digest of one key is equal from two entries |
 | 3 | `resolve_from_env` answers; the `key_slot_*` counts; the layer-1 notes once per def; `tests/context.rs` reading the precise table of `policy.md` (it is there already); the 13 flipping rows' fixtures and two-section snapshots; relevance (c); the never-fewer-edges test; `assert_deterministic` | the 13 rows flip as §9 says; a def with one `type_position`, reached under two keys, counts 1 |
-| 4 | the 7 limit rows: fixtures, snapshots (default section equals precise section) | their counters as §9 says |
+| 3b | the `key_slot_*` counts only at a position the callee calls (§4); `relevant` keeps the called positions apart from the passed-along ones | the 13 snapshots lose their `key_slot_*` from literals and from passed-along positions, and nothing else in them changes; `an_unnamed_slot_is_counted_by_why` rewritten by hand first |
+| 4 | the 8 limit rows: fixtures, snapshots (default section equals precise section) | their counters as §9 says |
 | 5 | `two-callers`: `expected.precise.bend.tree`; the `callback-argument` folder (README, `bend/`, both shared trees); `BEND_PRECISE` at `Level::Precise`; `bend-cli calls --precise` (refused with `--all`) | 8 + 8; the CLI prints the precise tree of `two-callers` |
 | 6 | `Session` keeps digest → canonical key; `graph_from`; the lookup from a `StableDef` to a `DeclId`; `context_not_found` | the cut-and-continue test |
 | 7 | `context_layer_on_the_demos` (ignored) and its run; the timings; the oracle tests rerun | the §12 table, in the report, with the 28 sites named |
@@ -420,6 +428,21 @@ fail on the old order. Step 2 is the key as §2 to §4 say, with `resolve_from_e
 
 The link check failed on this paragraph as first written (ed58c43): it reads an index followed by a parenthesis as a link. My miss: I did not run
 the static checks after that edit. Fixed here.
+
+**Step 3 built (4628b69), reviewed 2026-11-21**: every proof reproduced (106 tests, the never-fewer-edges run over 139 entries with 25 unresolved
+edges replaced, both oracle tests at 0, no layer-1 snapshot touched), and the 13 snapshots read one by one. What the review changed here:
+
+- **Row `recursion-keyed`'s tree was wrong, the code is right.** Core's renderer marks recursion by function, not by context (tree rule 8), so the
+  second `r`, though a different context, is `[Recursive]`. The graph has all three contexts. The row now says so.
+- **Row `template-type` named `type_passed` for `~U32`; `U32` is Base's and quiet.** The layer-1 prose of `policy.md` said the same and was wrong
+  in three places; corrected. A project type handed over counts, and the plain test `a_type_is_in_no_key` shows it.
+- **The `key_slot_*` counts are taken only where the callee calls the parameter** (§4, step 3b). With (b) and (c) every ordinary argument is
+  "relevant", so the counters counted literals.
+- **A snapshot writes the digest on both sides of an edge** (§8): without the `to` side, `two-keys` cannot show that the third call reaches the
+  first context. The coder's addition, kept.
+- **An eighth limit row, `limit-open-parameter`**: no row showed `key_slot_open`, and "a parameter nobody named" was on the brief's list of limits.
+  It is in §9 only, until step 4: the test that reads `policy.md` fails on a row with no fixture, so the row goes into `policy.md` in the commit
+  that brings its fixture (the coder copies the line from §9, the one doc edit that is theirs).
 
 Two notes for the later steps, found at this review. Whether a parameter is a `~` template is already in the outline (`Def.params[i]` is written
 `~f`, `languages/bend/docs/qualnames.md`), so step 7's split of the answered sites into template and plain needs nothing more from `sem`. An
