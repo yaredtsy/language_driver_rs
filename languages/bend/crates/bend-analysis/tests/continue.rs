@@ -116,6 +116,7 @@ fn the_pieces_make_the_tree_asked_for_whole() {
         "param-through-param",
         "recursion-keyed",
         "return-set-argument",
+        "keys-hold-values",
     ] {
         let session = open_fixture(folder, Precision::Precise);
         let asked = whole(&session, "main");
@@ -124,10 +125,16 @@ fn the_pieces_make_the_tree_asked_for_whole() {
         assert_eq!(asked.edges, pieces.edges, "{folder}: the edges");
         assert_eq!(asked.contexts, pieces.contexts, "{folder}: the contexts");
         assert_eq!(asked.defs, pieces.defs, "{folder}: the defs");
-        assert!(
-            asked.contexts.iter().any(|c| c.id.digest != [0; 16]),
-            "{folder}: there are keyed contexts to continue"
-        );
+        let keyed = asked
+            .contexts
+            .iter()
+            .filter(|c| c.id.digest != [0; 16])
+            .count();
+        assert!(keyed > 0, "{folder}: there are keyed contexts to continue");
+        if folder == "keys-hold-values" {
+            // a set, a partial application and a constructor: three keys that are not a def or a lambda
+            assert_eq!(keyed, 3, "{folder}");
+        }
     }
 }
 

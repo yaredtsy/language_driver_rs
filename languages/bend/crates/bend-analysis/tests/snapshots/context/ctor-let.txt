@@ -1,0 +1,31 @@
+== main.bend main default
+main
+  App
+  work [Passed]
+  other [Passed]
+edges:
+main | App | construct App no init
+main | work | pass work
+main | other | pass other
+main | t | unresolved function_typed_value
+contexts:
+main | open
+other | open
+work | open
+counters: function_typed_value=1, type_position=5
+== main.bend main precise
+main
+  App
+  work [Passed]
+  other [Passed]
+  other
+edges:
+main | App | construct App no init
+main | work | pass work
+main | other | pass other
+main | t | call other
+contexts:
+main | open
+other | open
+work | open
+counters: type_position=5

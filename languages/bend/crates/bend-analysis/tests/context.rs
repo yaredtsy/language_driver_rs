@@ -117,7 +117,7 @@ fn every_precise_row_has_a_fixture_and_a_snapshot() {
     let found = table::problems(TABLE, HEADER, &fixtures_dir(), &snapshots_dir());
     assert!(found.is_empty(), "{}", found.join("\n"));
     let all = rows();
-    assert_eq!(all.len(), 41, "the table was not read");
+    assert_eq!(all.len(), 47, "the table was not read");
     assert_eq!(all.iter().filter(|r| is_limit(r)).count(), 7);
 }
 
@@ -574,9 +574,9 @@ fn a_variable_is_called_as_every_member_and_as_unknown_when_it_may_be() {
     );
 }
 
-/// A `case` with a name pattern takes the scrutinee's value; a constructor pattern's names have none.
+/// A `case` with a name pattern takes the scrutinee's value; a constructor pattern of a project type takes the fields of the value (V8), and of Base's takes nothing.
 #[test]
-fn a_case_name_takes_the_scrutinee_and_a_constructor_pattern_does_not() {
+fn a_case_name_takes_the_scrutinee_and_a_constructor_pattern_takes_its_fields() {
     let graph = variable_graph(
         DEFS,
         "def main() -> U32:\n  match work:\n    case g:\n      g(1)\n",
@@ -586,10 +586,7 @@ fn a_case_name_takes_the_scrutinee_and_a_constructor_pattern_does_not() {
         "type Holder is Data:\n  Hold{f: U32 -> U32}\n\ndef work(x: U32) -> U32:\n  x\n",
         "def main() -> U32:\n  match Hold{work}:\n    case Hold{g}:\n      g(1)\n",
     );
-    assert_eq!(
-        reached_from(&graph, "main"),
-        ["unresolved function_typed_value"]
-    );
+    assert_eq!(reached_from(&graph, "main"), ["work"]);
 }
 
 /// A set of more than eight members is unknown, and counted (`value_widened_set`): the nine cases of a `match` make nine defs, and the call is the book's.
@@ -627,4 +624,22 @@ fn a_set_past_the_cap_is_unknown_and_counted() {
     let graph = variable_graph(&defs8, &main);
     assert_eq!(counter(&graph, "value_widened_set"), 0);
     assert_eq!(reached_from(&graph, "main").len(), 8);
+}
+
+/// A value nested deeper than three inside a value is unknown there, and counted (`value_widened_depth`): `work` four boxes down is unknown, and the boxes round it are
+/// kept; three boxes down it is still known.
+#[test]
+fn a_value_nested_deeper_than_three_is_widened_and_counted() {
+    let graph = variable_graph(
+        "type Box is Data:\n  Box{f: U32 -> U32}\n\ndef work(x: U32) -> U32:\n  x\n",
+        "def main() -> U32:\n  Box{f} = Box{Box{Box{Box{work}}}}\n  f(1)\n",
+    );
+    // four boxes round a def: the def is at depth 4, and is unknown there
+    assert_eq!(counter(&graph, "value_widened_depth"), 1);
+    // a def three boxes down is still known: `Box{Box{Box{work}}}` has `work` at depth 3
+    let graph = variable_graph(
+        "type Box is Data:\n  Box{f: U32 -> U32}\n\ndef work(x: U32) -> U32:\n  x\n\n",
+        "def main() -> U32:\n  Box{Box{Box{f}}} = Box{Box{Box{work}}}\n  f(1)\n",
+    );
+    assert_eq!(counter(&graph, "value_widened_depth"), 0);
 }

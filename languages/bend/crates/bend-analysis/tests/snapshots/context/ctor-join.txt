@@ -1,0 +1,43 @@
+== main.bend main default
+main
+  pick
+    Box
+    work [Passed]
+    Box
+    other [Passed]
+edges:
+main | pick | call pick
+main | f | unresolved function_typed_value
+pick | Box | construct Box no init
+pick | work | pass work
+pick | Box | construct Box no init
+pick | other | pass other
+contexts:
+main | open
+other | open
+pick | open
+work | open
+counters: function_typed_value=1, type_position=8
+== main.bend main precise
+main
+  pick
+    Box
+    work [Passed]
+    Box
+    other [Passed]
+  work
+  other
+edges:
+main | pick | call pick
+main | f | call other
+main | f | call work
+pick | Box | construct Box no init
+pick | work | pass work
+pick | Box | construct Box no init
+pick | other | pass other
+contexts:
+main | open
+other | open
+pick | open
+work | open
+counters: type_position=8

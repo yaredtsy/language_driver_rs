@@ -21,6 +21,12 @@ pub(crate) enum One {
     /// A def applied to fewer arguments than it has written parameters (07 §7): what it was given, by position from the first. A def only: a partial application of a
     /// Base def or of a lambda is unknown.
     Partial { def: DeclId, args: Box<[Value]> },
+    /// A constructor of a project type and what it was given, by field from the first (07 §9). Nothing can write a field afterwards, so the value is the object.
+    Ctor {
+        ty: DeclId,
+        name: Box<str>,
+        fields: Box<[Value]>,
+    },
 }
 
 /// What can be at a place: the members, sorted and without duplicates, and, when `open`, something the layer does not know too.
@@ -73,6 +79,20 @@ impl Value {
         (value, hit)
     }
 
+    /// What a partial application or a constructor holds, one level down: a value that would be deeper than the cap is unknown.
+    fn cap_all(held: &[Value], depth: usize, hit: &mut bool) -> Box<[Value]> {
+        held.iter()
+            .map(|value| {
+                if depth + 1 > MAX_DEPTH {
+                    *hit = true;
+                    Value::unknown()
+                } else {
+                    value.cap(depth + 1, hit)
+                }
+            })
+            .collect()
+    }
+
     fn cap(&self, depth: usize, hit: &mut bool) -> Value {
         let mut known: Vec<One> = self
             .known
@@ -80,17 +100,12 @@ impl Value {
             .map(|one| match one {
                 One::Partial { def, args } => One::Partial {
                     def: *def,
-                    args: args
-                        .iter()
-                        .map(|arg| {
-                            if depth + 1 > MAX_DEPTH {
-                                *hit = true;
-                                Value::unknown()
-                            } else {
-                                arg.cap(depth + 1, hit)
-                            }
-                        })
-                        .collect(),
+                    args: Self::cap_all(args, depth, hit),
+                },
+                One::Ctor { ty, name, fields } => One::Ctor {
+                    ty: *ty,
+                    name: name.clone(),
+                    fields: Self::cap_all(fields, depth, hit),
                 },
                 other => other.clone(),
             })

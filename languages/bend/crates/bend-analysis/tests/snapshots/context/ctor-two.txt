@@ -1,0 +1,27 @@
+== main.bend main default
+main
+  Sum
+  work [Passed]
+edges:
+main | L | construct Sum no init
+main | work | pass work
+main | f | unresolved function_typed_value
+main | f | unresolved function_typed_value
+contexts:
+main | open
+work | open
+counters: function_typed_value=2, type_position=3
+== main.bend main precise
+main
+  Sum
+  work [Passed]
+  work
+edges:
+main | L | construct Sum no init
+main | work | pass work
+main | f | call work
+main | f | unresolved function_typed_value
+contexts:
+main | open
+work | open
+counters: function_typed_value=1, type_position=3

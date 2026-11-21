@@ -8,7 +8,7 @@ use analyzer_core::graph::StableDef;
 use analyzer_core::outline::DefKind;
 use serde::Serialize;
 
-use crate::book::{DeclId, Resolved};
+use crate::book::{DeclId, FileIndex, Resolved};
 use crate::calls::{self, Bend, Precision};
 use crate::env::Env;
 use crate::sem::{ArgShape, Expr, What};
@@ -142,13 +142,17 @@ pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<Relevance> {
     // reply is the value of every call of the def
     if let Some(walk) = lang.walk_of(def) {
         let params = walk.flow.params;
-        value_params(&walk.flow.body, params, &mut passed);
-        walk.flow.body.walk(&mut |expr| {
-            if let Expr::Let { values, .. } = expr {
-                values
-                    .iter()
-                    .for_each(|value| value_params(value, params, &mut passed));
-            }
+        let file = def.file();
+        value_params(lang, file, &walk.flow.body, params, &mut passed);
+        walk.flow.body.walk(&mut |expr| match expr {
+            Expr::Let { values, .. } => values
+                .iter()
+                .for_each(|value| value_params(lang, file, value, params, &mut passed)),
+            // (f) a parameter that is a scrutinee is read through the patterns: a constructor's fields are the names it binds
+            Expr::Match { on, .. } => on
+                .iter()
+                .for_each(|value| value_params(lang, file, value, params, &mut passed)),
+            _ => {}
         });
     }
     let all: BTreeSet<u32> = called.union(&passed).copied().collect();
@@ -162,18 +166,32 @@ pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<Relevance> {
 
 /// The parameters (binders below `params`) that `expr` can have as its value: itself when it is one, and what the cases of a `match` and the end of a `let` or a sequence
 /// can have.
-fn value_params(expr: &Expr, params: u32, out: &mut BTreeSet<u32>) {
+fn value_params(
+    lang: &Bend<'_>,
+    file: FileIndex,
+    expr: &Expr,
+    params: u32,
+    out: &mut BTreeSet<u32>,
+) {
     match expr {
         Expr::Var(n) if *n < params => {
             out.insert(*n);
         }
         Expr::Match { cases, .. } => cases
             .iter()
-            .for_each(|(_, body)| value_params(body, params, out)),
-        Expr::Let { rest, .. } => value_params(rest, params, out),
+            .for_each(|(_, body)| value_params(lang, file, body, params, out)),
+        Expr::Let { rest, .. } => value_params(lang, file, rest, params, out),
         Expr::Seq(parts) => {
             if let Some(last) = parts.last() {
-                value_params(last, params, out);
+                value_params(lang, file, last, params, out);
+            }
+        }
+        // a constructor of a project type holds its fields' values (07 §9); one of Base's holds nothing the layer can read
+        Expr::Ctr { name, fields, .. } => {
+            if matches!(lang.book.ctor(file, name), Resolved::Project(_)) {
+                fields
+                    .iter()
+                    .for_each(|field| value_params(lang, file, field, params, out));
             }
         }
         _ => {}
@@ -279,6 +297,8 @@ pub(crate) enum Canon {
     Lambda(StableDef, u32),
     /// A def and what it was given, by position from the first (a value that is not exactly one def or lambda is a `Set`).
     Partial(StableDef, Vec<Canon>),
+    /// A constructor of a type, by the stable id of the type and the name of the constructor, and what it was given.
+    Ctor(StableDef, String, Vec<Canon>),
     Set {
         known: Vec<Canon>,
         open: bool,
@@ -299,6 +319,14 @@ fn canon_one(lang: &Bend<'_>, one: &One) -> Canon {
         One::Partial { def, args } => Canon::Partial(
             lang.stable_def(*def),
             args.iter().map(|arg| canon_value(lang, arg)).collect(),
+        ),
+        One::Ctor { ty, name, fields } => Canon::Ctor(
+            lang.stable_def(*ty),
+            name.to_string(),
+            fields
+                .iter()
+                .map(|field| canon_value(lang, field))
+                .collect(),
         ),
     }
 }
@@ -339,6 +367,15 @@ fn rebuild_one(lang: &Bend<'_>, canon: &Canon) -> Option<One> {
             args: args
                 .iter()
                 .map(|arg| rebuild_value(lang, arg))
+                .collect::<Option<Vec<_>>>()?
+                .into(),
+        },
+        Canon::Ctor(ty, name, fields) => One::Ctor {
+            ty: lang.decl_of(ty)?,
+            name: name.as_str().into(),
+            fields: fields
+                .iter()
+                .map(|field| rebuild_value(lang, field))
                 .collect::<Option<Vec<_>>>()?
                 .into(),
         },
@@ -518,6 +555,31 @@ mod tests {
             concat!(
                 r#"{"slots":[[1,{"Partial":[{"Path":{"module":"main.bend","qname":"each","nth":0}},"#,
                 r#"[{"Def":{"Path":{"module":"main.bend","qname":"work","nth":0}}},{"Set":{"known":[],"open":false}}]]}]]}"#
+            )
+        );
+        assert_eq!(rebuild(&lang, &canon(&lang, &key)), Some(key));
+    }
+
+    /// A constructor of a type is the stable id of the type, the name of the constructor and what it was given.
+    #[test]
+    fn the_canonical_form_of_a_constructor() {
+        let root = scratch("key-canon-ctor");
+        write(root.join("main.bend"), PROGRAM);
+        let book = Book::open(&root, std::path::Path::new("main.bend")).expect("opens");
+        let lang = Bend::new(&book, MarkerStyle::above("ID"), Precision::Precise);
+        let (work, each) = (id(&book, "work"), id(&book, "each"));
+        let object = Value::one(One::Ctor {
+            ty: each,
+            name: "Game".into(),
+            fields: vec![Value::one(One::Def(work)), Value::unknown()].into(),
+        });
+        let key = Key::from_slots(vec![(0, object)]);
+        let json = serde_json::to_string(&canon(&lang, &key)).unwrap();
+        assert_eq!(
+            json,
+            concat!(
+                r#"{"slots":[[0,{"Ctor":[{"Path":{"module":"main.bend","qname":"each","nth":0}},"Game","#,
+                r#"[{"Def":{"Path":{"module":"main.bend","qname":"work","nth":0}}},{"Set":{"known":[],"open":true}}]]}]]}"#
             )
         );
         assert_eq!(rebuild(&lang, &canon(&lang, &key)), Some(key));

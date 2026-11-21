@@ -120,7 +120,7 @@ fn resolve_from_env<'b>(
             false,
         ),
         // the item walk reads shapes, and a partial application is not one: the evaluator is what follows it
-        One::Partial { .. } => return None,
+        One::Partial { .. } | One::Ctor { .. } => return None,
     })
 }
 

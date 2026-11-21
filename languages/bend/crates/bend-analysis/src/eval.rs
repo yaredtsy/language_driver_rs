@@ -7,7 +7,7 @@
 //! name pattern gives it the value of the scrutinee), and, since V6, a call that gives a def all its written parameters has what that def's body evaluates to under
 //! the key those arguments make (`ret`, BV-D5); a call that gives a def fewer is a **partial application**, a value that is handed over where it is written and called
 //! where the rest arrive (07 §7); and a `do` statement of a project monad is a call to the monad's `bind` or `pure`, with its value at its place in the key (07 §8).
-//! Every other binder has none. No constructor has fields yet; the steps that follow give each a value, one at a time, with the rows that flip.
+//! A constructor of a project type has its fields' values, and a pattern of that constructor binds its names to them (07 §9). Every other binder has none.
 //!
 //! 🦀 The evaluator is a struct that borrows the book, the key's environment and the def's tree, and owns the one thing it fills in: a `Vec<Option<Reached>>`, one
 //! place for each item. `Option` because an item that is not a node (a type skipped, Base's `&&`) is not the evaluator's: the walk that calls it settles those.
@@ -226,10 +226,10 @@ impl<'b> Eval<'_, 'b> {
                 self.reached[*item as usize] = Some(reached);
                 value
             }
-            Expr::Ctr { item, fields, .. } => {
-                fields.iter().for_each(|f| drop(self.eval(f)));
+            Expr::Ctr { item, name, fields } => {
+                let held: Vec<Value> = fields.iter().map(|f| self.eval(f)).collect();
                 self.settle(*item);
-                Value::unknown()
+                self.object(name, held)
             }
             Expr::Sugar { item, operands } => {
                 operands.iter().for_each(|o| drop(self.eval(o)));
@@ -287,21 +287,102 @@ impl<'b> Eval<'_, 'b> {
         })
     }
 
-    /// The patterns of a `let` or a `case` against the values they match, one for one. A name takes the value; a constructor, a list, a tuple and the rest bind
-    /// their names to nothing the layer can say (a binder never set is unknown). When the counts differ nothing is bound.
+    /// The patterns of a `let` or a `case` against the values they match, one for one. When the counts differ nothing is bound.
     fn bind_all(&mut self, pats: &[Pat], values: &[Value]) {
         if pats.len() != values.len() {
             return;
         }
         for (pat, value) in pats.iter().zip(values) {
-            if let Pat::Bind(n) = pat {
+            self.bind(pat, value);
+        }
+    }
+
+    /// A pattern against a value. A name takes the value. A constructor takes each field from the join of that field over the members of the value that are that
+    /// constructor, and from nothing when the value is open or has no such member (no case is ruled out, so a case that cannot match still binds, to unknown). A list, a
+    /// tuple and the rest bind their names to nothing the layer can say (a binder never set is unknown).
+    fn bind(&mut self, pat: &Pat, value: &Value) {
+        match pat {
+            Pat::Bind(n) => {
                 let at = *n as usize;
                 if self.vars.len() <= at {
                     self.vars.resize(at + 1, Value::unknown());
                 }
                 self.vars[at] = value.clone();
             }
+            Pat::Ctr { name, fields } => {
+                let held = self.fields_of(name, value, fields.len());
+                for (field, held) in fields.iter().zip(held) {
+                    self.bind(field, &held);
+                }
+            }
+            Pat::Opaque(_) | Pat::Skip => {}
         }
+    }
+
+    /// The constructor `name` of a project type, as the book names it: its type, and the name without the path it was written with.
+    fn ctor_of(&self, name: &str) -> Option<(DeclId, String)> {
+        match self.lang.book.ctor(self.def.file(), name) {
+            Resolved::Project(ty) => Some((ty, name.rsplit('.').next().unwrap_or(name).to_owned())),
+            _ => None,
+        }
+    }
+
+    /// A constructor with what it was given, as a value; nested deeper than the cap, it is unknown there, and counted. A constructor of Base's is unknown: what
+    /// Base does with it is not ours to read.
+    fn object(&self, name: &str, held: Vec<Value>) -> Value {
+        let Some((ty, written)) = self.ctor_of(name) else {
+            return Value::unknown();
+        };
+        if !self.tracks() {
+            return Value::unknown();
+        }
+        let (value, hit) = Value::one(One::Ctor {
+            ty,
+            name: written.into(),
+            fields: held.into(),
+        })
+        .capped();
+        if hit {
+            self.lang.note_slot(calls::VALUE_WIDENED_DEPTH);
+        }
+        value
+    }
+
+    /// What each of `count` fields of the constructor `name` holds in `value`: the join over its members that are that constructor, unknown when it is open or has none.
+    fn fields_of(&self, name: &str, value: &Value, count: usize) -> Vec<Value> {
+        let unknown = || vec![Value::unknown(); count];
+        let Some((ty, written)) = self.ctor_of(name) else {
+            return unknown();
+        };
+        if value.is_open() {
+            return unknown();
+        }
+        let mut joined: Option<Vec<Value>> = None;
+        for one in value.members() {
+            let One::Ctor {
+                ty: of,
+                name: made,
+                fields,
+            } = one
+            else {
+                continue;
+            };
+            if *of != ty || **made != *written {
+                continue;
+            }
+            if fields.len() != count {
+                return unknown();
+            }
+            joined = Some(match joined {
+                None => fields.to_vec(),
+                Some(so_far) => so_far
+                    .iter()
+                    .zip(fields.iter())
+                    .map(|(a, b)| self.join(a, b))
+                    .collect(),
+            });
+        }
+        joined.unwrap_or_else(unknown)
     }
 
     /// An item that no value changes the answer for: the book's, as layer 1 gives it.
@@ -448,6 +529,8 @@ impl<'b> Eval<'_, 'b> {
         let mut short = Vec::new();
         let mut value: Option<Value> = None;
         let mut lambda = false;
+        // a constructor is not something to call: the book's answer stands beside whatever else is called
+        let mut object = false;
         let mut add = |this: &Self, v: Value| {
             value = Some(match value.take() {
                 None => v,
@@ -470,6 +553,10 @@ impl<'b> Eval<'_, 'b> {
                             calls::ANONYMOUS_FUNCTION_CALLED,
                         )));
                     }
+                }
+                One::Ctor { .. } => {
+                    add(self, Value::unknown());
+                    object = true;
                 }
                 // the arguments it was given, and these: all of them is the call, fewer is a partial application again
                 One::Partial { def, args } => {
@@ -497,7 +584,7 @@ impl<'b> Eval<'_, 'b> {
                 .iter()
                 .map(|def| walk::project(self.lang, *def, Key::open()))
                 .collect();
-        } else if head.is_open() || targets.is_empty() {
+        } else if head.is_open() || object || targets.is_empty() {
             targets.push(Target::Unresolved(Reason::new(calls::FUNCTION_TYPED_VALUE)));
             add(self, Value::unknown());
         }

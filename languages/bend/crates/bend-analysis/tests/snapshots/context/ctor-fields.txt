@@ -19,18 +19,19 @@ counters: function_typed_value=1, type_position=8
 == main.bend main precise
 main
   run
+    tick
   App
   view [Passed]
   tick [Passed]
 edges:
-main | run | call run
+main | run | call run@4cd33d69
 main | App | construct App no init
 main | view | pass view
 main | tick | pass tick
-run | t | unresolved function_typed_value
+run@4cd33d69 | t | call tick
 contexts:
 main | open
-run | open
+run | 4cd33d69721f337c2376f84d15f87f15
 tick | open
 view | open
-counters: function_typed_value=1, type_position=8
+counters: type_position=8
