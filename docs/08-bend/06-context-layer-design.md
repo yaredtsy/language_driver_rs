@@ -387,7 +387,7 @@ The numbers go into `languages/bend/ENGINE.md` under `## BC1+BC2` (the reviewer 
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | `sem/walk.rs`: the scope knows which binder is a def parameter (innermost wins); `What::Opaque { param, args }`, `What::Call { name, args }`, `ArgShape`; lambdas numbered as entered; unit tests in `sem` for each shape (a parameter shadowed by a `let` is `Local`; a `~` lambda through parentheses is `Lambda(n)`; `f(a)(k)`'s inner call carries `[a]`) | every snapshot unchanged (`walk.rs` ignores the new fields); the two oracle tests at 0 |
+| 1, 1b | `sem/walk.rs`: the scope knows which binder is a def parameter (innermost wins); `What::Opaque { param, args }`, `What::Call { name, args }`, `ArgShape`; lambdas numbered as entered; unit tests in `sem` for each shape (a parameter shadowed by a `let` is `Local`; a `~` lambda through parentheses is `Lambda(n)`; `f(a)(k)`'s inner call carries `[a]`) | every snapshot unchanged (`walk.rs` ignores the new fields); the two oracle tests at 0 |
 | 2 | `key.rs` (`Known`, `Key`, `Canon`, `digest`, `relevant`, `key_of`), `env.rs`, `calls.rs` (`Precision`, `type Key`, `digest`, the open start, `walked()`); `xxhash-rust` added to the workspace; every project `Call` target carries a key under `Precise` | under `Default` byte-identical; under `Precise`, `two-keys` has two contexts of `each` with two digests and **no new edge yet**; `not-relevant` has one context with digest zeros; the digest of one key is equal from two entries |
 | 3 | `resolve_from_env` answers; the `key_slot_*` counts; the layer-1 notes once per def; `tests/context.rs` reading the precise table of `policy.md` (it is there already); the 12 rows' fixtures and two-section snapshots; the never-fewer-edges test; `assert_deterministic` | the 12 rows flip as §9 says; a def with one `type_position`, reached under two keys, counts 1 |
 | 4 | the 7 limit rows: fixtures, snapshots (default section equals precise section) | their counters as §9 says |
@@ -395,6 +395,18 @@ The numbers go into `languages/bend/ENGINE.md` under `## BC1+BC2` (the reviewer 
 | 6 | `Session` keeps digest → canonical key; `graph_from`; the lookup from a `StableDef` to a `DeclId`; `context_not_found` | the cut-and-continue test |
 | 7 | `context_layer_on_the_demos` (ignored) and its run; the timings; the oracle tests rerun | the §12 table, in the report, with the 28 sites named |
 | 8 | (the reviewer) `ENGINE.md` §BC1+BC2, `policy.md`'s known-limits list, `04` §2, the README's state line, `07`'s row | reviewed |
+
+**State.** Step 1 built (89a07ba), reviewed 2026-11-21: the unit tests, the whole suite with no snapshot touched, clippy, the static checks and
+both oracle tests (32,805 refs, 0 in none, 0 differ) reproduced. **One thing moved, and step 1b puts it back:** the item of a call is now pushed
+after its arguments are walked, and two places *can* share a span when the callee is itself a sugar: in `a[i](1)` the call of the element and the
+`Array.get` it stands on are both at `a[i]`, in `(a & b)(1)` both at `a & b`. Layer 1 listed the call first and step 1 lists the sugar first
+(seen with `walked()` on both commits; no fixture has the form, so no snapshot noticed). The rule, now written down: **two places with one span
+keep the order layer 1 had, the outer one first**, as a `do` step's bind comes before the name it hands over (`policy.md`, row `passed-do`).
+
+Two notes for the later steps, found at this review. Whether a parameter is a `~` template is already in the outline (`Def.params[i]` is written
+`~f`, `languages/bend/docs/qualnames.md`), so step 7's split of the answered sites into template and plain needs nothing more from `sem`. An
+argument written `(x => x : T)` or `{f : T}` is `ArgShape::Other` (an annotation is not looked through, as `passable` does not): its slot is
+absent and counted `key_slot_value`.
 
 Rules for every step, as for every phase of this track: `cargo fmt`, `cargo clippy -p bend-analysis -- -D warnings` (and `-p bend-cli` where
 touched), `cargo test -p bend-analysis` with the usual caps; no product words, no engine type out of `sem` (there is none to leak here, but
