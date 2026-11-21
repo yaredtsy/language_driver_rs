@@ -1,0 +1,20 @@
+== main.bend relay default
+relay
+  each
+edges:
+each | f | unresolved function_typed_value
+relay | each | call each
+contexts:
+each | open
+relay | open
+counters: function_typed_value=1, type_position=6
+== main.bend relay precise
+relay
+  each
+edges:
+each | f | unresolved function_typed_value
+relay | each | call each
+contexts:
+each | open
+relay | open
+counters: function_typed_value=1, key_slot_open=1, type_position=6

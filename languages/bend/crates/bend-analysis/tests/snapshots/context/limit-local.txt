@@ -1,0 +1,20 @@
+== main.bend main default
+main
+  each
+edges:
+each | f | unresolved function_typed_value
+main | each | call each
+contexts:
+each | open
+main | open
+counters: function_typed_value=1, passed_deep=1, type_position=4
+== main.bend main precise
+main
+  each
+edges:
+each | f | unresolved function_typed_value
+main | each | call each
+contexts:
+each | open
+main | open
+counters: function_typed_value=1, key_slot_local=1, passed_deep=1, type_position=4

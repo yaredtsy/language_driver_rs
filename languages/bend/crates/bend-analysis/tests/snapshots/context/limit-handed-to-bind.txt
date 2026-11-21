@@ -1,0 +1,40 @@
+== main.bend main default
+main
+  P.bind
+  peek [Passed]
+  P.pure
+edges:
+P.bind | m | unresolved function_typed_value
+P.bind | f | unresolved function_typed_value
+P.bind | f(a) | unresolved function_typed_value
+P.pure | k | unresolved function_typed_value
+main | h : U32 <- peek | call P.bind
+main | peek | pass peek
+main | return h | call P.pure
+peek | k | unresolved function_typed_value
+contexts:
+P.bind | open
+P.pure | open
+main | open
+peek | open
+counters: function_typed_value=5, type_position=14
+== main.bend main precise
+main
+  P.bind
+  peek [Passed]
+  P.pure
+edges:
+P.bind | m | unresolved function_typed_value
+P.bind | f | unresolved function_typed_value
+P.bind | f(a) | unresolved function_typed_value
+P.pure | k | unresolved function_typed_value
+main | h : U32 <- peek | call P.bind
+main | peek | pass peek
+main | return h | call P.pure
+peek | k | unresolved function_typed_value
+contexts:
+P.bind | open
+P.pure | open
+main | open
+peek | open
+counters: function_typed_value=5, type_position=14

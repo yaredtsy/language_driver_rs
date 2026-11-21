@@ -33,7 +33,7 @@ fn rows(table: &str) -> Vec<Row> {
 }
 
 fn problems(table: &str, fixtures: &Path, snapshots: &Path) -> Vec<String> {
-    table::problems(table, HEADER, fixtures, snapshots, &[])
+    table::problems(table, HEADER, fixtures, snapshots)
 }
 
 /// What a row gives, group by group: the fixture folder opened as the root with the group's file as the entry of the book.

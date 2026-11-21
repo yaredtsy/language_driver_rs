@@ -1,0 +1,36 @@
+== main.bend main default
+main
+  run
+  App
+  view [Passed]
+  tick [Passed]
+edges:
+main | run | call run
+main | App | construct App no init
+main | view | pass view
+main | tick | pass tick
+run | t | unresolved function_typed_value
+contexts:
+main | open
+run | open
+tick | open
+view | open
+counters: function_typed_value=1, type_position=8
+== main.bend main precise
+main
+  run
+  App
+  view [Passed]
+  tick [Passed]
+edges:
+main | run | call run
+main | App | construct App no init
+main | view | pass view
+main | tick | pass tick
+run | t | unresolved function_typed_value
+contexts:
+main | open
+run | open
+tick | open
+view | open
+counters: function_typed_value=1, type_position=8

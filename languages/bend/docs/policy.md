@@ -146,6 +146,7 @@ rows are the known limits of the layer: both sections are equal.
 | `limit-constructor-of-defs` | `run(~app: App)` matches `case App{v, t}: t(s)`; `main` calls `run(~App{view, tick}, 0)` | `view`, `tick` `[Passed]`; `t(s)` `Unresolved` | the same: a constructor is not a Known, and `app` is not called, so nothing is counted for it (BC5: 3 demo sites) | `function_typed_value` | `limit-constructor-of-defs` `main.bend` `main` |
 | `limit-base-def` | `each(U32.show, 1)` | `each` a leaf | the same: a Base def is not a Known | `key_slot_value` | `limit-base-def` `main.bend` `main` |
 | `limit-local` | `g = work` then `each(g, 1)` | `each` a leaf | the same: a `let` is BC3's | `key_slot_local` | `limit-local` `main.bend` `main` |
+| `limit-open-parameter` | `relay(f, x)` is `each(f, x)`, and the entry is `relay` | `each` a leaf, its `f(x)` `Unresolved` | the same: `f` is `relay`'s own parameter and nobody named it (the entry is the open key, BC-D7) | `function_typed_value`, `key_slot_open` | `limit-open-parameter` `main.bend` `relay` |
 
 The counters the layer adds to `Stats.language`: `anonymous_function_called` (the reason of a call through a parameter known to be a lambda: its
 calls are drawn where the lambda is written), and, per context walked, for a parameter **the callee calls** that the caller did not name: `key_slot_open` (the argument

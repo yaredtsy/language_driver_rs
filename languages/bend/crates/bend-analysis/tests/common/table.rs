@@ -117,14 +117,12 @@ pub(crate) fn entry_name(entry: &str) -> (&str, usize) {
     }
 }
 
-/// What is wrong with a table, one sentence for each. `fixtures` is the folder of the rows' fixture folders, `snapshots` the folder of their snapshots. A row named
-/// in `unbuilt` is one whose fixture is not written yet: it is not checked for one (the allowance of a step that builds some of the rows, and no row stays in it).
+/// What is wrong with a table, one sentence for each. `fixtures` is the folder of the rows' fixture folders, `snapshots` the folder of their snapshots.
 pub(crate) fn problems(
     table: &str,
     header: &str,
     fixtures: &Path,
     snapshots: &Path,
-    unbuilt: &[&str],
 ) -> Vec<String> {
     let rows = rows(table, header);
     let mut found = Vec::new();
@@ -135,9 +133,6 @@ pub(crate) fn problems(
             found.push(format!("row `{id}`: the id is empty or used twice"));
         }
         seen.push(id);
-        if unbuilt.contains(&id.as_str()) {
-            continue;
-        }
         match &row.cell {
             Cell::Broken(why) => found.push(format!("row `{id}`: {why}")),
             Cell::Groups(groups) => {

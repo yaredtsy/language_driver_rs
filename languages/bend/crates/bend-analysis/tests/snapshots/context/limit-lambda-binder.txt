@@ -1,0 +1,20 @@
+== main.bend main default
+main
+  pure
+edges:
+main | pure | call pure
+pure | k | unresolved function_typed_value
+contexts:
+main | open
+pure | open
+counters: function_typed_value=1, type_position=3
+== main.bend main precise
+main
+  pure
+edges:
+main | pure | call pure
+pure | k | unresolved function_typed_value
+contexts:
+main | open
+pure | open
+counters: function_typed_value=1, type_position=3

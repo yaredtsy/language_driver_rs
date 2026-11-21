@@ -1,0 +1,40 @@
+== main.bend main default
+main
+  P.bind
+  drop
+  P.pure
+edges:
+P.bind | m | unresolved function_typed_value
+P.bind | f | unresolved function_typed_value
+P.bind | f(a) | unresolved function_typed_value
+P.pure | k | unresolved function_typed_value
+drop | k | unresolved function_typed_value
+main | Unit <- drop(2n) | call P.bind
+main | drop | call drop
+main | return Unit{} | call P.pure
+contexts:
+P.bind | open
+P.pure | open
+drop | open
+main | open
+counters: function_typed_value=5, type_position=15
+== main.bend main precise
+main
+  P.bind
+  drop
+  P.pure
+edges:
+P.bind | m | unresolved function_typed_value
+P.bind | f | unresolved function_typed_value
+P.bind | f(a) | unresolved function_typed_value
+P.pure | k | unresolved function_typed_value
+drop | k | unresolved function_typed_value
+main | Unit <- drop(2n) | call P.bind
+main | drop | call drop
+main | return Unit{} | call P.pure
+contexts:
+P.bind | open
+P.pure | open
+drop | open
+main | open
+counters: function_typed_value=5, key_slot_missing=1, type_position=15

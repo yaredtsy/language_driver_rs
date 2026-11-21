@@ -23,17 +23,6 @@ use common::{Program, edges_as_text_keyed, graph_at, hex, label};
 const TABLE: &str = include_str!("../../../docs/policy.md");
 const HEADER: &str = "| Precise row |";
 
-/// The limit rows whose fixtures step 4 writes. Until then the table check does not ask them for a fixture or a snapshot; step 4 empties this list.
-const NOT_YET: [&str; 7] = [
-    "limit-partial-application",
-    "limit-handed-to-bind",
-    "limit-lambda-binder",
-    "limit-bound-type",
-    "limit-constructor-of-defs",
-    "limit-base-def",
-    "limit-local",
-];
-
 const ZEROS: [u8; 16] = [0; 16];
 
 fn tests_dir() -> PathBuf {
@@ -50,10 +39,6 @@ fn snapshots_dir() -> PathBuf {
 
 fn rows() -> Vec<Row> {
     table::rows(TABLE, HEADER)
-}
-
-fn built(row: &Row) -> bool {
-    !NOT_YET.contains(&row.id.as_str())
 }
 
 fn fixture(name: &str) -> Book {
@@ -129,21 +114,21 @@ fn render_row(groups: &[Group]) -> String {
 
 #[test]
 fn every_precise_row_has_a_fixture_and_a_snapshot() {
-    let found = table::problems(TABLE, HEADER, &fixtures_dir(), &snapshots_dir(), &NOT_YET);
+    let found = table::problems(TABLE, HEADER, &fixtures_dir(), &snapshots_dir());
     assert!(found.is_empty(), "{}", found.join("\n"));
     let all = rows();
-    assert_eq!(all.len(), 20, "the table was not read");
-    assert_eq!(all.iter().filter(|r| built(r)).count(), 13);
-    assert!(
-        NOT_YET.iter().all(|id| all.iter().any(|r| r.id == *id)),
-        "a row of NOT_YET is not in the table"
-    );
+    assert_eq!(all.len(), 21, "the table was not read");
+    assert_eq!(all.iter().filter(|r| is_limit(r)).count(), 8);
+}
+
+fn is_limit(row: &Row) -> bool {
+    row.id.starts_with("limit-")
 }
 
 #[test]
 fn every_precise_row_flips_as_its_snapshot_says() {
     let mut differ = Vec::new();
-    for row in rows().iter().filter(|r| built(r)) {
+    for row in &rows() {
         let Cell::Groups(groups) = &row.cell else {
             continue;
         };
@@ -158,6 +143,53 @@ fn every_precise_row_flips_as_its_snapshot_says() {
         }
     }
     assert!(differ.is_empty(), "rows that differ: {differ:?}");
+}
+
+/// A section without its heading line, and with the `key_slot_*` counters left out of its counters (they exist only under `Precise`: they say why a slot is unnamed).
+fn without_slots(section: &str) -> String {
+    section
+        .lines()
+        .skip(1)
+        .map(|line| match line.strip_prefix("counters: ") {
+            Some(counters) => {
+                let kept: Vec<&str> = counters
+                    .split(", ")
+                    .filter(|c| !c.starts_with("key_slot_"))
+                    .collect();
+                format!("counters: {}", kept.join(", "))
+            }
+            None => line.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The `limit-*` rows are the known limits of the layer: what `Precise` draws is what `Default` draws (the tree, every edge, the contexts, the counters), and it
+/// differs in nothing but the count of why a slot was left unnamed.
+#[test]
+fn a_limit_row_draws_the_same_in_both_sections() {
+    let mut checked = 0;
+    for row in rows().iter().filter(|r| is_limit(r)) {
+        let Cell::Groups(groups) = &row.cell else {
+            panic!("row `{}` has no fixture", row.id);
+        };
+        for group in groups {
+            let book = Book::open(&fixtures_dir().join(&group.folder), Path::new(&group.file))
+                .expect("the book opens");
+            for entry in &group.entries {
+                let [default, precise] = [Precision::Default, Precision::Precise]
+                    .map(|p| section(&book, &group.file, entry_name(entry).0, p));
+                assert_eq!(
+                    without_slots(&default),
+                    without_slots(&precise),
+                    "row `{}`",
+                    row.id
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert_eq!(checked, 8);
 }
 
 /// An edge as (the def it leaves, the site, what it reaches by def or kind): digests left out, and a site that is in several contexts of one def once.
