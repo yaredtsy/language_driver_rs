@@ -208,7 +208,8 @@ graph is layer 1's, byte for byte.
 **BC-D7: the entry is the open key.** `twice` asked for by name shows its template sites unresolved, as layer 1 does: nobody told us what was
 passed. A request that **continues a cut node** (tier 3's `Budget`, BD5) today names a def, which would start from the open key and give the
 continued subtree a different answer from the whole tree. TypeScript's answer (Q-TC3, 03-design §10) is taken as it stands: `Session` keeps, for every
-context a request listed, its digest and its canonical key (dropped at a `reload`); `Session::graph_from(&ContextId, budget, cancel)` turns the
+context a request listed, its digest and its canonical key (dropped at a `reload` and at a `refresh` that builds the book again; kept in a `Mutex`, since
+`graph` takes `&self` and a `Session` is `Send + Sync`); `Session::graph_from(&ContextId, budget, cancel)` turns the
 canonical key back into a `Key` (each `StableDef` is looked up as an entry is: by marker, or by path, qualname and `nth`) and starts the solver
 there; a digest it does not know, or a def that is gone, starts from the open key and counts `context_not_found`. What the driver sends is a
 `vnoc`-side change that waits for Q-TC3; until then a node continued the old way is correct and less precise.
@@ -387,7 +388,7 @@ agree have one `expected.tree`.
 | `two-callers` and `callback-argument` at `Level::Precise` | the shared definition of done |
 | the cut-and-continue test: a tree cut at `Budget { max_depth: Some(1) }` and continued with `graph_from` at each frontier node equals the tree asked for whole | BC-D7 |
 | `every_ref_the_oracle_prints_is_accounted_for` and `every_ref_the_oracle_prints_resolves` (ignored, `--test corpus`) rerun after step 1: **0 in none, 0 differ**, as before | the walk's places did not move while `sem` learned the binders and the arguments |
-| **the demos** (ignored, `--test corpus`, `context_layer_on_the_demos`): the 16 books of the sweep, each entered at its `main` with `Precision::Precise`, whole graph. For every `function_typed_value` site of layer 1 (the 55, from `walked()` under `Default`), the contexts of its def that the graph has, and whether the site is answered in all of them, in some, in none, or the def is not reached. Printed as a table and as a list, one line per site: `file def line callee-text → class, target(s)` | **28 answered in every context (16 at a `~` parameter, 12 at a plain one), 0 in some, 27 in none**, each of the 27 in a §10 row; the 28 named, so the next measurement can see one move |
+| **the demos** (ignored, `--test corpus`, `context_layer_on_the_demos`): the 16 books of the sweep, each entered at its `main` with `Precision::Precise`, whole graph. For every `function_typed_value` site of layer 1 (the 55, from `walked()` under `Default`), the contexts of its def that the graph has, and whether the site is answered in all of them, in some, in none, or the def is not reached. Printed as a table and as a list, one line per site: `file def line callee-text → class, target(s)` | **28 named in every context (16 at a `~` parameter, 12 at a plain one), 0 in some, 27 in none**, each of the 27 in a §10 row; the 28 listed, so the next measurement can see one move. "Named" is BC0's word and has two outcomes here, counted apart: **drawn** (the site is a `Call` of a def) and **known to be a lambda** (`anonymous_function_called`: its calls are drawn where it is written, §6). BC0 counted a path that ends at a lambda as named, so the 28 are both kinds |
 | the same run: contexts, walks, wall time, `Default` against `Precise`, per book | what the layer costs; written in `ENGINE.md` |
 
 The numbers go into `languages/bend/ENGINE.md` under `## BC1+BC2` (the reviewer writes it from the coder's report), and the plan's §2 of
@@ -450,6 +451,21 @@ snapshots read one by one, no cell contradicted. The 13 flipping snapshots lost 
 the same text again, 21 rows. A limit row's two sections differ in one thing, the `key_slot_*` counter that says why (`Precise` alone counts it).
 For step 5 the reviewer wrote the scenario's files that are not code: `scenarios/callback-argument/README.md` and its two shared trees, and
 `scenarios/two-callers/expected.precise.bend.tree`, as §11 gives them; the coder adds `bend/main.bend` and the test's precise subject.
+
+**Steps 5 and 6 built (03270d3, b334658), reviewed 2026-11-21**: every proof reproduced (117 tests, clippy and fmt clean, the static checks, both
+oracle tests at 0, no layer-1 snapshot and none of the reviewer's scenario files touched); the CLI prints the two trees of `two-callers` and of
+`callback-argument` as §11 gives them and refuses `--all --precise` with a sentence. The session keeps its keys in a `Mutex`, because `graph` takes
+`&self` and a `Session` is `Send + Sync` (a test says so); the lock is never held while a graph is built. A digest the session never made counts
+`context_not_found` under either precision.
+
+**A look ahead of step 7, with the new flag** (the reviewer's own run, `bend-cli calls <demo> <entry> --entry main`, 2026-11-21): under `Default`
+the 16 books have 55 unresolved edges, BC0's 55, in four of them: `app_slash_boss_3d` 20, `io_rollback_netcode` 13, `io_tcp_echos` 1,
+`pure_hvm5_mini` 21. Under `Precise`: `app_slash_boss_3d` has 16 more calls and 4 `anonymous_function_called` left, with the same 424 contexts
+(each templated def is reached under one key); `io_tcp_echos` has its 1 as `anonymous_function_called`; `pure_hvm5_mini` is unchanged at 21, with
+`key_slot_missing` 14 and `key_slot_open` 5, as BC0 said of its CPS parser; `io_rollback_netcode` goes from 130 contexts to 160 and from 13
+unresolved edges to 70 (64 `anonymous_function_called`, 6 `function_typed_value`): edges are per context, so a count of edges grows where the
+count of sites falls, which is why step 7 counts sites. **What this already says: a good part of the 28 are lambdas**, known and not drawn under
+BC-D6. Step 7 gives the split; it is the number that says what moving a lambda's calls under its caller (TC7) would be worth in Bend.
 
 Two notes for the later steps, found at this review. Whether a parameter is a `~` template is already in the outline (`Def.params[i]` is written
 `~f`, `languages/bend/docs/qualnames.md`), so step 7's split of the answered sites into template and plain needs nothing more from `sem`. An
