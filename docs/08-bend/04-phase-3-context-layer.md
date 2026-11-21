@@ -18,6 +18,14 @@ after BC0's numbers, as the other two tracks do.
 
 ## 1. What "context" means in Bend
 
+**Measured (BC0, 2026-11-21, `languages/bend/ENGINE.md` §BC0): the table below had four ways; the sites show six.** The two missing: a lambda's
+own binder (`k => s => k(x, s)`, a CPS continuation; 1 of the demos' 55 sites, 27 in the corpus) and a parameter the callers **never pass at
+all** (partial application: `Unit <- drop(2n)` applies `drop` to one of its three arguments and `P.bind` supplies the rest later; 10 of the
+demos' 32 parameter sites). And a template argument is not only "a def or a lambda": it is any **closed** term, and the demos pass a nullary
+def called at compile time (`~World()`), a constructor of defs (`~App{Fly.view, Fly.tick}`) and, 330 times out of 387, **the caller's own `~`
+parameter passed along**. So `Known` must hold a closed term (a def, a lambda, a call, a constructor), and the key must **flow down** through
+callers from the first commit, or BC1 resolves 1 of the 16 template sites instead of 16.
+
 Layer 1 leaves exactly one kind of site unresolved: **a call whose callee is a variable** (`function_typed_value`). A variable holds a function
 in four ways:
 
@@ -35,6 +43,15 @@ layer 1's context ids do not move until a key is non-empty (as RC1 says for Rust
 
 ## 2. BC0: the measurement
 
+**Done (2026-11-21, 6f4cff0): the numbers are in `languages/bend/ENGINE.md` §BC0, checked two ways (the spike's site list equals the crate's
+`walked()` spans over 78,814 defs; its totals are the sweep's).** The demos: 55 `function_typed_value` sites in 4,323 call sites (1.3%): 16
+template parameters, 32 plain parameters, 3 closures from a call's result (all `f(a)(k)`, none a `let`), 3 constructor fields, 0 do binds, 0
+lambdas in place, 1 lambda's binder. Following callers up names the function for all 16 templates and 12 of the 32 parameters; the 20 others
+are 17 in one program (`pure_hvm5_mini`'s CPS parser: partial applications and primitives handed to `P.bind`) and 3 with no caller but the
+sugar. Base: 35 of 820 sites, 91% templates and parameters. The corpus's 545 are 440 checker probes in `tests/`. **Verdict:** BC1 and BC2 are
+one mechanism and pay (28 of 55 sites, 0.65 points of all call sites, exact for templates); BC3, BC4 and BC5 do not pay today (3, 0 and 3
+sites) and wait for a program of the owner's that has them. Whether to build BC1+BC2 at all is Q-BD8 (05 §3).
+
 A prior, from a regex count another reader made on the demos at the same commit (2026-11-20, not ours, **[measure]** in BC0): about 5,900
 call sites, 64 with a local variable as head; in Base, 39 of about 1,000. If that holds, layer 1 resolves about 99% of sites by name and the
 context layer is about the last 1%, which is why it is designed small and scheduled last.
@@ -44,7 +61,7 @@ four ways it is, and for the first two, whether the caller's argument is a def, 
 if templates and parameters together are most of the sites (the guide says templates are "how `List.map` is written in Base", and user code
 calls Base's higher-order defs far more than it writes its own), BC1 and BC2 pay; if most sites are closures through lets, BC3 first.
 
-## 3. BC1: templates
+## 3. BC1: templates (built together with BC2 as one step, per BC0)
 
 - `walk(f, key)` reads a `Term::Call` whose callee is a `~` parameter as a `Call` to `key[param]` when the key has it; `Unresolved` otherwise.
 - At a call `t(~g, a)` in the caller's walk, the target is `Call(t, key')` with `key' = {0 ↦ g}`: the solver opens a context of `t` per distinct
@@ -68,7 +85,7 @@ caller's own parameter stays unknown **unless the caller's key knows it** (the k
 Proof: `two-callers` and `callback-argument` (closure form) match the precise trees; `variable` row splits into `resolved_by_key` and the
 remaining `function_typed_value`.
 
-## 5. BC3–BC5
+## 5. BC3–BC5 (not worth building today: BC0's numbers; each stays a fixture of the known limits)
 
 | Phase | Adds | The Bend case | Limit |
 |---|---|---|---|
@@ -83,6 +100,10 @@ remaining `function_typed_value`.
 - a function read from a `do` block's bind (`f : U32 -> U32 <- IO.try(…)`): a value from an effect; `function_typed_value`.
 - an `Array<U32 -> U32>` element called: `Array.get` is Base; unresolved.
 - hub packages: external, whole.
+- **partial application in a CPS monad** (`Unit <- drop(2n)`, the continuation supplied later by `P.bind`) and a primitive handed to the
+  monad's bind (`eof`, `peek`, `pop`): the function is applied by Base-like glue the caller never names; 17 of the demos' 55 sites, all in
+  `pure_hvm5_mini`. A limit, with a fixture.
+- a lambda's own binder called (`k => s => k(x, s)`): the value comes from whoever calls the lambda; a limit, with a fixture.
 
 These are listed so the owner can read the limits as a list of fixtures, one each, as RC6 does.
 

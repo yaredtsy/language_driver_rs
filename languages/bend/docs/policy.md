@@ -64,7 +64,7 @@ A name none of the four knows is `Unresolved(unknown_name)`. Every resolved edge
 | `op-base` | `(a + b : U32)`, `(a < b : U32)`, `x && y`, `s ++ t`, `h <> l` | nothing: Base's arithmetic and the fixed operators are the language's, not sites (BD-D8); a Base call written out (`U32.add(a, b)`) is still an `External` | `sugar_base`, one per operator | `op-base` `main.bend` `main` |
 | `index` | `a[i]`, `a[i] <- v` | nothing (Base's `Array.get` / `Array.set`); the site is the whole `a[i]`, as Bend's `Ref` is (46 of 46 demo indexes equal) | `sugar_base` | `index` `main.bend` `main` |
 | `do-project` | `do Parser<U32>:` with `def Parser.bind`, `def Parser.pure` in the project | `Call Parser.bind` per bind, exec or step (the site is the statement), `Call Parser.pure` per `return`; the statement's own call (`item()`) is drawn too, before its bind (sites sort by start) | | `do-project` `main.bend` `main` |
-| `passed-do` | `x : String <- name`, `Unit <- pop`, a step `tick`, in a `do` of a project monad, with `name`, `pop`, `tick` defs | `Call Parser.bind` for each statement as in `do-project`, and `name`, `pop`, `tick`: passed edges (D22) at the name's span, a bare def name being a direct argument of the sugar's `M.bind`; a step's statement and its name share a span, the bind first | | `passed-do` `main.bend` `main` |
+| `passed-do` | `x : String <- name`, `Unit <- pop`, a step `tick`, `return done`, in a `do` of a project monad, with `name`, `pop`, `tick`, `done` defs | `Call Parser.bind` for each statement as in `do-project`, and `name`, `pop`, `tick`: passed edges (D22) at the name's span, a bare def name being a direct argument of the sugar's `M.bind`; a step's statement and its name share a span, the bind first | | `passed-do` `main.bend` `main` |
 | `do-base` | `do IO<Unit>:`, `do Maybe<U32>:` | nothing for the monad; a Base call inside a step (`IO.print("a")`) is still its `External` | `sugar_base`, one per statement | `do-base` `main.bend` `main` `maybe` |
 | `rewrite` | `%add_zero(p) : Nat` | `Call add_zero`: proof code calls proof code | | `rewrite` `main.bend` `main` |
 | `type-position` | `-> Or(IsEven(n), Empty)`, `{Unit{} : IsEven(n)}`, `List<Nat>`: calls and constructors inside a type | nothing, in layer 1 (BD-D9): parameter and return types, annotations' right sides, type arguments, a `do`'s monad arguments, bind and let types, `@` domains, a rewrite's motive, a law's claim | `type_position`, one per skipped term | `type-position` `main.bend` `main` |
@@ -116,9 +116,10 @@ and `law-across-files` give the shared tree; `construct-marked-class` and `two-c
 
 ## Known limits, each a fixture
 
-- a bare project def as the value of a `do` bind, exec or step is a passed edge since 85aee89 (row `passed-do`; the demos' `passed_deep`
-  fell from 28 to 15, the rest being type names in value position, which owe nothing under BD-D9). **Owed, small:** the same for a `return
-  name` (a direct argument of `M.pure`); no demo has one.
+- a bare project def as the value of a `do` bind, exec, step or `return` is a passed edge since 85aee89 and 55368ce (row `passed-do`; the
+  demos' `passed_deep` fell from 28 to 15, the rest being type names in value position, which owe nothing under BD-D9).
+- the sites the context layer would resolve, measured (BC0, `ENGINE.md`): 55 of the demos' 4,323 call sites; what it would not: partial
+  application in a CPS monad and a lambda's own binder (`docs/08-bend/04` §6).
 - a closure called after being stored (`add2(1)`) and a closure returned by a call (`adder(2)(…)`) are unresolved: BC3 (values through lets
   and returns).
 - a template parameter called inside its def is unresolved for every caller: BC1 resolves it per call site, exactly.
