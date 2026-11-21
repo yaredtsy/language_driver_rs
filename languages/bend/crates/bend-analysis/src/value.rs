@@ -6,6 +6,9 @@
 use crate::book::DeclId;
 use crate::key::Known;
 
+/// The most members a set may have (BV-D8): a larger one is unknown.
+pub(crate) const MAX_SET: usize = 8;
+
 /// One thing a place can hold.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum One {
@@ -67,20 +70,18 @@ impl Value {
     }
 
     /// The members, sorted.
-    #[cfg(test)]
     pub(crate) fn members(&self) -> &[One] {
         &self.known
     }
 
-    #[cfg(test)]
     pub(crate) fn is_open(&self) -> bool {
         self.open
     }
 
     /// What can be at a place that holds this in one case and `other` in another: the members of both, and open when either is. No case is ruled out (no condition is
-    /// evaluated), so the join of the cases of a `match` is the value of the `match`. The cap on the size of a set, and its counter, come with the first value that
-    /// grows (V4).
-    pub(crate) fn join(&self, other: &Value) -> Value {
+    /// evaluated), so the join of the cases of a `match` is the value of the `match`. `None` when the set would hold more than [`MAX_SET`] members: the caller says
+    /// it is unknown, and counts it (`value_widened_set`).
+    pub(crate) fn join(&self, other: &Value) -> Option<Value> {
         let mut known: Vec<One> = self
             .known
             .iter()
@@ -89,10 +90,13 @@ impl Value {
             .collect();
         known.sort_unstable();
         known.dedup();
-        Value {
+        if known.len() > MAX_SET {
+            return None;
+        }
+        Some(Value {
             known: known.into(),
             open: self.open || other.open,
-        }
+        })
     }
 }
 
@@ -134,23 +138,44 @@ mod tests {
         };
         assert_eq!(Value::one(lambda).single(), Some(lambda));
         // two members, or one member that something else may be beside: not a slot
-        assert_eq!(Value::one(def(1)).join(&Value::one(def(2))).single(), None);
-        assert_eq!(Value::one(def(1)).join(&Value::unknown()).single(), None);
+        assert_eq!(
+            Value::one(def(1))
+                .join(&Value::one(def(2)))
+                .unwrap()
+                .single(),
+            None
+        );
+        assert_eq!(
+            Value::one(def(1)).join(&Value::unknown()).unwrap().single(),
+            None
+        );
     }
 
     #[test]
     fn a_join_is_sorted_has_no_duplicates_and_is_open_when_either_is() {
-        let a = Value::one(def(2)).join(&Value::one(def(1)));
-        let b = Value::one(def(1)).join(&Value::one(def(2)));
+        let a = Value::one(def(2)).join(&Value::one(def(1))).unwrap();
+        let b = Value::one(def(1)).join(&Value::one(def(2))).unwrap();
         // the order the cases came in does not matter
         assert_eq!(a, b);
         assert_eq!(a.members(), [def(1), def(2)]);
-        assert_eq!(a.join(&Value::one(def(2))), a);
+        assert_eq!(a.join(&Value::one(def(2))), Some(a.clone()));
         assert!(!a.is_open());
-        assert!(a.join(&Value::unknown()).is_open());
+        assert!(a.join(&Value::unknown()).unwrap().is_open());
         // data adds nothing
-        assert_eq!(a.join(&Value::data()), a);
-        assert_eq!(Value::data().join(&Value::data()), Value::data());
+        assert_eq!(a.join(&Value::data()), Some(a.clone()));
+        assert_eq!(Value::data().join(&Value::data()), Some(Value::data()));
+    }
+
+    #[test]
+    fn a_set_of_more_than_eight_is_not_a_set() {
+        let mut set = Value::data();
+        for n in 0..MAX_SET {
+            set = set.join(&Value::one(def(n))).expect("up to the cap");
+        }
+        assert_eq!(set.members().len(), MAX_SET);
+        // one more member of the same set, or none, is no change; a ninth def is over
+        assert_eq!(set.join(&Value::one(def(3))), Some(set.clone()));
+        assert_eq!(set.join(&Value::one(def(MAX_SET))), None);
     }
 
     #[test]

@@ -154,6 +154,37 @@ impl Expr {
         }
     }
 
+    /// Every node of the tree, this one first, then each part in the order the tree is read.
+    pub(crate) fn walk(&self, f: &mut dyn FnMut(&Expr)) {
+        f(self);
+        match self {
+            Expr::Unknown | Expr::Data | Expr::Var(_) | Expr::Name { .. } => {}
+            Expr::Lam { body, .. } => body.walk(f),
+            Expr::Call { head, args, .. } => {
+                head.walk(f);
+                args.iter().for_each(|a| a.walk(f));
+            }
+            Expr::Ctr { fields, .. } => fields.iter().for_each(|e| e.walk(f)),
+            Expr::Sugar { operands, .. } => operands.iter().for_each(|e| e.walk(f)),
+            Expr::Bind {
+                types, value, rest, ..
+            } => {
+                types.iter().for_each(|t| t.walk(f));
+                value.walk(f);
+                rest.walk(f);
+            }
+            Expr::Let { values, rest, .. } => {
+                values.iter().for_each(|v| v.walk(f));
+                rest.walk(f);
+            }
+            Expr::Match { on, cases } => {
+                on.iter().for_each(|e| e.walk(f));
+                cases.iter().for_each(|(_, body)| body.walk(f));
+            }
+            Expr::Seq(parts) => parts.iter().for_each(|p| p.walk(f)),
+        }
+    }
+
     /// The same tree with every item index `f` of it.
     pub(crate) fn map_items(&mut self, f: &dyn Fn(u32) -> u32) {
         match self {

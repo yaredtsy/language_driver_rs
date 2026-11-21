@@ -11,10 +11,12 @@ counters: function_typed_value=1, passed_deep=1, type_position=4
 == main.bend main precise
 main
   each
+    work
 edges:
-each | f | unresolved function_typed_value
-main | each | call each
+each@e5163dd2 | f | call work
+main | each | call each@e5163dd2
 contexts:
-each | open
+each | e5163dd2de398288bafd317070624c16
 main | open
-counters: function_typed_value=1, key_slot_local=1, passed_deep=1, type_position=4
+work | open
+counters: passed_deep=1, type_position=6

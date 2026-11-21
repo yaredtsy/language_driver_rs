@@ -41,6 +41,9 @@ pub(crate) const KEY_SLOT_LOCAL: &str = "key_slot_local";
 pub(crate) const KEY_SLOT_VALUE: &str = "key_slot_value";
 pub(crate) const KEY_SLOT_MISSING: &str = "key_slot_missing";
 
+/// A set of values with more than `value::MAX_SET` members was met in a context: it is unknown there. A precision limit, counted per context walked.
+pub(crate) const VALUE_WIDENED_SET: &str = "value_widened_set";
+
 /// The reasons of the `Unresolved` edges; the same strings are their counters.
 pub(crate) const FUNCTION_TYPED_VALUE: &str = "function_typed_value";
 /// A call through a parameter that is known to be a lambda: its calls are drawn where the lambda is written (BC-D6).

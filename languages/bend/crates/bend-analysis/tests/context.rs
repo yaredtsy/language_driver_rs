@@ -117,8 +117,8 @@ fn every_precise_row_has_a_fixture_and_a_snapshot() {
     let found = table::problems(TABLE, HEADER, &fixtures_dir(), &snapshots_dir());
     assert!(found.is_empty(), "{}", found.join("\n"));
     let all = rows();
-    assert_eq!(all.len(), 21, "the table was not read");
-    assert_eq!(all.iter().filter(|r| is_limit(r)).count(), 8);
+    assert_eq!(all.len(), 25, "the table was not read");
+    assert_eq!(all.iter().filter(|r| is_limit(r)).count(), 7);
 }
 
 fn is_limit(row: &Row) -> bool {
@@ -189,7 +189,7 @@ fn a_limit_row_draws_the_same_in_both_sections() {
             }
         }
     }
-    assert_eq!(checked, 8);
+    assert_eq!(checked, 7);
 }
 
 /// An edge as (the def it leaves, the site, what it reaches by def or kind): digests left out, and a site that is in several contexts of one def once.
@@ -459,13 +459,13 @@ fn an_unnamed_slot_is_counted_by_why() {
             "def relay(f: U32 -> U32) -> U32:\n  each(f)\n\n",
             "def open(f: U32 -> U32, x: U32) -> U32:\n  each(f, x)\n\n",
             "def main(m: U32 -> U32) -> U32:\n",
-            "  g = work\n  a = each(g, 1)\n  b = each(U32.show, 1)\n  c = open(m, 1)\n  d = second(1)\n  e = each(m, 1)\n  relay(work)\n",
+            "  g = m\n  a = each(g, 1)\n  b = each(U32.show, 1)\n  c = open(m, 1)\n  d = second(1)\n  e = each(m, 1)\n  relay(work)\n",
         ),
     )]);
     let book = program.book("main.bend");
     let precise = graph_at(&book, "main.bend", "main", Precision::Precise).expect("a graph");
     // `each` calls position 0, `second` position 1; `relay` and `open` call none. `main` walks:
-    //   each(g, 1)          position 0 is a `let`: local; the `1` at position 1 is not called: not counted
+    //   each(g, 1)          position 0 is a `let` whose value nothing says (`g = m`, and `m` is unknown): local; the `1` at position 1 is not called: not counted
     //   each(U32.show, 1)   position 0 is a Base def: value
     //   open(m, 1)          `open` calls nothing: not counted
     //   second(1)           position 1 is missing: missing
@@ -477,4 +477,142 @@ fn an_unnamed_slot_is_counted_by_why() {
     assert_eq!(counter(&precise, "key_slot_value"), 1);
     assert_eq!(counter(&precise, "key_slot_missing"), 1);
     assert_eq!(counter(&precise, "key_slot_open"), 2);
+}
+
+/// What a variable holds, in a program of one `main`: `defs` are written first, and the precise graph of `main` is asked for.
+fn variable_graph(defs: &str, main: &str) -> Graph {
+    let program = Program::new(&[("main.bend", &format!("{defs}\n{main}"))]);
+    let book = program.book("main.bend");
+    graph_at(&book, "main.bend", "main", Precision::Precise).expect("a graph")
+}
+
+const DEFS: &str = concat!(
+    "def work(x: U32) -> U32:\n  x\n\n",
+    "def other(x: U32) -> U32:\n  x\n\n",
+    "def each(f: U32 -> U32, x: U32) -> U32:\n  f(x)\n",
+);
+
+/// What the calls leaving `from` (a def's qualname) reach, as text, sorted: the callee of every call edge, or why it has none. A def handed over and a construction
+/// are not calls.
+fn reached_from(graph: &Graph, from: &str) -> Vec<String> {
+    let mut reached: Vec<String> = graph
+        .edges
+        .iter()
+        .filter(|e| matches!(&e.from.func, StableDef::Path { qname, .. } if qname == from))
+        .filter_map(|e| match &e.to {
+            EdgeTo::Context(..) if e.passed => None,
+            EdgeTo::Context(id, _) => Some(label(graph, &id.func)),
+            EdgeTo::Unresolved(reason) => Some(format!("unresolved {}", reason.as_str())),
+            _ => None,
+        })
+        .collect();
+    reached.sort();
+    reached
+}
+
+/// Keys are single-valued (V3): a variable that holds two defs is called as both, but as an argument it has no slot, and says so as a value, not as a local.
+#[test]
+fn a_set_in_an_argument_has_no_slot() {
+    let graph = variable_graph(
+        DEFS,
+        concat!(
+            "def main(b: Bool) -> U32:\n",
+            "  g = (match b:\n         case True{}:\n           work\n         case False{}:\n           other)\n",
+            "  each(g, 1)\n",
+        ),
+    );
+    assert_eq!(contexts_of(&graph, "each").len(), 1);
+    assert_eq!(contexts_of(&graph, "each")[0].digest, ZEROS);
+    assert_eq!(
+        reached_from(&graph, "each"),
+        ["unresolved function_typed_value"]
+    );
+    assert_eq!(counter(&graph, "key_slot_value"), 1);
+    assert_eq!(counter(&graph, "key_slot_local"), 0);
+}
+
+/// A variable that holds a def and a lambda is both answers at the one site, the lambda's once however many there are; one that may hold something else too has the
+/// book's answer beside them.
+#[test]
+fn a_variable_is_called_as_every_member_and_as_unknown_when_it_may_be() {
+    let graph = variable_graph(
+        DEFS,
+        concat!(
+            "def main(b: Bool) -> U32:\n",
+            "  g = (match b:\n         case True{}:\n           work\n         case False{}:\n           y => other(y))\n",
+            "  g(1)\n",
+        ),
+    );
+    assert_eq!(
+        reached_from(&graph, "main"),
+        ["other", "unresolved anonymous_function_called", "work"]
+    );
+    // `h` is main's own parameter and nobody named it
+    let graph = variable_graph(
+        DEFS,
+        concat!(
+            "def main(b: Bool, h: U32 -> U32) -> U32:\n",
+            "  g = (match b:\n         case True{}:\n           work\n         case False{}:\n           h)\n",
+            "  g(1)\n",
+        ),
+    );
+    assert_eq!(
+        reached_from(&graph, "main"),
+        ["unresolved function_typed_value", "work"]
+    );
+}
+
+/// A `case` with a name pattern takes the scrutinee's value; a constructor pattern's names have none.
+#[test]
+fn a_case_name_takes_the_scrutinee_and_a_constructor_pattern_does_not() {
+    let graph = variable_graph(
+        DEFS,
+        "def main() -> U32:\n  match work:\n    case g:\n      g(1)\n",
+    );
+    assert_eq!(reached_from(&graph, "main"), ["work"]);
+    let graph = variable_graph(
+        "type Holder is Data:\n  Hold{f: U32 -> U32}\n\ndef work(x: U32) -> U32:\n  x\n",
+        "def main() -> U32:\n  match Hold{work}:\n    case Hold{g}:\n      g(1)\n",
+    );
+    assert_eq!(
+        reached_from(&graph, "main"),
+        ["unresolved function_typed_value"]
+    );
+}
+
+/// A set of more than eight members is unknown, and counted (`value_widened_set`): the nine cases of a `match` make nine defs, and the call is the book's.
+#[test]
+fn a_set_past_the_cap_is_unknown_and_counted() {
+    let defs: String = (1..=9)
+        .map(|n| format!("def f{n}(x: U32) -> U32:\n  x\n\n"))
+        .collect();
+    let mut cases: Vec<String> = (1..=8)
+        .map(|n| format!("         case {n}:\n           f{n}\n"))
+        .collect();
+    cases.push("         case m:\n           f9)\n".to_owned());
+    let main = format!(
+        "def main(n: U32) -> U32:\n  g = (match n:\n{}  g(1)\n",
+        cases.concat()
+    );
+    let graph = variable_graph(&defs, &main);
+    assert_eq!(counter(&graph, "value_widened_set"), 1);
+    assert_eq!(
+        reached_from(&graph, "main"),
+        ["unresolved function_typed_value"]
+    );
+    // eight members is the cap itself, and fits
+    let defs8: String = (1..=8)
+        .map(|n| format!("def f{n}(x: U32) -> U32:\n  x\n\n"))
+        .collect();
+    let mut cases: Vec<String> = (1..=7)
+        .map(|n| format!("         case {n}:\n           f{n}\n"))
+        .collect();
+    cases.push("         case m:\n           f8)\n".to_owned());
+    let main = format!(
+        "def main(n: U32) -> U32:\n  g = (match n:\n{}  g(1)\n",
+        cases.concat()
+    );
+    let graph = variable_graph(&defs8, &main);
+    assert_eq!(counter(&graph, "value_widened_set"), 0);
+    assert_eq!(reached_from(&graph, "main").len(), 8);
 }

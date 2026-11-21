@@ -1,0 +1,26 @@
+== main.bend main default
+main
+  work
+  each
+edges:
+each | f | unresolved function_typed_value
+main | work | call work
+main | each | call each
+contexts:
+each | open
+main | open
+work | open
+counters: function_typed_value=1, type_position=6
+== main.bend main precise
+main
+  work
+  each
+edges:
+each@7662768d | f | unresolved anonymous_function_called
+main | work | call work
+main | each | call each@7662768d
+contexts:
+each | 7662768dac7816b161fe0ba4793e00a7
+main | open
+work | open
+counters: anonymous_function_called=1, type_position=6

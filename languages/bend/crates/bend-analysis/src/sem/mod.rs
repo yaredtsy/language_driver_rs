@@ -11,7 +11,7 @@ use analyzer_core::text::Span;
 mod flow;
 mod walk;
 
-pub(crate) use flow::Expr;
+pub(crate) use flow::{Expr, Pat};
 pub(crate) use walk::{ArgShape, DefWalk, Item, Sugar, What, of as walk_of, walks};
 
 /// One `import` line, as written.

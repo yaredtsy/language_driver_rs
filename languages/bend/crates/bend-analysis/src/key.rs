@@ -11,7 +11,7 @@ use serde::Serialize;
 use crate::book::{DeclId, Resolved};
 use crate::calls::{self, Bend, Precision};
 use crate::env::Env;
-use crate::sem::{ArgShape, What};
+use crate::sem::{ArgShape, Expr, What};
 
 /// What a caller is known to have put in a function-shaped parameter. Closed: it names no variable of any def (BC-D1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -101,7 +101,7 @@ pub(crate) fn known_def(lang: &Bend<'_>, id: DeclId) -> bool {
     file.in_root && decl.kind == DefKind::Function
 }
 
-/// The relevant parameters of a def (BC-D2), and which of them the def itself calls.
+/// The relevant parameters of a def (BC-D2, and the value of a `let`, V3), and which of them the def itself calls.
 pub(crate) struct Relevance {
     /// Every relevant position: called (a), or passed along to a project def (b) or through a parameter (c). A key has a slot for each one a caller names.
     pub(crate) all: Box<[u32]>,
@@ -143,6 +143,17 @@ pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<Relevance> {
             _ => {}
         }
     }
+    // (d) a parameter that is the value of a `let` is read through the variable: `g = f`, then `g(x)` calls what a caller named for `f`
+    if let Some(walk) = lang.walk_of(def) {
+        let params = walk.flow.params;
+        walk.flow.body.walk(&mut |expr| {
+            if let Expr::Let { values, .. } = expr {
+                values
+                    .iter()
+                    .for_each(|value| value_params(value, params, &mut passed));
+            }
+        });
+    }
     let all: BTreeSet<u32> = called.union(&passed).copied().collect();
     let found = Rc::new(Relevance {
         all: all.into_iter().collect(),
@@ -150,6 +161,26 @@ pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<Relevance> {
     });
     lang.relevant.borrow_mut().insert(def, Rc::clone(&found));
     found
+}
+
+/// The parameters (binders below `params`) that `expr` can have as its value: itself when it is one, and what the cases of a `match` and the end of a `let` or a sequence
+/// can have.
+fn value_params(expr: &Expr, params: u32, out: &mut BTreeSet<u32>) {
+    match expr {
+        Expr::Var(n) if *n < params => {
+            out.insert(*n);
+        }
+        Expr::Match { cases, .. } => cases
+            .iter()
+            .for_each(|(_, body)| value_params(body, params, out)),
+        Expr::Let { rest, .. } => value_params(rest, params, out),
+        Expr::Seq(parts) => {
+            if let Some(last) = parts.last() {
+                value_params(last, params, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn param_of(arg: &ArgShape) -> Option<u32> {
