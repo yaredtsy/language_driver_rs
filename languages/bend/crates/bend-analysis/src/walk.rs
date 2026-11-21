@@ -111,7 +111,7 @@ fn resolve_from_env<'b>(
         return None;
     };
     Some(match env.known(*at)?.single()? {
-        One::Def(callee) => site(
+        &One::Def(callee) => site(
             project(lang, callee, key::key_of(lang, def, callee, args, env)),
             false,
         ),
@@ -119,6 +119,8 @@ fn resolve_from_env<'b>(
             Target::Unresolved(Reason::new(calls::ANONYMOUS_FUNCTION_CALLED)),
             false,
         ),
+        // the item walk reads shapes, and a partial application is not one: the evaluator is what follows it
+        One::Partial { .. } => return None,
     })
 }
 

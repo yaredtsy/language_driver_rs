@@ -70,6 +70,8 @@ pub(crate) enum Absent {
     Value,
     /// The call has no argument at that position (partial application).
     Missing,
+    /// The position is a `do` statement's continuation, which is never in a key (07 §8): nothing is counted.
+    Stays,
 }
 
 impl Absent {
@@ -81,6 +83,7 @@ impl Absent {
             Absent::Local => Some(calls::KEY_SLOT_LOCAL),
             Absent::Value => Some(calls::KEY_SLOT_VALUE),
             Absent::Missing => Some(calls::KEY_SLOT_MISSING),
+            Absent::Stays => None,
         }
     }
 }
@@ -274,7 +277,12 @@ pub(crate) fn key_with(
 pub(crate) enum Canon {
     Def(StableDef),
     Lambda(StableDef, u32),
-    Set { known: Vec<Canon>, open: bool },
+    /// A def and what it was given, by position from the first (a value that is not exactly one def or lambda is a `Set`).
+    Partial(StableDef, Vec<Canon>),
+    Set {
+        known: Vec<Canon>,
+        open: bool,
+    },
 }
 
 /// A key written out with nothing request-local in it, in position order. A later field of this struct is `skip_serializing_if` its empty form, so a key that does not use it
@@ -288,12 +296,16 @@ fn canon_one(lang: &Bend<'_>, one: &One) -> Canon {
     match one {
         One::Def(def) => Canon::Def(lang.stable_def(*def)),
         One::Lambda { writer, nth } => Canon::Lambda(lang.stable_def(*writer), *nth),
+        One::Partial { def, args } => Canon::Partial(
+            lang.stable_def(*def),
+            args.iter().map(|arg| canon_value(lang, arg)).collect(),
+        ),
     }
 }
 
 fn canon_value(lang: &Bend<'_>, value: &Value) -> Canon {
     match value.single() {
-        Some(one) => canon_one(lang, &one),
+        Some(one) => canon_one(lang, one),
         None => Canon::Set {
             known: value
                 .members()
@@ -321,6 +333,14 @@ fn rebuild_one(lang: &Bend<'_>, canon: &Canon) -> Option<One> {
         Canon::Lambda(writer, nth) => One::Lambda {
             writer: lang.decl_of(writer)?,
             nth: *nth,
+        },
+        Canon::Partial(def, args) => One::Partial {
+            def: lang.decl_of(def)?,
+            args: args
+                .iter()
+                .map(|arg| rebuild_value(lang, arg))
+                .collect::<Option<Vec<_>>>()?
+                .into(),
         },
         Canon::Set { .. } => return None,
     })
@@ -476,6 +496,30 @@ mod tests {
             )
         );
         // and it comes back as the key it was
+        assert_eq!(rebuild(&lang, &canon(&lang, &key)), Some(key));
+    }
+
+    /// A def that was given some of its arguments is a `Partial` of the def and what it was given, each as a value: a number is data, the empty closed set.
+    #[test]
+    fn the_canonical_form_of_a_partial_application() {
+        let root = scratch("key-canon-partial");
+        write(root.join("main.bend"), PROGRAM);
+        let book = Book::open(&root, std::path::Path::new("main.bend")).expect("opens");
+        let lang = Bend::new(&book, MarkerStyle::above("ID"), Precision::Precise);
+        let (work, each) = (id(&book, "work"), id(&book, "each"));
+        let partial = Value::one(One::Partial {
+            def: each,
+            args: vec![Value::one(One::Def(work)), Value::data()].into(),
+        });
+        let key = Key::from_slots(vec![(1, partial)]);
+        let json = serde_json::to_string(&canon(&lang, &key)).unwrap();
+        assert_eq!(
+            json,
+            concat!(
+                r#"{"slots":[[1,{"Partial":[{"Path":{"module":"main.bend","qname":"each","nth":0}},"#,
+                r#"[{"Def":{"Path":{"module":"main.bend","qname":"work","nth":0}}},{"Set":{"known":[],"open":false}}]]}]]}"#
+            )
+        );
         assert_eq!(rebuild(&lang, &canon(&lang, &key)), Some(key));
     }
 

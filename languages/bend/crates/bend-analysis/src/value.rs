@@ -8,13 +8,19 @@ use crate::book::DeclId;
 /// The most members a set may have (BV-D8): a larger one is unknown.
 pub(crate) const MAX_SET: usize = 8;
 
+/// How deep a value may hold values (BV-D8): a value nested deeper inside a value is unknown there, and the outer partial application or constructor is kept.
+pub(crate) const MAX_DEPTH: usize = 3;
+
 /// One thing a place can hold.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum One {
     /// A def of the book with code, in the root.
     Def(DeclId),
     /// A lambda that stays with its writer (06 §6): the `nth` one the walk of `writer`'s body enters. Known, never entered.
     Lambda { writer: DeclId, nth: u32 },
+    /// A def applied to fewer arguments than it has written parameters (07 §7): what it was given, by position from the first. A def only: a partial application of a
+    /// Base def or of a lambda is unknown.
+    Partial { def: DeclId, args: Box<[Value]> },
 }
 
 /// What can be at a place: the members, sorted and without duplicates, and, when `open`, something the layer does not know too.
@@ -53,10 +59,48 @@ impl Value {
     }
 
     /// The one thing this is, when it is exactly one and nothing else can be there: what a key's slot can hold.
-    pub(crate) fn single(&self) -> Option<One> {
+    pub(crate) fn single(&self) -> Option<&One> {
         match (&*self.known, self.open) {
-            ([one], false) => Some(*one),
+            ([one], false) => Some(one),
             _ => None,
+        }
+    }
+
+    /// The same value with what is nested deeper than [`MAX_DEPTH`] unknown, and whether anything was.
+    pub(crate) fn capped(&self) -> (Value, bool) {
+        let mut hit = false;
+        let value = self.cap(0, &mut hit);
+        (value, hit)
+    }
+
+    fn cap(&self, depth: usize, hit: &mut bool) -> Value {
+        let mut known: Vec<One> = self
+            .known
+            .iter()
+            .map(|one| match one {
+                One::Partial { def, args } => One::Partial {
+                    def: *def,
+                    args: args
+                        .iter()
+                        .map(|arg| {
+                            if depth + 1 > MAX_DEPTH {
+                                *hit = true;
+                                Value::unknown()
+                            } else {
+                                arg.cap(depth + 1, hit)
+                            }
+                        })
+                        .collect(),
+                },
+                other => other.clone(),
+            })
+            .collect();
+        // a value that was made unknown may now equal another member, and the order may have changed
+        known.sort_unstable();
+        known.dedup();
+        Value {
+            known: known.into(),
+            open: self.open,
         }
     }
 
@@ -77,7 +121,7 @@ impl Value {
             .known
             .iter()
             .chain(other.known.iter())
-            .copied()
+            .cloned()
             .collect();
         known.sort_unstable();
         known.dedup();
@@ -112,12 +156,12 @@ mod tests {
 
     #[test]
     fn a_single_is_one_closed_member() {
-        assert_eq!(Value::one(def(3)).single(), Some(def(3)));
+        assert_eq!(Value::one(def(3)).single(), Some(&def(3)));
         let lambda = One::Lambda {
             writer: DeclId::new(0, 1),
             nth: 2,
         };
-        assert_eq!(Value::one(lambda).single(), Some(lambda));
+        assert_eq!(Value::one(lambda.clone()).single(), Some(&lambda));
         // two members, or one member that something else may be beside: not a slot
         assert_eq!(
             Value::one(def(1))
@@ -157,5 +201,24 @@ mod tests {
         // one more member of the same set, or none, is no change; a ninth def is over
         assert_eq!(set.join(&Value::one(def(3))), Some(set.clone()));
         assert_eq!(set.join(&Value::one(def(MAX_SET))), None);
+    }
+
+    #[test]
+    fn a_value_nested_deeper_than_three_is_unknown_there_and_the_outer_partial_is_kept() {
+        // a partial application of a def that holds a partial application that holds ... the numbers are the depth of what each holds
+        let nest = |inner: Value| {
+            Value::one(One::Partial {
+                def: DeclId::new(0, 1),
+                args: vec![inner].into(),
+            })
+        };
+        let three = nest(nest(nest(Value::one(def(7)))));
+        // a partial at depth 0 holds a partial at 1, which holds a partial at 2, which holds `def(7)` at 3: all of it fits
+        assert_eq!(three.capped(), (three.clone(), false));
+        let four = nest(three.clone());
+        let (capped, hit) = four.capped();
+        assert!(hit);
+        // the def at depth 4 is gone; each partial around it is kept
+        assert_eq!(capped, nest(nest(nest(nest(Value::unknown())))));
     }
 }

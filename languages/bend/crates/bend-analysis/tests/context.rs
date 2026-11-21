@@ -117,8 +117,8 @@ fn every_precise_row_has_a_fixture_and_a_snapshot() {
     let found = table::problems(TABLE, HEADER, &fixtures_dir(), &snapshots_dir());
     assert!(found.is_empty(), "{}", found.join("\n"));
     let all = rows();
-    assert_eq!(all.len(), 35, "the table was not read");
-    assert_eq!(all.iter().filter(|r| is_limit(r)).count(), 8);
+    assert_eq!(all.len(), 41, "the table was not read");
+    assert_eq!(all.iter().filter(|r| is_limit(r)).count(), 7);
 }
 
 fn is_limit(row: &Row) -> bool {
@@ -189,7 +189,7 @@ fn a_limit_row_draws_the_same_in_both_sections() {
             }
         }
     }
-    assert_eq!(checked, 8);
+    assert_eq!(checked, 7);
 }
 
 /// An edge as (the def it leaves, the site, what it reaches by def or kind): digests left out, and a site that is in several contexts of one def once.
@@ -271,17 +271,29 @@ fn programs() -> Vec<PathBuf> {
     found
 }
 
-/// Rules 4 and 5: the precise graph has every edge the default one has, and the only ones it lacks are `Unresolved(function_typed_value)` replaced at the same site.
+/// Rules 4 and 5: the precise graph has every edge the default one has, and the only ones it lacks are `Unresolved(function_typed_value)` replaced at the same site,
+/// and a call by name that gave a def fewer arguments than it has parameters (layer 1 draws it as a call), which is a passed edge to the same def at the same site (V7).
 /// And rule 9: every precise graph is the same twice.
 #[test]
 fn the_precise_graph_never_has_fewer_edges_and_is_deterministic() {
-    let (mut entries, mut replaced) = (0, 0);
+    let (mut entries, mut replaced, mut handed_over) = (0, 0, 0);
     for folder in programs() {
         for (book, file, entry) in books_and_entries(&folder) {
             let default = graph_at(&book, &file, &entry, Precision::Default).expect("a graph");
             let precise = graph_at(&book, &file, &entry, Precision::Precise).expect("a graph");
             let (before, after) = (edge_set(&default), edge_set(&precise));
             for edge in before.difference(&after) {
+                if let Some(callee) = edge.2.strip_prefix("call ") {
+                    // under-applied: the same def, handed over at the same site
+                    let passed = (edge.0.clone(), edge.1, format!("pass {callee}"));
+                    assert!(
+                        after.contains(&passed),
+                        "{}: {file} {entry}: layer 1's edge {edge:?} is gone",
+                        folder.display()
+                    );
+                    handed_over += 1;
+                    continue;
+                }
                 assert_eq!(
                     edge.2,
                     "unresolved function_typed_value",
@@ -305,7 +317,9 @@ fn the_precise_graph_never_has_fewer_edges_and_is_deterministic() {
         entries > 100,
         "{entries} entries: the programs were not read"
     );
-    println!("{entries} entries, {replaced} unresolved edges replaced");
+    println!(
+        "{entries} entries, {replaced} unresolved edges replaced, {handed_over} calls handed over"
+    );
 }
 
 fn named(qualname: &str) -> impl Fn(&&ContextId) -> bool + '_ {
@@ -468,14 +482,15 @@ fn an_unnamed_slot_is_counted_by_why() {
     //   each(g, 1)          position 0 is a `let` whose value nothing says (`g = m`, and `m` is unknown): local; the `1` at position 1 is not called: not counted
     //   each(U32.show, 1)   position 0 is a Base def: value
     //   open(m, 1)          `open` calls nothing: not counted
-    //   second(1)           position 1 is missing: missing
+    //   second(1)           handed over (V7): no key, nothing counted
     //   each(m, 1)          position 0 is `main`'s own parameter, and `main`'s key names no `m`: open
     //   relay(work)         `relay` calls nothing: not counted; it names `f`, so `relay@{f: work}` is walked
     // `open` is walked under the open key (nothing was named): `each(f, x)` has `f` as its own parameter, unknown: open. `relay@{f: work}` walks `each(f)`: `f` is
     // known, and the missing `x` is not called: not counted.
     assert_eq!(counter(&precise, "key_slot_local"), 1);
     assert_eq!(counter(&precise, "key_slot_value"), 1);
-    assert_eq!(counter(&precise, "key_slot_missing"), 1);
+    // `second(1)` gives a def fewer arguments than it has parameters: since V7 it is handed over, and no key is made for it, so nothing is missing
+    assert_eq!(counter(&precise, "key_slot_missing"), 0);
     assert_eq!(counter(&precise, "key_slot_open"), 2);
 }
 

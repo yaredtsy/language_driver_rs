@@ -7,9 +7,10 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// Every folder a test may ask `scratch` for.
-const NAMES: [&str; 8] = [
+const NAMES: [&str; 9] = [
     "key-canon",
     "key-canon-set",
+    "key-canon-partial",
     "key-order",
     "key-relevant",
     "stamps-kinds",

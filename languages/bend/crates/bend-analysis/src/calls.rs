@@ -44,6 +44,9 @@ pub(crate) const KEY_SLOT_MISSING: &str = "key_slot_missing";
 /// A set of values with more than `value::MAX_SET` members was met in a context: it is unknown there. A precision limit, counted per context walked.
 pub(crate) const VALUE_WIDENED_SET: &str = "value_widened_set";
 
+/// A value nested deeper than `value::MAX_DEPTH` inside a value was met in a context: it is unknown there. A precision limit, counted per context walked.
+pub(crate) const VALUE_WIDENED_DEPTH: &str = "value_widened_depth";
+
 /// A def whose return value depends on itself (directly or through others) did not settle in `eval::MAX_ROUNDS` rounds: its value is unknown. Counted once for the context.
 pub(crate) const RETURN_IN_CYCLE: &str = "return_in_cycle";
 

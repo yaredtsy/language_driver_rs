@@ -1,0 +1,16 @@
+== main.bend main default
+main
+edges:
+main | U32.add | external Base U32.add
+main | inc | unresolved function_typed_value
+contexts:
+main | open
+counters: function_typed_value=1, type_position=1
+== main.bend main precise
+main
+edges:
+main | U32.add | external Base U32.add
+main | inc | unresolved function_typed_value
+contexts:
+main | open
+counters: function_typed_value=1, type_position=1

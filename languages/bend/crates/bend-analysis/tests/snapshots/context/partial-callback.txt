@@ -1,0 +1,27 @@
+== main.bend main default
+main
+  each
+  add
+edges:
+each | f | unresolved function_typed_value
+main | each | call each
+main | add | call add
+contexts:
+add | open
+each | open
+main | open
+counters: function_typed_value=1, type_position=7
+== main.bend main precise
+main
+  each
+    add
+  add [Passed]
+edges:
+each@07d9ce6c | f | call add
+main | each | call each@07d9ce6c
+main | add | pass add
+contexts:
+add | open
+each | 07d9ce6c91a5ae60deffa8864a276626
+main | open
+counters: type_position=7

@@ -5,8 +5,9 @@
 //! What carries a value: a parameter has the one the key gives it, a def named in an argument is that def, a lambda is a lambda that **stays** (its body is read
 //! here, where it is written, its binders unknown), a variable has the value of its binding (BV-D3: a `let` gives its names the values of its terms, a `case` with a
 //! name pattern gives it the value of the scrutinee), and, since V6, a call that gives a def all its written parameters has what that def's body evaluates to under
-//! the key those arguments make (`ret`, BV-D5). Every other binder has none. No constructor has fields yet; the steps that follow give each a value, one at a time,
-//! with the rows that flip.
+//! the key those arguments make (`ret`, BV-D5); a call that gives a def fewer is a **partial application**, a value that is handed over where it is written and called
+//! where the rest arrive (07 §7); and a `do` statement of a project monad is a call to the monad's `bind` or `pure`, with its value at its place in the key (07 §8).
+//! Every other binder has none. No constructor has fields yet; the steps that follow give each a value, one at a time, with the rows that flip.
 //!
 //! 🦀 The evaluator is a struct that borrows the book, the key's environment and the def's tree, and owns the one thing it fills in: a `Vec<Option<Reached>>`, one
 //! place for each item. `Option` because an item that is not a node (a type skipped, Base's `&&`) is not the evaluator's: the walk that calls it settles those.
@@ -22,7 +23,7 @@ use crate::book::{DeclId, Resolved};
 use crate::calls::{self, Bend};
 use crate::env::Env;
 use crate::key::{self, Absent, Key};
-use crate::sem::{ArgShape, DefWalk, Expr, Item, Pat, What};
+use crate::sem::{ArgShape, DefWalk, Expr, Item, Pat, Sugar, What};
 use crate::value::{One, Value};
 use crate::walk::{self, Reached};
 
@@ -237,12 +238,18 @@ impl<'b> Eval<'_, 'b> {
             }
             // a statement of a `do` is a call to the monad's `bind` or `pure`; its continuation stays, read here
             Expr::Bind {
-                item, value, rest, ..
+                item,
+                types,
+                value,
+                rest,
+                pure,
+                ..
             } => {
-                self.eval(value);
+                let held = self.eval(value);
                 self.eval(rest);
-                self.settle(*item);
-                Value::unknown()
+                let (reached, value) = self.statement(*item, types.len(), value, held, *pure);
+                self.reached[*item as usize] = Some(reached);
+                value
             }
             // the values are read before the names bind (`x = f(x)` reads the outer `x`), and each name takes the value of its term
             Expr::Let { pats, values, rest } => {
@@ -303,6 +310,87 @@ impl<'b> Eval<'_, 'b> {
         self.reached[at as usize] = Some(reached);
     }
 
+    /// Whether the evaluator may know what it learns: the policy that takes it all away is the test of layer 1.
+    fn tracks(&self) -> bool {
+        self.lang.policy == Policy::Tracked
+    }
+
+    /// How many parameters a def with code has written.
+    fn params_of(&self, def: DeclId) -> Option<usize> {
+        if !key::known_def(self.lang, def) {
+            return None;
+        }
+        self.lang.walk_of(def).map(|w| w.flow.params as usize)
+    }
+
+    /// A def and what it was given, as a value: nested deeper than the cap, it is unknown there, and counted.
+    fn partial(&self, def: DeclId, args: Vec<Value>) -> Value {
+        let (value, hit) = Value::one(One::Partial {
+            def,
+            args: args.into(),
+        })
+        .capped();
+        if hit {
+            self.lang.note_slot(calls::VALUE_WIDENED_DEPTH);
+        }
+        value
+    }
+
+    /// What a `do` statement of the monad `M` comes to (07 §8): the call `M.bind(T.., A, B, v, k)` (or `M.pure(T.., B, e)`), whose statement's value `held` is at the
+    /// place after the type terms. The continuation `k` is never in the key, so every statement that binds the same value is one context of `bind`.
+    fn statement(
+        &self,
+        at: u32,
+        types: usize,
+        value: &Expr,
+        held: Value,
+        pure: bool,
+    ) -> (Reached<'b>, Value) {
+        let item = self.item(at);
+        let book_only = (
+            walk::resolve_from_book(self.lang, self.def, item, self.env),
+            Value::unknown(),
+        );
+        let What::Sugar(Sugar::Named(written)) = &item.what else {
+            return book_only;
+        };
+        let Resolved::Project(callee) = self.lang.book.resolve(self.def.file(), written) else {
+            return book_only;
+        };
+        if !self.tracks() {
+            return book_only;
+        }
+        let shape = self.shape_of(value);
+        let key = key::key_with(self.lang, callee, |position| {
+            let position = position as usize;
+            if position == types {
+                self.slot(Some(&shape), Some(&held))
+            } else if position < types {
+                Err(Absent::Value)
+            } else {
+                Err(Absent::Stays)
+            }
+        });
+        let given = types + if pure { 1 } else { 2 };
+        let returned = self.returned(callee, &key, given);
+        let reached = walk::site(
+            walk::call_of(self.lang, Resolved::Project(callee), written, key),
+            false,
+        );
+        (reached, returned)
+    }
+
+    /// What an expression is as an argument, for saying why it has no slot: the text's own classification (`ArgShape`), read off the tree.
+    fn shape_of(&self, expr: &Expr) -> ArgShape {
+        match expr {
+            Expr::Name { name, .. } => ArgShape::Name(name.clone()),
+            Expr::Var(n) if *n < self.walk.flow.params => ArgShape::Param(*n),
+            Expr::Var(_) => ArgShape::Local,
+            Expr::Lam { nth, .. } => ArgShape::Lambda(*nth),
+            _ => ArgShape::Other,
+        }
+    }
+
     /// What a def returns when it is given `given` arguments under `key`: its body's value when they are all of its written parameters, and unknown otherwise.
     fn returned(&self, callee: DeclId, key: &Key, given: usize) -> Value {
         let all = self
@@ -326,6 +414,12 @@ impl<'b> Eval<'_, 'b> {
                 let resolved = self.lang.book.resolve(self.def.file(), name);
                 match &resolved {
                     Resolved::Project(id) => {
+                        // fewer arguments than written parameters: the def is handed over here, its body does not run, and the rest are given where it is called
+                        if self.tracks() && self.params_of(*id).is_some_and(|n| values.len() < n) {
+                            let reached =
+                                walk::site(walk::project(self.lang, *id, Key::open()), true);
+                            return (reached, self.partial(*id, values.to_vec()));
+                        }
                         let key = self.key(*id, args, values);
                         let value = self.returned(*id, &key, values.len());
                         let reached =
@@ -339,50 +433,78 @@ impl<'b> Eval<'_, 'b> {
                 }
             }
             // a call through a value: one answer for each member of what it holds, and the book's own beside them when something else may be there
-            (What::Opaque { args, .. }, Some(head)) => {
-                let mut targets = Vec::new();
-                let mut value: Option<Value> = None;
-                let mut lambda = false;
-                let mut add = |this: &Self, v: Value| {
-                    value = Some(match value.take() {
-                        None => v,
-                        Some(so_far) => this.join(&so_far, &v),
-                    });
-                };
-                for one in head.members() {
-                    match one {
-                        One::Def(callee) => {
-                            let key = self.key(*callee, args, values);
-                            add(self, self.returned(*callee, &key, values.len()));
-                            targets.push(walk::project(self.lang, *callee, key));
-                        }
-                        // known, and drawn where it is written: one answer however many lambdas the variable may hold
-                        One::Lambda { .. } => {
-                            add(self, Value::unknown());
-                            if !lambda {
-                                lambda = true;
-                                targets.push(Target::Unresolved(Reason::new(
-                                    calls::ANONYMOUS_FUNCTION_CALLED,
-                                )));
-                            }
-                        }
-                    }
-                }
-                if head.is_open() || targets.is_empty() {
-                    targets.push(Target::Unresolved(Reason::new(calls::FUNCTION_TYPED_VALUE)));
-                    add(self, Value::unknown());
-                }
-                let reached = Reached::Site {
-                    targets,
-                    passed: false,
-                };
-                (reached, value.unwrap_or_else(Value::unknown))
-            }
+            (What::Opaque { args, .. }, Some(head)) => self.apply(head, args, values),
             _ => (
                 walk::resolve_from_book(self.lang, self.def, item, self.env),
                 Value::unknown(),
             ),
         }
+    }
+
+    /// What applying `head` to `values` comes to, the arguments written as `shapes`.
+    fn apply(&self, head: &Value, shapes: &[ArgShape], values: &[Value]) -> (Reached<'b>, Value) {
+        let mut targets = Vec::new();
+        // a partial application that is still short of its arguments after these: handed over again, if nothing else is called
+        let mut short = Vec::new();
+        let mut value: Option<Value> = None;
+        let mut lambda = false;
+        let mut add = |this: &Self, v: Value| {
+            value = Some(match value.take() {
+                None => v,
+                Some(so_far) => this.join(&so_far, &v),
+            });
+        };
+        for one in head.members() {
+            match one {
+                One::Def(callee) => {
+                    let key = self.key(*callee, shapes, values);
+                    add(self, self.returned(*callee, &key, values.len()));
+                    targets.push(walk::project(self.lang, *callee, key));
+                }
+                // known, and drawn where it is written: one answer however many lambdas the variable may hold
+                One::Lambda { .. } => {
+                    add(self, Value::unknown());
+                    if !lambda {
+                        lambda = true;
+                        targets.push(Target::Unresolved(Reason::new(
+                            calls::ANONYMOUS_FUNCTION_CALLED,
+                        )));
+                    }
+                }
+                // the arguments it was given, and these: all of them is the call, fewer is a partial application again
+                One::Partial { def, args } => {
+                    let all: Vec<Value> = args.iter().chain(values).cloned().collect();
+                    let held: Vec<ArgShape> = args
+                        .iter()
+                        .map(|_| ArgShape::Other)
+                        .chain(shapes.iter().cloned())
+                        .collect();
+                    let n = self.params_of(*def).unwrap_or(0);
+                    if all.len() < n {
+                        add(self, self.partial(*def, all));
+                        short.push(*def);
+                    } else {
+                        let key = self.key(*def, &held, &all);
+                        add(self, self.returned(*def, &key, all.len()));
+                        targets.push(walk::project(self.lang, *def, key));
+                    }
+                }
+            }
+        }
+        let passed = targets.is_empty() && !short.is_empty() && !head.is_open();
+        if passed {
+            targets = short
+                .iter()
+                .map(|def| walk::project(self.lang, *def, Key::open()))
+                .collect();
+        } else if head.is_open() || targets.is_empty() {
+            targets.push(Target::Unresolved(Reason::new(calls::FUNCTION_TYPED_VALUE)));
+            add(self, Value::unknown());
+        }
+        (
+            Reached::Site { targets, passed },
+            value.unwrap_or_else(Value::unknown),
+        )
     }
 
     /// The key of a call of `callee`, from the values of its arguments (06 §4).

@@ -1,0 +1,32 @@
+== main.bend main default
+main
+  app
+  work [Passed]
+edges:
+app | f | unresolved function_typed_value
+main | app | call app
+main | work | pass work
+main | p | unresolved function_typed_value
+contexts:
+app | open
+main | open
+work | open
+counters: function_typed_value=2, type_position=6
+== main.bend main precise
+main
+  app [Passed]
+  work [Passed]
+  app
+    work
+edges:
+app | f | unresolved function_typed_value
+app@e5163dd2 | f | call work
+main | app | pass app
+main | work | pass work
+main | p | call app@e5163dd2
+contexts:
+app | e5163dd2de398288bafd317070624c16
+app | open
+main | open
+work | open
+counters: function_typed_value=1, type_position=6

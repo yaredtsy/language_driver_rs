@@ -21,20 +21,23 @@ counters: function_typed_value=5, type_position=14
 == main.bend main precise
 main
   P.bind
+    peek
   peek [Passed]
   P.pure
 edges:
-P.bind | m | unresolved function_typed_value
-P.bind | f | unresolved function_typed_value
-P.bind | f(a) | unresolved function_typed_value
+P.bind@dcdd8415 | m | call peek@09db71e5
+P.bind@dcdd8415 | f | unresolved function_typed_value
+P.bind@dcdd8415 | f(a) | unresolved function_typed_value
 P.pure | k | unresolved function_typed_value
-main | h : U32 <- peek | call P.bind
+main | h : U32 <- peek | call P.bind@dcdd8415
 main | peek | pass peek
 main | return h | call P.pure
 peek | k | unresolved function_typed_value
+peek@09db71e5 | k | unresolved anonymous_function_called
 contexts:
-P.bind | open
+P.bind | dcdd84156db2a1c743f6d471a2132468
 P.pure | open
 main | open
+peek | 09db71e597ee24fcae4b24bee375ff73
 peek | open
-counters: function_typed_value=5, type_position=14
+counters: anonymous_function_called=1, function_typed_value=4, type_position=14
