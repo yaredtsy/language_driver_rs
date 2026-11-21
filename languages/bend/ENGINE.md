@@ -325,6 +325,100 @@ same thing from outside the load, because its engine reads the files; here the l
 **Limits, written down:** a file saved to the same length within the file system's clock tick of the last look is not seen by `refresh` (tested: `a_stamp_is_the_length_and_the_modified_time`); `reload` sees it. A file the
 editor holds unsaved is not seen (D42).
 
+## BC0
+
+The measurement of `docs/08-bend/04-phase-3-context-layer.md` §2: for every `function_typed_value` site, how the variable got its function. Run 2026-11-21 by a spike (`languages/bend/spikes/bc0`, its own workspace, deleted with this
+section's numbers): it reads each file with `bend-parser`, keeps a scope with the **origin** of every binder (a copy of the layer-1 walk with an origin on each name), and classifies each site where `bend-analysis`'s own
+walk puts one. **Checked two ways:** its site list equals `walked()`'s `function_typed_value` spans def by def (0 mismatches over 78,814 defs, so no site is missed or invented), and its totals are the sweep's (3,170 calls,
+1,098 externals, 1,149 constructs, 46 passed, 55 unresolved on the 16 books); a file with one case of each class (a to f) lands each in its class.
+
+**Two inputs, and what each is.** *The demos' books*: the sweep's 16 entries, every file of each book (20 files, 916 defs), callers read over the whole book. *The corpus*: the 1,744 files the loader accepts, **each opened as its own
+book, and only the entry file's own defs counted** (so no file is counted twice); callers are read over that book (the file and what it imports, never its importers). Read the corpus with three cautions: **`bench/`** is 22
+generated programs of 70,623 defs (it makes the totals large and the rate small: 2 sites); **`tests/`** is 1,665 small files that probe the checker (`hurkens_paradox`, `beta_ann_lambda`: forms written to be odd), 440 of the 545
+sites; and a **library file opened alone shows "no caller"** (`bend2/base.bend`, `bend3d.bend`: their callers are in files that import them), so the caller columns mean something only for the demos' whole books.
+
+### The demos' books: 55 sites in 4,323 call sites
+
+Call sites with a head: 3,170 calls to project defs + 1,098 externals + 55 unresolved = 4,323; **`function_typed_value` is 1.3%** of them (1.7% of the calls to project code and the unresolved). The 55 sit in 39 defs, all reachable
+from `main`. No other unresolved reason occurs.
+
+| class | sites | share |
+|---|---|---|
+| **a.** a template parameter `~f` of the def | 16 | 29.1% |
+| **b.** a plain function-typed parameter of the def | 32 | 58.2% |
+| &nbsp;&nbsp;with an arrow type / whose type is not written as an arrow (`m: P<A>`, a CPS alias) | 31 / 1 | |
+| **c.** a closure from a call's result | 3 | 5.5% |
+| &nbsp;&nbsp;called directly, `f(a)(k)` / bound by a let, `add2 = adder(2)` | 3 / 0 | |
+| **d.** a variable from a constructor field (a `case K{f}`) | 3 | 5.5% |
+| **e.** a value from a do bind | 0 | 0% |
+| **f.** a lambda written in place and called | 0 | 0% |
+| **g.** anything else: a lambda's own binder (`k => s => k(x, s)`) | 1 | 1.8% |
+| **total** | **55** | |
+
+87% of the sites (48) call one of the def's own parameters, and 91% (50) sit in a def that has a `~` parameter or an arrow-typed one: resolving them needs the caller. **What the callers of those 48 parameters pass, followed up
+through callers' own parameters until a def name or a lambda** (a def with several callers needs all of them to end that way):
+
+| the function can be named | a (templates) | b (parameters) |
+|---|---|---|
+| yes: every path up ends at a def name or a lambda | 16 of 16 | 12 of 32 |
+| no: callers apply fewer arguments than the def has parameters (partial application: `Unit <- drop(2n)`, the continuation is supplied by the `P.bind` the do stands for) | 0 | 10 |
+| no: the def is handed over as a value (the parser primitives `eof`, `peek`, `pop` that a `do P<..>` gives to `P.bind`, which applies them to a continuation) | 0 | 4 |
+| no: a caller passes a lambda's own binder (a continuation) | 0 | 3 |
+| no: no caller in the book (`P.bind`, which the do sugar calls; `name.go`) | 0 | 3 |
+
+**The 17 parameter sites of the last three rows with the partial applications (10 + 4 + 3) are all in one program, `pure_hvm5_mini`'s continuation-passing parser monad**; the 3 passed a lambda's binder are not checked for where they are. Of the 16 template sites, **15 are in a def whose callers pass their own `~` parameter along** and only 1 has every caller passing a def name or a lambda: a key made at a call site by `t(~g, a)` resolves 1 of the 16 on its own.
+
+**`~` arguments.** 120 of the 4,165 calls with a name head (2.9%) have one; 57 of the 916 defs have a `~` parameter. Their 387 `~` arguments: a bare def name 22, a lambda 2, a type 18 (`~U32`), **a call 10
+(`~World()`, `~Walkers.game()`: a nullary def called), a constructor 3 (`~App{Fly.view, Fly.tick}`), another form 2**, and **330 are the caller's own `~` parameter passed along** (120 of them types, 210 values). Calls with a def name
+or a lambda among their arguments: 37 to project defs (27, and 10 through a `~`), 11 to Base (9, and 2 through a `~`).
+
+### The corpus: 545 sites in 145,406 call sites
+
+| part | books | defs | calls (project) | externals | `function_typed_value` | a | b | c | d | e | f | g |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all | 1,744 | 78,814 | 132,372 | 12,401 | 545 (0.4%) | 80 | 252 | 70 | 63 | 0 | 37 | 43 |
+| `tests/` | 1,665 | 6,687 | 8,016 | 9,335 | 440 (2.5%) | 44 | 194 | 66 | 58 | 0 | 37 | 41 |
+| `demos/` (the 56 entries' files) | 56 | 1,064 | 3,682 | 1,172 | 68 (1.4%) | 16 | 44 | 4 | 3 | 0 | 0 | 1 |
+| `bend2/base.bend` (what every program imports) | 1 | 440 | 785 | 0 | 35 (4.3%) | 20 | 12 | 0 | 2 | 0 | 0 | 1 |
+| `bench/` | 22 | 70,623 | 119,889 | 1,894 | 2 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+
+The detail rows, over the same columns (all / `tests/` / `demos/` / `base.bend` / `bench/`): b with an arrow type 116 / 64 / 41 / 11 / 0, **b whose type is not an arrow 136 / 130 / 3 / 1 / 2**; c called directly 56 / 52 / 4 / 0 / 0, c bound
+by a let 14 / 14 / 0 / 0 / 0; d from a project constructor 48 / 43 / 3 / 2 / 0, from a Base constructor 9 / 9 / 0 / 0 / 0, from a tuple 5 / 5, from `<>` 1 / 1; f an annotated lambda `{(x => x) : T}(1)` 18 / 18 / 0 / 0 / 0, a bare one 19 / 19; g a
+lambda's own binder 27 / 25 / 1 / 1 / 0, a let bound to a lambda 9 / 9 / 0 / 0 / 0, a let bound to a name 3 / 3, an `@` binder 2 / 2, an annotated name called 2 / 2. **No site is a do bind (e) in any file**, and none is an operator or a do
+on a bound type name.
+
+| | all | `tests/` | `demos/` | `base.bend` | `bench/` |
+|---|---|---|---|---|---|
+| sites in a def that has a `~` parameter or an arrow-typed one | 216 (39.6%) | 122 (27.7%) | 60 (88.2%) | 34 (97.1%) | 0 |
+| sites whose callee is one of the def's own parameters (a + b) | 332 (60.9%) | 238 (54.1%) | 60 (88.2%) | 32 (91.4%) | 2 |
+| defs with at least one `~` parameter | 170 | 81 | 57 | 32 | 0 |
+| calls with a `~` argument (of the calls with a name head) | 339 (0.2%) | 184 (1.1%) | 120 (2.5%) | 35 (4.6%) | 0 |
+| their `~` arguments: def name / lambda / type | 88 / 80 / 117 | 66 / 78 / 99 | 22 / 2 / 18 | 0 / 0 / 0 | |
+| ... a call / a constructor / a literal / other (and a field, a let: 1 and 1 in `all` and in `tests/`) | 15 / 10 / 22 / 37 | 5 / 7 / 22 / 35 | 10 / 3 / 0 / 2 | 0 | |
+| ... the caller's own `~` or plain parameter passed along | 434 | 23 | 330 | 81 | |
+| a + b: the function can be named by following the callers up | 204 of 332 | 174 of 238 | 23 of 60 (the 16 whole books: 28 of 48) | 5 of 32 (the 20 templates have no caller in their own book) | 2 of 2 |
+
+The last row's corpus columns are the caution above at work: of the 128 corpus parameters that cannot be named, 78 have **no caller in their own book** (42 templates, 36 parameters: libraries, entry points), 14 are partial applications or handed over (10 + 4, all in the CPS parser), 22 are passed a call's
+result, 6 a let, 3 a lambda's binder, 3 a do bind or a constructor field, 2 something else.
+
+### Which of BC1, BC2 and BC3 the numbers argue for
+
+*The context layer is the last 1.3% of the sites, and a finished BC1 + BC2 names the function for 28 of the 55 demo sites: 0.65 points of the 4,323 call sites.* That is the size of the prize, and the plan's own words ("about the last
+1%") are right. Within it the numbers are not close. **Templates and parameters are 87% of the demo sites, 91% of Base's, and 54% of the test suite's (where c, d and f are the checker probes): BC1 and BC2 pay and BC3 does not.** They are
+one mechanism and should be built as one step: **15 of the 16 demo template sites sit in a def whose callers pass their own `~` parameter along, so a key made only at `t(~g, a)` (BC1 as §3 words it) resolves 1 of them; the rule
+that the caller's key flows down (§4's "unless the caller's key knows it") is what resolves the other 15, and it is the same rule that resolves 12 of the 32 parameters.** Build the key with the flow-down from the first commit,
+templates first inside it (every one of the 16 is exact and named by the compiler's own rule), then plain parameters (the same code with a weaker guarantee). **BC3 (values through lets and returns) is 3 of 55 in the demos and none
+in Base:** all three are a call's result called directly, `f(a)(k)`, none a let (`add2 = adder(2)`), and the corpus's 70 are 66 test-suite probes; it is not worth building until a program of the owner's has an `add2 = adder(2)`. Neither is the constructor-field case (d: 3 of 55 in the
+demos, 2 in Base) nor the lambda in place (f: 0 outside the test suite) nor the do bind (e: 0 in 1,744 files). What none of the three resolves is the parameter sites the table names, and **17 of the 20 are one program**: `pure_hvm5_mini`'s CPS parser, where 10 are a def applied to fewer arguments than it has parameters (`Unit <- drop(2n)`: the continuation arrives later, through `P.bind`), 4 are primitives (`eof`, `peek`, `pop`) handed to `P.bind`, and 3 have no caller but the sugar's. Tracking an unfinished call through `M.bind` is a different mechanism from a key, for one program; I would leave it a limit of §6's list and add it there.
+
+**What in §1 and §2 the numbers show to be wrong or incomplete.** (1) §3 and §1 say a template argument is closed, "top-level defs and lambdas only": of the demos' 385 `~` arguments 22 are def names and 2 lambdas, and **13 are neither a
+def, a lambda nor a type**: `~World()` and `~Walkers.game()` (a nullary def **called** at compile time) and `~App{Fly.view, Fly.tick}` (a constructor of defs). `Known` as §1 writes it (a def or a lambda) cannot hold those; a template
+parameter fed by them is a value that contains functions, which is class d's problem, not a def's. (2) §1's table has four ways; the sites show **two more**: a lambda's own binder (`k => s => k(x, s)`, the continuation of a CPS
+monad; 27 in the corpus, 1 in the demos, 1 in Base) and a parameter the callers do **not pass at all** (partial application: 10 of the demos' 32 parameter sites), and §1's "the caller, when it passes a name or a lambda" does not cover the second.
+(3) §2's go/no-go reasoning, "user code calls Base's higher-order defs far more than it writes its own", is the other way round in the demos: 11 calls pass a def name or a lambda to Base and 37 pass one to a project def (the
+count takes a bare lowercase or dotted Base name for a def). (4) §2's prior holds: 55 of 4,323 on the 16 mains (68 of 4,922 on the 56 entries) against "64 of about 5,900", and 35 of 820 in Base against "39 of about 1,000". (5) §1's "one kind of site is unresolved"
+holds: no operator and no do is on a bound type name anywhere (the `Sugar::Bound` case of the walk occurs 0 times in 1,744 files).
+
 ## grammar
 
 S-BD2 (G1–G30, step 2; G31–G36 found in step 4): every form `bend.ts` reads that the BNF comment (lines 8–160) does not name, or names differently. Read 2026-11-20 from `parse_book` (2593), `parse_def`
