@@ -22,7 +22,7 @@ use analyzer_core::graph::Reason;
 use analyzer_core::solve::Target;
 
 use crate::book::{DeclId, Resolved};
-use crate::calls::{self, Bend};
+use crate::calls::{self, Bend, Event};
 use crate::env::Env;
 use crate::key::{self, Absent, Key};
 use crate::probe::{self, Section};
@@ -41,6 +41,42 @@ pub(crate) enum Policy {
     Tracked,
     #[cfg(test)]
     Nothing,
+}
+
+/// The way a request is worked out. Only the tests choose: they build every graph the old way too, and the two must be byte-identical (V10b, V10d).
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Ways {
+    /// The sites of the last evaluation of a context are kept for the solver's walk (V10b).
+    pub(crate) keep: bool,
+}
+
+#[cfg(test)]
+thread_local! {
+    static WAYS: std::cell::Cell<Ways> = const { std::cell::Cell::new(Ways { keep: true }) };
+}
+
+/// Runs `then` with the request worked out in `ways`, on this thread.
+#[cfg(test)]
+pub(crate) fn with_ways<T>(ways: Ways, then: impl FnOnce() -> T) -> T {
+    let before = WAYS.replace(ways);
+    let out = then();
+    WAYS.set(before);
+    out
+}
+
+fn keeps() -> bool {
+    #[cfg(test)]
+    return WAYS.get().keep;
+    #[cfg(not(test))]
+    true
+}
+
+/// What one evaluation of a context gave besides its value: what each item of its body came to, and what reading it counted. Kept until the solver walks the context,
+/// when it is the walk's own reading (V10b): the evaluation is the one `reached` makes, so the sites are the same.
+pub(crate) struct Kept<'b> {
+    reached: Vec<Option<Reached<'b>>>,
+    events: Vec<Event>,
 }
 
 struct Eval<'l, 'b> {
@@ -71,6 +107,11 @@ impl<'l, 'b> Eval<'l, 'b> {
 /// What each item of `f` comes to under `env`, by item: `Some` for every item that is a site and for every name (handed over, or below the arguments), `None` for the
 /// rest, which the item walk settles. Empty when `f` has no walk (not a def of the book).
 pub(crate) fn reached<'b>(lang: &Bend<'b>, f: DeclId, env: &Env<'_>) -> Vec<Option<Reached<'b>>> {
+    if let Some(kept) = lang.kept.borrow_mut().remove(&(f, env.key().clone())) {
+        lang.replay(&kept.events);
+        probe::kept_used();
+        return kept.reached;
+    }
     let Some(walk) = lang.walk_of(f) else {
         return Vec::new();
     };
@@ -87,10 +128,10 @@ pub(crate) fn reached<'b>(lang: &Bend<'b>, f: DeclId, env: &Env<'_>) -> Vec<Opti
 /// whole of "nothing computed inside a cycle is kept before that": no value is kept until all of them are final. A context met for the first time is evaluated before
 /// the one that asked, so code with no cycle is evaluated once.
 #[derive(Default)]
-pub(crate) struct Run {
+pub(crate) struct Run<'b> {
     index: HashMap<Ctx, usize>,
     ctxs: Vec<Ctx>,
-    cells: Vec<Cell>,
+    cells: Vec<Cell<'b>>,
     /// Contexts to evaluate, the last first.
     work: Vec<usize>,
     queued: Vec<bool>,
@@ -100,7 +141,7 @@ pub(crate) struct Run {
 
 type Ctx = (DeclId, Key);
 
-struct Cell {
+struct Cell<'b> {
     value: Value,
     /// The contexts that read this one, in the order they first did.
     readers: Vec<usize>,
@@ -108,9 +149,11 @@ struct Cell {
     evals: u32,
     /// Its value was too big (a set past the cap): it is unknown, and stays so.
     top: bool,
+    /// What its last evaluation gave besides the value.
+    kept: Option<Kept<'b>>,
 }
 
-impl Run {
+impl<'b> Run<'b> {
     fn cell_for(&mut self, ctx: Ctx) -> usize {
         if let Some(at) = self.index.get(&ctx) {
             return *at;
@@ -123,6 +166,7 @@ impl Run {
             readers: Vec::new(),
             evals: 0,
             top: false,
+            kept: None,
         });
         self.queued.push(true);
         self.work.push(at);
@@ -151,7 +195,7 @@ impl Run {
             return (false, false);
         }
         let grown = self.cells[at].value.join(&read).unwrap_or_else(Value::top);
-        // a cell that becomes the top is counted, whether the set that was too big was its own or one it read (the bodies are read silently)
+        // a cell that becomes the top is counted, whether the set that was too big was its own or one it read (what a body counts is kept with its sites, and counted when its context is walked, but this is counted once, here)
         let big = grown.is_top() && !self.cells[at].value.is_top();
         if grown == self.cells[at].value {
             return (big, false);
@@ -182,14 +226,25 @@ impl Run {
 }
 
 /// What the body of `def` evaluates to under `key`, read once: no site is kept and nothing is counted.
-fn read_value(lang: &Bend<'_>, def: DeclId, key: &Key, again: bool) -> Value {
+fn read_value<'b>(
+    lang: &Bend<'b>,
+    def: DeclId,
+    key: &Key,
+    again: bool,
+) -> (Value, Option<Kept<'b>>) {
     probe::value_read(def, key, again);
     let _time = probe::section(Section::Value);
     let Some(walk) = lang.walk_of(def) else {
-        return Value::unknown();
+        return (Value::unknown(), None);
     };
     let env = Env::new(key);
-    lang.silently(|| Eval::new(lang, def, &env, walk).eval(&walk.flow.body))
+    // what the body counts is not counted now: it is kept with its sites, and counted when the solver walks the context
+    let ((value, reached), events) = lang.recording(|| {
+        let mut eval = Eval::new(lang, def, &env, walk);
+        let value = eval.eval(&walk.flow.body);
+        (value, eval.reached)
+    });
+    (value, keeps().then_some(Kept { reached, events }))
 }
 
 /// The value a context returns (BV-D5), kept: `(def, key)` is worked out once, with everything it needs (`Run`). Asked while a request is being worked out, a context
@@ -211,6 +266,7 @@ pub(crate) fn ret(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
         *lang.run.borrow_mut() = Some(run);
         root
     };
+    let mut gave_up = false;
     loop {
         let next = {
             let mut guard = lang.run.borrow_mut();
@@ -226,25 +282,31 @@ pub(crate) fn ret(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
             let guard = lang.run.borrow();
             guard.as_ref().expect("a request").ctxs[at].clone()
         };
-        let read = read_value(lang, def, &key, again);
-        let (big, cycle) = lang
-            .run
-            .borrow_mut()
-            .as_mut()
-            .expect("a request")
-            .settle(at, read);
+        let (read, kept) = read_value(lang, def, &key, again);
+        let (big, cycle) = {
+            let mut guard = lang.run.borrow_mut();
+            let run = guard.as_mut().expect("a request");
+            run.cells[at].kept = kept;
+            run.settle(at, read)
+        };
         if big {
             lang.note_once(calls::VALUE_WIDENED_SET);
         }
         if cycle {
             lang.note_once(calls::RETURN_IN_CYCLE);
             lang.run.borrow_mut().as_mut().expect("a request").give_up();
+            gave_up = true;
         }
     }
     let run = lang.run.borrow_mut().take().expect("a request");
     let value = run.cells[root].value.clone();
     let mut rets = lang.rets.borrow_mut();
+    let mut kept = lang.kept.borrow_mut();
     for (ctx, cell) in run.ctxs.into_iter().zip(run.cells) {
+        // the last evaluation of a context read the final value of everything it read, unless the request gave up: then every value is the top, and the walk reads
+        if !gave_up && let Some(evaluated) = cell.kept {
+            kept.insert(ctx.clone(), evaluated);
+        }
         rets.insert(ctx, cell.value);
     }
     value
@@ -825,35 +887,11 @@ mod tests {
         compared
     }
 
-    /// Every folder under `dir` that has a `main.bend`: a book is opened at each, rooted there.
-    fn books(dir: &Path, out: &mut Vec<PathBuf>) {
-        let mut entries: Vec<PathBuf> = fs::read_dir(dir)
-            .expect("a folder")
-            .map(|e| e.expect("an entry").path())
-            .collect();
-        entries.sort();
-        if entries.iter().any(|p| p.ends_with("main.bend")) {
-            out.push(dir.to_path_buf());
-        }
-        for path in entries.into_iter().filter(|p| p.is_dir()) {
-            books(&path, out);
-        }
-    }
-
     /// BV-D2, run: with every value unknown the evaluator gives, for every def of every fixture and scenario, what layer 1's item walk gives, item by item: the
     /// sites, their targets, the keys (all open), what is counted.
     #[test]
     fn an_evaluator_that_knows_nothing_is_layer_one() {
-        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let mut folders = Vec::new();
-        books(&manifest.join("tests/fixtures"), &mut folders);
-        books(&manifest.join("../../../../scenarios"), &mut folders);
-        assert!(
-            folders.len() > 50,
-            "the books were found: {}",
-            folders.len()
-        );
-        let compared: usize = folders
+        let compared: usize = crate::equal::fixture_books()
             .iter()
             .map(|folder| {
                 let book = Book::open(folder, Path::new("main.bend")).expect("the book opens");

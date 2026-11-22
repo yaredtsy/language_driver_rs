@@ -21,9 +21,9 @@ pub(crate) enum Section {
 }
 
 #[cfg(not(test))]
-pub(crate) use dead::{requeued, section, site_walk, value_read};
+pub(crate) use dead::{kept_used, requeued, section, site_walk, value_read};
 #[cfg(test)]
-pub(crate) use live::{requeued, section, site_walk, value_read};
+pub(crate) use live::{kept_used, requeued, section, site_walk, value_read};
 
 #[cfg(not(test))]
 mod dead {
@@ -46,6 +46,9 @@ mod dead {
 
     #[inline(always)]
     pub(crate) fn requeued(_: bool, _: u64) {}
+
+    #[inline(always)]
+    pub(crate) fn kept_used() {}
 }
 
 #[cfg(test)]
@@ -71,6 +74,8 @@ mod live {
         pub(crate) requeued_from_data: u64,
         /// The solver's walks of a context, and the contexts walked.
         pub(crate) site_walks: u64,
+        /// Of those, the walks that took their sites from the evaluation that gave the value.
+        pub(crate) site_reused: u64,
         pub(crate) site_ctxs: usize,
         /// The contexts that were read for their value and walked: what a reading that gave both would save.
         pub(crate) both: usize,
@@ -191,6 +196,15 @@ mod live {
         });
     }
 
+    /// A walk took the sites of a context from the evaluation that gave its value.
+    pub(crate) fn kept_used() {
+        STATE.with_borrow_mut(|state| {
+            if state.on {
+                state.report.site_reused += 1;
+            }
+        });
+    }
+
     /// The solver walked a context.
     pub(crate) fn site_walk(def: DeclId, key: &Key) {
         STATE.with_borrow_mut(|state| {
@@ -257,7 +271,7 @@ mod tests {
         let entries = sweep_entries(&clone);
         assert_eq!(entries.len(), 16, "the sweep's 16 books");
         println!(
-            "book | ctxs walked | walks | value ctxs | value reads (again; queued, from data) | both | plain ms | default ms | probed ms: keys, value, sites, worklist, solver"
+            "book | ctxs walked | walks (reused) | value ctxs | value reads (again; queued, from data) | both | plain ms | default ms | probed ms: keys, value, sites, worklist, solver"
         );
         let (mut plain_all, mut default_all) = (0.0, 0.0);
         let mut sum = [Duration::ZERO; 6];
@@ -311,9 +325,10 @@ mod tests {
             let mean = |d: Duration| ms(d) / f64::from(RUNS);
             let probed: f64 = spent.iter().map(|d| mean(*d)).sum();
             println!(
-                "{name} | {} | {} | {} | {} ({}; {}, {}) | {} | {:.2} | {:.2} | {probed:.2}: {:.2}, {:.2}, {:.2}, {:.2}, {:.2}",
+                "{name} | {} | {} ({}) | {} | {} ({}; {}, {}) | {} | {:.2} | {:.2} | {probed:.2}: {:.2}, {:.2}, {:.2}, {:.2}, {:.2}",
                 report.site_ctxs,
                 report.site_walks,
+                report.site_reused,
                 report.value_ctxs,
                 report.value_reads,
                 report.value_rereads,

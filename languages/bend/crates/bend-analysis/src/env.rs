@@ -14,6 +14,11 @@ impl<'k> Env<'k> {
         Env { key }
     }
 
+    /// The key this is the map of.
+    pub(crate) fn key(&self) -> &'k Key {
+        self.key
+    }
+
     /// What the context's callers put in the def's parameter at `position`, when they named it.
     pub(crate) fn known(&self, position: u32) -> Option<&'k Value> {
         self.key.known(position)

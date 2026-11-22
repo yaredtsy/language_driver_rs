@@ -103,6 +103,13 @@ impl Options {
     }
 }
 
+/// What a body read for its value would have counted, kept to be counted when the solver walks the context (V10b): `note` and `note_slot`, as they were called.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Event {
+    Note(&'static str, u64),
+    Slot(&'static str),
+}
+
 /// The markers of one file, read with the caller's style.
 #[derive(Debug)]
 pub(crate) struct Marked {
@@ -155,11 +162,14 @@ pub(crate) struct Bend<'b> {
     /// The value each context returns (`eval::ret`): kept in Bend beside the sites. Only ever looked up, never iterated (rule 9).
     pub(crate) rets: RefCell<HashMap<(DeclId, Key), Value>>,
     /// The contexts whose value is being worked out now, if a request of `eval::ret` is under way.
-    pub(crate) run: RefCell<Option<eval::Run>>,
-    /// While above 0 a body is read only for its value: what it counts is counted when its context is walked, not now.
-    silent: Cell<u32>,
+    pub(crate) run: RefCell<Option<eval::Run<'b>>>,
     /// The canonical key of each digest this request made.
     canons: RefCell<Keys>,
+    /// While a body is read only for its value and its sites are kept: what it would have counted, in the order it did.
+    log: RefCell<Option<Vec<Event>>>,
+    /// The sites and the counts of the last evaluation of each context the worklist worked out, final when its request ended (V10b). Only ever looked up, never iterated
+    /// (rule 9).
+    pub(crate) kept: RefCell<HashMap<(DeclId, Key), eval::Kept<'b>>>,
 }
 
 impl<'b> Bend<'b> {
@@ -177,36 +187,56 @@ impl<'b> Bend<'b> {
             digests: RefCell::new(HashMap::new()),
             rets: RefCell::new(HashMap::new()),
             run: RefCell::new(None),
-            silent: Cell::new(0),
             canons: RefCell::new(HashMap::new()),
+            log: RefCell::new(None),
+            kept: RefCell::new(HashMap::new()),
         }
     }
 
     /// A counter about the code of a def: counted once per def, the first time it is walked (a second context of it counts nothing).
     pub(crate) fn note(&self, key: &'static str, by: u64) {
-        if by > 0 && !self.quiet.get() && self.silent.get() == 0 {
+        if by == 0 {
+            return;
+        }
+        if let Some(log) = self.log.borrow_mut().as_mut() {
+            log.push(Event::Note(key, by));
+            return;
+        }
+        if !self.quiet.get() {
             *self.notes.borrow_mut().entry(key).or_default() += by;
         }
     }
 
     /// A counter about a key: counted in every context that is walked.
     pub(crate) fn note_slot(&self, key: &'static str) {
-        if self.silent.get() == 0 {
-            *self.notes.borrow_mut().entry(key).or_default() += 1;
+        if let Some(log) = self.log.borrow_mut().as_mut() {
+            log.push(Event::Slot(key));
+            return;
         }
+        *self.notes.borrow_mut().entry(key).or_default() += 1;
     }
 
-    /// A counter about something that is decided once and kept (a value that did not settle): counted even when the body that met it was read only for its value.
+    /// A counter about something that is decided once and kept (a value that did not settle): counted when it is decided, not when a context that read it is walked.
     pub(crate) fn note_once(&self, key: &'static str) {
         *self.notes.borrow_mut().entry(key).or_default() += 1;
     }
 
-    /// Reads a body only for its value (`eval::ret`): nothing it counts is counted, because its context is counted when the solver walks it.
-    pub(crate) fn silently<T>(&self, read: impl FnOnce() -> T) -> T {
-        self.silent.set(self.silent.get() + 1);
+    /// Reads a body for its value and for its sites at once: what it counts is not counted but returned, to be counted when the solver walks the context (`replay`).
+    pub(crate) fn recording<T>(&self, read: impl FnOnce() -> T) -> (T, Vec<Event>) {
+        let before = self.log.replace(Some(Vec::new()));
         let out = read();
-        self.silent.set(self.silent.get() - 1);
-        out
+        let events = self.log.replace(before).unwrap_or_default();
+        (out, events)
+    }
+
+    /// Counts what a body that was read for its value would have counted, now: the context is being walked.
+    pub(crate) fn replay(&self, events: &[Event]) {
+        for event in events {
+            match *event {
+                Event::Note(key, by) => self.note(key, by),
+                Event::Slot(key) => self.note_slot(key),
+            }
+        }
     }
 
     /// Whether the body of `f` was already walked to the end; the notes of `f`'s code are quiet from then on.
