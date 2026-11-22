@@ -96,6 +96,9 @@ remaining `function_typed_value`.
 
 ## 5. BC3–BC5 (not worth building today: BC0's numbers; each stays a fixture of the known limits)
 
+**Built after all (D55, 2026-11-22)**, as [`07-value-layer-design.md`](07-value-layer-design.md) designs them: values through variables and returns, partial
+application, constructor fields. The table below is the draft from before; the numbers are `languages/bend/ENGINE.md` §The value layer.
+
 | Phase | Adds | The Bend case | Limit |
 |---|---|---|---|
 | BC3 | `Env` inside one body: a `let` bound to a lambda, or to a call whose callee's summary says what it returns | `add2 = adder(2); add2(1)`: `adder`'s return summary is "a lambda at span s" → inline its sites (BC-D1) | a `match` that returns different closures per case: union of the cases (every target drawn; the renderer already shows several targets per site) |

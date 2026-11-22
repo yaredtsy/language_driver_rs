@@ -511,6 +511,16 @@ the next phase's rows and prompt are written from it.
 | BV-D7 | **A project constructor is a value with its fields; a constructor pattern binds them** | §9 |
 | BV-D8 | **A slot holds a value that is neither unknown nor data; the canonical form grows by variants and no existing digest moves; depth 3, set 8, inline 8; no cap of rounds** | §10 |
 
+**V8b built (4690e67, re-pinned dfbdc51), reviewed 2026-11-22: phases 0, 2 and 3 and the variables of phase 1 are complete.** Reproduced: 154 tests,
+rings of 6, 8 and 9 defs give the same edges from two entries, no context snapshot changed, the demos' numbers as pinned (`ENGINE.md` §The value
+layer). Two things the coder did beyond the prompt, both right and kept: **the caps need a top element** (an "unknown" made by a cap still let a join
+add members beside it, so the ring of 9 depended on the entry; `Value::top()` absorbs every join), and **a pattern on an open value that has members
+of the constructor binds their fields with unknown beside them**, not unknown alone. Two corners the coder named and the review leaves, written in
+`ENGINE.md`: a value arriving across a cycle through an argument, and a call with more arguments than parameters. **What is left: V4, held (§6.1);
+and V10, the cost.** V10: (a) one reading of a body gives both its sites and its value, kept for the request; (b) a def whose written return type is
+a Base scalar, or a project type no constructor of which can hold a function, has the value data without being read. Each with the test that the
+graphs are equal with and without it, on every fixture and the 16 books.
+
 **V6, V7 and V8 built (b5a0e6e, 8a149b9, b21f637, and the fix 2ce33ee), reviewed 2026-11-22.** Reproduced: the suites green, clippy and fmt clean,
 knows-nothing still layer 1 over the same 30,471 items, never fewer over 271 entries (60 unresolved edges replaced, 6 under-applied calls handed
 over, all six in V7's own rows), both oracle tests at 0, no layer-1 snapshot touched, and **all 25 new snapshots read one by one: every row of §12.2

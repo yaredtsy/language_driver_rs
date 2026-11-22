@@ -178,19 +178,22 @@ rows are the known limits of the layer: both sections are equal, but for the `ke
 The counters the layer adds to `Stats.language`: `anonymous_function_called` (the reason of a call through a parameter known to be a lambda: its
 calls are drawn where the lambda is written), and, per context walked, for a parameter **the callee calls** that the caller did not name: `key_slot_open` (the argument
 is the caller's own parameter and the caller's key does not know it), `key_slot_local` (a `let`, a `case` variable, a lambda's binder),
-`key_slot_value` (a call's result, a constructor, a literal, a Base def), `key_slot_missing` (no argument at that position).
+`key_slot_value` (a value the layer cannot name: a Base def, a Base call's result). `key_slot_missing` is no longer counted: a call with too few arguments is a
+hand-over now, and makes no key. The value layer adds `value_widened_set` (a set of more than 8 became unknown), `value_widened_depth` (a value nested deeper than 3 inside a
+value became unknown there) and `return_in_cycle` (a request's values did not settle in 64 evaluations of one def: all of them unknown).
 
 ## Known limits, each a fixture
 
 - a bare project def as the value of a `do` bind, exec, step or `return` is a passed edge since 85aee89 and 55368ce (row `passed-do`; the
   demos' `passed_deep` fell from 28 to 15, the rest being type names in value position, which owe nothing under BD-D9).
-- at the default level a parameter called inside its def is unresolved for every caller (rows `template-arg`, `variable`, `binder-wins`). The
-  precise level names it per caller (the precise rows above). On the demos (`ENGINE.md` §BC1+BC2): of the 55 unresolved sites of the default
-  level, 16 are drawn (every template parameter), 12 are known to be a lambda, 3 are a lambda in all contexts but one, 24 stay unresolved.
-- **a lambda a caller passes is known, not drawn under the def that calls it**: its calls are under the def that writes it, at both levels
-  (BC-D6; rows `template-lambda`, `param-lambda-captures`). 12 of the demos' 55 sites. Drawing them under the caller is Q-BD9.
-- the limits of the precise level are its `limit-*` rows: a parameter no caller names, partial application and a primitive handed to a monad's
-  bind (17 demo sites, one program), a lambda's own binder, a constructor of defs, a Base def or a `let` in the slot, a type as an operator's
-  namespace.
-- a closure called after being stored (`add2(1)`) and a closure returned by a call (`adder(2)(…)`) are unresolved at both levels (row
-  `closure-call`): BC3, not built (3 demo sites, none through a `let`).
+- at the default level a call through a variable is unresolved, whatever the variable is (rows `template-arg`, `variable`, `binder-wins`,
+  `closure-call`). The precise level, on by default, follows the value: an argument, a variable, what a call returns, a partial application, a
+  constructor's field (the precise rows above). On the demos (`ENGINE.md` §The value layer): of the 55 unresolved sites of the default level, 19
+  are drawn in every context, 14 are a known lambda in every context, 17 are named in some contexts, 5 stay unresolved in every context.
+- **a lambda is known, not drawn under the def that calls it**: its calls are under the def that writes it, at both levels (BC-D6; rows
+  `template-lambda`, `param-lambda-captures`, `local-lambda`, `return-lambda`). Moving one under its caller is decided (D54) and held:
+  `docs/08-bend/07-value-layer-design.md` §6.1.
+- the limits of the precise level are its `limit-*` rows: a parameter no caller names, a lambda's own binder, a type as an operator's namespace,
+  and what comes from Base (a Base def in a slot, a Base call's result, a partial application of a Base def, a Base constructor). And three
+  without a row yet: the continuation of a `do` statement is not in a key (`P.bind`'s `f`); a call written with more arguments than the def has
+  parameters has no value; a value that arrives across a cycle through an argument can leave an "unknown" behind (`ENGINE.md`, Known corners).

@@ -528,6 +528,64 @@ binder `k2` in `String.word(R, t, k2)`, counted once in each of `String.word`'s 
 - **the one unbuilt thing that would change the demos' trees is drawing a lambda's calls under the function that calls it** (TypeScript's TC7, Q-TC1 and Q-RC1's other answer; Python does it for a nested `def` and not for a `lambda`): the 12 sites, and the 3 of
   `String.word` whose binder would then have a value. 15 of 55, against 16 drawn by this step. It is a tree rule shared by every language, so it was asked as Q-BD9; **answered yes the same day (D54), and designed in `docs/08-bend/07-value-layer-design.md`**.
 
+## The value layer
+
+`docs/08-bend/07-value-layer-design.md`, phases 0, 2 and 3 and the variables of phase 1, built 2026-11-21 and 2026-11-22 in ten commits (0e1667d, 4375dfc, acdeba3, 2f5766d, b5a0e6e, 8a149b9, b21f637, 2ce33ee,
+4690e67, dfbdc51), each reviewed with its proofs reproduced. Since 0e1667d the layer is **on by default** (D53). What it adds to BC1+BC2: a function kept in a variable, the value a call returns (a factory, a join of the
+cases, a parameter returned, a recursive def), a partial application, a `do` statement as the call it is, a constructor's fields read by a pattern. A lambda still stays with the def that writes it: the step that moves
+one under its caller (V4, D54) is held (`07` §6.1). Measured by the same test as above, `context_layer_on_the_demos`, on the same 16 books and the same 55 sites; its pins are these numbers (dfbdc51), rerun by the
+reviewer with the same counts.
+
+### The 55 sites, after it
+
+| class | `~` parameter | plain parameter | not a parameter | all | after BC1+BC2 |
+|---|---|---|---|---|---|
+| drawn in every context | 16 | 0 | 3 | **19** | 16 |
+| a lambda in every context | 0 | 12 | 2 | **14** | 12 |
+| drawn in some, a lambda in others | 0 | 1 | 0 | **1** | 0 |
+| named in some, unresolved in others | 0 | 16 | 0 | **16** | 3 |
+| unresolved in every context | 0 | 3 | 2 | **5** | 24 |
+| all | 16 | 32 | 7 | 55 | 55 |
+
+What moved, and the rule that moved it:
+
+- **The three constructor fields are drawn**: `Game.step`, `Game.read`, `Game.show` of `io_rollback_netcode` call `World.step`, `Input.read`, `Input.show`. The chain is the whole of phases 2 and 3 at once: `Walkers.game()` returns
+  `Net.Game{World.step, Input.read, Input.show, 60n, 200n}` (a factory, the value of a call), it is passed along as a `~` argument from def to def (flow-down, in a key that holds a constructor), and
+  `Game{step, read, show, rate, tol} = game` binds the fields (a pattern).
+- **`P.bind`'s `m` of `pure_hvm5_mini` is drawn in 9 of its 11 contexts and a lambda in the other 2**: `Unit <- drop(2n)` is `P.bind(Unit, Unit, drop(2n), …)`, so `m` is the partial application of `drop`, and where
+  `P.bind` gives it the rest, `drop` is called. The nine reach `bindc`, `bindv`, `drop`, `eof`, `name`, `opt`, `peek`, `pop`. `P.bind` has a context per value bound, not per statement: 11 for the program's `do` blocks.
+- **13 `k` of the parser's primitives are a known lambda in the context `P.bind` reaches** (`P.bind`'s own `a => f(a)(k)`) and unresolved in the open context of the passed edge that the hand-over draws, 1 context of 2 each: `bindc.go` (4 sites), `bindv`, `drop`, `eof` (2), `name.go`, `opt.go` (2), `peek`, `pop`. With the three of `String.word` (a lambda in 14 of 15 contexts, unchanged since BC1+BC2) they are the 16 of the fourth row.
+  They are not drawn and will not be: a parser in continuation-passing style is a chain of closures, and drawing it would be running it.
+- **Two calls of a call's result are a known lambda**: `main` 1916:3 `prog()` and `pop` 646:7 `pop.go(U32.is_eq(u, 1), nm, u)`; each is a `do` block's value, the lambda `P.bind` returns.
+- **Five stay unresolved in every context**: `P.bind` 524:20 `f`, 524:20 `f(a)`; `P.pure` 521:13 `k`; `index.go` 734:3 `k`; `look.go` 690:7 `k`. They are the continuation of a `do` statement (left out of the key so that a `do` block stays flat), a returned lambda's own binder, and two primitives no
+  walked call hands their `k`.
+
+### What it costs
+
+| book | contexts | `Default` ms | `Precise` ms after BC1+BC2 | `Precise` ms now |
+|---|---|---|---|---|
+| `app_slash_boss_3d` | 424 → 424 | 4.1 | 5.5 | 12.3 |
+| `pure_hvm5_mini` | 157 → 178 | 1.5 | 1.8 | 5.6 |
+| `io_rollback_netcode` | 130 → 160 | 0.7 | 1.1 | 3.0 |
+
+Median of 20 requests, release, the reviewer's run (the coder's machine is about 1.4 times faster on every cell and gives the same ratios). **`Precise` is 3 to 4.5 times `Default`**, against 1.2 to 1.6 after BC1+BC2,
+and nearly all of it is the value layer's way of working, not what it finds: every full call asks for the callee's value, the callee's body is read for that value alone, and read again for its sites when the solver
+walks it. `app_slash_boss_3d` gains nothing from values (its 16 sites were drawn already) and pays the most. The contexts barely grow: `pure_hvm5_mini` has 21 more (`P.bind` 11, eleven defs 2 each: the keyed one
+and the open one of the hand-over), the netcode demo none. No request is slow in absolute terms; a step that reads a body once for both, and that skips the value of a def whose written return type cannot hold a
+function, is the next one (`07` §15).
+
+**What the measurement caught.** The first build of return values evaluated the outermost def of every cycle again, round by round, and did not finish on `pure_hvm5_mini` (millions of evaluations over 80
+contexts); and keys held whole data structures, the interpreter's states, a new context for every shape of data. Both were found by running the demos, not by the fixtures. The cure of the first is a worklist; of the
+second, that a constructor with no function inside it is data and data is never in a key. The review then found the fixpoint could depend on which def was asked first (an answer of "unknown" where "nothing yet" was
+meant, in three places of the design); V8b made every such answer "nothing yet", gave the caps a top element that absorbs every join, and pinned the order with rings of 6, 8 and 9 defs entered from two ends.
+
+### Known corners
+
+- **A function reaching a def through an argument that is still "nothing yet" when it is first read, across a cycle**: the callee is first read under the open key, and that reading's "unknown" stays in the reader's
+  value. The coder's finding at V8b; it needs a cycle through a call's argument, no demo has one, and the cure (data in keys) would double the contexts of every def that is given a literal. Not fixed.
+- **A call written with more arguments than the def has parameters** (`f(a, b)` where `f(a)` returns a function) has an unknown value; written as two calls, `f(a)(b)`, it is followed.
+- **A lambda's calls stay with its writer** (12 + 2 + 1 sites know the lambda and draw nothing new at the site that calls it). `07` §6.1 says why moving them is held.
+
 ## grammar
 
 S-BD2 (G1–G30, step 2; G31–G36 found in step 4): every form `bend.ts` reads that the BNF comment (lines 8–160) does not name, or names differently. Read 2026-11-20 from `parse_book` (2593), `parse_def`
