@@ -37,6 +37,10 @@ pub(crate) enum One {
 pub(crate) struct Value {
     known: Box<[One]>,
     open: bool,
+    /// Too much for the caps (a set of more than [`MAX_SET`], a value nested deeper than [`MAX_DEPTH`]): the top, which every join with it is. It has no member and is
+    /// open, as `unknown` is, and it is not `unknown`: something that is merely not known still adds its members to a join, and a cap that did the same would give a
+    /// different answer to whoever reached it first (07 §7).
+    wide: bool,
 }
 
 impl Value {
@@ -45,6 +49,16 @@ impl Value {
         Value {
             known: Box::new([]),
             open: true,
+            wide: false,
+        }
+    }
+
+    /// What a cap makes of a value that is too much: it is as unknown as `unknown`, and a join with it is itself.
+    pub(crate) fn top() -> Value {
+        Value {
+            known: Box::new([]),
+            open: true,
+            wide: true,
         }
     }
 
@@ -53,6 +67,7 @@ impl Value {
         Value {
             known: Box::new([]),
             open: false,
+            wide: false,
         }
     }
 
@@ -61,6 +76,7 @@ impl Value {
         Value {
             known: Box::new([one]),
             open: false,
+            wide: false,
         }
     }
 
@@ -93,7 +109,7 @@ impl Value {
             .map(|value| {
                 if depth + 1 > MAX_DEPTH {
                     *hit = true;
-                    Value::unknown()
+                    Value::top()
                 } else {
                     value.cap(depth + 1, hit)
                 }
@@ -124,6 +140,7 @@ impl Value {
         Value {
             known: known.into(),
             open: self.open,
+            wide: self.wide,
         }
     }
 
@@ -132,14 +149,22 @@ impl Value {
         &self.known
     }
 
+    /// Whether it is what the caps make of what is too much.
+    pub(crate) fn is_top(&self) -> bool {
+        self.wide
+    }
+
     pub(crate) fn is_open(&self) -> bool {
         self.open
     }
 
     /// What can be at a place that holds this in one case and `other` in another: the members of both, and open when either is. No case is ruled out (no condition is
     /// evaluated), so the join of the cases of a `match` is the value of the `match`. `None` when the set would hold more than [`MAX_SET`] members: the caller says
-    /// it is unknown, and counts it (`value_widened_set`).
+    /// it is the top, and counts it (`value_widened_set`).
     pub(crate) fn join(&self, other: &Value) -> Option<Value> {
+        if self.wide || other.wide {
+            return Some(Value::top());
+        }
         let mut known: Vec<One> = self
             .known
             .iter()
@@ -154,6 +179,7 @@ impl Value {
         Some(Value {
             known: known.into(),
             open: self.open || other.open,
+            wide: false,
         })
     }
 }
@@ -215,6 +241,25 @@ mod tests {
     }
 
     #[test]
+    fn the_top_is_open_has_no_member_and_is_what_every_join_with_it_is() {
+        let top = Value::top();
+        assert!(top.is_open() && top.members().is_empty());
+        assert_ne!(top, Value::unknown());
+        for other in [Value::data(), Value::unknown(), Value::one(def(1))] {
+            assert_eq!(top.join(&other), Some(top.clone()));
+            assert_eq!(other.join(&top), Some(top.clone()));
+        }
+        // unknown is not: it adds its members to a join
+        assert_eq!(
+            Value::unknown()
+                .join(&Value::one(def(1)))
+                .unwrap()
+                .members(),
+            [def(1)]
+        );
+    }
+
+    #[test]
     fn a_set_of_more_than_eight_is_not_a_set() {
         let mut set = Value::data();
         for n in 0..MAX_SET {
@@ -242,6 +287,6 @@ mod tests {
         let (capped, hit) = four.capped();
         assert!(hit);
         // the def at depth 4 is gone; each partial around it is kept
-        assert_eq!(capped, nest(nest(nest(nest(Value::unknown())))));
+        assert_eq!(capped, nest(nest(nest(nest(Value::top())))));
     }
 }

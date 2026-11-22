@@ -644,12 +644,26 @@ fn a_value_nested_deeper_than_three_is_widened_and_counted() {
     assert_eq!(counter(&graph, "value_widened_depth"), 0);
 }
 
-/// What a def returns when it depends on itself through six others settles by being evaluated again where a value grew, and a cycle that has not settled in four rounds is
-/// unknown, and counted (`return_in_cycle`): a ring of defs that each return their own def or the next one's value gives each of them a value with a member more than the
-/// round before.
+/// The precise graph of `entry` in a program of `defs`.
+fn graph_from_entry(defs: &str, entry: &str) -> Graph {
+    let program = Program::new(&[("main.bend", defs)]);
+    let book = program.book("main.bend");
+    graph_at(&book, "main.bend", entry, Precision::Precise).expect("a graph")
+}
+
+/// The defs `w..` that the outer call of `entry` reaches, and whether it has the book's answer beside them.
+fn outer_targets(graph: &Graph, entry: &str) -> Vec<String> {
+    reached_from(graph, entry)
+        .into_iter()
+        .filter(|name| name.starts_with('w') || name.starts_with("unresolved"))
+        .collect()
+}
+
+/// What a def returns does not depend on which def is asked first (07 §7): a ring of defs that each return their own def or the next one's value, entered from two
+/// of them, gives the same targets at the outer call. Six fit in a set, eight fit (the cap itself), nine do not, and the set cap makes the same unknown from either end.
 #[test]
-fn a_ring_that_does_not_settle_is_unknown_and_counted() {
-    let ring = |len: usize| {
+fn a_ring_gives_the_same_from_every_entry() {
+    let ring = |len: usize, entries: [usize; 2]| {
         let defs: String = (0..len)
             .map(|n| {
                 format!(
@@ -658,15 +672,74 @@ fn a_ring_that_does_not_settle_is_unknown_and_counted() {
                 )
             })
             .collect();
-        variable_graph(&defs, "def main() -> U32:\n  d0(3n)(1)\n")
+        let mains: String = entries
+            .iter()
+            .map(|n| format!("def from_d{n}() -> U32:\n  d{n}(3n)(1)\n\n"))
+            .collect();
+        let program = format!("{defs}{mains}");
+        entries.map(|n| {
+            let entry = format!("from_d{n}");
+            let graph = graph_from_entry(&program, &entry);
+            (outer_targets(&graph, &entry), graph)
+        })
     };
-    // a ring of three settles: the outer call has all three
-    let settled = ring(3);
-    assert_eq!(counter(&settled, "return_in_cycle"), 0);
-    assert_eq!(reached_from(&settled, "main").len(), 3 + 1);
-    // a ring of eight does not settle in four rounds
-    let long = ring(8);
-    assert!(counter(&long, "return_in_cycle") >= 1);
+    for (len, widened) in [(6, false), (8, false), (9, true)] {
+        let [(first, g1), (second, g2)] = ring(len, [0, 3]);
+        assert_eq!(first, second, "a ring of {len}");
+        for graph in [&g1, &g2] {
+            assert_eq!(counter(graph, "return_in_cycle"), 0, "a ring of {len}");
+            assert_eq!(
+                counter(graph, "value_widened_set") > 0,
+                widened,
+                "a ring of {len}"
+            );
+        }
+        if widened {
+            assert_eq!(
+                first,
+                ["unresolved function_typed_value"],
+                "a ring of {len}"
+            );
+        } else {
+            assert_eq!(first.len(), len, "a ring of {len}: every one of them");
+        }
+    }
+}
+
+/// `pick(b)` returns `Box{work}` or `Empty{}`, an object with no function in it, which is data (07 §7): the join stays closed, and `f(1)` draws `work` and nothing else.
+#[test]
+fn an_object_with_no_function_in_it_does_not_open_a_join() {
+    let graph = variable_graph(
+        concat!(
+            "type Shape is Data:\n  Box{f: U32 -> U32}\n  Empty{}\n\n",
+            "def work(x: U32) -> U32:\n  x\n\n",
+            "def pick(b: Bool) -> Shape:\n  match b:\n    case True{}:\n      Box{work}\n    case False{}:\n      Empty{}\n",
+        ),
+        "def main(b: Bool) -> U32:\n  Box{f} = pick(b)\n  f(1)\n",
+    );
+    assert_eq!(reached_from(&graph, "main"), ["pick", "work"]);
+}
+
+/// A cycle whose value is read through a constructor pattern gives the same from both ends: `a` returns `work` or the field of what `b` returns, `b` returns `Box` of
+/// `other` or of what `a` returns.
+#[test]
+fn a_cycle_read_through_a_constructor_pattern_gives_the_same_from_both_ends() {
+    let defs = concat!(
+        "type Shape is Data:\n  Box{f: U32 -> U32}\n\n",
+        "def work(x: U32) -> U32:\n  x\n\ndef other(x: U32) -> U32:\n  x\n\n",
+        "def a(n: Nat) -> U32 -> U32:\n  match n:\n    case Zero{}:\n      work\n    case Succ{p}:\n      Box{g} = b(p)\n      g\n\n",
+        "def b(n: Nat) -> Shape:\n  match n:\n    case Zero{}:\n      Box{other}\n    case Succ{p}:\n      Box{a(p)}\n\n",
+        "def from_a() -> U32:\n  a(2n)(1)\n\n",
+        "def from_b() -> U32:\n  Box{f} = b(2n)\n  f(1)\n",
+    );
+    let targets = |entry: &str| {
+        let graph = graph_from_entry(defs, entry);
+        let mut reached = reached_from(&graph, entry);
+        reached.retain(|name| name == "work" || name == "other" || name.starts_with("unresolved"));
+        reached
+    };
+    assert_eq!(targets("from_a"), ["other", "work"]);
+    assert_eq!(targets("from_b"), ["other", "work"]);
 }
 
 /// An object with no function anywhere inside it says nothing a call can use, so it is not in a key: the same call with any data is the same context.

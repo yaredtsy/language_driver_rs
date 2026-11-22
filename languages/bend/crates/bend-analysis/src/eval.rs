@@ -29,8 +29,9 @@ use crate::sem::{ArgShape, DefWalk, Expr, Item, Pat, Sugar, What};
 use crate::value::{One, Value};
 use crate::walk::{self, Reached};
 
-/// How many times a context that returns what it calls is evaluated again before its value is unknown (BV-D8).
-pub(crate) const MAX_ROUNDS: u32 = 4;
+/// A cell evaluated more often than this makes every cell of its request unknown (07 §7): a backstop far above anything real, since the caps on a value (a set of at
+/// most `MAX_SET` members nested at most `MAX_DEPTH` deep) are what make the worklist end.
+pub(crate) const MAX_EVALS: u32 = 64;
 
 /// What the evaluator may know. `Tracked` is the layer. `Nothing` is for the test that proves the evaluator and the item table agree: every value is unknown, so
 /// the answer must be layer 1's, site by site.
@@ -104,7 +105,7 @@ struct Cell {
     readers: Vec<usize>,
     /// How many times it was evaluated.
     evals: u32,
-    /// Its value stopped growing because it did not settle in `MAX_ROUNDS` rounds, or was too big: it is unknown, and stays so.
+    /// Its value was too big (a set past the cap): it is unknown, and stays so.
     top: bool,
 }
 
@@ -137,55 +138,41 @@ impl Run {
         self.cells[at].value.clone()
     }
 
-    /// Whether `at` is read, through others, by itself: the only way a context can keep growing.
-    fn on_a_cycle(&self, at: usize) -> bool {
-        let mut seen = vec![false; self.cells.len()];
-        let mut pending: Vec<usize> = self.cells[at].readers.clone();
-        while let Some(next) = pending.pop() {
-            if next == at {
-                return true;
-            }
-            if !std::mem::replace(&mut seen[next], true) {
-                pending.extend(self.cells[next].readers.iter().copied());
-            }
-        }
-        false
-    }
-
     /// `read` is what `at` was just evaluated to: its value grows to hold it, and what read it is evaluated again if it grew. Returns what to count: `(a set too big,
-    /// a cycle that did not settle)`.
+    /// a cell evaluated more than `MAX_EVALS` times)`.
     fn settle(&mut self, at: usize, read: Value) -> (bool, bool) {
         self.reading = None;
         self.cells[at].evals += 1;
+        if self.cells[at].evals > MAX_EVALS {
+            return (false, true);
+        }
         if self.cells[at].top {
             return (false, false);
         }
-        let (mut big, mut cycle) = (false, false);
-        let grown = match self.cells[at].value.join(&read) {
-            Some(grown) => grown,
-            None => {
-                big = true;
-                Value::unknown()
-            }
-        };
+        let grown = self.cells[at].value.join(&read).unwrap_or_else(Value::top);
+        // a cell that becomes the top is counted, whether the set that was too big was its own or one it read (the bodies are read silently)
+        let big = grown.is_top() && !self.cells[at].value.is_top();
         if grown == self.cells[at].value {
-            return (big, cycle);
+            return (big, false);
         }
-        let value = if self.cells[at].evals > MAX_ROUNDS && self.on_a_cycle(at) {
-            cycle = true;
-            Value::unknown()
-        } else {
-            grown
-        };
         let cell = &mut self.cells[at];
-        cell.top = big || cycle;
-        cell.value = value;
+        cell.top = grown.is_top();
+        cell.value = grown;
         for reader in cell.readers.clone() {
             if !std::mem::replace(&mut self.queued[reader], true) {
                 self.work.push(reader);
             }
         }
-        (big, cycle)
+        (big, false)
+    }
+
+    /// Every cell of the request is unknown, and nothing is left to evaluate.
+    fn give_up(&mut self) {
+        for cell in &mut self.cells {
+            cell.value = Value::top();
+            cell.top = true;
+        }
+        self.work.clear();
     }
 }
 
@@ -242,6 +229,7 @@ pub(crate) fn ret(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
         }
         if cycle {
             lang.note_once(calls::RETURN_IN_CYCLE);
+            lang.run.borrow_mut().as_mut().expect("a request").give_up();
         }
     }
     let run = lang.run.borrow_mut().take().expect("a request");
@@ -373,11 +361,11 @@ impl<'b> Eval<'_, 'b> {
         }
     }
 
-    /// What can be at a place that holds `a` in one case and `b` in another; a set past the cap is unknown, and counted.
+    /// What can be at a place that holds `a` in one case and `b` in another; a set past the cap is the top, and counted.
     fn join(&self, a: &Value, b: &Value) -> Value {
         a.join(b).unwrap_or_else(|| {
             self.lang.note_slot(calls::VALUE_WIDENED_SET);
-            Value::unknown()
+            Value::top()
         })
     }
 
@@ -422,15 +410,17 @@ impl<'b> Eval<'_, 'b> {
     }
 
     /// A constructor with what it was given, as a value; nested deeper than the cap, it is unknown there, and counted. A constructor of Base's is unknown: what
-    /// Base does with it is not ours to read.
+    /// Base does with it is not ours to read. One of a project type with no function anywhere inside it is data: nothing a call can use is there, so it is in no key,
+    /// and "nothing yet" stays "nothing yet" (07 §7).
     fn object(&self, name: &str, held: Vec<Value>) -> Value {
         let Some((ty, written)) = self.ctor_of(name) else {
             return Value::unknown();
         };
-        // an object with no function anywhere inside it says nothing a call can use, and a key that held it would be a different context for every shape of data: it is
-        // as unknown as a constructor of Base's
-        if !self.tracks() || !held.iter().any(Value::holds_function) {
+        if !self.tracks() {
             return Value::unknown();
+        }
+        if !held.iter().any(Value::holds_function) {
+            return Value::data();
         }
         let (value, hit) = Value::one(One::Ctor {
             ty,
@@ -444,14 +434,17 @@ impl<'b> Eval<'_, 'b> {
         value
     }
 
-    /// What each of `count` fields of the constructor `name` holds in `value`: the join over its members that are that constructor, unknown when it is open or has none.
+    /// What each of `count` fields of the constructor `name` holds in `value`: the join over its members that are that constructor, and unknown beside them when the
+    /// value is open (something else may be there too). With no such member it is data when the value is closed ("nothing yet" stays "nothing yet"), and unknown when
+    /// it is open.
     fn fields_of(&self, name: &str, value: &Value, count: usize) -> Vec<Value> {
         let unknown = || vec![Value::unknown(); count];
         let Some((ty, written)) = self.ctor_of(name) else {
             return unknown();
         };
-        if value.is_open() {
-            return unknown();
+        // what is too much for the caps has nothing to take apart, and is above everything
+        if value.is_top() {
+            return vec![Value::top(); count];
         }
         let mut joined: Option<Vec<Value>> = None;
         for one in value.members() {
@@ -478,7 +471,16 @@ impl<'b> Eval<'_, 'b> {
                     .collect(),
             });
         }
-        joined.unwrap_or_else(unknown)
+        match joined {
+            // the members' fields, and something else beside them when the value is open
+            Some(fields) if value.is_open() => fields
+                .iter()
+                .map(|field| self.join(field, &Value::unknown()))
+                .collect(),
+            Some(fields) => fields,
+            None if value.is_open() => unknown(),
+            None => vec![Value::data(); count],
+        }
     }
 
     /// An item that no value changes the answer for: the book's, as layer 1 gives it.
@@ -650,8 +652,9 @@ impl<'b> Eval<'_, 'b> {
                         )));
                     }
                 }
+                // not callable, and nothing is what calling it returns
                 One::Ctor { .. } => {
-                    add(self, Value::unknown());
+                    add(self, Value::data());
                     object = true;
                 }
                 // the arguments it was given, and these: all of them is the call, fewer is a partial application again
@@ -682,11 +685,19 @@ impl<'b> Eval<'_, 'b> {
                 .collect();
         } else if head.is_open() || object || targets.is_empty() {
             targets.push(Target::Unresolved(Reason::new(calls::FUNCTION_TYPED_VALUE)));
-            add(self, Value::unknown());
+            // calling what is open may return anything; calling what has nothing callable in it returns nothing
+            add(
+                self,
+                if head.is_open() {
+                    Value::unknown()
+                } else {
+                    Value::data()
+                },
+            );
         }
         (
             Reached::Site { targets, passed },
-            value.unwrap_or_else(Value::unknown),
+            value.unwrap_or_else(Value::data),
         )
     }
 
@@ -725,6 +736,24 @@ mod tests {
     use super::*;
     use crate::book::Book;
     use crate::calls::Precision;
+
+    /// The backstop: a cell evaluated more than `MAX_EVALS` times is reported, and giving up makes every cell of the request the top, the order of the cells
+    /// notwithstanding.
+    #[test]
+    fn a_cell_evaluated_too_often_makes_every_cell_of_its_request_the_top() {
+        let mut run = Run::default();
+        let first = run.cell_for((DeclId::new(0, 0), Key::open()));
+        let second = run.cell_for((DeclId::new(0, 1), Key::open()));
+        for _ in 0..MAX_EVALS {
+            assert_eq!(run.settle(first, Value::data()), (false, false));
+        }
+        assert_eq!(run.settle(first, Value::data()), (false, true));
+        run.give_up();
+        assert!(run.cells.iter().all(|cell| cell.value.is_top()));
+        assert!(run.work.is_empty());
+        // and a cell that was never evaluated is the top too
+        assert!(run.cells[second].value.is_top());
+    }
 
     /// What a `Reached` comes to, as text: the sites and targets compared, in a form the two walks share.
     fn describe(reached: &Reached<'_>) -> String {
