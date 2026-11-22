@@ -47,44 +47,6 @@ pub(crate) enum Policy {
     Nothing,
 }
 
-/// The way a request is worked out. Only the tests choose: they build every graph the old way too, and the two must be byte-identical (V10b, V10d).
-#[cfg(test)]
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Ways {
-    /// The sites of the last evaluation of a context are kept for the solver's walk (V10b).
-    pub(crate) keep: bool,
-    /// A context met for the first time is evaluated at once, nested, before the one that asked (V10d).
-    pub(crate) nest: bool,
-}
-
-#[cfg(test)]
-thread_local! {
-    static WAYS: std::cell::Cell<Ways> = const { std::cell::Cell::new(Ways { keep: true, nest: true }) };
-}
-
-/// Runs `then` with the request worked out in `ways`, on this thread.
-#[cfg(test)]
-pub(crate) fn with_ways<T>(ways: Ways, then: impl FnOnce() -> T) -> T {
-    let before = WAYS.replace(ways);
-    let out = then();
-    WAYS.set(before);
-    out
-}
-
-fn keeps() -> bool {
-    #[cfg(test)]
-    return WAYS.get().keep;
-    #[cfg(not(test))]
-    true
-}
-
-fn nests() -> bool {
-    #[cfg(test)]
-    return WAYS.get().nest;
-    #[cfg(not(test))]
-    true
-}
-
 /// What one evaluation of a context gave besides its value: what each item of its body came to, and what reading it counted. Kept until the solver walks the context,
 /// when it is the walk's own reading (V10b): the evaluation is the one `reached` makes, so the sites are the same.
 pub(crate) struct Kept<'b> {
@@ -218,7 +180,7 @@ impl<'b> Run<'b> {
             self.cells[at].top = true;
             return Meet::Value(self.read(at));
         }
-        if nests() && self.depth < MAX_NEST {
+        if self.depth < MAX_NEST {
             return Meet::Evaluate(self.cell(ctx, false));
         }
         let at = self.cell(ctx, true);
@@ -297,7 +259,7 @@ fn read_value<'b>(
         let value = eval.eval(&walk.flow.body);
         (value, eval.reached)
     });
-    (value, keeps().then_some(Kept { reached, events }))
+    (value, Some(Kept { reached, events }))
 }
 
 /// The value a context returns (BV-D5), kept: `(def, key)` is worked out once, with everything it needs (`Run`). Asked while a request is being worked out, a context

@@ -7,7 +7,6 @@
 use analyzer_core::text::Span;
 
 // the evaluator reads the tree as far as BC1+BC2 goes (V2); what the later steps read (binders, patterns, a lambda's facts, a do's types) is only built and tested yet
-#[allow(dead_code)]
 mod flow;
 mod walk;
 

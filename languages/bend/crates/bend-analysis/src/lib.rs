@@ -19,8 +19,6 @@ mod base_names;
 mod book;
 mod calls;
 mod env;
-#[cfg(test)]
-mod equal;
 mod eval;
 mod key;
 mod paths;

@@ -100,7 +100,8 @@ pub(crate) enum Pat {
     Skip,
 }
 
-/// What kind of node carries an item.
+/// What kind of node carries an item: for the tests that each site is one node.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Node {
     Call,
@@ -112,6 +113,7 @@ pub(crate) enum Node {
 
 impl Expr {
     /// Every item this node and the nodes under it carry, with the kind of node that carries it, in the order the tree is read.
+    #[cfg(test)]
     pub(crate) fn items(&self, out: &mut Vec<(u32, Node)>) {
         match self {
             Expr::Unknown | Expr::Data | Expr::Var(_) => {}
@@ -229,6 +231,7 @@ impl Expr {
     }
 }
 
+#[cfg(test)]
 impl Flow {
     /// Every item the body carries and the node that carries it, sorted by item: what the test that each site is one node reads.
     pub(crate) fn items(&self) -> Vec<(u32, Node)> {
