@@ -1323,10 +1323,14 @@ fn context_layer_on_the_demos() {
             ("pure_hvm5_mini", 21)
         ]
     );
-    // The classes by what the callee is: every cell not named is 0. BC0 said 28 named (16 at a `~`, 12 at a plain parameter), 0 named in some, 27 in none. Here:
-    // the 28 are 16 drawn (all `~`) and 12 known to be a lambda (all plain: continuations written at the call); 3 of BC0's 27 are named in 14 of 15 contexts of
-    // `String.word` and `String.word.go` (the callers name a lambda; the open context is reached through a lambda's own binder, `k2 => String.word(R, t, k2)`);
-    // 24 stay unresolved in every context (17 plain parameters of `pure_hvm5_mini`'s CPS parser, 7 that are no parameter: BC0's c, d and g).
+    // The classes by what the callee is: every cell not named is 0. BC0 said 28 named (16 at a `~`, 12 at a plain parameter), 0 named in some, 27 in none; BC1+BC2
+    // gave 16 drawn (all `~`), 12 lambdas (plain), 3 named in 14 of 15 contexts of `String.word` and `String.word.go` (the open context is reached through a lambda's own
+    // binder, `k2 => String.word(R, t, k2)`) and 24 unresolved. The value layer (V3 to V8b) moved 19 of those 24:
+    //  - the 3 `Game` fields of `io_rollback_netcode` are drawn in every context (a def returns a constructor, a pattern takes its fields: V6, V8);
+    //  - `prog()` and `pop.go(..)` of `pure_hvm5_mini` are a lambda in every context (a call's result is followed: V6);
+    //  - `P.bind`'s `m` is drawn in 9 of its 11 contexts and a lambda in 2 (a `do` statement keys `bind` with the value it binds, a partial application, a def or a
+    //    lambda: V7), and 13 of the CPS `k` parameters it applies `m` to are a lambda in the contexts `P.bind` reaches and unresolved in the open one of the def (V7);
+    //  - the 5 that stay: `P.bind`'s `f` and `f(a)` (the continuation is not in a key), `P.pure`'s `k`, `index.go`'s `k` and `look.go`'s `k` (a lambda's own binder).
     let cell = |class: &str, callee: Callee| {
         rows.iter()
             .filter(|r| class_of(&r.outcomes) == class && r.callee == callee)
@@ -1334,10 +1338,13 @@ fn context_layer_on_the_demos() {
     };
     let pinned = [
         (CLASSES[0], Callee::Template, 16),
+        (CLASSES[0], Callee::Neither, 3),
         (CLASSES[1], Callee::Plain, 12),
-        (CLASSES[3], Callee::Plain, 3),
-        (CLASSES[4], Callee::Plain, 17),
-        (CLASSES[4], Callee::Neither, 7),
+        (CLASSES[1], Callee::Neither, 2),
+        (CLASSES[2], Callee::Plain, 1),
+        (CLASSES[3], Callee::Plain, 16),
+        (CLASSES[4], Callee::Plain, 3),
+        (CLASSES[4], Callee::Neither, 2),
     ];
     for class in CLASSES {
         for callee in [Callee::Template, Callee::Plain, Callee::Neither] {
@@ -1349,7 +1356,14 @@ fn context_layer_on_the_demos() {
         }
     }
     let named = |callee: Callee| cell(CLASSES[0], callee) + cell(CLASSES[1], callee);
-    assert_eq!((named(Callee::Template), named(Callee::Plain)), (16, 12));
+    assert_eq!(
+        (
+            named(Callee::Template),
+            named(Callee::Plain),
+            named(Callee::Neither)
+        ),
+        (16, 12, 5)
+    );
     // The cost: only these books have a context or a counter more under Precise: (contexts under Default, under Precise, then the layer's counters
     // `anonymous_function_called`, `key_slot_open`, `key_slot_local`, `key_slot_value`, `key_slot_missing`).
     for (book, default_contexts, precise_contexts, counters) in &layer {
@@ -1357,7 +1371,7 @@ fn context_layer_on_the_demos() {
             "app_slash_boss_3d" => (424, 424, [4, 0, 0, 0, 0]),
             "io_rollback_netcode" => (130, 160, [64, 1, 15, 0, 0]),
             "io_tcp_echos" => (8, 8, [1, 0, 0, 0, 0]),
-            "pure_hvm5_mini" => (157, 157, [0, 5, 0, 0, 14]),
+            "pure_hvm5_mini" => (157, 178, [18, 5, 0, 0, 0]),
             // nothing to resolve: the same contexts, no counter
             _ => (*default_contexts, *default_contexts, [0; 5]),
         };
@@ -1367,7 +1381,8 @@ fn context_layer_on_the_demos() {
             "{book}"
         );
     }
-    // The only defs with more than one context under Precise: the 30 contexts `io_rollback_netcode` has more (130 to 160).
+    // The only defs with more than one context under Precise: the 30 contexts `io_rollback_netcode` has more (130 to 160), and the 21 `pure_hvm5_mini` has (157 to 178:
+    // `P.bind` has 11, one for each thing a `do` statement of the parser binds, and 11 defs it applies them to have 2).
     let many: Vec<(&str, &str, usize)> = many
         .iter()
         .map(|(b, d, n)| (b.as_str(), d.as_str(), *n))
@@ -1378,7 +1393,19 @@ fn context_layer_on_the_demos() {
             ("io_rollback_netcode", "String.word", 15),
             ("io_rollback_netcode", "String.word.go", 15),
             ("io_rollback_netcode", "Bot.frame", 2),
-            ("io_rollback_netcode", "Bot.more", 2)
+            ("io_rollback_netcode", "Bot.more", 2),
+            ("pure_hvm5_mini", "P.bind", 11),
+            ("pure_hvm5_mini", "bindc", 2),
+            ("pure_hvm5_mini", "bindc.go", 2),
+            ("pure_hvm5_mini", "bindv", 2),
+            ("pure_hvm5_mini", "drop", 2),
+            ("pure_hvm5_mini", "eof", 2),
+            ("pure_hvm5_mini", "name", 2),
+            ("pure_hvm5_mini", "name.go", 2),
+            ("pure_hvm5_mini", "opt", 2),
+            ("pure_hvm5_mini", "opt.go", 2),
+            ("pure_hvm5_mini", "peek", 2),
+            ("pure_hvm5_mini", "pop", 2)
         ]
     );
 }
