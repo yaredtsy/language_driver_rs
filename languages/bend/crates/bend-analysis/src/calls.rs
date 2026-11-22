@@ -18,7 +18,7 @@ use crate::book::{Book, DeclId};
 use crate::env::Env;
 use crate::eval::{self, Policy};
 use crate::key::{self, CanonKey, Key, Relevance};
-use crate::probe::{self, Section};
+use crate::probe::{self, Count, Section};
 use crate::sem::{self, Item};
 use crate::value::Value;
 use crate::walk::{self, Reached};
@@ -343,10 +343,12 @@ impl Lang for Bend<'_> {
         if key.is_open() {
             return [0; 16];
         }
+        let _time = probe::section(Section::Keys);
+        probe::count(Count::DigestAsked);
         if let Some(digest) = self.digests.borrow().get(key) {
             return *digest;
         }
-        let _time = probe::section(Section::Keys);
+        probe::count(Count::DigestMade);
         let digest = key::digest(self, key);
         self.digests.borrow_mut().insert(key.clone(), digest);
         self.canons

@@ -93,8 +93,20 @@ fn same_both_ways(book: &Book, whose: &str, old: Ways, new: Ways) -> usize {
 }
 
 /// The way before V10b: a body is read for its sites again by the solver's walk.
-pub(crate) const OLD: Ways = Ways { keep: false };
-pub(crate) const NEW: Ways = Ways { keep: true };
+pub(crate) const OLD: Ways = Ways {
+    keep: false,
+    nest: false,
+};
+/// The way after V10b and before V10d: the sites are kept, a context met for the first time is queued.
+pub(crate) const KEPT: Ways = Ways {
+    keep: true,
+    nest: false,
+};
+/// The way now.
+pub(crate) const NEW: Ways = Ways {
+    keep: true,
+    nest: true,
+};
 
 /// V10b: the sites kept from the evaluation that gave the value are the sites the walk would have read.
 #[test]
@@ -104,6 +116,19 @@ fn the_sites_kept_are_the_sites_read_on_every_fixture_and_scenario() {
         .map(|folder| {
             let book = Book::open(folder, Path::new("main.bend")).expect("the book opens");
             same_both_ways(&book, &folder.display().to_string(), OLD, NEW)
+        })
+        .sum();
+    assert!(compared > 250, "entries were compared: {compared}");
+}
+
+/// V10d: a context met for the first time is evaluated at once, and the graph is the one it was when it was queued.
+#[test]
+fn a_context_evaluated_at_once_gives_the_graph_it_gave_queued_on_every_fixture_and_scenario() {
+    let compared: usize = fixture_books()
+        .iter()
+        .map(|folder| {
+            let book = Book::open(folder, Path::new("main.bend")).expect("the book opens");
+            same_both_ways(&book, &folder.display().to_string(), KEPT, NEW)
         })
         .sum();
     assert!(compared > 250, "entries were compared: {compared}");
@@ -131,7 +156,9 @@ fn the_sites_kept_are_the_sites_read_on_the_demos() {
             .filter(|f| folder.join(f).is_file());
         for entry in entries {
             let book = Book::open(folder, Path::new(entry)).expect("the book opens");
-            compared += same_both_ways(&book, &format!("{}/{entry}", folder.display()), OLD, NEW);
+            let whose = format!("{}/{entry}", folder.display());
+            compared += same_both_ways(&book, &whose, OLD, NEW);
+            same_both_ways(&book, &whose, KEPT, NEW);
             books += 1;
         }
     }

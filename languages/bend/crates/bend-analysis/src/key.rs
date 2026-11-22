@@ -11,7 +11,7 @@ use serde::Serialize;
 use crate::book::{DeclId, FileIndex, Resolved};
 use crate::calls::{self, Bend, Precision};
 use crate::env::Env;
-use crate::probe::{self, Section};
+use crate::probe::{self, Count, Section};
 use crate::sem::{ArgShape, Expr, What};
 use crate::value::{One, Value};
 
@@ -118,6 +118,8 @@ pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<Relevance> {
     if let Some(known) = lang.relevant.borrow().get(&def) {
         return Rc::clone(known);
     }
+    let _time = probe::section(Section::Relevance);
+    probe::count(Count::Relevance);
     let mut called: BTreeSet<u32> = BTreeSet::new();
     let mut passed: BTreeSet<u32> = BTreeSet::new();
     for item in lang.items(def) {
@@ -271,8 +273,9 @@ pub(crate) fn key_with(
         return Key::open();
     }
     let _time = probe::section(Section::Keys);
+    probe::count(Count::KeyMade);
     let relevance = relevant(lang, callee);
-    let slots = relevance
+    let slots: Vec<(u32, Value)> = relevance
         .all
         .iter()
         .filter_map(|&at| match slot(at) {
@@ -287,6 +290,9 @@ pub(crate) fn key_with(
             }
         })
         .collect();
+    if !slots.is_empty() {
+        probe::count(Count::KeyClosed);
+    }
     Key::from_slots(slots)
 }
 
@@ -348,6 +354,8 @@ fn canon_value(lang: &Bend<'_>, value: &Value) -> Canon {
 }
 
 pub(crate) fn canon(lang: &Bend<'_>, key: &Key) -> CanonKey {
+    let _time = probe::section(Section::Canon);
+    probe::count(Count::Canon);
     CanonKey {
         slots: key
             .slots()
@@ -419,7 +427,9 @@ pub(crate) fn digest(lang: &Bend<'_>, key: &Key) -> [u8; 16] {
     if key.is_open() {
         return [0; 16];
     }
-    let bytes = serde_json::to_vec(&canon(lang, key)).expect("a canonical key always serializes");
+    let canon = canon(lang, key);
+    let _time = probe::section(Section::Hash);
+    let bytes = serde_json::to_vec(&canon).expect("a canonical key always serializes");
     xxhash_rust::xxh3::xxh3_128(&bytes).to_le_bytes()
 }
 

@@ -706,6 +706,33 @@ fn a_ring_gives_the_same_from_every_entry() {
     }
 }
 
+/// A context met for the first time is evaluated at once, nested in the one that asked, to a depth of 64 (V10d): a chain of defs that each return the next one's value
+/// goes far past it, and neither overflows the stack of a thread of the default size nor loses the value at the end. 500 is the chain of the step; 5,000 is one that
+/// overflows that stack when nothing caps the nesting (3,000 did, measured).
+#[test]
+fn a_long_chain_of_defs_is_worked_out_on_a_small_stack() {
+    for len in [500, 5000] {
+        let reached = std::thread::spawn(move || {
+            let chain: String = (0..len)
+                .map(|n| {
+                    let next = if n == len - 1 {
+                        "work".to_owned()
+                    } else {
+                        format!("c{}()", n + 1)
+                    };
+                    format!("def c{n}() -> U32 -> U32:\n  {next}\n\n")
+                })
+                .collect();
+            let program =
+                format!("def work(x: U32) -> U32:\n  x\n\n{chain}def main() -> U32:\n  c0()(1)\n");
+            reached_from(&graph_from_entry(&program, "main"), "main")
+        })
+        .join()
+        .expect("a thread that did not overflow");
+        assert_eq!(reached, ["c0", "work"], "a chain of {len}");
+    }
+}
+
 /// `pick(b)` returns `Box{work}` or `Empty{}`, an object with no function in it, which is data (07 §7): the join stays closed, and `f(1)` draws `work` and nothing else.
 #[test]
 fn an_object_with_no_function_in_it_does_not_open_a_join() {

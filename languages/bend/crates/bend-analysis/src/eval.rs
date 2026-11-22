@@ -34,6 +34,10 @@ use crate::walk::{self, Reached};
 /// most `MAX_SET` members nested at most `MAX_DEPTH` deep) are what make the worklist end.
 pub(crate) const MAX_EVALS: u32 = 64;
 
+/// How many evaluations may be inside one another (V10d). Deeper than this a context met for the first time is queued, as every one was before: the answer is the
+/// same smallest value, and a chain of defs a thousand long cannot overflow the stack.
+pub(crate) const MAX_NEST: u32 = 64;
+
 /// What the evaluator may know. `Tracked` is the layer. `Nothing` is for the test that proves the evaluator and the item table agree: every value is unknown, so
 /// the answer must be layer 1's, site by site.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,11 +53,13 @@ pub(crate) enum Policy {
 pub(crate) struct Ways {
     /// The sites of the last evaluation of a context are kept for the solver's walk (V10b).
     pub(crate) keep: bool,
+    /// A context met for the first time is evaluated at once, nested, before the one that asked (V10d).
+    pub(crate) nest: bool,
 }
 
 #[cfg(test)]
 thread_local! {
-    static WAYS: std::cell::Cell<Ways> = const { std::cell::Cell::new(Ways { keep: true }) };
+    static WAYS: std::cell::Cell<Ways> = const { std::cell::Cell::new(Ways { keep: true, nest: true }) };
 }
 
 /// Runs `then` with the request worked out in `ways`, on this thread.
@@ -68,6 +74,13 @@ pub(crate) fn with_ways<T>(ways: Ways, then: impl FnOnce() -> T) -> T {
 fn keeps() -> bool {
     #[cfg(test)]
     return WAYS.get().keep;
+    #[cfg(not(test))]
+    true
+}
+
+fn nests() -> bool {
+    #[cfg(test)]
+    return WAYS.get().nest;
     #[cfg(not(test))]
     true
 }
@@ -125,8 +138,9 @@ pub(crate) fn reached<'b>(lang: &Bend<'b>, f: DeclId, env: &Env<'_>) -> Vec<Opti
 ///
 /// The value a context returns starts as data, "nothing yet". A context that is read while the values are being worked out answers with its value so far; when a value
 /// grows, every context that read it is evaluated again, until none grows. That is the least value each context can have, whichever was met first (BV-D5), and it is the
-/// whole of "nothing computed inside a cycle is kept before that": no value is kept until all of them are final. A context met for the first time is evaluated before
-/// the one that asked, so code with no cycle is evaluated once.
+/// whole of "nothing computed inside a cycle is kept before that": no value is kept until all of them are final. A context met for the first time is evaluated at once,
+/// nested in the one that asked (to a depth of `MAX_NEST`), so the asker reads a real value and code with no cycle is evaluated once. Only a context that is read while it
+/// is being evaluated, or that is deeper than the cap, is read again.
 #[derive(Default)]
 pub(crate) struct Run<'b> {
     index: HashMap<Ctx, usize>,
@@ -137,6 +151,18 @@ pub(crate) struct Run<'b> {
     queued: Vec<bool>,
     /// The context being evaluated: what a read is a read by.
     reading: Option<usize>,
+    /// How many evaluations are inside one another now.
+    depth: u32,
+    /// The request gave up: every cell is the top, and none is kept.
+    gave_up: bool,
+}
+
+/// What `Run::meet` says of a context that is asked for.
+enum Meet {
+    /// Its value so far, read by the context being evaluated.
+    Value(Value),
+    /// A new cell, to be evaluated now.
+    Evaluate(usize),
 }
 
 type Ctx = (DeclId, Key);
@@ -155,6 +181,11 @@ struct Cell<'b> {
 
 impl<'b> Run<'b> {
     fn cell_for(&mut self, ctx: Ctx) -> usize {
+        self.cell(ctx, true)
+    }
+
+    /// The cell of `ctx`, made with the value "nothing yet" when there is none, and queued when `queue`.
+    fn cell(&mut self, ctx: Ctx, queue: bool) -> usize {
         if let Some(at) = self.index.get(&ctx) {
             return *at;
         }
@@ -168,9 +199,30 @@ impl<'b> Run<'b> {
             top: false,
             kept: None,
         });
-        self.queued.push(true);
-        self.work.push(at);
+        self.queued.push(queue);
+        if queue {
+            self.work.push(at);
+        }
         at
+    }
+
+    /// A context is asked for while the request is worked out. A cell it already has answers with its value so far. A new one is evaluated at once, nested (V10d), unless
+    /// the request gave up (it is the top) or the evaluations are `MAX_NEST` deep (it is queued, and answers "nothing yet").
+    fn meet(&mut self, ctx: Ctx) -> Meet {
+        if let Some(at) = self.index.get(&ctx).copied() {
+            return Meet::Value(self.read(at));
+        }
+        if self.gave_up {
+            let at = self.cell(ctx, false);
+            self.cells[at].value = Value::top();
+            self.cells[at].top = true;
+            return Meet::Value(self.read(at));
+        }
+        if nests() && self.depth < MAX_NEST {
+            return Meet::Evaluate(self.cell(ctx, false));
+        }
+        let at = self.cell(ctx, true);
+        Meet::Value(self.read(at))
     }
 
     /// The value of `at` so far, read by the context being evaluated.
@@ -195,7 +247,7 @@ impl<'b> Run<'b> {
             return (false, false);
         }
         let grown = self.cells[at].value.join(&read).unwrap_or_else(Value::top);
-        // a cell that becomes the top is counted, whether the set that was too big was its own or one it read (what a body counts is kept with its sites, and counted when its context is walked, but this is counted once, here)
+        // a cell that becomes the top is counted, whether the set that was too big was its own or one it read (counted once, here, and not with the sites)
         let big = grown.is_top() && !self.cells[at].value.is_top();
         if grown == self.cells[at].value {
             return (big, false);
@@ -222,6 +274,7 @@ impl<'b> Run<'b> {
             cell.top = true;
         }
         self.work.clear();
+        self.gave_up = true;
     }
 }
 
@@ -248,15 +301,21 @@ fn read_value<'b>(
 }
 
 /// The value a context returns (BV-D5), kept: `(def, key)` is worked out once, with everything it needs (`Run`). Asked while a request is being worked out, a context
-/// answers with its value so far, which starts as data.
+/// that is new is evaluated at once, and one that is not answers with its value so far, which starts as data.
 pub(crate) fn ret(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
     let ctx = (def, key.clone());
     if let Some(value) = lang.rets.borrow().get(&ctx) {
         return value.clone();
     }
-    if let Some(run) = lang.run.borrow_mut().as_mut() {
-        let at = run.cell_for(ctx);
-        return run.read(at);
+    let met = lang
+        .run
+        .borrow_mut()
+        .as_mut()
+        .map(|run| run.meet(ctx.clone()));
+    match met {
+        Some(Meet::Value(value)) => return value,
+        Some(Meet::Evaluate(at)) => return nested(lang, at),
+        None => {}
     }
     // not inside a request: this is the first, and the others come from it
     let _time = probe::section(Section::Worklist);
@@ -266,7 +325,6 @@ pub(crate) fn ret(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
         *lang.run.borrow_mut() = Some(run);
         root
     };
-    let mut gave_up = false;
     loop {
         let next = {
             let mut guard = lang.run.borrow_mut();
@@ -277,26 +335,7 @@ pub(crate) fn ret(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
             })
         };
         let Some(at) = next else { break };
-        let again = lang.run.borrow().as_ref().expect("a request").cells[at].evals > 0;
-        let (def, key) = {
-            let guard = lang.run.borrow();
-            guard.as_ref().expect("a request").ctxs[at].clone()
-        };
-        let (read, kept) = read_value(lang, def, &key, again);
-        let (big, cycle) = {
-            let mut guard = lang.run.borrow_mut();
-            let run = guard.as_mut().expect("a request");
-            run.cells[at].kept = kept;
-            run.settle(at, read)
-        };
-        if big {
-            lang.note_once(calls::VALUE_WIDENED_SET);
-        }
-        if cycle {
-            lang.note_once(calls::RETURN_IN_CYCLE);
-            lang.run.borrow_mut().as_mut().expect("a request").give_up();
-            gave_up = true;
-        }
+        evaluate(lang, at);
     }
     let run = lang.run.borrow_mut().take().expect("a request");
     let value = run.cells[root].value.clone();
@@ -304,12 +343,57 @@ pub(crate) fn ret(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
     let mut kept = lang.kept.borrow_mut();
     for (ctx, cell) in run.ctxs.into_iter().zip(run.cells) {
         // the last evaluation of a context read the final value of everything it read, unless the request gave up: then every value is the top, and the walk reads
-        if !gave_up && let Some(evaluated) = cell.kept {
+        if !run.gave_up
+            && let Some(evaluated) = cell.kept
+        {
             kept.insert(ctx.clone(), evaluated);
         }
         rets.insert(ctx, cell.value);
     }
     value
+}
+
+/// Evaluates the cell `at` once, and settles it: its value grows to hold what the body gave, and what read it is queued if it grew. The cell is the context being read by
+/// (`Run::reading` is set by the caller).
+fn evaluate(lang: &Bend<'_>, at: usize) {
+    let (def, key, again) = {
+        let guard = lang.run.borrow();
+        let run = guard.as_ref().expect("a request");
+        let (def, key) = run.ctxs[at].clone();
+        (def, key, run.cells[at].evals > 0)
+    };
+    let (read, kept) = read_value(lang, def, &key, again);
+    let (big, cycle) = {
+        let mut guard = lang.run.borrow_mut();
+        let run = guard.as_mut().expect("a request");
+        run.cells[at].kept = kept;
+        run.settle(at, read)
+    };
+    if big {
+        lang.note_once(calls::VALUE_WIDENED_SET);
+    }
+    if cycle {
+        lang.note_once(calls::RETURN_IN_CYCLE);
+        lang.run.borrow_mut().as_mut().expect("a request").give_up();
+    }
+}
+
+/// A context met for the first time, evaluated in the middle of the evaluation of the one that asked: the asker is saved, the new one is evaluated and settled, and the
+/// asker is restored and reads the value it came to (V10d). A context it reads that is being evaluated, further up, answers with its value so far and is settled by the
+/// worklist.
+fn nested(lang: &Bend<'_>, at: usize) -> Value {
+    let asker = {
+        let mut guard = lang.run.borrow_mut();
+        let run = guard.as_mut().expect("a request");
+        run.depth += 1;
+        run.reading.replace(at)
+    };
+    evaluate(lang, at);
+    let mut guard = lang.run.borrow_mut();
+    let run = guard.as_mut().expect("a request");
+    run.depth -= 1;
+    run.reading = asker;
+    run.read(at)
 }
 
 impl<'b> Eval<'_, 'b> {
