@@ -511,6 +511,14 @@ the next phase's rows and prompt are written from it.
 | BV-D7 | **A project constructor is a value with its fields; a constructor pattern binds them** | §9 |
 | BV-D8 | **A slot holds a value that is neither unknown nor data; the canonical form grows by variants and no existing digest moves; depth 3, set 8, inline 8; no cap of rounds** | §10 |
 
+**V10b and V10d built (3072430, 657065c), reviewed 2026-11-22**: the suites green, the equal-graphs test (each graph built the old way and the new,
+byte for byte, over 311 entries of the fixtures and scenarios and every def of the 16 books and their `PROOF` books) passing, chains of 500 and
+5,000 defs, the rings, the demos' pins, both oracle tests at 0. Over the 16 books `Precise` is now 2.0 times `Default` (15.3 ms against 7.8, the
+reviewer's run), from 3.3. **V10c is dropped**: once one reading gives both, a body that is walked is read once whatever its return type. **V10e,
+the last cost step**: relevance is a fact of the code and is worked out again in every request (2.3 ms of the 15.3); it is kept with the book,
+per file, beside the walks. Then the test-only "old way" and its switch are removed: their proof is made, and the pins, the snapshots and the
+never-fewer test guard from here.
+
 **V10a built (7f54b73, counting only), reviewed 2026-11-22**, its table rerun: over the 16 books `Precise` is 23.6 ms against `Default`'s 7.1 (the
 reviewer's machine), and the probe splits it: bodies read for their value 37%, the solver 25%, bodies read for their sites 18%, keys and digests
 17%, the worklist's own bookkeeping 2%. Two findings. **The double reading is real**: of 906 contexts walked, 884 were also read for their value.

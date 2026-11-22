@@ -574,6 +574,13 @@ walks it. `app_slash_boss_3d` gains nothing from values (its 16 sites were drawn
 and the open one of the hand-over), the netcode demo none. No request is slow in absolute terms; a step that reads a body once for both, and that skips the value of a def whose written return type cannot hold a
 function, is the next one (`07` §15).
 
+**After the cost steps (V10a to V10d: 7f54b73, 3072430, 657065c; 2026-11-22).** A probe (`cargo test -p bend-analysis --release --lib probe -- --ignored`) split the time first: of 906 contexts walked, 884 were also read
+for their value, and 750 of 1,633 value readings were second readings, the asker having been read with "nothing yet" before its callee. Now one reading of a body gives both its value and its sites, and a context met for the
+first time is evaluated at once, nested to 64 deep (a chain of 5,000 defs is fine on a default stack). The graphs are byte-identical to the ones before, proven by building each both ways over every fixture, scenario and book.
+**Over the 16 books `Precise` is 15.3 ms against `Default`'s 7.8, the reviewer's run: 2.0 times, from 3.3.** What is left above `Default`: reading bodies 6.6 ms (1,008 readings for 912 contexts), relevance 2.3 ms (worked out
+again for every request, though it is a fact of the code), keys and the worklist 0.6 ms each. The rule that a def with a scalar return type has no value to work out (V10c) is **not built**: after "one reading gives both" a body
+that is walked is read once whatever its type, so the rule would save only the readings of contexts that are never walked, which are few.
+
 **What the measurement caught.** The first build of return values evaluated the outermost def of every cycle again, round by round, and did not finish on `pure_hvm5_mini` (millions of evaluations over 80
 contexts); and keys held whole data structures, the interpreter's states, a new context for every shape of data. Both were found by running the demos, not by the fixtures. The cure of the first is a worklist; of the
 second, that a constructor with no function inside it is data and data is never in a key. The review then found the fixpoint could depend on which def was asked first (an answer of "unknown" where "nothing yet" was
