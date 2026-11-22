@@ -18,6 +18,7 @@ use crate::book::{Book, DeclId};
 use crate::env::Env;
 use crate::eval::{self, Policy};
 use crate::key::{self, CanonKey, Key, Relevance};
+use crate::probe::{self, Section};
 use crate::sem::{self, Item};
 use crate::value::Value;
 use crate::walk::{self, Reached};
@@ -315,6 +316,7 @@ impl Lang for Bend<'_> {
         if let Some(digest) = self.digests.borrow().get(key) {
             return *digest;
         }
+        let _time = probe::section(Section::Keys);
         let digest = key::digest(self, key);
         self.digests.borrow_mut().insert(key.clone(), digest);
         self.canons
@@ -324,6 +326,8 @@ impl Lang for Bend<'_> {
     }
 
     fn walk(&mut self, f: DeclId, key: &Key, cancel: &Cancel) -> Summary<Self> {
+        probe::site_walk(f, key);
+        let _time = probe::section(Section::Sites);
         walk::body(self, f, &Env::new(key), cancel)
     }
 }

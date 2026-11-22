@@ -11,6 +11,7 @@ use serde::Serialize;
 use crate::book::{DeclId, FileIndex, Resolved};
 use crate::calls::{self, Bend, Precision};
 use crate::env::Env;
+use crate::probe::{self, Section};
 use crate::sem::{ArgShape, Expr, What};
 use crate::value::{One, Value};
 
@@ -269,6 +270,7 @@ pub(crate) fn key_with(
     if lang.precision == Precision::Default {
         return Key::open();
     }
+    let _time = probe::section(Section::Keys);
     let relevance = relevant(lang, callee);
     let slots = relevance
         .all

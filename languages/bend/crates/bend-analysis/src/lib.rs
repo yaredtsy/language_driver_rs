@@ -22,6 +22,7 @@ mod env;
 mod eval;
 mod key;
 mod paths;
+mod probe;
 #[cfg(test)]
 mod scratch;
 mod sem;

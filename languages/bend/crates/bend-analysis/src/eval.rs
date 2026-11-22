@@ -25,6 +25,7 @@ use crate::book::{DeclId, Resolved};
 use crate::calls::{self, Bend};
 use crate::env::Env;
 use crate::key::{self, Absent, Key};
+use crate::probe::{self, Section};
 use crate::sem::{ArgShape, DefWalk, Expr, Item, Pat, Sugar, What};
 use crate::value::{One, Value};
 use crate::walk::{self, Reached};
@@ -157,12 +158,16 @@ impl Run {
         }
         let cell = &mut self.cells[at];
         cell.top = grown.is_top();
+        let from_data = !cell.value.is_open() && cell.value.members().is_empty();
         cell.value = grown;
+        let mut queued = 0;
         for reader in cell.readers.clone() {
             if !std::mem::replace(&mut self.queued[reader], true) {
                 self.work.push(reader);
+                queued += 1;
             }
         }
+        probe::requeued(from_data, queued);
         (big, false)
     }
 
@@ -177,7 +182,9 @@ impl Run {
 }
 
 /// What the body of `def` evaluates to under `key`, read once: no site is kept and nothing is counted.
-fn read_value(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
+fn read_value(lang: &Bend<'_>, def: DeclId, key: &Key, again: bool) -> Value {
+    probe::value_read(def, key, again);
+    let _time = probe::section(Section::Value);
     let Some(walk) = lang.walk_of(def) else {
         return Value::unknown();
     };
@@ -197,6 +204,7 @@ pub(crate) fn ret(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
         return run.read(at);
     }
     // not inside a request: this is the first, and the others come from it
+    let _time = probe::section(Section::Worklist);
     let root = {
         let mut run = Run::default();
         let root = run.cell_for(ctx);
@@ -213,11 +221,12 @@ pub(crate) fn ret(lang: &Bend<'_>, def: DeclId, key: &Key) -> Value {
             })
         };
         let Some(at) = next else { break };
+        let again = lang.run.borrow().as_ref().expect("a request").cells[at].evals > 0;
         let (def, key) = {
             let guard = lang.run.borrow();
             guard.as_ref().expect("a request").ctxs[at].clone()
         };
-        let read = read_value(lang, def, &key);
+        let read = read_value(lang, def, &key, again);
         let (big, cycle) = lang
             .run
             .borrow_mut()
