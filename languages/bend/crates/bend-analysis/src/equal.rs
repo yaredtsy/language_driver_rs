@@ -11,35 +11,7 @@ use analyzer_core::solve::{Budget, Cancel};
 use crate::book::Book;
 use crate::calls::{Options, Precision, graph_within};
 use crate::eval::{Ways, with_ways};
-
-/// Every folder under `dir` that has a `main.bend`: a book is opened at each, rooted there.
-pub(crate) fn books(dir: &Path, out: &mut Vec<PathBuf>) {
-    let mut entries: Vec<PathBuf> = fs::read_dir(dir)
-        .expect("a folder")
-        .map(|e| e.expect("an entry").path())
-        .collect();
-    entries.sort();
-    if entries.iter().any(|p| p.ends_with("main.bend")) {
-        out.push(dir.to_path_buf());
-    }
-    for path in entries.into_iter().filter(|p| p.is_dir()) {
-        books(&path, out);
-    }
-}
-
-/// The books of the fixtures and the scenarios.
-pub(crate) fn fixture_books() -> Vec<PathBuf> {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut folders = Vec::new();
-    books(&manifest.join("tests/fixtures"), &mut folders);
-    books(&manifest.join("../../../../scenarios"), &mut folders);
-    assert!(
-        folders.len() > 50,
-        "the books were found: {}",
-        folders.len()
-    );
-    folders
-}
+use crate::testbooks::fixture_books;
 
 /// The graph and the canonical keys of every def of `book` as an entry, in `ways`, as text: the graph's serialization, then its keys sorted by digest.
 fn everything(book: &Book, ways: Ways) -> Vec<String> {

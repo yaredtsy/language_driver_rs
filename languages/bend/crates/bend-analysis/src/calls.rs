@@ -6,7 +6,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
-use std::rc::Rc;
 
 use analyzer_core::edit::MarkerStyle;
 use analyzer_core::graph::{Basis, ContextId, DefInfo, EdgeTo, Entry, Graph, StableDef};
@@ -17,7 +16,7 @@ use analyzer_core::text::Span;
 use crate::book::{Book, DeclId};
 use crate::env::Env;
 use crate::eval::{self, Policy};
-use crate::key::{self, CanonKey, Key, Relevance};
+use crate::key::{self, CanonKey, Key};
 use crate::probe::{self, Count, Section};
 use crate::sem::{self, Item};
 use crate::value::Value;
@@ -156,8 +155,7 @@ pub(crate) struct Bend<'b> {
     quiet: Cell<bool>,
     /// The ids of the defs described that have a marker another def of their file owns (D34). Described more than once, so a set.
     demoted: RefCell<HashSet<StableDef>>,
-    /// The relevant parameters of each def (`key::relevant`), and the digest of each key met. Only ever looked up, never iterated (rule 9).
-    pub(crate) relevant: RefCell<HashMap<DeclId, Rc<Relevance>>>,
+    /// The digest of each key met. Only ever looked up, never iterated (rule 9).
     digests: RefCell<HashMap<Key, [u8; 16]>>,
     /// The value each context returns (`eval::ret`): kept in Bend beside the sites. Only ever looked up, never iterated (rule 9).
     pub(crate) rets: RefCell<HashMap<(DeclId, Key), Value>>,
@@ -183,7 +181,6 @@ impl<'b> Bend<'b> {
             noted: RefCell::new(HashSet::new()),
             quiet: Cell::new(false),
             demoted: RefCell::new(HashSet::new()),
-            relevant: RefCell::new(HashMap::new()),
             digests: RefCell::new(HashMap::new()),
             rets: RefCell::new(HashMap::new()),
             run: RefCell::new(None),

@@ -16,6 +16,7 @@ use analyzer_core::wire::Sources;
 
 use crate::base_names;
 use crate::calls::Marked;
+use crate::key::Relevance;
 use crate::paths;
 use crate::sem;
 use crate::session::OpenError;
@@ -141,6 +142,8 @@ pub struct Book {
     /// What each file's bodies say, read the first time a body of the file is walked and kept: a book is read many times (a request per def), and a file is parsed
     /// once, not once per request. `OnceLock` is "set at most once, from any thread, then only read".
     walks: Vec<OnceLock<Vec<sem::DefWalk>>>,
+    /// The relevant parameters of each def, by file and def, worked out the first time the def is asked (`key::relevant`) and kept: a fact of the code, like the walks.
+    relevance: Vec<Vec<OnceLock<Relevance>>>,
     /// The markers of a file read with a style, kept for the next request: keyed by (label, placement, file), only ever looked up (rule 9).
     markers: Mutex<HashMap<(String, String, usize), Arc<Marked>>>,
     decls: Vec<DeclEntry>,
@@ -393,6 +396,7 @@ impl Book {
             files,
             by_path: index,
             walks: Vec::new(),
+            relevance: Vec::new(),
             markers: Mutex::new(HashMap::new()),
             decls: Vec::new(),
             first_decl: Vec::new(),
@@ -402,6 +406,11 @@ impl Book {
             stats,
         };
         book.walks = book.files.iter().map(|_| OnceLock::new()).collect();
+        book.relevance = book
+            .files
+            .iter()
+            .map(|f| f.outline.defs.iter().map(|_| OnceLock::new()).collect())
+            .collect();
         book.build_tables(&facts);
         Ok(book)
     }
@@ -527,6 +536,16 @@ impl Book {
             (Some(cell), Some(entry)) => cell.get_or_init(|| sem::walks(&entry.text)),
             _ => &[],
         }
+    }
+
+    /// The relevant parameters of a def, kept: `fresh` works them out the first time. `None` for a def the book does not have.
+    pub(crate) fn relevance(
+        &self,
+        id: DeclId,
+        fresh: impl FnOnce() -> Relevance,
+    ) -> Option<&Relevance> {
+        let cell = self.relevance.get(id.file().index())?.get(id.def())?;
+        Some(cell.get_or_init(fresh))
     }
 
     /// The markers of `file` read with `style`, read once per style.

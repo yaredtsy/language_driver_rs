@@ -2,7 +2,7 @@
 //! or a lambda by identity and nothing of the caller), only the parameters the def calls or passes along are in it, and empty is the open key, which is layer 1's context.
 
 use std::collections::BTreeSet;
-use std::rc::Rc;
+use std::sync::OnceLock;
 
 use analyzer_core::graph::StableDef;
 use analyzer_core::outline::DefKind;
@@ -98,6 +98,7 @@ pub(crate) fn known_def(lang: &Bend<'_>, id: DeclId) -> bool {
 }
 
 /// The relevant parameters of a def (BC-D2, and the value of a `let`, V3), and which of them the def itself calls.
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Relevance {
     /// Every relevant position: called (a), or passed along to a project def (b) or through a parameter (c). A key has a slot for each one a caller names.
     pub(crate) all: Box<[u32]>,
@@ -109,15 +110,30 @@ impl Relevance {
     fn is_called(&self, position: u32) -> bool {
         self.called.binary_search(&position).is_ok()
     }
+
+    /// A def the book does not have: no parameter is relevant.
+    fn none() -> Relevance {
+        Relevance {
+            all: Box::new([]),
+            called: Box::new([]),
+        }
+    }
 }
 
 /// The parameters of `def` that are **relevant** (BC-D2): the def calls one (`f(x)`), or passes one as a direct argument to a call of a project def or to a call
 /// through one of its own parameters (`h(f, x)`: when a caller names `h`, `f` flows down into it). Positions of the written parameter list, sorted. A fact of the
-/// def's own code, so computed once per def and kept.
-pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<Relevance> {
-    if let Some(known) = lang.relevant.borrow().get(&def) {
-        return Rc::clone(known);
-    }
+/// def's own code and of what the names in it resolve to, so it is worked out the first time it is asked and kept **in the book**, beside the walks: a book is never
+/// changed, a refresh that changes any file builds a new one (`Session::rebuild`) and the facts of the old one go with it, so a def of one file cannot be left with an
+/// answer that a change in another file made stale.
+pub(crate) fn relevant<'b>(lang: &Bend<'b>, def: DeclId) -> &'b Relevance {
+    static NONE: OnceLock<Relevance> = OnceLock::new();
+    lang.book
+        .relevance(def, || fresh(lang, def))
+        .unwrap_or_else(|| NONE.get_or_init(Relevance::none))
+}
+
+/// The relevant parameters of `def`, worked out now from its code (`relevant` keeps the answer).
+pub(crate) fn fresh(lang: &Bend<'_>, def: DeclId) -> Relevance {
     let _time = probe::section(Section::Relevance);
     probe::count(Count::Relevance);
     let mut called: BTreeSet<u32> = BTreeSet::new();
@@ -159,12 +175,10 @@ pub(crate) fn relevant(lang: &Bend<'_>, def: DeclId) -> Rc<Relevance> {
         });
     }
     let all: BTreeSet<u32> = called.union(&passed).copied().collect();
-    let found = Rc::new(Relevance {
+    Relevance {
         all: all.into_iter().collect(),
         called: called.into_iter().collect(),
-    });
-    lang.relevant.borrow_mut().insert(def, Rc::clone(&found));
-    found
+    }
 }
 
 /// The parameters (binders below `params`) that `expr` can have as its value: itself when it is one, and what the cases of a `match` and the end of a `let` or a sequence
@@ -636,5 +650,43 @@ mod tests {
             [0],
             "a lambda's call of the writer's parameter counts for the writer"
         );
+    }
+
+    /// V10e: what the book keeps as the relevance of a def is what working it out from the code gives, for every def of `book`. All are asked before any is checked, so
+    /// an answer kept for one def and given for another would show.
+    fn relevance_is_the_one_worked_out_fresh(book: &Book, whose: &str) -> usize {
+        let lang = Bend::new(book, MarkerStyle::above("ID"), Precision::Precise);
+        let kept: Vec<&Relevance> = book
+            .decls()
+            .iter()
+            .map(|decl| relevant(&lang, decl.id))
+            .collect();
+        for (decl, kept) in book.decls().iter().zip(kept) {
+            assert_eq!(*kept, fresh(&lang, decl.id), "{whose}: {:?}", decl.id);
+        }
+        book.decls().len()
+    }
+
+    #[test]
+    fn the_relevance_the_book_keeps_is_the_one_worked_out_fresh_on_every_fixture_and_scenario() {
+        let compared: usize = crate::testbooks::fixture_books()
+            .iter()
+            .map(|folder| {
+                let book = Book::open(folder, std::path::Path::new("main.bend")).expect("opens");
+                relevance_is_the_one_worked_out_fresh(&book, &folder.display().to_string())
+            })
+            .sum();
+        assert!(compared > 250, "defs were compared: {compared}");
+    }
+
+    /// The same over the 16 books of the sweep and their PROOF books: `BEND_CLONE=../language_clone/bend cargo test -p bend-analysis --release --lib -- --ignored relevance`.
+    #[test]
+    #[ignore = "needs BEND_CLONE"]
+    fn the_relevance_the_book_keeps_is_the_one_worked_out_fresh_on_the_demos() {
+        let compared: usize = crate::testbooks::demo_books()
+            .iter()
+            .map(|(whose, book)| relevance_is_the_one_worked_out_fresh(book, whose))
+            .sum();
+        assert!(compared > 1000, "defs were compared: {compared}");
     }
 }

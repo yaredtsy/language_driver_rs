@@ -11,11 +11,11 @@ use std::time::{Duration, SystemTime};
 
 use analyzer_testkit::graph::check_invariants;
 use bend_analysis::{
-    Budget, Cancel, Entry, OpenError, Refreshed, RenderOptions, Session, render, to_text,
+    Budget, Cancel, Entry, OpenError, Precision, Refreshed, RenderOptions, Session, render, to_text,
 };
 
 mod common;
-use common::{Program, default_options};
+use common::{Program, default_options, options_at};
 
 /// What a `Refreshed` says: `Refreshed` is `#[non_exhaustive]`, so a test reads its fields and does not build one.
 fn said(refreshed: &Refreshed) -> (bool, Option<OpenError>) {
@@ -30,6 +30,16 @@ fn write(root: &Path, file: &str, text: &str) {
 
 fn open_in(program: &Program, entry: &str) -> Session {
     Session::open(&program.root, Path::new(entry), default_options()).expect("the program opens")
+}
+
+/// The session at the context layer, which is where a key holds anything.
+fn open_precise(program: &Program) -> Session {
+    Session::open(
+        &program.root,
+        Path::new("main.bend"),
+        options_at(Precision::Precise),
+    )
+    .expect("the program opens")
 }
 
 fn open(program: &Program) -> Session {
@@ -371,4 +381,83 @@ fn graph_does_not_refresh() {
     }
     session.refresh();
     assert_ne!(tree(&session), held);
+}
+
+/// The digests of the contexts of `qualname` in the graph of `main` of `main.bend`, sorted: a context with the open key has zeros.
+fn digests_of(session: &Session, qualname: &str) -> Vec<[u8; 16]> {
+    let entry = Entry::Def {
+        qualname: "main",
+        occurrence: 0,
+    };
+    let graph = session
+        .graph("main.bend", &entry, &Budget::default(), &Cancel::new())
+        .expect("main is there");
+    let mut digests: Vec<[u8; 16]> = graph
+        .contexts
+        .iter()
+        .filter(|c| matches!(&graph.def(&c.id.func), Some(d) if d.qualname == qualname))
+        .map(|c| c.id.digest)
+        .collect();
+    digests.sort();
+    digests
+}
+
+/// What the relevant parameters of a def are is kept with the book (V10e), and a book is built again whole when any file it read changes: a def's answer is never
+/// kept past a change in the file it is written in, nor past a change in another file that its names resolve into.
+///
+/// Here the callee `apply` is in `lib.bend`; the first request fills in the book's answers, and the file changes under it.
+#[test]
+fn a_callee_that_starts_to_call_its_parameter_gets_a_slot_and_loses_it_when_it_stops() {
+    const MAIN: &str = "import ./lib.bend as L\n\ndef work(x: U32) -> U32:\n  x\n\ndef main() -> U32:\n  L.apply(work, 1)\n";
+    const IGNORES: &str = "def apply(f: U32 -> U32, x: U32) -> U32:\n  x\n";
+    const CALLS: &str = "def apply(f: U32 -> U32, x: U32) -> U32:\n  f(x)\n";
+    let program = Program::new(&[("main.bend", MAIN), ("lib.bend", IGNORES)]);
+    let mut session = open_precise(&program);
+    assert_eq!(
+        digests_of(&session, "apply"),
+        [[0; 16]],
+        "f is not relevant"
+    );
+
+    write(&program.root, "lib.bend", CALLS);
+    assert!(session.refresh().reopened);
+    let with = digests_of(&session, "apply");
+    assert_eq!(with.len(), 1);
+    assert_ne!(
+        with[0], [0; 16],
+        "f is called now: the caller's key names it"
+    );
+
+    write(&program.root, "lib.bend", IGNORES);
+    assert!(session.refresh().reopened);
+    assert_eq!(digests_of(&session, "apply"), [[0; 16]], "and loses it");
+}
+
+/// The def whose answer would go stale is in the file that did **not** change: `relay` passes its parameter to `L.apply`, which is relevant only while `L.apply` is a def
+/// of the book. `lib.bend` renames it and renames it back.
+#[test]
+fn a_def_of_an_unchanged_file_follows_a_change_in_the_file_its_names_resolve_into() {
+    const MAIN: &str = "import ./lib.bend as L\n\ndef work(x: U32) -> U32:\n  x\n\ndef relay(f: U32 -> U32) -> U32:\n  L.apply(f, 1)\n\ndef main() -> U32:\n  relay(work)\n";
+    const THERE: &str = "def apply(f: U32 -> U32, x: U32) -> U32:\n  f(x)\n";
+    const RENAMED: &str = "def apply_all(f: U32 -> U32, x: U32) -> U32:\n  f(x)\n";
+    let program = Program::new(&[("main.bend", MAIN), ("lib.bend", THERE)]);
+    let mut session = open_precise(&program);
+    let named = digests_of(&session, "relay");
+    assert_eq!(named.len(), 1);
+    assert_ne!(
+        named[0], [0; 16],
+        "f flows into L.apply: relay's key names it"
+    );
+
+    write(&program.root, "lib.bend", RENAMED);
+    assert!(session.refresh().reopened);
+    assert_eq!(
+        digests_of(&session, "relay"),
+        [[0; 16]],
+        "L.apply is no def: f is not relevant to relay"
+    );
+
+    write(&program.root, "lib.bend", THERE);
+    assert!(session.refresh().reopened);
+    assert_eq!(digests_of(&session, "relay"), named, "and it is back");
 }

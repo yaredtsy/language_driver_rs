@@ -30,6 +30,8 @@ mod scratch;
 mod sem;
 mod session;
 mod stamps;
+#[cfg(test)]
+mod testbooks;
 mod value;
 mod walk;
 

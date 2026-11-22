@@ -975,7 +975,7 @@ mod tests {
     /// sites, their targets, the keys (all open), what is counted.
     #[test]
     fn an_evaluator_that_knows_nothing_is_layer_one() {
-        let compared: usize = crate::equal::fixture_books()
+        let compared: usize = crate::testbooks::fixture_books()
             .iter()
             .map(|folder| {
                 let book = Book::open(folder, Path::new("main.bend")).expect("the book opens");

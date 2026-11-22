@@ -424,6 +424,7 @@ mod tests {
             SECTIONS.join(", ")
         );
         let (mut plain_all, mut default_all) = (0.0, 0.0);
+        let (mut cold_all, mut cold_relevance, mut cold_relevance_defs) = (0.0, 0.0, 0_u64);
         let mut sum = [Duration::ZERO; 8];
         let mut counts = [0_u64; super::COUNTS];
         let mut by_return: BTreeMap<&str, (u64, usize)> = BTreeMap::new();
@@ -457,6 +458,20 @@ mod tests {
                 times.sort();
                 times[times.len() / 2]
             };
+            // the first request of a freshly opened book: what is kept with the book (the walks, the relevance) is worked out here, and only here
+            reset();
+            std::hint::black_box(ask(Precision::Precise));
+            let cold = take();
+            cold_all += ms(cold.keys
+                + cold.value
+                + cold.sites
+                + cold.worklist
+                + cold.solver
+                + cold.relevance
+                + cold.canon
+                + cold.hash);
+            cold_relevance += ms(cold.relevance);
+            cold_relevance_defs += cold.counts[Count::Relevance as usize];
             let plain = time(Precision::Precise);
             let default = time(Precision::Default);
             // the probed runs: the counts are those of the first, the times the mean
@@ -526,13 +541,15 @@ mod tests {
             each.join(", ")
         );
         println!(
-            "counts over the 16 books: keys made {}, closed {}; digests asked {}, made {}; canonical keys written {}; relevance worked out {}",
+            "first request of each book, cold: {cold_all:.2} ms, of which relevance {cold_relevance:.2} ms for {cold_relevance_defs} defs (the rows above are warm: the median of {RUNS} requests on the same book)"
+        );
+        println!(
+            "counts over the 16 books: keys made {}, closed {}; digests asked {}, made {}; canonical keys written {}",
             counts[Count::KeyMade as usize],
             counts[Count::KeyClosed as usize],
             counts[Count::DigestAsked as usize],
             counts[Count::DigestMade as usize],
             counts[Count::Canon as usize],
-            counts[Count::Relevance as usize],
         );
         let reads: u64 = by_return.values().map(|(reads, _)| reads).sum();
         for (kind, (n, defs)) in &by_return {
