@@ -175,12 +175,13 @@ Call(head, args)     the arguments' values, then  apply(eval(head), values)  at 
 | a `Closure` | **the calls its body makes**, read in a frame of its captures and its binders bound to the arguments (§6) | its body's value |
 | a `Lambda` | `Unresolved(anonymous_function_called)`: known, drawn where it is written | unknown |
 | a `Partial` | its arguments first, then as its head | |
-| a `Ctor`, data | `Unresolved(function_typed_value)`: nothing callable is there | unknown |
+| a `Ctor`, data | `Unresolved(function_typed_value)`: nothing callable is there | **data** (corrected at the review of V8: this said unknown, which breaks §7's fixpoint) |
 | unknown, and the head is a name of Base, a hub, outside the root | the `External` of layer 1 | unknown |
 | unknown otherwise | `Unresolved(function_typed_value)`, as layer 1 | unknown |
 
-**Patterns.** `Pat::Bind(i)` takes the value. `Pat::Ctr` takes the fields of a value that is exactly one `Ctor` of that name, closed; anything
-else binds its names to unknown (phase 3; before it, every name of a constructor pattern is unknown). `Pat::Opaque` (a list, a tuple, `3n+p`,
+**Patterns.** `Pat::Bind(i)` takes the value. `Pat::Ctr K` binds each name to the join of that field over the members
+of the value that are `K`; to data when the value is closed and has no such member; to unknown when the value is open (phase 3; before it, every
+name of a constructor pattern is unknown). `Pat::Opaque` (a list, a tuple, `3n+p`,
 `h <> t`) binds its names to unknown.
 
 **BV-D3. A variable has the value of its binding.** Bend has no assignment: `x = v` binds a new `x`, so there is no join over writes, no order of
@@ -275,11 +276,20 @@ value is neither unknown nor data go with it. So `outer(~h, x)` writing `each(y 
   is). It is the layer's known limit, row `limit-lambda-binder`, unchanged.
 
 **Recursion.** `ret` of a context asked for while it is being evaluated is its value so far, which starts as **data** (the empty, closed value:
-"nothing yet"). The outermost context of the cycle is evaluated again until its value stops changing; nothing computed inside the cycle is kept
-before that. Values only grow and are capped (§10), so it ends; after `max_rounds` (4) every context of the cycle gets unknown and
-`return_in_cycle` is counted. Starting from "nothing" and repeating gives the smallest value consistent with the code whichever context was
-entered first, which is what rule 1 (a summary is a function of its key and the code) needs. Python's solver does the same with pending values
-and rounds.
+"nothing yet"). **As built and corrected (V6's fix 2ce33ee, V8b):** one request of `ret` is a **worklist**. Every context it meets gets a cell that starts as
+data; a context that is read answers with its cell; when a cell grows, every context that read it is evaluated again; nothing is kept until no
+cell grows. (The first build evaluated the outermost context of each cycle again, round by round, which is exponential in how deep cycles nest:
+`pure_hvm5_mini` did not finish.) This reaches the smallest value consistent with the code **whichever context is entered first**, on one
+condition, which the review of V8 found broken in three places and V8b restores: **an evaluation that reads "nothing yet" must answer "nothing
+yet", never "unknown"**. A cell only grows, so an early "unknown" sticks, and whether it happens depends on the order. Hence: applying data gives
+data; a constructor pattern on a closed value with no member of that constructor binds data; a project constructor with no function anywhere
+inside it **is** data. Unknown is for what the layer cannot read (Base, a hub, a lambda that stays, an open key), and for the caps.
+
+**It ends without a count of rounds.** A value is a set of at most `max_set` members nested at most `max_depth` deep over the defs and lambdas of
+one book: a finite ladder, and each evaluation that changes a cell climbs it. The caps are part of every step (a set too big is unknown, a value
+too deep is unknown there), so they do not depend on the order either. The first build's "still growing after 4 evaluations, so unknown" did: it
+is replaced by a backstop far above anything real (64 evaluations of one cell), which makes **every** cell of the request unknown and counts
+`return_in_cycle`. Python's solver does the same with pending values and rounds.
 
 > **🦀 Rust note: a memo with an "in progress" state.** `ret(f)` may ask `ret(g)`, which asks `ret(f)` again. A plain cache would recurse for
 > ever. The cure is three states per entry: absent, `Running(value so far)`, `Done(value)`. Asking for a `Running` entry returns its value so far
@@ -301,7 +311,9 @@ as before.
 **BV-D7.** `K{a, b}` of a project type has the value `Ctor` with its fields' values; a pattern `K{x, y}` (in a `let`, a `case`, a `match`) of a value
 that is that constructor binds `x` and `y` to them. Nothing can write a field after construction, so there is no identity, no aliasing and no
 effect to track: the value **is** the object. A lambda in a field stays (§6); a def in a field keeps its passed edge (D22), and is called where the
-field is called. A constructor of a Base type (`Some{f}`, a list) is unknown: what Base does with it is not ours to read.
+field is called. A constructor of a Base type (`Some{f}`, a list) is unknown: what Base does with it is not ours to read. **A project constructor
+with no def, lambda or partial application anywhere inside it is data** (found by V8's measurement: `pure_hvm5_mini`'s interpreter states made a key
+for every shape of data, 13,000 contexts and growing; the coder made such a constructor unknown, the review makes it data, for the fixpoint's sake).
 
 ## 10. The key, the digest, the caps
 
@@ -314,8 +326,7 @@ field is called. A constructor of a Base type (`Some{f}`, a list) is unknown: wh
   `Ctor(type, name, fields)` and `Set { known, open }`; a slot that holds exactly one closed `Def` or `Lambda` is written as it is today, so every
   digest of BC1+BC2 stays (the unit test that pins the JSON bytes says so).
 - **Caps, all precision limits** (deterministic, counted): `max_depth` 3, a value nested deeper inside a value is unknown there, the outer `Closure`,
-  `Partial` or `Ctor` is kept (`value_widened_depth`); `max_set` 8, a larger set is unknown (`value_widened_set`); `max_inline` 8 and `max_rounds` 4
-  (§6, §7).
+  `Partial` or `Ctor` is kept (`value_widened_depth`); `max_set` 8, a larger set is unknown (`value_widened_set`); `max_inline` 8 (§6). No cap of rounds: §7.
 - **Cost.** `Limits::max_contexts` cuts, as today. A cap of contexts per def would be a core change (TypeScript's TC2 step 1 proposes it); it is
   not made here. Phase 1's measurement reports the largest count; if a def passes 64 on the demos, that change is proposed then.
 
@@ -495,10 +506,23 @@ the next phase's rows and prompt are written from it.
 | BV-D2 | **`sem` hands the body back as an owned tree whose sites are the items**; the evaluator decides targets and never invents a site | §4 |
 | BV-D3 | **Under `Precise` a body is evaluated; a variable has the value of its binding**; no condition is evaluated, no case pruned | §5 |
 | BV-D4 | **A lambda moves to the def that calls it when it is a direct argument of a by-name project call that gives all written parameters, at a position that def applies; every other lambda stays** (D54). A hand-over inside it stays where the name is written. BC-D6 is replaced for the lambdas that move | §6 |
-| BV-D5 | **The value of a full call is the body's value under that key, computed in Bend with a fixpoint from "nothing"; an under-applied call is a passed edge and a `Partial`**; a returned lambda stays with its def | §7 |
+| BV-D5 | **The value of a full call is the body's value under that key, computed in Bend by a worklist from "nothing", where reading "nothing yet" never answers "unknown"; an under-applied call is a passed edge and a `Partial`**; a returned lambda stays with its def | §7 |
 | BV-D6 | **A `do` statement of a project monad is its call, its value in the key; its continuation always stays and is not in the key**. BC-D5 stands for operators and indexes | §8 |
 | BV-D7 | **A project constructor is a value with its fields; a constructor pattern binds them** | §9 |
-| BV-D8 | **A slot holds a value that is neither unknown nor data; the canonical form grows by variants and no existing digest moves; depth 3, set 8, inline 8, rounds 4** | §10 |
+| BV-D8 | **A slot holds a value that is neither unknown nor data; the canonical form grows by variants and no existing digest moves; depth 3, set 8, inline 8; no cap of rounds** | §10 |
+
+**V6, V7 and V8 built (b5a0e6e, 8a149b9, b21f637, and the fix 2ce33ee), reviewed 2026-11-22.** Reproduced: the suites green, clippy and fmt clean,
+knows-nothing still layer 1 over the same 30,471 items, never fewer over 271 entries (60 unresolved edges replaced, 6 under-applied calls handed
+over, all six in V7's own rows), both oracle tests at 0, no layer-1 snapshot touched, and **all 25 new snapshots read one by one: every row of §12.2
+and §12.3 is as written.** The coder's measurement found two defects in the build and fixed both (2ce33ee): the round-by-round fixpoint was
+exponential, now a worklist (§7, kept); keys held whole data structures, so a constructor with no function in it is no value (§9, kept, but as
+data and not as unknown). **The review found the design itself wrong in three places, all the same mistake: an answer of "unknown" where "nothing
+yet" was meant** (§5's table, §9's pattern rule, and the fix's constructor rule), which makes the result depend on which def is asked first; and the
+cap of four rounds does the same. **Step V8b** corrects them and pins the order. On the demos (the reviewer's run; not final until V8b): of the 55
+sites, drawn in every context 16 → 19 (the three `Game` sites, through `Walkers.game()` and a pattern), `P.bind`'s `m` drawn in 9 of its 12
+contexts, a known lambda in every context 12 → 14, named in some contexts 3 → 17, unresolved in every context 24 → 5 (`P.bind`'s `f` and `f(a)`,
+`P.pure`'s `k`, `index.go`, `look.go`). `Precise` now costs 3 to 5 times `Default` (13.8 ms against 4.3 on `app_slash_boss_3d`, the reviewer's
+machine): a body is read once for its value and again for its sites. A step for that follows the final measurement.
 
 **V3 built (2f5766d), reviewed 2026-11-21**, every proof reproduced: 144 tests, the five rows of §12.1 as written (the coder's four hand-count slips
 were in the counts, the code was right), the 20 other context snapshots untouched, knows-nothing still layer 1 over the same 30,471 items, never fewer
