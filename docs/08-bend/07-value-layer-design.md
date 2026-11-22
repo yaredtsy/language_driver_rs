@@ -511,6 +511,17 @@ the next phase's rows and prompt are written from it.
 | BV-D7 | **A project constructor is a value with its fields; a constructor pattern binds them** | §9 |
 | BV-D8 | **A slot holds a value that is neither unknown nor data; the canonical form grows by variants and no existing digest moves; depth 3, set 8, inline 8; no cap of rounds** | §10 |
 
+**V10a built (7f54b73, counting only), reviewed 2026-11-22**, its table rerun: over the 16 books `Precise` is 23.6 ms against `Default`'s 7.1 (the
+reviewer's machine), and the probe splits it: bodies read for their value 37%, the solver 25%, bodies read for their sites 18%, keys and digests
+17%, the worklist's own bookkeeping 2%. Two findings. **The double reading is real**: of 906 contexts walked, 884 were also read for their value.
+**And the worklist reads nearly every body twice for its value**: 750 of 1,633 value readings are a second reading, 745 of them because the asker
+was read first with "nothing yet" and queued again when its callee finished. §7 says a context met for the first time is evaluated before the one
+that asked; the code registers it and answers "nothing yet". So V10 is now: **V10b** (one reading gives the sites and the value), **V10d** (a context
+met for the first time is evaluated at once, nested, to a depth of 64; deeper, or already on the stack, it answers with its value so far and is
+queued, as now: the result is the same smallest value, and a long chain of defs cannot overflow the stack), then the table again. V10c (no value
+for a def whose return type cannot hold a function) only if reading for values is still the largest share after those two. The 17% in keys is
+looked at then.
+
 **V8b built (4690e67, re-pinned dfbdc51), reviewed 2026-11-22: phases 0, 2 and 3 and the variables of phase 1 are complete.** Reproduced: 154 tests,
 rings of 6, 8 and 9 defs give the same edges from two entries, no context snapshot changed, the demos' numbers as pinned (`ENGINE.md` §The value
 layer). Two things the coder did beyond the prompt, both right and kept: **the caps need a top element** (an "unknown" made by a cap still let a join
