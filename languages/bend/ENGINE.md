@@ -581,6 +581,11 @@ first time is evaluated at once, nested to 64 deep (a chain of 5,000 defs is fin
 again for every request, though it is a fact of the code), keys and the worklist 0.6 ms each. The rule that a def with a scalar return type has no value to work out (V10c) is **not built**: after "one reading gives both" a body
 that is walked is read once whatever its type, so the rule would save only the readings of contexts that are never walked, which are few.
 
+**Relevance is kept with the book (V10e, b5d1d4c).** A cell per def beside the walks, filled the first time the def is asked and gone with the book, which is never changed, only rebuilt whole; a test holds the kept answer
+equal to a fresh one for every def of every fixture, scenario and book, and two refresh tests change a callee in another file and see the caller's key follow. A warm request no longer works relevance out; the first request on a
+newly opened book does, about 2 to 5 ms for 835 defs over the 16 books together. **Warm, over the 16 books: `Precise` 14.1 ms against `Default` 9.0 on the reviewer's (busy) machine, 8.6 against 5.0 on the coder's: 1.6 to 1.75
+times.** The test-only "old way" of the equal-graphs proof is removed (bc77ab2); the probe stays, ignored.
+
 **What the measurement caught.** The first build of return values evaluated the outermost def of every cycle again, round by round, and did not finish on `pure_hvm5_mini` (millions of evaluations over 80
 contexts); and keys held whole data structures, the interpreter's states, a new context for every shape of data. Both were found by running the demos, not by the fixtures. The cure of the first is a worklist; of the
 second, that a constructor with no function inside it is data and data is never in a key. The review then found the fixpoint could depend on which def was asked first (an answer of "unknown" where "nothing yet" was

@@ -511,6 +511,12 @@ the next phase's rows and prompt are written from it.
 | BV-D7 | **A project constructor is a value with its fields; a constructor pattern binds them** | §9 |
 | BV-D8 | **A slot holds a value that is neither unknown nor data; the canonical form grows by variants and no existing digest moves; depth 3, set 8, inline 8; no cap of rounds** | §10 |
 
+**V10e and the cleanup built (b5d1d4c, bc77ab2), reviewed 2026-11-22: the cost work is done.** Reproduced: 158 tests, clippy clean in debug and
+release with no `allow(dead_code)` left in the crate, the kept relevance equal to a fresh one for every def, the two refresh tests, the snapshots
+and the demos' pins unchanged, both oracle tests at 0. Relevance lives in the `Book`, one `OnceLock` per def (a `Session` stays `Send + Sync`), and
+dies with it. Warm, `Precise` is 1.6 to 1.75 times `Default` over the 16 books. **Everything in this design is built except V4 and its measurement
+V5, which wait for the owner's choice of §6.1.**
+
 **V10b and V10d built (3072430, 657065c), reviewed 2026-11-22**: the suites green, the equal-graphs test (each graph built the old way and the new,
 byte for byte, over 311 entries of the fixtures and scenarios and every def of the 16 books and their `PROOF` books) passing, chains of 500 and
 5,000 defs, the rings, the demos' pins, both oracle tests at 0. Over the 16 books `Precise` is now 2.0 times `Default` (15.3 ms against 7.8, the
