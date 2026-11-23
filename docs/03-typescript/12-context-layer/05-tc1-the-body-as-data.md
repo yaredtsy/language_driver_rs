@@ -142,7 +142,7 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
 |---|---|---|
 | 0 | **Built** (477c4bd, 5362028; vscode's sweep still to run). **H17 first** ([`../10-review-fixes.md`](../10-review-fixes.md) §6.3, revised 2026-11-23): every engine accessor and downcast that can panic on a kind is banned outside `sem/view/`. `sem/flow.rs` is then written against the views from its first line, and adds a view by kind for each kind it reads | clippy `-D warnings` with the ban; the four sweeps: `engine_kind_unhandled` 0, one hash per graph equal before and after |
 | 1 | `Precision`, the capability set, `Options::precision`, `--precise`; `KeyId`, `Keys`, the five literals | all tests green; `cargo tree`: `indexmap`, `smallvec`, `bitflags`, `rustc-hash` become direct dependencies, and no crate is new to the lockfile but `proptest` (tests only) |
-| 2 | `flow.rs`; `sem/flow.rs` for sites and arguments | the `call_sites` equality |
+| 2 | `flow.rs`; `sem/flow.rs` for sites and arguments | the `call_sites` equality; **S-TC2's cost, the gate** (moved from TC0): the tables of every def of the four projects built in at most the time of a depth-1 sweep of the same project and at most 25% more peak memory, measured in the release build. Over that, stop and report before step 3 |
 | 3 | `handed` in the table | the `handed_over` equality |
 | 4 | `value.rs`, `env.rs`, `eval.rs` (behind the `World` trait), `resolve_from_env` wired | equal graphs with the switch on; the laws |
 | 5 | the harness, the tour, its default snapshot | the tour's "today" column of [03](03-design.md) §2 confirmed or corrected, cell by cell |

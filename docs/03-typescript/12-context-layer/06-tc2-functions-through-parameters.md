@@ -190,10 +190,11 @@ callers pass two different arrows: **one** context of the callee).
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | the core note; core: the level per scenario; the digest function, with `xxhash-rust` (D57); the per-function cut only if N6 asks for it | core green; every language's tests green; flat graphs byte-identical |
+| 1 | the core note; core: the level per scenario; the digest function, with `xxhash-rust` (D57; its shape is in `ENGINE.md` "S-TC2, S-TC3, N6"); a test pinning the digest's bytes, run on CI's three systems | core green; every language's tests green; flat graphs byte-identical |
 | 2 | `sem/flow.rs`: `Param`, the `Param` table | the tour's table snapshot changes as expected |
 | 3 | `value.rs`: `Fn`, `Anon`, `Undefined`, `join`; `eval`: `Param`, `Def`, `Anon`, `OneOf`, defaults | unit tests on hand-written tables |
 | 4 | `key.rs`: `params`, `admit`, the canonical form; `key_of` at every project target | `callback-two-callers`: two contexts, two digests, still no new edge |
+| 4b | **N6, moved here from TC0**: on the four projects, the contexts per function the keys of step 4 make (median, 95th percentile, greatest), counted with and without telling anonymous functions apart and with and without relevance (capability bits). The per-function cut (03 §12) is built in this phase only if the 95th percentile comes near 64; relevance (step 8) moves before step 5 if it is what keeps the count down | the distribution in `ENGINE.md` |
 | 5 | `resolve_from_env` answers at open sites | the fixtures flip; lines a, b, h, i of the tour |
 | 6 | counters per def | the two-keys counter test |
 | 7 | `Session::graph_from` | the cut-and-continue test |

@@ -1522,3 +1522,42 @@ can have several (04 §3.6).
 - **Exported module objects are a third to a half of module `const` objects** (22 of 46, 124 of 357, 24 of 78): the TC4 row that opens an
   exported one (`module_object_shared`) costs that much. A project-wide check of writes through an exported `const` is the refinement, if
   TC4's sweep says it matters.
+
+### S-TC2, S-TC3, N6: answered without a spike, or moved (reviewer, 2026-11-23)
+
+- **S-TC3, the digest: answered by reading.** Python (`interp/canon.rs` `stable_id`) and Bend (`key.rs` `digest`) both write the canonical
+  key, its function included, with `serde_json::to_vec` and hash it with `xxhash_rust::xxh3::xxh3_128`, little-endian (`to_le_bytes`):
+  deterministic by the algorithm's specification and by `serde_json` over structs and vectors (no map whose order can move). The function
+  goes to core in TC2's first step (D57), as `fn digest<T: Serialize>(canonical: &T) -> [u8; 16]`; the open key's zeros stay each
+  language's rule. "Equal on two machines" is a test that pins the bytes of a few keys, run by CI on Linux, macOS and Windows.
+  `xxhash-rust` 0.8.19 is in TypeScript's lockfile (through tsrs); core takes it with the `xxh3` feature, as Python does.
+- **S-TC2, a body as data: its design risk is retired by N4; its cost is TC1's gate.** The risk was whether an assignment made inside a
+  nested function can be given to the variable's scope. N4 does it through the engine's symbol on a scoped search, nested anonymous
+  functions included (the fixture's `g`), and it is fast on the largest def there is (0.4 s for `createTypeChecker`). What the table costs
+  can only be measured on the real reader, so it is measured in TC1, not on a copy of it: `05-tc1` §8 step 2.
+- **N6, contexts per callee: moved into TC2.** Counting distinct argument tuples now would be an approximation of TC2's key (first-step
+  values only, no chains), and N1 says most first-step values are unknown, so it would under-count. TC2 measures it on its real keys, with
+  and without telling anonymous functions apart and with and without relevance (two capability bits), before it is released: `06-tc2`.
+
+### TC0's forecast: which phase can answer which open sites (reviewer, 2026-11-23)
+
+The sample of 04 §3.2, with the counts on; the open `function_typed_value` sites by column. **Upper bounds**: a phase answers a site only
+where a caller passes something it can follow, and N1 says that is rare at the first step (8–11% of arguments). The rows overlap (depth
+and method are other splits of the same parameter column). Shares of the sample's function-typed edges.
+
+| Phase | V-NOC | the private codebase | TypeScript `src/compiler` |
+|---|---|---|---|
+| open sites in the sample (all reasons) | 733 | 12,807 (10,225 `any`: a bare checkout) | 5,715 |
+| `function_typed_value` among them | 723 | 2,506 | 5,672 |
+| **TCL**: bound straight from a package call | **76%** | 0.2% | 0 |
+| **TC2**: a parameter's value, called as it is (depth 0) | 1% | 15% | 6% |
+| **TC3**: of the parameter column, a parameter of an enclosing def | 2% | 8% | 6% |
+| **TC4**: a member or a pattern of a parameter (props) | 14% | 29% | 14% |
+| **TC5**: a method called on a parameter; `this` | 0 | 13% | 13% |
+| **TC6**: what a project function returned | 3% | 26% | 23% |
+| not placed: "other" (a module name, an import, no leftmost name) | 4% | 25% | 56% |
+
+**The order is confirmed**: TCL first (three quarters of V-NOC's function-typed sites, and no layer needed), then TC1–TC6 as planned. No
+phase is below "a few percent" on every project; TC2's own yield is small in React code, but every later phase needs its key. The
+"other" column, the compiler's largest, is not placed by any count: TC3's module constants answer some of it, and TC3's own sweep says
+how much.
