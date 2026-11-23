@@ -143,7 +143,7 @@ And, because every language returns the same core types, `vnoc` can write its co
 
 | Not planned | Why |
 |---|---|
-| context sensitivity for TypeScript or Rust | measure first ([`03-typescript/08`](03-typescript/08-later-context-sensitive.md) §5). Rust's is designed phase by phase ([`04-rust/05-context-layer/`](04-rust/05-context-layer/01-design.md)) so that layer 1 is built to receive it; its RC0 is the measurement |
+| context sensitivity for TypeScript or Rust | TypeScript's is planned phase by phase ([`03-typescript/12-context-layer/`](03-typescript/12-context-layer/README.md)) and starts with counts (TC0). Rust's is designed phase by phase ([`04-rust/05-context-layer/`](04-rust/05-context-layer/01-design.md)) so that layer 1 is built to receive it; its RC0 is the measurement |
 | moving Python's solver into core | only when a second language needs it (rule of two) |
 | incoming calls ("who calls this?") | the V-NOC contract does not ask for it. Both engines have it; the graph type already supports it (edges can be read backwards) |
 | C and C++ | no engine chosen; the PA plan's direction (clangd as a child process) would not use this repo's library shape at all |

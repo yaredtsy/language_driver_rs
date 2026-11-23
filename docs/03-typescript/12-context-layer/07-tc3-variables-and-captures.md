@@ -31,10 +31,10 @@ Patterns A7–A10 of [02](02-patterns.md); line c of the tour, and the half of l
 ## 2. `sem`: every variable, and everything assigned to it
 
 ```rust
-pub(crate) struct Var<'p> {
-    pub id: VarId<'p>,              // the file and the position of the name that declares it
+pub(crate) struct Var {
+    pub id: VarId,                  // a number: the declaring def and which declaration in it
     pub kind: VarKind,              // Local | Param(i) | Enclosing | Module
-    pub assigned: Box<[Expr<'p>]>,  // every expression assigned to it, in source order (for a stable join)
+    pub assigned: Box<[Expr]>,      // every expression assigned to it, in source order (for a stable join)
     pub open: bool,                 // assigned somewhere in a way the table does not model
 }
 ```
@@ -55,6 +55,10 @@ pub(crate) struct Var<'p> {
 The last row is what makes "complete" checkable ([03](03-design.md) §5): the reader walks the whole text of the declaring function,
 its nested functions included, looking for writes to the function's own variables. S-TC2 measured that pass.
 
+**The reader does not trust its own list.** For every reference of the variable in that text it asks `ast::is_write_access`. A write that is
+none of the rows above makes the variable `open` and is counted `variable_write_unmodelled`. The count is expected to fall to 0 as rows are
+added; while it is not 0, a form nobody thought of costs precision and never an edge ([03](03-design.md) §5).
+
 An identifier that names a variable becomes `Expr::Var(id)`. `Param(i)` of TC2 stays for the parameter as passed; a parameter the body
 assigns to is `Var { kind: Param(i), assigned: […] }`, and its value is the key's slot joined with the assignments. That replaces
 TC2's "assigned means open".
@@ -63,10 +67,10 @@ TC2's "assigned means open".
 
 ```rust
 pub(crate) struct Env<'a, 'p> {
-    flow: Rc<Flow<'p>>,
-    key: &'a Key<'p>,
+    flow: Arc<Flow>,
+    key: KeyId,
     lang: &'a TypeScript<'p>,                              // for module values and other defs' tables
-    values: RefCell<HashMap<VarId<'p>, Slot<'p>>>,         // Slot = InProgress | Done(Value)
+    values: RefCell<FxHashMap<VarId, Slot>>,               // Slot = InProgress | Done(Value)
 }
 ```
 
@@ -126,7 +130,7 @@ edge. `call` and `apply` stay counted.
 ## 7. Fixtures and tests
 
 `local-alias` · `local-either` · `local-assigned-twice` · `local-open` (a `for … of` variable: the engine's answer) · `local-cycle` ·
-`local-never-assigned` · `param-reassigned` (the handler **and** `noop`, complete) · `capture-handler` · `capture-sibling` ·
+`local-never-assigned` · `local-write-unmodelled` (a write in a form the table has no row for: open, counted) · `param-reassigned` (the handler **and** `noop`, complete) · `capture-handler` · `capture-sibling` ·
 `capture-two-levels` · `capture-through-parameter` (the nested def is called three calls away, with its captures) ·
 `capture-written-in-nested` (a nested def assigns the variable: both values) · `capture-entry` (asked at the nested def: today's tree) ·
 `capture-anonymous` (an arrow inside the nested def reads the variable) · `module-const` · `module-const-imported` · `module-let`
@@ -137,6 +141,7 @@ edge. `call` and `apply` stay counted.
 | the three properties on every fixture | |
 | `needs` printed in the table snapshots | reviewed against the source |
 | every TC2 digest | unchanged (the skipped-when-empty rule) |
+| the capability bits `LOCALS` and `CAPTURES` off, one at a time | TC2's graphs; then TC2's plus locals |
 | `eval` on hand-written tables: join order, cycles, the in-progress mark | no engine |
 | the four projects | the per-site measure; `variable_in_cycle`, `value_widened_depth` |
 

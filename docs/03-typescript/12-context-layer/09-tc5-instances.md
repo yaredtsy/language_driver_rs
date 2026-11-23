@@ -36,11 +36,11 @@ Patterns C1–C6 of [02](02-patterns.md); line f of the tour; the scenario `two-
 | `Expr::New(site)` | the value of a `new` expression: an instance of the class the site's **engine answer** constructs. A `new` whose class is a value (TC4's `Class`) gives an instance of that class | the site's own resolution |
 | `Expr::This` | `this`, in a method, a constructor, an accessor, an object literal's method, and in the anonymous functions and arrow defs inside them | the syntax; `ast::get_this_container` |
 | the **static class** of an expression | for each argument and each receiver of the table: the project class its static type is an instance of, if it is one class | `get_type_at_location`, `ObjectFlags::Class`, `Type::symbol` → the class's def |
-| `Sem::member(class, name)` | what `name` is on an instance of `class`: a def with a body (the class's own, or the nearest base class's), a signature without a body, external, or nothing | `get_property_of_type_exported` on the class's instance type; the declaration → the def, as a callee is resolved today |
+| `Sem::member(class, name)`, asked through the `World` trait ([03](03-design.md) §15.4), so `eval` still needs no engine | what `name` is on an instance of `class`: a def with a body (the class's own, or the nearest base class's), a signature without a body, external, or nothing | `get_property_of_type_exported` on the class's instance type; the declaration → the def, as a callee is resolved today |
 
 ## 3. Values
 
-`One::Instance(class)`: an object of exactly this class, as far as dispatch is concerned. No fields (TC8), no identity.
+`One::Instance { class, exact }`: an object of this class. No fields (TC8), no identity.
 
 It has two sources, and they are not equally strong:
 
@@ -50,10 +50,16 @@ It has two sources, and they are not equally strong:
 | the static class of an expression the layer has **no** value for | the checker says it is a `C`; a subclass may be behind it | the type. The same strength as today's row `class-instance`, which already answers `w.write()` with `C`'s method when `w: C` |
 
 The second is D27's idea from Python ("where the walk holds nothing, the engine's exact type"), used for an argument instead of a
-callee. It is what lets `emit(this.json)` resolve inside `emit` before fields exist. Both give a complete value. Telling them apart
-on the edge is the per-site `Basis` that Rust's plan lists for RC3
-([`04-rust/02-architecture.md`](../../04-rust/02-architecture.md) §9, row 3); until that core change, every edge of the layer has
-`Basis::Type`, which is true of the weaker source and not false of the stronger.
+callee. It is what lets `emit(this.json)` resolve inside `emit` before fields exist. Both give a complete value, **and the value
+says which it is**: `exact: true` for the first row, `false` for the second. They are different values and different keys from the first
+day, because adding the flag later would move every digest that holds an instance. Python keeps the same two apart
+(`OriginKey::is_built_here`, the only ground for a `Basis::Path` edge).
+
+On the edge: core's `Basis` is already per edge (`Path`, `Type`, `Name`, `Likely`). What cannot say it is the flat solver's `Target`, which
+stamps the language's one `BASIS` on every edge. Letting a `Target` carry its basis is a small core change with a note of its own, the same
+one Rust's plan lists for RC3 ([`04-rust/02-architecture.md`](../../04-rust/02-architecture.md) §9, row 3). Until it lands, every edge of
+the layer has `Basis::Type`, which is true of the weaker source and not false of the stronger. When it lands, an edge that rests on an
+exact instance is `Basis::Path`.
 
 An interface, a type literal, a union of classes, `any`: no static class. (A union could give a set; not before a count asks.)
 
@@ -121,6 +127,8 @@ method) · `instance-static-class` · `instance-declared-wider` · `instance-eit
 `instance-this-dispatch` · `instance-this-in-constructor` · `instance-this-in-arrow-def` · `instance-this-not-relevant` (one context) ·
 `instance-literal-this` · `instance-class-value` (`new C()` with `C` a parameter, then a method) · `instance-javascript` ·
 `instance-entry` (asked at `emit`: today's tree).
+Added by the review: `instance-exact-and-static` (`emit(new Json())` and `emit(this.json)`: two keys, the same edges today, and the flag in
+both digests).
 
 | Test | |
 |---|---|
