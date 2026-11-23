@@ -1,7 +1,7 @@
 use tsrs_ast::{Symbol, SymbolFlags};
 use tsrs_checker::Checker;
 
-use super::view::initializer_of;
+use super::view::{ElementAccess, initializer_of};
 use super::*;
 
 // ---- the port of `tsrs_ls`'s `callhierarchy.rs`. Names and shapes follow the original so an engine bump can be checked line by line.
@@ -197,11 +197,9 @@ pub(super) fn declarations_of_union_symbol(
 ) -> Option<(Vec<P<Node>>, bool)> {
     let location = if ast::is_property_access_expression(callee) {
         callee
-    } else if ast::is_element_access_expression(callee) {
-        let argument = callee.as_element_access_expression().argument_expression;
-        ast::is_string_literal_like(argument).then_some(argument)?
     } else {
-        return None;
+        let argument = ElementAccess::cast(callee)?.argument();
+        ast::is_string_literal_like(argument).then_some(argument)?
     };
     let symbol = checker.get_symbol_at_location_exported(location)?;
     if symbol.value_declaration().is_some() || symbol.declarations().is_empty() {

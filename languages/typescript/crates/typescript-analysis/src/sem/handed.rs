@@ -5,7 +5,10 @@ use tsrs_checker::{Checker, Type};
 use super::collect::unwrap_expression;
 use super::hierarchy::{callable_declarations, is_variable_like};
 use super::resolve::is_signature_without_a_body;
-use super::view::{NameToken, expression_of, initializer_of, properties_of};
+use super::view::{
+    Binary, Binding, Conditional, ElementAccess, NameToken, expression_of, initializer_of,
+    properties_of,
+};
 use super::*;
 
 /// A def's node that is a **named function expression handed over where it is written**: `xs.map(function step() {})`, `register(function step() {})`.
@@ -47,17 +50,22 @@ fn handed_position(value: P<Node>, creating: bool) -> bool {
             | Kind::TypeAssertionExpression
             | Kind::NonNullExpression => at = parent,
             Kind::ConditionalExpression => {
-                if parent.as_conditional_expression().condition == at {
+                let Some(conditional) = Conditional::expect(parent) else {
+                    return false;
+                };
+                if conditional.condition() == at {
                     return false;
                 }
                 at = parent;
             }
             Kind::BinaryExpression => {
-                let binary = parent.as_binary_expression();
+                let Some(binary) = Binary::expect(parent) else {
+                    return false;
+                };
                 if binary.right() != at {
                     return false;
                 }
-                match binary.operator_token.kind() {
+                match binary.operator() {
                     Kind::EqualsToken => {
                         return !matches!(
                             binary.left().kind(),
@@ -209,7 +217,10 @@ impl Sem {
             }
         }
         for &access in &body.elems {
-            let key = access.as_element_access_expression().argument_expression;
+            let Some(access) = ElementAccess::expect(access) else {
+                continue;
+            };
+            let key = access.argument();
             if ast::is_string_literal_like(key)
                 && !self.functions_named(&mut checker, key, style).0.is_empty()
             {
@@ -255,11 +266,7 @@ impl Sem {
             for declaration in symbol.declarations().to_vec() {
                 if declaration.kind() == Kind::BindingElement {
                     // `...others`: the rest object holds the members the pattern did not name; any that is a def goes with it, and no edge says so
-                    if declaration
-                        .as_binding_element()
-                        .dot_dot_dot_token()
-                        .is_some()
-                    {
+                    if Binding::expect(declaration).is_some_and(Binding::is_rest) {
                         let ty = checker.get_type_of_symbol(symbol);
                         if self.holds_defs(&mut checker, ty, style) {
                             uncovered.push(Uncovered::RestElement);
@@ -570,7 +577,7 @@ fn bound_symbol(checker: &mut Checker, element: P<Node>) -> Option<P<Symbol>> {
     let initializer = loop {
         let pattern = at.parent()?;
         if pattern.kind() != Kind::ObjectBindingPattern
-            || at.as_binding_element().dot_dot_dot_token().is_some()
+            || Binding::expect(at).is_none_or(Binding::is_rest)
         {
             return None;
         }
@@ -610,7 +617,7 @@ fn for_of_member(checker: &mut Checker, element: P<Node>) -> Option<P<Symbol>> {
     let root = loop {
         let pattern = at.parent()?;
         if pattern.kind() != Kind::ObjectBindingPattern
-            || at.as_binding_element().dot_dot_dot_token().is_some()
+            || Binding::expect(at).is_none_or(Binding::is_rest)
         {
             return None;
         }

@@ -20,7 +20,7 @@ use analyzer_core::solve::{Budget, Cancel, Limits, Solver};
 use typescript_syntax::Placement;
 
 use super::collect::SiteKind;
-use super::view::{NameToken, arguments_of, expression_of, tag_name_of};
+use super::view::{NameToken, TaggedTemplate, arguments_of, expression_of, tag_name_of};
 use super::*;
 use crate::calls::{TypeScript, start_of};
 
@@ -90,9 +90,7 @@ fn anchor_of(node: P<Node>) -> Option<(&'static str, P<Node>)> {
         // `f(x)`, `a?.b(x)`, `super(x)`, `import(x)`
         Kind::CallExpression => Some(("call", expression_of(node)?)),
         Kind::NewExpression => Some(("new", expression_of(node)?)),
-        Kind::TaggedTemplateExpression => {
-            Some(("tagged", node.as_tagged_template_expression().tag))
-        }
+        Kind::TaggedTemplateExpression => Some(("tagged", TaggedTemplate::expect(node)?.tag())),
         // the closing tag is the same element
         Kind::JsxOpeningElement | Kind::JsxSelfClosingElement => Some(("jsx", tag_name_of(node)?)),
         Kind::Decorator => Some(("decorator", expression_of(node)?)),

@@ -1,7 +1,8 @@
 use super::handed::{is_handed_function_expression, is_handed_over, literal_is_handed};
 use super::view::{
-    CallOrNew, NameToken, Wrapper, arguments_of, elements_of, expression_of, initializer_of,
-    members_of, spelled, statements_of, tag_name_of,
+    Binary, CallOrNew, ElementAccess, NameToken, StaticBlock, TaggedTemplate, Wrapper,
+    arguments_of, elements_of, expression_of, initializer_of, members_of, spelled, statements_of,
+    tag_name_of,
 };
 use super::*;
 
@@ -235,7 +236,10 @@ impl<'a> Collector<'a> {
             }
             // `` tag`text` ``: the tag is called
             Kind::TaggedTemplateExpression => {
-                let tag = node.as_tagged_template_expression().tag;
+                let Some(tagged) = TaggedTemplate::expect(node) else {
+                    return;
+                };
+                let tag = tagged.tag();
                 self.sites.push(CallNode {
                     span: own_span(self.text, tag),
                     expr: tag,
@@ -314,8 +318,10 @@ impl<'a> Collector<'a> {
 
     /// `({ a, b: c } = value)`: an assignment whose left side is an object pattern. Remembered with its two sides, for `Sem::handed_over`.
     fn note_assignment(&mut self, node: P<Node>) {
-        let binary = node.as_binary_expression();
-        if binary.operator_token.kind() == Kind::EqualsToken
+        let Some(binary) = Binary::expect(node) else {
+            return;
+        };
+        if binary.operator() == Kind::EqualsToken
             && binary.left().kind() == Kind::ObjectLiteralExpression
         {
             self.assigns.push((binary.left(), binary.right()));
@@ -327,8 +333,8 @@ impl<'a> Collector<'a> {
         if ast::is_part_of_type_node(node) || is_callee_position(node) {
             return;
         }
-        let location = if node.kind() == Kind::ElementAccessExpression {
-            let key = node.as_element_access_expression().argument_expression;
+        let location = if let Some(access) = ElementAccess::cast(node) {
+            let key = access.argument();
             if !ast::is_string_literal_like(key) {
                 return;
             }
@@ -435,7 +441,9 @@ impl<'a> Collector<'a> {
                     self.collect(initializer_of(member));
                 }
                 Kind::ClassStaticBlockDeclaration => {
-                    self.collect(Some(member.as_class_static_block_declaration().body));
+                    if let Some(block) = StaticBlock::expect(member) {
+                        self.collect(Some(block.body()));
+                    }
                 }
                 _ => {}
             }
@@ -502,7 +510,7 @@ fn is_callee_position(node: P<Node>) -> bool {
                 return expression_of(parent) == Some(at);
             }
             Kind::TaggedTemplateExpression => {
-                return parent.as_tagged_template_expression().tag == at;
+                return TaggedTemplate::expect(parent).is_some_and(|tagged| tagged.tag() == at);
             }
             Kind::JsxOpeningElement | Kind::JsxSelfClosingElement | Kind::JsxClosingElement => {
                 return tag_name_of(parent) == Some(at);

@@ -43,6 +43,26 @@ fn touch(node: P<Node>, text: &str) {
     if let Some(view) = NameToken::cast(node) {
         seen(view.value());
     }
+    if let Some(view) = Binary::cast(node) {
+        seen(view.left());
+        seen(view.right());
+        seen(view.operator());
+    }
+    if let Some(view) = ElementAccess::cast(node) {
+        seen(view.argument());
+    }
+    if let Some(view) = TaggedTemplate::cast(node) {
+        seen(view.tag());
+    }
+    if let Some(view) = Conditional::cast(node) {
+        seen(view.condition());
+    }
+    if let Some(view) = Binding::cast(node) {
+        seen(view.is_rest());
+    }
+    if let Some(view) = StaticBlock::cast(node) {
+        seen(view.body());
+    }
     // the spelling reads text only: any node, whatever its kind
     seen(spelled(text, node));
 }
@@ -176,6 +196,12 @@ fn every_cast_and_every_accessor_of_every_view_is_total_on_the_libraries_and_the
         ("Properties", Properties::KINDS),
         ("JsxTag", JsxTag::KINDS),
         ("NameToken", NameToken::KINDS),
+        ("Binary", Binary::KINDS),
+        ("ElementAccess", ElementAccess::KINDS),
+        ("TaggedTemplate", TaggedTemplate::KINDS),
+        ("Conditional", Conditional::KINDS),
+        ("Binding", Binding::KINDS),
+        ("StaticBlock", StaticBlock::KINDS),
     ] {
         let missing: Vec<&Kind> = listed
             .iter()

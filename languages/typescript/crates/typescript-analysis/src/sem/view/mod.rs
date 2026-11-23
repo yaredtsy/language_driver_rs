@@ -14,7 +14,7 @@
 //!   as `engine_kind_unhandled` (`counted`).
 #![allow(
     clippy::disallowed_methods,
-    reason = "this module is the one place the engine's panicking accessors are called: every call is behind a `cast` of the kinds the accessor handles"
+    reason = "this module is the one place the engine's panicking accessors and downcasts (`as_binary_expression`, …) are called: every call is behind a `cast` of the kinds it handles"
 )]
 
 use std::cell::Cell;
@@ -190,6 +190,82 @@ impl NameToken {
     /// in the analysis's output is `spelled`.
     pub(super) fn value(self) -> &'static str {
         self.0.text()
+    }
+}
+
+view! {
+    /// `a + b`, `a = b`, `a && b`: two operands and an operator.
+    Binary: BinaryExpression
+}
+
+impl Binary {
+    pub(super) fn left(self) -> P<Node> {
+        self.0.as_binary_expression().left()
+    }
+
+    pub(super) fn right(self) -> P<Node> {
+        self.0.as_binary_expression().right()
+    }
+
+    /// The kind of the operator token (`EqualsToken`, `BarBarToken`, …).
+    pub(super) fn operator(self) -> Kind {
+        self.0.as_binary_expression().operator_token.kind()
+    }
+}
+
+view! {
+    /// `a[b]`: the expression inside the brackets.
+    ElementAccess: ElementAccessExpression
+}
+
+impl ElementAccess {
+    pub(super) fn argument(self) -> P<Node> {
+        self.0.as_element_access_expression().argument_expression
+    }
+}
+
+view! {
+    /// `` tag`text` ``: the tag, which is called.
+    TaggedTemplate: TaggedTemplateExpression
+}
+
+impl TaggedTemplate {
+    pub(super) fn tag(self) -> P<Node> {
+        self.0.as_tagged_template_expression().tag
+    }
+}
+
+view! {
+    /// `c ? a : b`: the condition.
+    Conditional: ConditionalExpression
+}
+
+impl Conditional {
+    pub(super) fn condition(self) -> P<Node> {
+        self.0.as_conditional_expression().condition
+    }
+}
+
+view! {
+    /// An element of a binding pattern: `a`, `a: b`, `...rest`.
+    Binding: BindingElement
+}
+
+impl Binding {
+    /// `...rest`.
+    pub(super) fn is_rest(self) -> bool {
+        self.0.as_binding_element().dot_dot_dot_token().is_some()
+    }
+}
+
+view! {
+    /// `static { … }` in a class: its block.
+    StaticBlock: ClassStaticBlockDeclaration
+}
+
+impl StaticBlock {
+    pub(super) fn body(self) -> P<Node> {
+        self.0.as_class_static_block_declaration().body
     }
 }
 
