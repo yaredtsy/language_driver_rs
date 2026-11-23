@@ -17,7 +17,8 @@ The rule for every phase ([README](README.md)) holds for these too.
 
 ## 1. TC7: an anonymous function under the function that calls it
 
-**Decided by D54 (2026-11-21), to be confirmed for TypeScript (README).** Python's layer has no example of it: it evaluates a `lambda` to
+**Not scheduled (D58, 2026-11-23): the easy part first.** D54 (2026-11-21) says an arrow's calls move; you chose to build only the part
+where they stay, and to look at D54 again before this phase is ever built. Python's layer has no example of it: it evaluates a `lambda` to
 unknown. Today, and through TC6, an arrow's calls are drawn under the def it is written in. TC7 draws them where the arrow
 is **called**, when a project function calls it.
 
@@ -104,7 +105,8 @@ answers the value so far, and never panics, for a context in progress.
 
 ### 4.1 TCL: a function a library made has a name (pulled forward, 2026-11-23)
 
-**Needs Q-TC2 (b). Needs nothing of the layer**: no key, no value, no table. It can be built any time after TC0, and before TC1.
+**Decided (D56, 2026-11-23): build it the simple way, and spend no more time on it.** It needs nothing of the layer: no key, no value, no
+table. It can be built any time after TC0, and before TC1.
 
 ```tsx
 const [open, setOpen] = useState(false);     setOpen(true);       // today: Unresolved(function_typed_value), counted `_from_call_result`
@@ -115,7 +117,7 @@ const navigate = useNavigate();              navigate("/");
 | | |
 |---|---|
 | what it is | the callee is a `const` name bound straight from the result of a call, by a plain name, an array pattern or an object pattern, and that call's target is **outside the project** |
-| what it becomes | an `External` edge named after the call that made it and the path to the name: `react` · `useState()[1]`, `@tanstack/react-query` · `useMutation().mutate`. The spelling is part of Q-TC2 (b) |
+| what it becomes | an `External` edge named after the call that made it and the path to the name: `react` · `useState()[1]`, `@tanstack/react-query` · `useMutation().mutate`. The spelling is the simplest one that tells two of them apart, and it is not a frozen name (rule 10 is about defs). **Each such edge is counted `library_made_function` in `Stats.language`**: that count is the flag by which the whole group can be found again, and shown another way, the day you decide something else |
 | what it is not | a project function's result (that is TC6); a `let`; a name bound through anything but one pattern; a function passed in |
 | where | `sem/resolve.rs`, beside the split that already tells a call's result from a parameter (`FunctionOrigin`) |
 | what changes | the **default** graph: so it is a policy row with its fixture, a line in the tag notes, and N8 (TC0) is its forecast. On `TaskDetailPanel` it is 43 of the 86 unresolved calls |

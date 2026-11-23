@@ -398,8 +398,8 @@ Rules 5 and 7 are why the layer can be released one phase at a time. Each has a 
 An anonymous function is not a def. Today its calls belong to the def it is written in. When the layer learns that the `f` in
 `each(f)` **is** that arrow, where do the arrow's calls show? That was Q-TC1, the same question as Rust's Q-RC1.
 
-**D54 (2026-11-21) answers it: under the function that calls it.** It was decided while Bend's layer was built, so the README asks you to
-confirm it for TypeScript. Until TC7 builds it, nothing changes: an arrow's calls stay with the def that writes it.
+**D54 (2026-11-21) answers it: under the function that calls it.** It was decided while Bend's layer was built, so it was put to you
+again: **D58 (2026-11-23), the easy part for now.** TC7 is not scheduled, and D54 is looked at again before it is. Until TC7 builds it, nothing changes: an arrow's calls stay with the def that writes it.
 
 | | Through TC6: with the function it is written in | TC7: under the function that calls it |
 |---|---|---|
@@ -599,7 +599,7 @@ It stays private: users see `Precision::Default` and `Precision::Precise`. (`bit
 | File | Imports from `sem` | Why it matters |
 |---|---|---|
 | `value.rs` (the set, `join`, the caps) | nothing | the same laws hold for any language; Rust's RC3 needs them |
-| `key.rs` (the interner, the normal form, the digest) | nothing but `StableDef` | Python and Bend each have a copy of the digest today: the rule of two is already met for it (Q-TC6) |
+| `key.rs` (the interner, the normal form, the digest) | nothing but `StableDef` | Python and Bend each have a copy of the digest today: the rule of two is already met for it (D57: it goes to core in TC2's first step) |
 | `eval.rs` | nothing: it asks its questions about classes through a trait | hand-written tests implement the trait in ten lines |
 | the three test properties (off is identical, never fewer edges, a context is a function of its key) | nothing | they belong in `analyzer-testkit` when a second language runs them |
 

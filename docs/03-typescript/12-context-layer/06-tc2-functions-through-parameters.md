@@ -190,7 +190,7 @@ callers pass two different arrows: **one** context of the callee).
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | the core note; core: the level per scenario (the per-function cut only if N6 asks for it) | core green; every language's tests green; flat graphs byte-identical |
+| 1 | the core note; core: the level per scenario; the digest function, with `xxhash-rust` (D57); the per-function cut only if N6 asks for it | core green; every language's tests green; flat graphs byte-identical |
 | 2 | `sem/flow.rs`: `Param`, the `Param` table | the tour's table snapshot changes as expected |
 | 3 | `value.rs`: `Fn`, `Anon`, `Undefined`, `join`; `eval`: `Param`, `Def`, `Anon`, `OneOf`, defaults | unit tests on hand-written tables |
 | 4 | `key.rs`: `params`, `admit`, the canonical form; `key_of` at every project target | `callback-two-callers`: two contexts, two digests, still no new edge |
