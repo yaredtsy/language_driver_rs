@@ -68,7 +68,7 @@ new Pipe(new Json()).run();              // TC8: Pipe.run → Json.write
   | The field is | Checked by |
   |---|---|
   | `readonly` | the checker enforces it; nothing to scan |
-  | `private` or `#x` | its writes can only be in the class's own text: `get_references_to_symbol_in_file` + `ast::is_write_access`, one file |
+  | `private` or `#x` | its writes can only be in the class's own text: the scoped search of 04 §3.5 over the class, + `ast::is_write_access`; a `#x` is a `PrivateIdentifier`, which that search must take too |
   | public and not `readonly` | a write may be anywhere: unknown, counted `field_public_mutable`. A project-wide scan is possible and is not planned before N7 says it is needed |
 
 - `Member(This, x)` in a method reads the receiver's field. TC4's trust rule covers an instance as it covers an object: one that is
@@ -76,7 +76,8 @@ new Pipe(new Json()).run();              // TC8: Pipe.run → Json.write
 - A class component's `this.props` is the field React's base class stores: the constructor's parameter 0.
 - **Not planned:** a field set by a later method call (Python's effects), two names for one object (Python's alias vector).
 
-N7 decides whether this phase is built and for whom: if a project's `this.x` sites are fields of classes that a container builds
+**N7 on three projects (2026-11-23, `ENGINE.md`):** the `this` column is small (7, 144, 17), two thirds of it fields set by a constructor of a
+class the project builds by `new`. vscode's N7 is still to run. N7 decides whether this phase is built and for whom: if a project's `this.x` sites are fields of classes that a container builds
 (vscode's services), no constructor argument is ever seen and TC8 resolves nothing there.
 
 **Asks of the earlier phases:** `Key.this` is a `Value` (TC5), so an instance with fields fits in it; the depth cap counts fields
@@ -94,7 +95,9 @@ part of the solver's handle from the day return values exist, as they are in Pyt
 `push` a write-through (open). `handlers.forEach(h => h())` needs that **and** a library model (who calls the arrow, with what):
 TC10. A `Map` or a `Set` keyed by run-time values stays unknown.
 
-**A value per place.** If N4 shows many variables assigned more than once, `Env::value_of(variable)` becomes
+**A value per place. Planned (TC0 N4, 2026-11-23):** 16% of the private codebase's capable locals and 9% of the compiler's are written more
+than once (V-NOC 1%), over 04 §4's "a few percent". Before it is designed, a count says how many of those variables reach a call (a callee
+or an argument): only those cost an edge. Then `Env::value_of(variable)` becomes
 `value_of(variable, at)`: the join of the assignments that can reach a place, read from the binder's flow graph (public in tsrs) with
 our own walk of it. Captured variables keep the whole-scope join, which is the sound one for them.
 

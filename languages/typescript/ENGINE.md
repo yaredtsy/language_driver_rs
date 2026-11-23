@@ -1452,3 +1452,41 @@ and globals); the compiler `Identifier` 541 (`undefined`), `PrefixUnaryExpressio
 - **So `sem` searches itself**: the container's span for the name, word boundaries by `tsrs_scanner::is_identifier_part`, the node at each
   hit by `tsrs_checker::astnav::get_touching_property_name` (exported: `pub use tsrs_astnav as astnav`), then the symbol and
   `ast::is_write_access`. TC3 uses the same helper (03 §5).
+
+### N4, N7: how often a local is written, and where `this.x` gets its value (`25793b3`, feature `__tc0_counts`; reviewed 2026-11-23)
+
+Full depth-1 sweeps **with the files' own code** (`TS_SWEEP_FILE_CODE=1`), release build with the feature, run by the reviewer. Locals of
+a capable type (04 §3.5), per def walked; the `this` column split by the field's first declaration, which adds up to the column.
+
+**N4**
+
+| Project | `const` | Written once | Written more than once | of them, a write TC3 does not read | Data type | Parameters (capable) | of them written by the body |
+|---|---|---|---|---|---|---|---|
+| V-NOC frontend | 1,642 | 14 | 16 (1.0%) | 0 | 985 | 409 | 0 |
+| the private codebase | 23,511 | 1,426 | 4,854 (16.3%) | 29 | 14,972 | 6,752 | 3 |
+| TypeScript `src/compiler` | 9,357 | 710 | 952 (8.6%) | 148 | 4,700 | 15,006 | 336 (2.2%) |
+
+The share is of the capable locals. React code writes a variable once (V-NOC: 98% are `const`); imperative code reassigns (`let`
+accumulators, loop state). A write TC3's model does not read (a destructuring assignment, `for … of`, `||=`, `++`) is rare: 0, 29, 148.
+
+**N7**
+
+| Project | Column | Parameter property | Set only in the constructor (or its initializer) | Written elsewhere | Never written | A method | Other | Sites in classes the project builds by `new` |
+|---|---|---|---|---|---|---|---|---|
+| V-NOC frontend | 7 | 0 | 7 | 0 | 0 | 0 | 0 | 7 (1 class) |
+| the private codebase | 144 | 23 | 70 | 35 | 10 | 4 | 2 | 136 (31 classes); 6 in 2 others |
+| TypeScript `src/compiler` | 17 | 0 | 12 | 0 | 0 | 0 | 5 | 12 (1 class) |
+
+Times: the three sweeps 0.3 s, 2.3 s and 2.6 s; the compiler's `createTypeChecker` (one def, its nested defs apart) 0.4 s, so the scoped
+search of 04 §3.5 holds on the largest def there is.
+
+**What they say** (04 §4):
+
+- **N4 crosses the rule**: more than a few percent of capable locals are written more than once in two projects (16% and 9%). So "a value
+  per place" (11 §3) is planned as a phase, not left as an option. Not moved before TC6: a reassigned variable costs precision only where it
+  reaches a call (a callee or an argument), and that share is what is counted before the phase is designed.
+- **TC8 is not decided by these three.** The `this` column is small here (7, 144, 17) and two thirds of it is fields the constructor sets in
+  classes the project builds by `new`, which is TC8's good case. vscode's `this` column was 47% of its function-typed calls (70,118): its N7
+  decides TC8 against TC6.
+- **Not seen, said:** a write to a private name (`this.#x`) is a `PrivateIdentifier`, which the TC0 helper skips; such a field reads as never
+  written or constructor-only. TC3's and TC8's reader takes private names too.

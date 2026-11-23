@@ -225,7 +225,7 @@ Memory: the machine has 8 GB. One project at a time, `-j2`, `--test-threads=2`, 
 | 2 | S-TC4: the sample entries and the per-site measure, on today's code. **Built** (`b0f21fb`; reviewed 2026-11-23, baseline in `ENGINE.md`; a fix for its memory on a full sweep follows; vscode's row waits) | the baseline table |
 | 3 | N2, N3, N8: they split counters that exist. **Done** (`25a04c8`; reviewed 2026-11-23, tables in `ENGINE.md`: TC3 stays before TC4, `max_depth` 2 stands, TC4/TC5 waits for N1) | three tables |
 | 4a | N1 (§3.4). **Done** (`d8c56e9`; reviewed 2026-11-23, `ENGINE.md` "N1": no syntax missing from `Expr`; TC7 and TC5 do not move; most arguments come from further up) | the table of what is passed; S-TC2's list of syntax with no `Expr` (the `other:` keys) |
-| 4b | N4, N7: variables and fields, by their references and `is_write_access` | two tables |
+| 4b | N4, N7: variables and fields, by their references and `is_write_access`. **Done** (`25793b3`; reviewed 2026-11-23, `ENGINE.md` "N4, N7": a value per place becomes a planned phase; TC8 waits for vscode's N7) | two tables |
 | 4c | N5: objects written through, handed on, stored, renamed | one table |
 
 Step 4 was one row; it is split in three (2026-11-23) because each is a reader of its own and one prompt could not finish all four.
