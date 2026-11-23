@@ -153,9 +153,13 @@ The keys are text (`tc0_n1:arg:<class>`, `tc0_n1:jsx:<class>`, `tc0_n1:static_cl
 ### 3.5 N4 and N7, as decided (2026-11-23)
 
 **Reading the writes of a name.** Both ask, for one declared name, every place that writes it. `get_references_to_symbol_in_file`
-searches the **whole file** for each name, which is quadratic on a large file (the compiler's `checker.ts`). The engine's public free
-function `get_possible_symbol_reference_nodes(file, name, Some(container))` (`tsrs_checker/src/services.rs:827`) searches the text of one
-container only; each node it gives is kept when its symbol is the name's, and it is a write when `ast::is_write_access` says so. The
+searches the **whole file** for each name, which is quadratic on a large file (the compiler's `checker.ts`). **Corrected 2026-11-23:** the
+engine's `get_possible_symbol_reference_nodes(file, name, Some(container))` (`tsrs_checker/src/services.rs:827`) is a `pub fn` in a private
+module (`lib.rs:177`, `mod services;`), so it cannot be called, and it does not search one container anyway (it takes the first offset
+relative to the container as absolute: `ENGINE.md`, "N4, N7: reading the writes of a name"). So `sem` has its own, about twenty lines, from
+pieces the engine exports: a text search of the container's span for the name (`tsrs_core::index_bytes`, `tsrs_scanner::is_identifier_part`
+for the word boundaries), and for each hit the node there (`tsrs_checker::astnav::get_touching_property_name`). Each node is kept when its
+symbol is the name's, and it is a write when `ast::is_write_access` says so. The
 container is the def for a local and the class for a field. TC3's completeness rule (03 §5) reads writes the same way.
 
 **N4: locals and parameters, per def walked** (module variables are not counted: a top-level `let` is unknown by the policy, a top-level

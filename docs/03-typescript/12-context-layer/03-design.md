@@ -250,8 +250,9 @@ the whole scope, the nested functions included: completeness is checkable from t
 reader missed one (a destructuring assignment inside a nested arrow), the value would be called complete, the `Unresolved` edge would be
 dropped, and no counter would say so. So the reader does not trust its own list: for every reference of the variable in its scope it asks
 `ast::is_write_access`, and **a write that is not one of the modelled assignments makes the variable open**. A form nobody thought of then
-costs precision, never an edge. The references are found per scope, not per file: `get_possible_symbol_reference_nodes` with the variable's scope as
-the container (public; `get_references_to_symbol_in_file` scans the whole file for each name, `04-tc0-counts-and-spikes.md` §3.5).
+costs precision, never an edge. The references are found per scope, not per file: a text search of the variable's scope for its name and the node at each hit
+(`sem`'s own, built from exported engine pieces; the engine's scoped search is not reachable, and `get_references_to_symbol_in_file`
+scans the whole file for each name: `04-tc0-counts-and-spikes.md` §3.5).
 
 Evaluation is **on demand**: a variable's value is computed the first time a site needs it, and kept for the rest of the walk.
 

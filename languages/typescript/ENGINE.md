@@ -1436,3 +1436,19 @@ and globals); the compiler `Identifier` 541 (`undefined`), `PrefixUnaryExpressio
 - **TC5 does not move before TC4.** Almost nothing passed is an instance (an argument whose static type is a class: 24, 228 and 25; a `new` among them: 0, 196, 13), so the compiler's
   57% "method called on a parameter" (N3) has no instance to bind at the first step.
 - **TC4's share in React code is the JSX attributes** (29% of V-NOC's classified arguments), not object literals passed to calls (3).
+
+### N4, N7: reading the writes of a name (found at step 4b, 2026-11-23; checked by the reviewer at `13a31a4`)
+
+- **`get_possible_symbol_reference_nodes` is not reachable.** It is a `pub fn` in `tsrs_checker/src/services.rs:827`, but `lib.rs:177`
+  declares `mod services;` without `pub`, and re-exports only `get_resolved_signature_for_signature_help` from it. A free function is
+  reached through its module's path, so a private module hides it; a method is reached through its type, which is why
+  `Checker::get_references_to_symbol_in_file` (the same file) can be called. The same mistake as S-TS3's call-hierarchy resolver: **a `pub`
+  is checked together with the path to it.** `tsrs_ls`'s copy (`findallreferences.rs:2397`) is private too, and `tsrs_ls` is not a
+  dependency.
+- **The engine's scoped search is not scoped.** `get_possible_symbol_reference_positions` (`services.rs:845`) finds the first hit in
+  `bytes[container_start..]` and uses that index as an absolute position (`tsrs_ls`'s copy says so: "Go quirk kept: the first index is
+  relative to container.Pos() but is used as an absolute position"), so the walk starts near the top of the file and runs to the
+  container's end. Callers filter by symbol, so answers stay right; the cost is not one container's.
+- **So `sem` searches itself**: the container's span for the name, word boundaries by `tsrs_scanner::is_identifier_part`, the node at each
+  hit by `tsrs_checker::astnav::get_touching_property_name` (exported: `pub use tsrs_astnav as astnav`), then the symbol and
+  `ast::is_write_access`. TC3 uses the same helper (03 §5).
