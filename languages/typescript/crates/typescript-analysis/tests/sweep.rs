@@ -482,14 +482,12 @@ fn sweep_every_def_of_a_project() {
 
     let files = session.project().expect("a session just opened").files();
     // a sample run is the whole graph unless asked otherwise; a sweep of every def is depth 1 unless asked otherwise
-    let budget = Budget::new(
-        if sample.is_some() {
-            depth
-        } else {
-            Some(depth.unwrap_or(1))
-        },
-        None,
-    );
+    let depth = if sample.is_some() {
+        depth
+    } else {
+        Some(depth.unwrap_or(1))
+    };
+    let budget = Budget::new(depth, None);
     let cancel = Cancel::new();
     let sweep = Instant::now();
     if let Some(sample) = &sample {

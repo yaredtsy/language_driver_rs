@@ -1,5 +1,6 @@
 //! The TC0 counts N2, N3 and N8 (`docs/03-typescript/12-context-layer/04-tc0-counts-and-spikes.md` §3.3): `function_typed_value`, split further, N1 (§3.4): what
-//! callers pass, and N4 and N7 (§3.5): how often a local is written and where `this.x` gets its value, in keys `tc0_…` of `Stats.language`. They exist only behind the feature `__tc0_counts`, so this file is empty without it.
+//! callers pass, N4 and N7 (§3.5): how often a local is written and where `this.x` gets its value, and N5 (§3.6): what is done with an object, in keys `tc0_…` of `Stats.language`.
+//! They exist only behind the feature `__tc0_counts`, so this file is empty without it.
 //!
 //! **Written before it was run:** the counts of each file of `fixtures/tc0-counts`, by hand, from the table of the design.
 #![cfg(feature = "__tc0_counts")]
@@ -166,6 +167,50 @@ fn where_this_x_gets_its_value_is_counted_by_the_declaration_and_the_class() {
             ("tc0_n7_class:src/fields.ts#Svc", 5),
             ("tc0_n7_class:src/fields.ts#Base", 1),
             ("tc0_n7_class:src/fields.ts#Lonely", 1),
+        ])
+    );
+}
+
+#[test]
+fn what_is_done_with_an_object_is_counted_per_parameter_local_and_module_const() {
+    // the def at depth 1, and the file's own code
+    let (def, _) = counts("src/objects.tsx", &["objects"]);
+    let root = tests_dir().join("fixtures").join("tc0-counts");
+    let file = "src/objects.tsx";
+    let session = Session::open(&root, Path::new(file), Options::new(STYLE)).unwrap();
+    let graph = session
+        .graph(
+            file,
+            &Entry::File,
+            &Budget::new(Some(1), None),
+            &Cancel::new(),
+        )
+        .unwrap();
+    let mut found = only(def, &["tc0_n5_"]);
+    for (key, count) in &graph.stats.language {
+        if key.starts_with("tc0_n5_") {
+            *found.entry(key.clone()).or_default() += count;
+        }
+    }
+    assert_eq!(
+        found,
+        expected(&[
+            ("tc0_n5_local_objects", 8),
+            ("tc0_n5_local_untouched", 1),
+            ("tc0_n5_local_written_through", 1),
+            ("tc0_n5_local_handed_project", 1),
+            ("tc0_n5_local_handed_external", 1),
+            ("tc0_n5_local_in_array", 1),
+            ("tc0_n5_local_second_name", 1),
+            ("tc0_n5_local_returned", 1),
+            ("tc0_n5_local_handed_jsx", 1),
+            ("tc0_n5_param_objects", 2),
+            ("tc0_n5_param_written_through", 1),
+            ("tc0_n5_param_handed_project", 1),
+            ("tc0_n5_module_objects", 2),
+            ("tc0_n5_module_exported", 1),
+            ("tc0_n5_module_untouched", 1),
+            ("tc0_n5_module_written_through", 1),
         ])
     );
 }

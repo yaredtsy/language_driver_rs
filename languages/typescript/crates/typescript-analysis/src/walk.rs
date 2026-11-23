@@ -51,6 +51,13 @@ pub(crate) fn body<'p>(
             lang.note(key);
         }
     }
+    // N5: what is done with the objects of this def, or of this file's own code, once per walk
+    #[cfg(feature = "__tc0_counts")]
+    if let Some(n5) = lang.sem.tc0_n5(f, lang.style) {
+        for key in &n5.fixed {
+            lang.note(key);
+        }
+    }
     let (summary, unhandled) = counted(|| body_of(lang, f, env, cancel));
     lang.note_n(
         UNHANDLED_KEY,

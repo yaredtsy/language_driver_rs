@@ -5,7 +5,7 @@ use tsrs_ast::Symbol;
 use tsrs_ast::SymbolFlags;
 use tsrs_checker::{Checker, TypeFlags};
 #[cfg(feature = "__tc0_counts")]
-use tsrs_checker::{ObjectFlags, Type};
+use tsrs_checker::{ObjectFlags, SignatureKind, Type};
 
 use super::collect::{Access, AccessCandidate, CallNode, SiteKind, unwrap_expression};
 use super::hierarchy::{
@@ -13,7 +13,9 @@ use super::hierarchy::{
     is_property_function_value, symbol_of_declaration,
 };
 #[cfg(feature = "__tc0_counts")]
-use super::view::{Binary, CallOrNew, ElementAccess, Elements, JsxAttrs, properties_of};
+use super::view::{
+    Binary, CallOrNew, ElementAccess, Elements, JsxAttrs, Wrapper, properties_of, statements_of,
+};
 use super::view::{expression_of, initializer_of, spelled};
 use super::*;
 
@@ -419,23 +421,8 @@ impl Sem {
         let file = func.file.node;
         let _scope = self.region.enter();
         let mut checker = self.checker();
-        // the variable declarations written in the def, nested anonymous functions included and nested defs not
-        let mut declarations = Vec::new();
-        let mut pending = vec![def];
-        while let Some(node) = pending.pop() {
-            if node.kind() == Kind::VariableDeclaration {
-                declarations.push(node);
-            }
-            node.for_each_child(&mut |child| {
-                if !defs.def_of.contains_key(&child) {
-                    pending.push(child);
-                }
-                false
-            });
-        }
-        declarations.sort_by_key(|node| node.pos().source_offset());
         let mut counts = Tc0Counts::default();
-        for declaration in declarations {
+        for declaration in variable_declarations_in(def, &defs) {
             let Some(pattern) = declaration.name() else {
                 continue;
             };
@@ -494,6 +481,161 @@ impl Sem {
             }
         }
         Some(counts)
+    }
+
+    /// N5 (04-tc0-counts-and-spikes.md §3.6): what is done with the objects of a def (its parameters that are not callbacks, its locals made from an object literal),
+    /// or of a file's own code (the top-level `const`s made from one): the keys to note, once per walk. `None` for a def with no node.
+    #[cfg(feature = "__tc0_counts")]
+    pub(crate) fn tc0_n5(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Tc0Counts> {
+        let container = self.node_of(func, style)?;
+        let file = func.file.node;
+        let _scope = self.region.enter();
+        let mut checker = self.checker();
+        let mut counts = Tc0Counts::default();
+        if func.outline_index().is_none() {
+            for &statement in statements_of(container) {
+                if statement.kind() != Kind::VariableStatement {
+                    continue;
+                }
+                let exported = statement
+                    .modifier_flags()
+                    .intersects(ast::ModifierFlags::Export);
+                for declaration in declarations_of_statement(statement) {
+                    if !ast::get_combined_node_flags(declaration).intersects(NodeFlags::Const) {
+                        continue;
+                    }
+                    let Some(name) = object_literal_name(declaration) else {
+                        continue;
+                    };
+                    let Some(symbol) = checker.get_symbol_at_location_exported(name) else {
+                        continue;
+                    };
+                    let uses = self.uses_of_object(&mut checker, file, symbol, name, container);
+                    note_object(&mut counts, ObjectKind::Module, &uses);
+                    if exported {
+                        counts.fixed.push("tc0_n5_module_exported");
+                    }
+                }
+            }
+            return Some(counts);
+        }
+        if ast::is_function_like(Some(container)) {
+            for &parameter in container.parameters() {
+                let Some(name) = parameter
+                    .name()
+                    .filter(|name| name.kind() == Kind::Identifier)
+                else {
+                    continue;
+                };
+                let Some(symbol) = checker.get_symbol_at_location_exported(name) else {
+                    continue;
+                };
+                let ty = checker.get_type_of_symbol(symbol);
+                if !is_capable(ty)
+                    || !checker
+                        .get_signatures_of_type_exported(ty, SignatureKind::Call)
+                        .is_empty()
+                {
+                    continue;
+                }
+                let uses = self.uses_of_object(&mut checker, file, symbol, name, container);
+                note_object(&mut counts, ObjectKind::Param, &uses);
+            }
+        }
+        let defs = self.file_defs(func.file, style)?;
+        for declaration in variable_declarations_in(container, &defs) {
+            let Some(name) = object_literal_name(declaration) else {
+                continue;
+            };
+            let Some(symbol) = checker.get_symbol_at_location_exported(name) else {
+                continue;
+            };
+            let uses = self.uses_of_object(&mut checker, file, symbol, name, container);
+            note_object(&mut counts, ObjectKind::Local, &uses);
+        }
+        Some(counts)
+    }
+
+    /// What is done with the object `symbol`, declared by `declared_name`, under `container`: each use of `ObjectUse` that some reference makes, once, in order
+    /// of the enum (`Untouched` when none).
+    #[cfg(feature = "__tc0_counts")]
+    fn uses_of_object(
+        &self,
+        checker: &mut Checker,
+        file: P<SourceFile>,
+        symbol: P<Symbol>,
+        declared_name: P<Node>,
+        container: P<Node>,
+    ) -> Vec<ObjectUse> {
+        let Some(text) = spelled(file.text(), declared_name) else {
+            return vec![ObjectUse::Untouched];
+        };
+        let mut uses = BTreeSet::new();
+        for reference in names_in(file, &text, container) {
+            if reference.kind() != Kind::Identifier
+                || reference == declared_name
+                || checker.get_symbol_at_location_exported(reference) != Some(symbol)
+            {
+                continue;
+            }
+            // from the reference up through the nodes that only wrap it
+            let mut used = reference;
+            while let Some(parent) = used
+                .parent()
+                .filter(|parent| Wrapper::cast(*parent).is_some())
+            {
+                used = parent;
+            }
+            let Some(parent) = used.parent() else {
+                continue;
+            };
+            let found = match parent.kind() {
+                Kind::PropertyAccessExpression | Kind::ElementAccessExpression => {
+                    (expression_of(parent) == Some(used)
+                        && (ast::is_write_access(parent)
+                            || parent
+                                .parent()
+                                .is_some_and(|up| up.kind() == Kind::DeleteExpression)))
+                    .then_some(ObjectUse::WrittenThrough)
+                }
+                Kind::CallExpression | Kind::NewExpression => {
+                    let call = CallOrNew::cast(parent);
+                    let arguments = call.map_or(&[][..], CallOrNew::arguments);
+                    if !arguments.contains(&used) {
+                        None
+                    } else if arguments.first() == Some(&used)
+                        && call
+                            .and_then(CallOrNew::callee)
+                            .and_then(|callee| own_span(file.text(), callee).slice(file.text()))
+                            == Some("Object.assign")
+                    {
+                        Some(ObjectUse::WrittenThrough)
+                    } else {
+                        Some(match self.tc0_declared_by(checker, parent) {
+                            CallDeclaredBy::Project => ObjectUse::HandedProject,
+                            CallDeclaredBy::Package { .. } | CallDeclaredBy::Unknown => {
+                                ObjectUse::HandedExternal
+                            }
+                        })
+                    }
+                }
+                Kind::JsxExpression => parent
+                    .parent()
+                    .is_some_and(|up| up.kind() == Kind::JsxAttribute)
+                    .then_some(ObjectUse::HandedJsx),
+                Kind::ArrayLiteralExpression => Some(ObjectUse::InArray),
+                Kind::VariableDeclaration => {
+                    (initializer_of(parent) == Some(used)).then_some(ObjectUse::SecondName)
+                }
+                Kind::ReturnStatement => Some(ObjectUse::Returned),
+                _ => None,
+            };
+            uses.extend(found);
+        }
+        if uses.is_empty() {
+            uses.insert(ObjectUse::Untouched);
+        }
+        uses.into_iter().collect()
     }
 
     /// What declares the function a call resolves to, as N8 and N1's `call_result_*` read it: the declaration of the call's resolved signature.
@@ -1288,6 +1430,106 @@ fn origin_of_declaration(declaration: P<Node>) -> FunctionOrigin {
         }
         _ => FunctionOrigin::Other,
     }
+}
+
+/// What N5 asks of one object: the part of the code it came from.
+#[cfg(feature = "__tc0_counts")]
+#[derive(Clone, Copy)]
+enum ObjectKind {
+    Param,
+    Local,
+    Module,
+}
+
+/// What is done with an object (N5): one flag per kind of use, in the order of the table of 04 §3.6. `Untouched` when nothing is.
+#[cfg(feature = "__tc0_counts")]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ObjectUse {
+    WrittenThrough,
+    HandedProject,
+    HandedExternal,
+    HandedJsx,
+    InArray,
+    SecondName,
+    Returned,
+    Untouched,
+}
+
+/// The eight keys of one kind of object, in the order of `ObjectUse`.
+#[cfg(feature = "__tc0_counts")]
+macro_rules! n5_keys {
+    ($kind:literal) => {
+        [
+            concat!("tc0_n5_", $kind, "_written_through"),
+            concat!("tc0_n5_", $kind, "_handed_project"),
+            concat!("tc0_n5_", $kind, "_handed_external"),
+            concat!("tc0_n5_", $kind, "_handed_jsx"),
+            concat!("tc0_n5_", $kind, "_in_array"),
+            concat!("tc0_n5_", $kind, "_second_name"),
+            concat!("tc0_n5_", $kind, "_returned"),
+            concat!("tc0_n5_", $kind, "_untouched"),
+        ]
+    };
+}
+
+/// Note an object of `kind` and what is done with it.
+#[cfg(feature = "__tc0_counts")]
+fn note_object(counts: &mut Tc0Counts, kind: ObjectKind, uses: &[ObjectUse]) {
+    let (objects, keys) = match kind {
+        ObjectKind::Param => ("tc0_n5_param_objects", n5_keys!("param")),
+        ObjectKind::Local => ("tc0_n5_local_objects", n5_keys!("local")),
+        ObjectKind::Module => ("tc0_n5_module_objects", n5_keys!("module")),
+    };
+    counts.fixed.push(objects);
+    counts
+        .fixed
+        .extend(uses.iter().map(|used| keys[*used as usize]));
+}
+
+/// The name of a variable declaration that is a plain identifier with an object literal for its initializer (under `unwrap_expression`).
+#[cfg(feature = "__tc0_counts")]
+fn object_literal_name(declaration: P<Node>) -> Option<P<Node>> {
+    let name = declaration
+        .name()
+        .filter(|name| name.kind() == Kind::Identifier)?;
+    let initializer = unwrap_expression(initializer_of(declaration)?);
+    (initializer.kind() == Kind::ObjectLiteralExpression).then_some(name)
+}
+
+/// The declarations of a variable statement, in order: the children of its declaration list.
+#[cfg(feature = "__tc0_counts")]
+fn declarations_of_statement(statement: P<Node>) -> Vec<P<Node>> {
+    let mut declarations = Vec::new();
+    statement.for_each_child(&mut |list| {
+        if list.kind() == Kind::VariableDeclarationList {
+            list.for_each_child(&mut |declaration| {
+                declarations.push(declaration);
+                false
+            });
+        }
+        false
+    });
+    declarations
+}
+
+/// The variable declarations written in the def, in order: nested anonymous functions included and nested defs not.
+#[cfg(feature = "__tc0_counts")]
+fn variable_declarations_in(def: P<Node>, defs: &FileDefs) -> Vec<P<Node>> {
+    let mut declarations = Vec::new();
+    let mut pending = vec![def];
+    while let Some(node) = pending.pop() {
+        if node.kind() == Kind::VariableDeclaration {
+            declarations.push(node);
+        }
+        node.for_each_child(&mut |child| {
+            if !defs.def_of.contains_key(&child) {
+                pending.push(child);
+            }
+            false
+        });
+    }
+    declarations.sort_by_key(|node| node.pos().source_offset());
+    declarations
 }
 
 /// The nodes under `container` where the text `name` stands as a whole word, as the engine's `get_possible_symbol_reference_nodes` finds them (a private function
