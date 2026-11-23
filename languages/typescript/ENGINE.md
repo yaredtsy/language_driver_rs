@@ -1490,3 +1490,35 @@ search of 04 §3.5 holds on the largest def there is.
   decides TC8 against TC6.
 - **Not seen, said:** a write to a private name (`this.#x`) is a `PrivateIdentifier`, which the TC0 helper skips; such a field reads as never
   written or constructor-only. TC3's and TC8's reader takes private names too.
+
+### N5: what is done with an object (`fc98c18`, feature `__tc0_counts`; reviewed 2026-11-23)
+
+Full depth-1 sweeps with the files' own code, release build with the feature, run by the reviewer. Each flag once per object; an object
+can have several (04 §3.6).
+
+| Project | Kind | Objects | Untouched | Written through | Handed to a project function | Handed to a library | To a JSX attribute | In an array literal | A second name | Returned | Exported |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| V-NOC frontend | parameter | 393 | 233 | 1 | 83 (21%) | 37 (9%) | 2 | 17 (4%) | 17 | 21 | |
+| | local literal | 36 | 9 | 13 (36%) | 8 | 7 (19%) | 2 | 3 | 0 | 5 | |
+| | module `const` | 46 | 37 | 0 | 0 | 5 | 4 | 0 | 0 | 0 | 22 |
+| the private codebase | parameter | 6,323 | 3,591 | 89 (1.4%) | 1,486 (24%) | 419 (7%) | 92 | 69 (1%) | 671 (11%) | 118 | |
+| | local literal | 839 | 198 | 304 (36%) | 244 | 159 (19%) | 4 | 23 | 2 | 154 | |
+| | module `const` | 357 | 276 | 5 | 17 | 29 | 2 | 12 | 5 | 17 | 124 |
+| TypeScript `src/compiler` | parameter | 13,926 | 5,247 | 278 (2%) | 8,147 (58%) | 277 (2%) | 0 | 205 (1.5%) | 186 | 479 | |
+| | local literal | 94 | 12 | 24 (26%) | 48 | 14 (15%) | 0 | 0 | 0 | 36 | |
+| | module `const` | 78 | 27 | 2 | 41 | 1 | 0 | 11 | 0 | 1 | 24 |
+
+**What it says** (04 §4 and the trust rule of 03 §11):
+
+- **An object passed in is almost never written through by the function that holds it** (0.3%, 1.4%, 2%). A local literal often is (26–36%):
+  it is built field by field. TC4's rule is cheap for parameters (props) and costly for local literals.
+- **Handed to a project function is the large row** (21%, 24%, 58% of object parameters). It is an upper bound: the rule opens the object
+  only if the receiving function writes through it (or hands it on to one that does). So the receiver's "writes through parameter i" fact
+  (`Flow::facts.touches`, 03 §4) is what keeps TC4 useful; without it TC4 loses a fifth to a half of the objects.
+- **Handed to a library: 2–9% of object parameters, 15–19% of local literals.** Q-TC7 (`docs/07`) asks whether a library may be assumed to
+  leave an object's members alone. 04 §4's trigger ("handed to external functions common, written through rarely") holds for parameters only
+  at the low end; the question is asked anyway, since it is a stated exception to "never guess" either way.
+- **An array literal is rare** (1–8%): the row "an object put in an array literal opens it" stays, with no exception for dependency lists.
+- **Exported module objects are a third to a half of module `const` objects** (22 of 46, 124 of 357, 24 of 78): the TC4 row that opens an
+  exported one (`module_object_shared`) costs that much. A project-wide check of writes through an exported `const` is the refinement, if
+  TC4's sweep says it matters.

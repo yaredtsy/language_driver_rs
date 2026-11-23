@@ -113,6 +113,7 @@ Each phase ends with these, and is not done without them:
 | **Q-TC4** | When is the layer on by default? | after TC5, when the shared scenarios pass at the precise level | no phase |
 | **Q-TC5** | "Show the classes that implement this interface" (the old C2) | not built, as D36 decided for Rust: tsrs has no such query below its LSP layer, and an edge keeps one meaning, "is called" | nothing |
 | **Q-TC6** | May `core/` take two small crates, `xxhash-rust` and `indexmap`? Python and Bend each hold a copy of the digest function today, and TypeScript would be the third: by the rule of two it belongs in core, and core has only `serde` and `serde_json`, with a rule to stay small | yes for `xxhash-rust` (the digest, when TC2 needs it); `indexmap` only when a second language interns its keys through core. **Answered 2026-11-23 (D57): yes for `xxhash-rust`.** The digest function goes into core in TC2's first step; Python and Bend switch to it in a session of their own | decided |
+| **Q-TC7** | May TC4 assume that a library function leaves an object's members alone (a stated exception to "never guess")? Asked by TC0's N5 | no: keep the sound rule; the share it costs is 2–9% of object parameters, and local literals are written through more often than they are handed to a library. Revisit with TC4's sweep | TC4 |
 
 ## What the review of 2026-11-23 changed
 
