@@ -121,6 +121,35 @@ The fixture has both.
 The N8 key holds the package and the name, so it is built at run time: a count with a text key is added beside today's notes (a
 `String` key, merged into `Stats.language` the same way).
 
+### 3.4 N1, as decided (2026-11-23)
+
+**Which arguments.** At every site whose answer has a project target (`Resolved::Def`), once per site whatever the number of targets:
+each argument of a call or a `new` that lands in a slot of the resolved signature whose type is **capable**, and each attribute of a JSX
+element written `{expr}` (or `{...spread}`). Tagged templates and decorators pass nothing (§7 of the design). An argument whose slot is not
+capable is counted `arg:data_slot` and not classified; one past the last parameter of a signature with no rest, `arg:no_slot`.
+
+**Capable, for TC0** (TC2 has its own rule, 06 §2): the slot's type is a union with a capable member, or its flags meet `Any`, `Unknown`,
+`Object`, `NonPrimitive`, `TypeParameter`, `Intersection`, `IndexedAccess`, `Conditional` or `Substitution`. An array is an `Object`, so it
+is capable here: TC0 counts a little too much, never too little. A JSX attribute has no slot here; its value's own type is asked.
+
+**What the argument is**, after parentheses, `as`, `satisfies` and `!` (`unwrap_expression`), the first row that fits:
+
+| Class | The argument |
+|---|---|
+| `spread` | `...xs` |
+| `anonymous` | an arrow, or a function expression with no name |
+| `def` | a function expression with a name; or a name or a member (`handler`, `api.load`, `this.onClick`) one of whose symbol's declarations, or that declaration's arrow or function initializer, is a def of the outline |
+| `object_with_function` / `object_other` | an object literal: with a function member (a method or accessor, or a property or shorthand whose value is `anonymous` or `def` by this table) or without |
+| `new` | `new C(…)` |
+| `call_result_project` / `_external` / `_unknown` | a call, by its resolved signature's declaration, as N8 |
+| `this_member` | a member whose leftmost name is `this` |
+| `parameter`, `local`, `module_variable` | a name declared (through binding elements) by a parameter, a variable inside a function, a variable at the top of a file or a namespace |
+| `parameter_member`, `local_member`, `module_variable_member`, `other_member` | a member (`a.b`, `a[k]`) whose leftmost name is one of those, or another |
+| `other:<kind>` | anything else, by the engine's kind: S-TC2's list of syntax with no `Expr` |
+
+And, across all the classes, `static_class`: the argument's type (`get_type_at_location`) is an instance of a class (`ObjectFlags::Class`).
+The keys are text (`tc0_n1:arg:<class>`, `tc0_n1:jsx:<class>`, `tc0_n1:static_class`), like N8's package keys.
+
 A "no" is written in `ENGINE.md` with the phase it hits: E1, E2, E4, E5, E10 hit TC2 (binding and the tripwire), E3 nothing yet
 (types in a key are later), E6 and E11 TC3 (variables, and the completeness rule of [03](03-design.md) §5), E7 and E8 TC5, E9 TC8.
 
@@ -166,7 +195,11 @@ Memory: the machine has 8 GB. One project at a time, `-j2`, `--test-threads=2`, 
 | 1 | S-TC1. **Done** (spike 9b91422, reviewed 2026-11-23: 40 of 40 as expected, and seven more shapes probed by the reviewer) | the table in `ENGINE.md` |
 | 2 | S-TC4: the sample entries and the per-site measure, on today's code. **Built** (`b0f21fb`; reviewed 2026-11-23, baseline in `ENGINE.md`; a fix for its memory on a full sweep follows; vscode's row waits) | the baseline table |
 | 3 | N2, N3, N8: they split counters that exist. **Done** (`25a04c8`; reviewed 2026-11-23, tables in `ENGINE.md`: TC3 stays before TC4, `max_depth` 2 stands, TC4/TC5 waits for N1) | three tables |
-| 4 | N1, N4, N5, N7: they read arguments and assignments, which is most of S-TC2's reader | four tables; S-TC2's list of syntax with no `Expr` |
+| 4a | N1 (§3.4) | the table of what is passed; S-TC2's list of syntax with no `Expr` (the `other:` keys) |
+| 4b | N4, N7: variables and fields, by their references and `is_write_access` | two tables |
+| 4c | N5: objects written through, handed on, stored, renamed | one table |
+
+Step 4 was one row; it is split in three (2026-11-23) because each is a reader of its own and one prompt could not finish all four.
 | 5 | S-TC2's cost, S-TC3 | the numbers; where the hash lives |
 | 6 | N6, from the arguments N1 found | the distribution |
 | 7 | this folder corrected by §4; the order of TC3–TC5 confirmed or changed; **a forecast per phase**: of the open sites the sample entries reach, how many each of TCL, TC2–TC6 can answer | reviewed with you |
