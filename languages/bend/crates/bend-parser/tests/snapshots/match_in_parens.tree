@@ -1,0 +1,6 @@
+(def
+  a
+  0..86 "def a(x: Nat…c{p}: p), y)"
+  (params (x Nat))
+  (ret Nat)
+  (body (call f (group (match (on x) (case (pats (ctr Zero)) (nat 0)) (case (pats (ctr Succ p)) p))) y)))

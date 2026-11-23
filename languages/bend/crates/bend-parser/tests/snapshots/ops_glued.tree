@@ -1,0 +1,9 @@
+(def a 0..29 "def a() -> U…a % b : U32)" (params) (ret U32) (body (group (op % a b) (ns U32))))
+(def b 30..59 "def b() -> U…a / b : U32)" (params) (ret U32) (body (group (op / a b) (ns U32))))
+(def c 60..87 "def c() -> U… (a*b : U32)" (params) (ret U32) (body (group (op * a b) (ns U32))))
+(def
+  d
+  88..129 "def d() -> U… U32) : U32)"
+  (params)
+  (ret U32)
+  (body (group (op * a (group (op + b c) (ns U32))) (ns U32))))

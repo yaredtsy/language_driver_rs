@@ -1,0 +1,4 @@
+(law good 0..38 "law good:⏎  …q(Nat, x, x)" (for x Nat) (claim (call Eq Nat x x)))
+(law bad 40..60 "law bad⏎  for x: Nat" SYNTAX-ERROR)
+(law after 62..90 "law after:⏎ …Nat, 1n, 1n)" (claim (call Eq Nat (nat 1) (nat 1))))
+(ERROR 50..60 "for x: Nat" expected "':'" observed "'f'")

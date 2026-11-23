@@ -1,0 +1,5 @@
+== main.bend main
+main
+edges:
+main | nope | unresolved unknown_name
+counters: type_position=1, unknown_name=1

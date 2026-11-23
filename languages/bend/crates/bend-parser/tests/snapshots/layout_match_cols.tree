@@ -1,0 +1,16 @@
+(def
+  f
+  0..140 "def f(a: Nat…e Succ{p}: p"
+  (params (a Nat) (b Nat))
+  (ret Nat)
+  (body
+    (match
+      (on a)
+      (case (pats (ctr Zero)) (match (on b) (case (pats (ctr Zero)) (nat 0)) (case (pats (ctr Succ q)) q)))
+      (case (pats (ctr Succ p)) p))))
+(def
+  g
+  142..192 "def g(a: Nat…e Zero{}: 0n"
+  (params (a Nat))
+  (ret Nat)
+  (body (match (on a) (case (pats (ctr Zero)) (nat 0)))))

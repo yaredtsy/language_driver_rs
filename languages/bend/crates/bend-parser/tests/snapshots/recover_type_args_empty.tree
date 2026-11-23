@@ -1,0 +1,3 @@
+(def e 0..21 "def e(x: D<>) -> D: 0" SYNTAX-ERROR (params))
+(def ok 22..40 "def ok() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR 12..21 ") -> D: 0" expected "a term" observed "')'")

@@ -19,10 +19,11 @@ rs() { grep -rn --include='*.rs' --exclude-dir=target --exclude-dir=vendor "$@" 
 rs_files() { grep -rl --include='*.rs' --exclude-dir=target --exclude-dir=vendor "$@" 2>/dev/null || true; }
 crates=(languages/*/crates)
 
-# rule 4: only the sem module (sem.rs, or the files of a sem/ folder) names an engine (Python's interp/ may name types sem re-exports); core names none
-engine='(^|[^A-Za-z0-9_])(tsrs_|ruff_|ty_|ra_ap_)[a-z]'
+# rule 4: only the sem module (sem.rs, or the files of a sem/ folder) names an engine (Python's interp/ may name types sem re-exports); core names none.
+# Bend's engine is our own crate, bend-parser (BD-D1): `bend_parser` is an engine name everywhere but in that crate itself.
+engine='(^|[^A-Za-z0-9_])(tsrs_|ruff_|ty_|ra_ap_|bend_parser)[a-z:]'
 none "an engine is named outside the sem module (rule 4)" \
-  "$(rs_files -E "$engine" "${crates[@]}" | grep -vE '/src/sem(\.rs|/.+\.rs)$' | grep -v '^languages/python/crates/python-analysis/src/interp/' || true)"
+  "$(rs_files -E "$engine" "${crates[@]}" | grep -vE '/src/sem(\.rs|/.+\.rs)$' | grep -v '^languages/python/crates/python-analysis/src/interp/' | grep -v '^languages/bend/crates/bend-parser/' || true)"
 none "core names an engine (rule 5)" "$(rs -E "$engine" core)"
 
 # rule 1: no product words in code. `FileID` is the product's spelling and is matched as written (D47): the engines' own `FileId`, `EditionedFileId` and
@@ -78,10 +79,20 @@ if [ -d languages/rust ]; then
   grep -q 'ra_ap_syntax' <<<"$tree" || bad "rust-syntax does not depend on ra_ap_syntax (is the tree check reading the right crate?)"
   # the oracle's engine crate is a dev-dependency (RS4 §8): the normal tree of what ships has `ra_ap_ide_db`, which it needs, and no `ra_ap_ide`
   for crate in rust-analysis rust-cli; do
-    tree=$(cd languages/rust && cargo tree --locked -p "$crate" -e normal 2>&1) || bad "cargo tree -p $crate failed: $tree"
+    tree=$(cd languages/rust && cargo tree --locked --color never -p "$crate" -e normal 2>&1) || bad "cargo tree -p $crate failed: $tree"
     if grep -E 'ra_ap_ide v' <<<"$tree"; then bad "$crate depends on ra_ap_ide outside its dev-dependencies"; fi
     grep -q 'ra_ap_ide_db' <<<"$tree" || bad "$crate does not depend on ra_ap_ide_db (is the tree check reading the right crate?)"
   done
+fi
+
+# bend-parser is the engine Bend has no other source for (BD-D1): it depends on analyzer-core and on nothing else, dev-dependencies included
+if [ -d languages/bend/crates/bend-parser ]; then
+  parser_deps=$(cd languages/bend && cargo tree --locked --color never -p bend-parser --depth 1 2>&1) || bad "cargo tree -p bend-parser failed: $parser_deps"
+  # only the lines of the tree are counted: on a machine that has not fetched the crates yet, cargo's own progress lines ("Updating crates.io index",
+  # "Downloaded ..") arrive on the same stream, and counting them made this check fail in CI the day the Bend workspace gained a crate.
+  # --color never: CI sets CARGO_TERM_COLOR=always, which wraps the branch characters in escape codes, so no line starts with `└──`
+  direct=$(grep -cE '^[├└]── ' <<<"$parser_deps" || true)
+  if [ "$direct" != 1 ] || ! grep -q 'analyzer-core' <<<"$parser_deps"; then bad "bend-parser depends on something besides analyzer-core: $parser_deps"; fi
 fi
 
 # relative links in docs and the top-level markdown files resolve (anchors are not checked)
@@ -102,7 +113,10 @@ if [ "$fail" != 0 ]; then echo "check-all: static checks FAILED" >&2; exit 1; fi
 
 langs=${1:-$(scripts/list-languages.sh)}
 for l in $langs; do
+  pkgs=(-p "$l-syntax" -p "$l-analysis" -p "$l-cli")
+  # a language that writes its own parser (Bend, BD-D1) has a fourth crate; the others have none
+  if [ -d "languages/$l/crates/$l-parser" ]; then pkgs+=(-p "$l-parser"); fi
   (cd "languages/$l" && cargo fmt --check &&
-    cargo clippy --locked -p "$l-syntax" -p "$l-analysis" -p "$l-cli" --all-targets -- -D warnings &&
+    cargo clippy --locked "${pkgs[@]}" --all-targets -- -D warnings &&
     cargo test --locked) && scripts/check-proofs.sh "$l"
 done

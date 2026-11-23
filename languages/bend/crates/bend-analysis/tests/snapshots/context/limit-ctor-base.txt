@@ -1,0 +1,20 @@
+== main.bend main default
+main
+  work [Passed]
+edges:
+main | work | pass work
+main | f | unresolved function_typed_value
+contexts:
+main | open
+work | open
+counters: function_typed_value=1, type_position=3
+== main.bend main precise
+main
+  work [Passed]
+edges:
+main | work | pass work
+main | f | unresolved function_typed_value
+contexts:
+main | open
+work | open
+counters: function_typed_value=1, type_position=3

@@ -1,0 +1,2 @@
+(def k 0..36 "def k(x: Nat…rnel!(x, 1n)" (params (x Nat)) (ret Nat) (body (call! kernel x (nat 1))))
+(def l 37..72 "def l(x: Nat…ernel!(x)(y)" (params (x Nat)) (ret Nat) (body (call (call! kernel x) y)))

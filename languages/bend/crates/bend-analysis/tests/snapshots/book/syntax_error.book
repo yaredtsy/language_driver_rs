@@ -1,0 +1,13 @@
+files, in load order
+  #0 main.bend  ns=""  in root  []
+imports Base: true
+decls (file:def)
+  0:0 first function
+  0:1 broken function  SYNTAX ERROR
+  0:2 last function
+tlds, sorted
+  broken -> 0:1
+  first -> 0:0
+  last -> 0:2
+ctrs, sorted
+counters

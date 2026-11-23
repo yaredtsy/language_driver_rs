@@ -1,0 +1,25 @@
+(def a 0..36 "def a(v: Arr…-> U32: v[i]" (params (v Array) (i U32)) (ret U32) (body (index v i)))
+(def
+  b
+  37..84 "def b(v: Arr…U32: v[i][j]"
+  (params (v Array) (i U32) (j U32))
+  (ret U32)
+  (body (index (index v i) j)))
+(def
+  c
+  85..128 "def c(v: Arr…y: v[i] <- 1"
+  (params (v Array) (i U32))
+  (ret Array)
+  (body (index v i <- (u32 1))))
+(def
+  f
+  130..179 "def f(a: Arr…[i] <- 1⏎  a"
+  (params (a Array) (i U32))
+  (ret Array)
+  (body (let[write] (pats a) (values (index a i <- (u32 1))) a)))
+(def
+  g
+  181..234 "def g(a: Arr…[i] <- 2⏎  b"
+  (params (a Array) (i U32))
+  (ret Array)
+  (body (let (pats b) (values (index a i <- (u32 2))) b)))

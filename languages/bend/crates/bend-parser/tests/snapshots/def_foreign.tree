@@ -1,0 +1,9 @@
+(import "Base")
+(def
+  sin
+  13..79 "def sin(x: F…t \"./sin.js\""
+  (params (x F32))
+  (ret (call IO F32))
+  (foreign "./sin.c" "./sin.js"))
+(def cos 81..125 "def cos(x: F…rt \"./cos.c\"" (params (x F32)) (ret (call IO F32)) (foreign "./cos.c"))
+(def after 126..147 "def after() -> U32: 1" (params) (ret U32) (body (u32 1)))

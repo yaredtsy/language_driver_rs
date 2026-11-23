@@ -1,0 +1,3 @@
+Function add [0..141] name [50..53] (a, b)
+Function main [210..240] name [214..218]
+Function Nat.double [241..281] name [245..255] (n)

@@ -1,0 +1,5 @@
+(def ok 16..34 "def ok() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(def after 82..103 "def after() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR 4..15 "match(x): x" expected "a name (got the keyword 'match')" observed "'match'")
+(ERROR 40..54 "is Data:⏎  A{}" expected "a name (got the keyword 'is')" observed "'is'")
+(ERROR 59..81 "for:⏎  Eq(Nat, 1n, 1n)" expected "a name (got the keyword 'for')" observed "'for'")

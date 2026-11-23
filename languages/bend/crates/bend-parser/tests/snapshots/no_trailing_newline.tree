@@ -1,0 +1,1 @@
+(def last 0..20 "def last() -> Nat: 0" (params) (ret Nat) (body (u32 0)))

@@ -1,0 +1,8 @@
+(def a 0..34 "def a(x: Nat…  +x = x⏎  x" (params (x Nat)) (ret Nat) (body (let (pats (+ x)) (values x) x)))
+(def b 36..59 "def b() -> Nat: +x => x" (params) (ret Nat) (body (lam +x x)))
+(def
+  c
+  61..125 "def c() -> I…    return n"
+  (params)
+  (ret (call IO Nat))
+  (body (do IO (args Nat) (let +n Nat (nat 1)) (return n))))

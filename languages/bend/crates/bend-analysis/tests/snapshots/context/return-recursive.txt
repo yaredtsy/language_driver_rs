@@ -1,0 +1,26 @@
+== main.bend main default
+main
+  loop
+    loop [Recursive]
+edges:
+loop | loop | call loop
+main | loop | call loop
+main | loop(3n) | unresolved function_typed_value
+contexts:
+loop | open
+main | open
+counters: function_typed_value=1, passed_deep=1, type_position=3
+== main.bend main precise
+main
+  loop
+    loop [Recursive]
+  work
+edges:
+loop | loop | call loop
+main | loop | call loop
+main | loop(3n) | call work
+contexts:
+loop | open
+main | open
+work | open
+counters: passed_deep=1, type_position=5

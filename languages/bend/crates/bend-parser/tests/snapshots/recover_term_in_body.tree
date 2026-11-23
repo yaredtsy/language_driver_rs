@@ -1,0 +1,3 @@
+(def a 0..62 "def a(x: Nat…se Zero{}: )" SYNTAX-ERROR (params (x Nat)) (ret Nat))
+(def ok 63..87 "def ok(x: Nat) -> Nat: x" (params (x Nat)) (ret Nat) (body x))
+(ERROR 61..62 ")" expected "a term" observed "')'")

@@ -1,0 +1,52 @@
+== main.bend main default
+main
+  P.bind
+  item
+    P.pure
+  P.bind
+  item
+    P.pure
+  P.pure
+edges:
+P.bind | m | unresolved function_typed_value
+P.bind | f | unresolved function_typed_value
+P.bind | f(a) | unresolved function_typed_value
+P.pure | k | unresolved function_typed_value
+item | P.pure | call P.pure
+main | x : U32 <- item() | call P.bind
+main | item | call item
+main | y : U32 <- item() | call P.bind
+main | item | call item
+main | return y | call P.pure
+contexts:
+P.bind | open
+P.pure | open
+item | open
+main | open
+counters: function_typed_value=4, type_position=13
+== main.bend main precise
+main
+  P.bind
+  item
+    P.pure
+  P.bind
+  item
+    P.pure
+  P.pure
+edges:
+P.bind@d2e9e5b1 | m | unresolved anonymous_function_called
+P.bind@d2e9e5b1 | f | unresolved function_typed_value
+P.bind@d2e9e5b1 | f(a) | unresolved function_typed_value
+P.pure | k | unresolved function_typed_value
+item | P.pure | call P.pure
+main | x : U32 <- item() | call P.bind@d2e9e5b1
+main | item | call item
+main | y : U32 <- item() | call P.bind@d2e9e5b1
+main | item | call item
+main | return y | call P.pure
+contexts:
+P.bind | d2e9e5b13f5e32f0da2657842b8b6145
+P.pure | open
+item | open
+main | open
+counters: anonymous_function_called=1, function_typed_value=3, type_position=13

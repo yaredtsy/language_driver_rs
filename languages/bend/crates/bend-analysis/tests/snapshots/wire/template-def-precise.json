@@ -1,0 +1,441 @@
+unmerged
+{
+  "target_qname": "main",
+  "target_id": "",
+  "target_file": "main.bend",
+  "target_qualname": "main",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "main.bend",
+          "qname": "main",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "twice",
+      "target_id": "",
+      "target_file": "main.bend",
+      "target_qualname": "twice",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          8,
+          3
+        ],
+        "end": [
+          8,
+          8
+        ]
+      },
+      "call_site_file": "main.bend",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "main.bend",
+              "qname": "twice",
+              "nth": 0
+            }
+          },
+          "digest": [
+            82,
+            157,
+            243,
+            53,
+            204,
+            100,
+            94,
+            22,
+            80,
+            23,
+            178,
+            178,
+            71,
+            138,
+            62,
+            160
+          ]
+        }
+      ],
+      "children": [
+        {
+          "target_qname": "g",
+          "target_id": "",
+          "target_file": "main.bend",
+          "target_qualname": "g",
+          "target_occurrence": 0,
+          "target_kind": "Function",
+          "call_count": 0,
+          "call_site": {
+            "start": [
+              2,
+              3
+            ],
+            "end": [
+              2,
+              4
+            ]
+          },
+          "call_site_file": "main.bend",
+          "contexts": [
+            {
+              "func": {
+                "Path": {
+                  "module": "main.bend",
+                  "qname": "g",
+                  "nth": 0
+                }
+              },
+              "digest": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "target_qname": "g",
+          "target_id": "",
+          "target_file": "main.bend",
+          "target_qualname": "g",
+          "target_occurrence": 0,
+          "target_kind": "Function",
+          "call_count": 0,
+          "call_site": {
+            "start": [
+              2,
+              5
+            ],
+            "end": [
+              2,
+              6
+            ]
+          },
+          "call_site_file": "main.bend",
+          "contexts": [
+            {
+              "func": {
+                "Path": {
+                  "module": "main.bend",
+                  "qname": "g",
+                  "nth": 0
+                }
+              },
+              "digest": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "target_qname": "g",
+      "target_id": "",
+      "target_file": "main.bend",
+      "target_qualname": "g",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          8,
+          10
+        ],
+        "end": [
+          8,
+          11
+        ]
+      },
+      "call_site_file": "main.bend",
+      "passed": true,
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "main.bend",
+              "qname": "g",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    }
+  ]
+}
+
+merged
+{
+  "target_qname": "main",
+  "target_id": "",
+  "target_file": "main.bend",
+  "target_qualname": "main",
+  "target_occurrence": 0,
+  "target_kind": "Function",
+  "call_count": 0,
+  "call_site": null,
+  "call_site_file": null,
+  "contexts": [
+    {
+      "func": {
+        "Path": {
+          "module": "main.bend",
+          "qname": "main",
+          "nth": 0
+        }
+      },
+      "digest": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "children": [
+    {
+      "target_qname": "twice",
+      "target_id": "",
+      "target_file": "main.bend",
+      "target_qualname": "twice",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          8,
+          3
+        ],
+        "end": [
+          8,
+          8
+        ]
+      },
+      "call_site_file": "main.bend",
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "main.bend",
+              "qname": "twice",
+              "nth": 0
+            }
+          },
+          "digest": [
+            82,
+            157,
+            243,
+            53,
+            204,
+            100,
+            94,
+            22,
+            80,
+            23,
+            178,
+            178,
+            71,
+            138,
+            62,
+            160
+          ]
+        }
+      ],
+      "children": [
+        {
+          "target_qname": "g",
+          "target_id": "",
+          "target_file": "main.bend",
+          "target_qualname": "g",
+          "target_occurrence": 0,
+          "target_kind": "Function",
+          "call_count": 1,
+          "call_site": {
+            "start": [
+              2,
+              3
+            ],
+            "end": [
+              2,
+              4
+            ]
+          },
+          "call_site_file": "main.bend",
+          "contexts": [
+            {
+              "func": {
+                "Path": {
+                  "module": "main.bend",
+                  "qname": "g",
+                  "nth": 0
+                }
+              },
+              "digest": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "target_qname": "g",
+      "target_id": "",
+      "target_file": "main.bend",
+      "target_qualname": "g",
+      "target_occurrence": 0,
+      "target_kind": "Function",
+      "call_count": 0,
+      "call_site": {
+        "start": [
+          8,
+          10
+        ],
+        "end": [
+          8,
+          11
+        ]
+      },
+      "call_site_file": "main.bend",
+      "passed": true,
+      "contexts": [
+        {
+          "func": {
+            "Path": {
+              "module": "main.bend",
+              "qname": "g",
+              "nth": 0
+            }
+          },
+          "digest": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    }
+  ]
+}

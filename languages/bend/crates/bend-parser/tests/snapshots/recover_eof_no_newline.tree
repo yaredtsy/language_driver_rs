@@ -1,0 +1,3 @@
+(def a 0..17 "def a() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(def b 18..29 "def b(x: Na" SYNTAX-ERROR (params (x Na)))
+(ERROR 29..29 "" expected "a name" observed "end of input")

@@ -24,6 +24,10 @@ B0  bootstrap ── repo skeleton · analyzer-core · analyzer-testkit · CI ·
  └── RUST        RS0 spikes ─ RS1 outline ─ RS2 markers ─▶ rust-v0.1.0
                  └─ RS3 project ─ RS4 call graph ─▶ rust-v0.2.0 ─ RS5 driver needs ─▶ rust-v0.3.0
 
+BEND (planned 2026-11-20, 08-bend/, nothing built)
+                 BD0 spikes ─ BD1 parser ─ BD2 outline + markers ─▶ bend-v0.1.0
+                 └─ BD3 book ─ BD4 call graph ─▶ bend-v0.2.0 ─ BD5 driver needs ─▶ bend-v0.3.0 ─ (later) BC0–BC5 the context layer
+
 later, not scheduled:   TC0–TC10 the context layer for TypeScript (03-typescript/12-context-layer, planned 2026-11-20) · RC0–RC6 the context layer for Rust
                         (04-rust/05-context-layer, designed in detail, built only after RC0's numbers) · C / C++ · the solver moving into core
 ```

@@ -1,0 +1,2 @@
+(def a 0..31 "def a(x: +Li…) -> Nat: +y" (params (x (+ (tapp List Nat)))) (ret Nat) (body (+ y)))
+(def b 32..64 "def b(+x: Na…t: f(+x, +y)" (params (+x Nat)) (ret Nat) (body (call f (+ x) (+ y))))

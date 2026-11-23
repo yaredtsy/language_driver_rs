@@ -1,0 +1,15 @@
+files, in load order
+  #0 lib.bend  ns="lib"  in root  []
+  #1 sub/deep.bend  ns="sub/deep"  in root  []
+  #2 main.bend  ns=""  in root  [L -> #0, D -> #1]
+imports Base: true
+decls (file:def)
+  0:0 lib:double function
+  1:0 sub/deep:answer function
+  2:0 main function
+tlds, sorted
+  lib:double -> 0:0
+  main -> 2:0
+  sub/deep:answer -> 1:0
+ctrs, sorted
+counters

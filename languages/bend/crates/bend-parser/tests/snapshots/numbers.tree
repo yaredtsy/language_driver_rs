@@ -1,0 +1,7 @@
+(def a 0..17 "def a() -> U32: 1" (params) (ret U32) (body (u32 1)))
+(def b 18..36 "def b() -> Nat: 1n" (params) (ret Nat) (body (nat 1)))
+(def c 37..63 "def c(x: Nat) -> Nat: 2n+x" (params (x Nat)) (ret Nat) (body (nat+ 2 x)))
+(def d 64..83 "def d() -> F32: 1.5" (params) (ret F32) (body (f32 1.5)))
+(def e 84..105 "def e() -> F32: 2.5e3" (params) (ret F32) (body (f32 2.5e3)))
+(def f 106..129 "def f() -> F32: 0.25E-2" (params) (ret F32) (body (f32 0.25E-2)))
+(def g 130..156 "def g() -> U32: 4294967295" (params) (ret U32) (body (u32 4294967295)))

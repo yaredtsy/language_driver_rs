@@ -1,0 +1,3 @@
+(def bad 0..34 "def bad(x: N…t) -> Nat: 0" SYNTAX-ERROR (params (x Nat)))
+(def good 35..70 "def good(~g:…t) -> Nat: 0" (params (~g Nat) (x Nat)) (ret Nat) (body (u32 0)))
+(ERROR 16..34 "~g: Nat) -> Nat: 0" expected "a plain binder (only leading binders take ~)" observed "'~'")

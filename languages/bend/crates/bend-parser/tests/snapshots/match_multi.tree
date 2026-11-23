@@ -1,0 +1,23 @@
+(def
+  a
+  0..108 "def a(x: Nat…case _ _: 1n"
+  (params (x Nat) (y Nat))
+  (ret Nat)
+  (body
+    (match
+      (on x y)
+      (case (pats (ctr Zero) (ctr Zero)) (nat 0))
+      (case (pats (ctr Succ p) q) p)
+      (case (pats _ _) (nat 1)))))
+(def
+  b
+  110..198 "def b(x: Nat…case a, b: a"
+  (params (x Nat) (y Nat))
+  (ret Nat)
+  (body (match (on x y) (case (pats (ctr Zero) (ctr Zero)) (nat 0)) (case (pats a b) a))))
+(def
+  c
+  200..285 "def c(a: Nat…ase _ 0n: 1n"
+  (params (a Nat) (b Nat))
+  (ret Nat)
+  (body (match (on a b) (case (pats (ctr K x _) (nat+ 1 p)) x) (case (pats _ (nat 0)) (nat 1)))))

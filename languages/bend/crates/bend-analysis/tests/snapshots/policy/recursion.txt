@@ -1,0 +1,6 @@
+== main.bend count
+count
+  count [Recursive]
+edges:
+count | count | call count
+counters: type_position=2

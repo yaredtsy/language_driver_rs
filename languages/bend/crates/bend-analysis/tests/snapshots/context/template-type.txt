@@ -1,0 +1,27 @@
+== main.bend main default
+main
+  blk
+  sky [Passed]
+edges:
+blk | at | unresolved function_typed_value
+main | blk | call blk
+main | sky | pass sky
+contexts:
+blk | open
+main | open
+sky | open
+counters: function_typed_value=1, type_position=7
+== main.bend main precise
+main
+  blk
+    sky
+  sky [Passed]
+edges:
+blk@3362308f | at | call sky
+main | blk | call blk@3362308f
+main | sky | pass sky
+contexts:
+blk | 3362308fbd657279e6abe458aae183ae
+main | open
+sky | open
+counters: type_position=7

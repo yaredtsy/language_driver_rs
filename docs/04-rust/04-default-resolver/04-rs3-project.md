@@ -363,8 +363,9 @@ path the engine cannot be given (not UTF-8), and the engine's own `load_workspac
   `NoToolchain`; it keeps `SystemRoot`, `TMP`, `TEMP` for Windows. Green on Windows CI (2026-11-17).
 
 **Every tool is found the way the engine finds it** (fix asked in the RS4 step 4 review, ENGINE.md "Finding a tool"): `cargo`, `rustc`
-and `rustup` by `ra_ap_toolchain::Tool::prefer_proxy()` (`$CARGO_HOME/bin`, environment variable, `PATH`), asked through `sem` (rule 4),
-never by the bare name. It is the engine's rule whenever it has a sysroot (`Sysroot::tool`), so in every load with `std`; `Tool::path()`
+and `rustup` by the engine's `ra_ap_toolchain::Tool::prefer_proxy()` order with `PATH` moved before the variable (`$CARGO_HOME/bin`,
+`PATH`, environment variable; 2c9e685, for a rustup whose proxies live only on `PATH`, as Homebrew's: ENGINE.md), asked through `sem`
+(rule 4), never by the bare name. `prefer_proxy()` is the engine's rule whenever it has a sysroot (`Sysroot::tool`), so in every load with `std`; `Tool::path()`
 (variable first) is its rule only without one, and under `cargo run` / `cargo test` the variable `CARGO` names a binary that reads no
 `rust-toolchain.toml`. Otherwise a driver started with a short `PATH` loads with the engine's `cargo` and without `std`, and says "install
 `rust-src`". Tests: a worker with `PATH` set to an empty folder and `HOME`, `CARGO_HOME`, `RUSTUP_HOME` kept loads at rung 1 with `std`

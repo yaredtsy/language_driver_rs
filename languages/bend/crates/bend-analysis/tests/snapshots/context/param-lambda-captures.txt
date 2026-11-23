@@ -1,0 +1,35 @@
+== main.bend main default
+main
+  outer
+    each
+  g [Passed]
+edges:
+each | f | unresolved function_typed_value
+main | outer | call outer
+main | g | pass g
+outer | each | call each
+outer | h | unresolved function_typed_value
+contexts:
+each | open
+g | open
+main | open
+outer | open
+counters: function_typed_value=2, type_position=9
+== main.bend main precise
+main
+  outer
+    each
+    g
+  g [Passed]
+edges:
+each@5f66ef3e | f | unresolved anonymous_function_called
+main | outer | call outer@529df335
+main | g | pass g
+outer@529df335 | each | call each@5f66ef3e
+outer@529df335 | h | call g
+contexts:
+each | 5f66ef3e11d5c04870a5d8664c145767
+g | open
+main | open
+outer | 529df335cc645e165017b2b2478a3ea0
+counters: anonymous_function_called=1, type_position=9

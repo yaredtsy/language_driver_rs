@@ -1,0 +1,10 @@
+(def a 0..23 "def a() -> Nat: f(a, b)" (params) (ret Nat) (body (call f a b)))
+(def b 24..50 "def b() -> Nat: f(a)(b)(c)" (params) (ret Nat) (body (call (call (call f a) b) c)))
+(def
+  c
+  51..88 "def c() -> N…(1n), g(2n))"
+  (params)
+  (ret Nat)
+  (body (call Nat.add (call f (nat 1)) (call g (nat 2)))))
+(def d 89..113 "def d() -> Nat: f(a b c)" (params) (ret Nat) (body (call f a b c)))
+(def e 114..133 "def e() -> Nat: f()" (params) (ret Nat) (body (call f)))

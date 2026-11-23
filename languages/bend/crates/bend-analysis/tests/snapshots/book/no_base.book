@@ -1,0 +1,9 @@
+files, in load order
+  #0 main.bend  ns=""  in root  []
+imports Base: false
+decls (file:def)
+  0:0 main function
+tlds, sorted
+  main -> 0:0
+ctrs, sorted
+counters

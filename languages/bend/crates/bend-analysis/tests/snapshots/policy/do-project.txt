@@ -1,0 +1,14 @@
+== main.bend main
+main
+  Parser.bind
+  item
+    Parser
+  Parser.pure
+    Parser
+edges:
+Parser.pure | P | construct Parser no init
+item | P | construct Parser no init
+main | x : U32 <- item() | call Parser.bind
+main | item | call item
+main | return x | call Parser.pure
+counters: type_position=9

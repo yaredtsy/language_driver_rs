@@ -1,0 +1,27 @@
+== main.bend main default
+main
+  id
+  work [Passed]
+edges:
+main | id | call id
+main | id(work) | unresolved function_typed_value
+main | work | pass work
+contexts:
+id | open
+main | open
+work | open
+counters: function_typed_value=1, type_position=5
+== main.bend main precise
+main
+  id
+  work
+  work [Passed]
+edges:
+main | id | call id@e5163dd2
+main | id(work) | call work
+main | work | pass work
+contexts:
+id | e5163dd2de398288bafd317070624c16
+main | open
+work | open
+counters: type_position=5

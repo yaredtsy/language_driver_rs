@@ -1,0 +1,2 @@
+(type Bool 0..33 "type Bool is…ue{}⏎False{}" (params) (kind Data) (ctr True (params)) (ctr False (params)))
+(def not 34..61 "def not(b: B…) -> Bool: b" (params (b Bool)) (ret Bool) (body b))

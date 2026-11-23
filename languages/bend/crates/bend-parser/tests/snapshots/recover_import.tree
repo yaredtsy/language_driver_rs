@@ -1,0 +1,18 @@
+(import "./ok.bend" (as Ok))
+(def a 108..125 "def a() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(def b 138..155 "def b() -> Nat: 1" (params) (ret Nat) (body (u32 1)))
+(comment 0..12 "# the header")
+(ERROR 13..19 "import" expected "an import ('import Base', or 'import <path> as <Name>')" observed "'import'")
+(ERROR
+  20..35 "import ./x.bend"
+  expected "an import ('import Base', or 'import <path> as <Name>')"
+  observed "'import ./x.bend'")
+(ERROR
+  36..57 "import ./y.bend as 9x"
+  expected "an import ('import Base', or 'import <path> as <Name>')"
+  observed "'import ./y.bend as 9x'")
+(ERROR
+  58..84 "import ./z.bend as Z extra"
+  expected "an import ('import Base', or 'import <path> as <Name>')"
+  observed "'import ./z.bend as Z extra'")
+(ERROR 126..137 "import Base" expected "'def', 'type' or 'law'" observed "'i'")

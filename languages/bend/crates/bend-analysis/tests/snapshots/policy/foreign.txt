@@ -1,0 +1,6 @@
+== main.bend main
+main
+  leaf
+edges:
+main | leaf | call leaf
+counters: type_position=3

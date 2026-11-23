@@ -1,0 +1,3 @@
+Function f [0..46] name [27..28] (x) marker="unsafe-1"
+Function g [48..95] name [76..77] (x) marker="unsafe-2"
+Function h [97..129] name [109..110] (x)

@@ -1,0 +1,3 @@
+(comment 0..22 "# nothing but comments")
+(comment 24..42 "# and a blank line")
+(comment 43..68 "#| and an expected output")

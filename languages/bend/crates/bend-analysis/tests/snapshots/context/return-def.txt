@@ -1,0 +1,22 @@
+== main.bend main default
+main
+  pick
+edges:
+main | pick | call pick
+main | g | unresolved function_typed_value
+contexts:
+main | open
+pick | open
+counters: function_typed_value=1, passed_deep=1, type_position=2
+== main.bend main precise
+main
+  pick
+  work
+edges:
+main | pick | call pick
+main | g | call work
+contexts:
+main | open
+pick | open
+work | open
+counters: passed_deep=1, type_position=4

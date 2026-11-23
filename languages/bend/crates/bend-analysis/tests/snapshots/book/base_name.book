@@ -1,0 +1,16 @@
+files, in load order
+  #0 main.bend  ns=""  in root  []
+imports Base: true
+decls (file:def)
+  0:0 Nat.add function
+  0:1 Opt enum
+  0:2 main function
+tlds, sorted
+  Nat.add -> 0:0
+  Opt -> 0:1
+  main -> 0:2
+ctrs, sorted
+  Nothing -> 0:1
+  Some -> 0:1
+counters
+  duplicate_declaration: 2

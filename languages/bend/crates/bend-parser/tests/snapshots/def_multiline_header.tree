@@ -1,0 +1,7 @@
+(def
+  foo
+  0..109 "def foo(⏎  a…⏎  y = a⏎  y"
+  (params (a Nat) (-B Data) (c (tapp List Nat B)) (d (group (op & Nat Nat))))
+  (ret (all x Nat (call Eq Nat x x)))
+  (body (let (pats y) (values a) y)))
+(def bar 111..136 "def bar(x: Nat) -> Nat: x" (params (x Nat)) (ret Nat) (body x))

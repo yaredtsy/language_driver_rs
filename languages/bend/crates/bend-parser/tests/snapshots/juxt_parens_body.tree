@@ -1,0 +1,9 @@
+(def a 0..31 "def a() -> N…x = 1n⏎   x)" (params) (ret Nat) (body (group (let (pats x) (values (nat 1)) x))))
+(def
+  b
+  33..107 "def b(x: Nat… Succ{p}: p)"
+  (params (x Nat))
+  (ret Nat)
+  (body (group (match (on x) (case (pats (ctr Zero)) (nat 0)) (case (pats (ctr Succ p)) p)))))
+(def c 109..135 "def c() -> Pair: (a, b, c)" (params) (ret Pair) (body (tuple a b c)))
+(def d 136..166 "def d() -> P…(a, b), (c))" (params) (ret Pair) (body (tuple (tuple a b) (group c))))

@@ -1,0 +1,8 @@
+(import "Base")
+(import "./vec.bend" (as Vec))
+(import "../lib/nat.bend" (as N))
+(import "Base" (as B))
+(def main 150..170 "def main() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(comment 0..16 "# header comment")
+(comment 57..75 "# trailing comment")
+(comment 76..103 "# a comment …ween imports")

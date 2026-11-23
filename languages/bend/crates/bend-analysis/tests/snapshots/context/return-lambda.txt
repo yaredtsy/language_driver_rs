@@ -1,0 +1,26 @@
+== main.bend main default
+main
+  adder
+    add
+edges:
+adder | add | call add
+main | adder | call adder
+main | add2 | unresolved function_typed_value
+contexts:
+add | open
+adder | open
+main | open
+counters: function_typed_value=1, type_position=6
+== main.bend main precise
+main
+  adder
+    add
+edges:
+adder | add | call add
+main | adder | call adder
+main | add2 | unresolved anonymous_function_called
+contexts:
+add | open
+adder | open
+main | open
+counters: anonymous_function_called=1, type_position=6

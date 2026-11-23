@@ -1,0 +1,9 @@
+(law
+  sorted_insert
+  0..139 "law sorted_i…Nat, 1n, 1n)"
+  (for ~k Nat)
+  (for -A Data)
+  (for xs (tapp List Nat) (where (call Sorted xs)))
+  (exs ys (tapp List Nat) (where (call Sorted ys)))
+  (claim (call Eq Nat (nat 1) (nat 1))))
+(law plain 141..169 "law plain:⏎ …Nat, 1n, 1n)" (claim (call Eq Nat (nat 1) (nat 1))))

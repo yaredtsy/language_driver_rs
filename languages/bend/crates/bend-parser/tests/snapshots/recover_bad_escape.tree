@@ -1,0 +1,3 @@
+(def a 0..23 "def a() -> String: \"\\q\"" SYNTAX-ERROR (params) (ret String))
+(def ok 24..42 "def ok() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR 21..23 "q\"" expected "an escape (\\n \\t \\r \\0 \\\\ \\' \\\" \\u{1F600})" observed "'q'")

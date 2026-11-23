@@ -1,0 +1,3 @@
+Function s [0..67] name [39..40]
+Function na [68..90] name [72..74] SYNTAX-ERROR
+syntax error [74..90]: expected '(', found 'ï'

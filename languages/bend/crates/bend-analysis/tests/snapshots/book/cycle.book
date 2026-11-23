@@ -1,0 +1,16 @@
+files, in load order
+  #0 b.bend  ns="b"  in root  [A -> #1, M -> #2]
+  #1 a.bend  ns="a"  in root  [B -> #0]
+  #2 main.bend  ns=""  in root  [A -> #1]
+imports Base: false
+decls (file:def)
+  0:0 b:b function
+  1:0 a:a function
+  2:0 main function
+tlds, sorted
+  a:a -> 1:0
+  b:b -> 0:0
+  main -> 2:0
+ctrs, sorted
+counters
+  import_cycle: 2

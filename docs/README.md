@@ -86,6 +86,14 @@ language_driver_rs
 │   ├── PY9: the driver's needs    cancel, the project kept open, environmentInputs; no frontier ─ 11-driver-needs.md
 │   └── a file's own code          the module root after D32, a coverage scan first (PYM0–PYM3) ─ 12-module-code.md
 │
+├── BEND ──────────────────────────────────────────── 08-bend/
+│   ├── start here                 the verdict · the phases at a glance ──────────── README.md
+│   ├── what Bend is               the grammar · names · no engine · the numbers ──── 01-what-bend-is.md
+│   ├── phase 1: reading           BD0 spikes · BD1 the parser we write ───────────── 02-phase-1-parsing.md
+│   ├── phase 2: defs and calls    BD2 outline + markers · BD3 the book · BD4 calls · BD5 ─ 03-phase-2-defs-and-calls.md
+│   ├── phase 3: the context layer BC0–BC5: templates first, then parameters, values ─ 04-phase-3-context-layer.md
+│   └── decisions and questions    BD-D rows · Q-BD1–7 · unchecked ───────────────── 05-decisions-and-questions.md
+│
 ├── THE ROADMAP ───────────────────────────────────── 06-roadmap.md
 │   └── B0 bootstrap, then three tracks; what blocks what
 │

@@ -1,0 +1,8 @@
+(def
+  g
+  0..44 "def g(x: Nat…=> 1n+n), x)"
+  (params (x Nat))
+  (ret Nat)
+  (body (call twice (~ (group (lam n (nat+ 1 n)))) x)))
+(def h 45..79 "def h(x: Nat…t(~f, ~g, x)" (params (x Nat)) (ret Nat) (body (call t (~ f) (~ g) x)))
+(def i 80..106 "def i(x: Nat) -> Nat: t(x)" (params (x Nat)) (ret Nat) (body (call t x)))

@@ -1,0 +1,16 @@
+(def
+  a
+  0..127 "def a() -> N…t end it⏎  x"
+  (params)
+  (ret Nat)
+  (body (let (pats x) (values (u32 1)) (let (pats y) (values (u32 2)) x))))
+(def
+  b
+  128..185 "def b() -> S…lumn-0 text\""
+  (params)
+  (ret String)
+  (body (str "multi\nline string\nwith column-0 text")))
+(def c 186..203 "def c() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(def last 204..224 "def last() -> Nat: 9" (params) (ret Nat) (body (u32 9)))
+(comment 35..71 "# after a bl…ill the body")
+(comment 73..123 "# a column-0…s not end it")

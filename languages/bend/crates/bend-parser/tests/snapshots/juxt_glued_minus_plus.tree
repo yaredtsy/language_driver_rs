@@ -1,0 +1,18 @@
+(def
+  f
+  0..73 "def f(-A: Da… - 1n : Nat)"
+  (params (-A Data) (+x A) (y Nat))
+  (ret Nat)
+  (body (let- (pats z) (values y) (let (pats (+ w)) (values z) (group (op - w (nat 1)) (ns Nat))))))
+(def
+  g
+  75..116 "def g(x: Nat… - 2n : Nat)"
+  (params (x Nat))
+  (ret Nat)
+  (body (group (op - (op + x (nat 1)) (nat 2)) (ns Nat))))
+(def
+  h
+  117..158 "def h(x: Nat… + 1n : Nat)"
+  (params (x Nat))
+  (ret Nat)
+  (body (group (op + (op * x (nat 2)) (nat 1)) (ns Nat))))

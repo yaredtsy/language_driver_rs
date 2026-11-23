@@ -15,3 +15,10 @@ D44 (RS4 step 9b) the call is `Unresolved(function_typed_value)`, still counted 
 which `write` runs. The TypeScript program differs on purpose: its `Writer` is a class whose `write` has a body, so its default tree
 still shows `Writer.write`. Rust's precise level comes with layer 2 (RC1 follows the type argument into `emit`, and draws
 `<JsonWriter as Writer>::write` under `read_json`).
+
+**Bend** (`bend/`, BD4 step 4) has no receiver to dispatch on, so the nearest program is a **template parameter**: `emit(~write)` calls
+whatever `~write` its caller hands it, `read_json` passes `~json_write` and `read_csv` `~csv_write`. At the default level
+(`expected.default.bend.tree`) each reader shows `emit` and the def it hands over as a passed edge (`json_write [Passed]`); `emit`'s own
+call through `~write` is `Unresolved(function_typed_value)`, which the tree does not draw. The precise level (BC1, the first phase of Bend's
+context layer) resolves `write` per call site, as Bend's compiler itself does for a template, and draws `json_write` under `read_json`'s
+`emit`.

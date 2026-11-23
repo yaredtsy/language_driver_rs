@@ -1,0 +1,3 @@
+(def a 0..24 "def a() -> Nat: f (a, b)" (params) (ret Nat) (body (call f a b)))
+(def b 25..46 "def b() -> Nat: v [i]" (params) (ret Nat) (body (index v i)))
+(def c 47..82 "def c() -> N…   [i]   (b)" (params) (ret Nat) (body (call (index (call f a) i) b)))

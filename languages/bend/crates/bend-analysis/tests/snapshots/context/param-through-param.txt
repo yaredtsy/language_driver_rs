@@ -1,0 +1,38 @@
+== main.bend main default
+main
+  apply
+  each [Passed]
+  work [Passed]
+edges:
+apply | h | unresolved function_typed_value
+each | f | unresolved function_typed_value
+main | apply | call apply
+main | each | pass each
+main | work | pass work
+contexts:
+apply | open
+each | open
+main | open
+work | open
+counters: function_typed_value=2, type_position=10
+== main.bend main precise
+main
+  apply
+    each
+      work
+  each [Passed]
+  work [Passed]
+edges:
+apply@fcfe21b5 | h | call each@e5163dd2
+each | f | unresolved function_typed_value
+each@e5163dd2 | f | call work
+main | apply | call apply@fcfe21b5
+main | each | pass each
+main | work | pass work
+contexts:
+apply | fcfe21b5d985c01eea629c5a756493b8
+each | e5163dd2de398288bafd317070624c16
+each | open
+main | open
+work | open
+counters: function_typed_value=1, type_position=10

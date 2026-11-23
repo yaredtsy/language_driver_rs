@@ -1,0 +1,10 @@
+files, in load order
+  #0 main.bend  ns=""  in root  [P -> hub, U -> hub]
+imports Base: true
+decls (file:def)
+  0:0 main function
+tlds, sorted
+  main -> 0:0
+ctrs, sorted
+counters
+  hub_import: 2

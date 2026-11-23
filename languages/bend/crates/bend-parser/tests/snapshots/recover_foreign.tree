@@ -1,0 +1,7 @@
+(def a 0..39 "def a() -> I…rt \"./a.txt\"" SYNTAX-ERROR (params) (ret (call IO Unit)))
+(def b 40..79 "def b(~f: Na…port \"./b.c\"" SYNTAX-ERROR (params (~f Nat)) (ret Nat))
+(def c 80..116 "def c() -> I…mport \"./c.c" SYNTAX-ERROR (params) (ret (call IO Unit)))
+(def d 117..134 "def d() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR 30..39 "\"./a.txt\"" expected "a .c or .js path" observed "'\"./a.txt\"'")
+(ERROR 65..79 "import \"./b.c\"" expected "a body (a template is not foreign)" observed "'i'")
+(ERROR 110..116 "\"./c.c" expected "a closing \"" observed "'\"'")

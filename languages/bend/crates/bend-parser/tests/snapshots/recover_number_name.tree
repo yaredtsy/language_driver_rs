@@ -1,0 +1,5 @@
+(def a 0..18 "def a() -> Nat: 3x" SYNTAX-ERROR (params) (ret Nat))
+(def b 19..38 "def b() -> Nat: 3nx" SYNTAX-ERROR (params) (ret Nat))
+(def ok 39..57 "def ok() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR 17..18 "x" expected "a numeric literal (NUMBER is U32, NUMBER n is Nat)" observed "'x'")
+(ERROR 37..38 "x" expected "a nat literal (NUMBER n)" observed "'x'")

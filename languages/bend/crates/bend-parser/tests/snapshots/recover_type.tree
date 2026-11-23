@@ -1,0 +1,4 @@
+(type Good 0..24 "type Good is Data:⏎  G{}" (params) (kind Data) (ctr G (params)))
+(type Bad 26..51 "type Bad<A is Data:⏎  B{}" SYNTAX-ERROR (params A))
+(type After 53..78 "type After is Data:⏎  A{}" (params) (kind Data) (ctr A (params)))
+(ERROR 37..51 "is Data:⏎  B{}" expected "a name (got the keyword 'is')" observed "'is'")

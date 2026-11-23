@@ -1,0 +1,6 @@
+== main.bend main
+main
+  f
+edges:
+main | f | call f
+counters: open_law=1, type_position=3

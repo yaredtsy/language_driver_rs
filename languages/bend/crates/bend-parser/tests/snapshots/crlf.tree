@@ -1,0 +1,10 @@
+(def
+  a
+  27..53 "def a(x: Nat) -> Nat:\r⏎  x"
+  (doc 0..25 "# crlf\r⏎# second doc line")
+  (params (x Nat))
+  (ret Nat)
+  (body x))
+(def b 57..74 "def b() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(comment 0..6 "# crlf")
+(comment 8..25 "# second doc line")

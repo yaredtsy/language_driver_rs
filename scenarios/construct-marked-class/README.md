@@ -17,3 +17,7 @@ Both levels give the same tree, so there is one `expected.tree`.
 **Rust** (`rust/`, RS4 step 9) has no constructor function: `Report {}` runs no code of the program's, so `Report` is a leaf like
 `Plain`, and `prepare` is not in the program. Rust's own tree is `expected.rust.tree` (D30). Both structs are still identified by
 their marker, which is what this scenario pins.
+
+**Bend** (`bend/`, BD4 step 4) has no constructor function either: a `type` has no body, so building one runs no code of the program's.
+`R{1}` is a `Construct` of `Report` with no init, `Report` is a leaf like `Plain`, and Bend's tree is `expected.bend.tree`, the text of
+Rust's. Both types are still identified by their marker (a `# ID: …` line above the `type`), which is what this scenario pins.

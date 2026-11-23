@@ -1,0 +1,2 @@
+(def ok 24..42 "def ok() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR 8..23 "foo() -> Nat: 0" expected "'def' (@unsafe marks the def below it)" observed "'f'")

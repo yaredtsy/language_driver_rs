@@ -1,0 +1,43 @@
+== main.bend main default
+main
+  P.bind
+  drop
+  P.pure
+edges:
+P.bind | m | unresolved function_typed_value
+P.bind | f | unresolved function_typed_value
+P.bind | f(a) | unresolved function_typed_value
+P.pure | k | unresolved function_typed_value
+drop | k | unresolved function_typed_value
+main | Unit <- drop(2n) | call P.bind
+main | drop | call drop
+main | return Unit{} | call P.pure
+contexts:
+P.bind | open
+P.pure | open
+drop | open
+main | open
+counters: function_typed_value=5, type_position=15
+== main.bend main precise
+main
+  P.bind
+    drop
+  drop [Passed]
+  P.pure
+edges:
+P.bind@e082a1fa | m | call drop@5443d40a
+P.bind@e082a1fa | f | unresolved function_typed_value
+P.bind@e082a1fa | f(a) | unresolved function_typed_value
+P.pure | k | unresolved function_typed_value
+drop | k | unresolved function_typed_value
+drop@5443d40a | k | unresolved anonymous_function_called
+main | Unit <- drop(2n) | call P.bind@e082a1fa
+main | drop | pass drop
+main | return Unit{} | call P.pure
+contexts:
+P.bind | e082a1fa16322efe764be2ead41ea05f
+P.pure | open
+drop | 5443d40a53f9fabc9aba5213f0e7c62b
+drop | open
+main | open
+counters: anonymous_function_called=1, function_typed_value=4, type_position=15

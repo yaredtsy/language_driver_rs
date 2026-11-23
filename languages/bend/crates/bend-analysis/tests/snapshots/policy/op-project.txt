@@ -1,0 +1,6 @@
+== main.bend main
+main
+  Vec2.add
+edges:
+main | + | call Vec2.add
+counters: type_position=7

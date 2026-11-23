@@ -1,0 +1,3 @@
+Function a [0..17] name [4..5]
+Function b [44..61] name [48..49]
+syntax error [18..43]: expected 'def', 'type' or 'law', found 't'

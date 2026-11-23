@@ -1,0 +1,43 @@
+== main.bend main default
+main
+  play
+  game
+    Game
+    step [Passed]
+    read [Passed]
+edges:
+game | Game | construct Game no init
+game | step | pass step
+game | read | pass read
+main | play | call play
+main | game | call game
+play | s | unresolved function_typed_value
+contexts:
+game | open
+main | open
+play | open
+read | open
+step | open
+counters: function_typed_value=1, type_position=8
+== main.bend main precise
+main
+  play
+    step
+  game
+    Game
+    step [Passed]
+    read [Passed]
+edges:
+game | Game | construct Game no init
+game | step | pass step
+game | read | pass read
+main | play | call play@a7a0bf63
+main | game | call game
+play@a7a0bf63 | s | call step
+contexts:
+game | open
+main | open
+play | a7a0bf63385ee5b4b738dbb5b942af8b
+read | open
+step | open
+counters: type_position=8

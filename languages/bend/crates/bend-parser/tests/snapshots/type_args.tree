@@ -1,0 +1,4 @@
+(def a 0..18 "def a() -> D<A>: 0" (params) (ret (tapp D A)) (body (u32 0)))
+(def b 19..40 "def b() -> D<A, B>: 0" (params) (ret (tapp D A B)) (body (u32 0)))
+(def c 41..60 "def c() -> +D<A>: 0" (params) (ret (+ (tapp D A))) (body (u32 0)))
+(def d 61..85 "def d() -> D<A, B<C>>: 0" (params) (ret (tapp D A (tapp B C))) (body (u32 0)))

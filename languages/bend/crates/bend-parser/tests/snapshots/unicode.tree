@@ -1,0 +1,9 @@
+(def
+  s
+  46..94 "def s() -> S…t a comment\""
+  (doc 0..45 "# café — ünï…comment, 日本語")
+  (params)
+  (ret String)
+  (body (str "héllo 🌍 # not a comment")))
+(def c 95..116 "def c() -> Char: 'é'" (params) (ret Char) (body (char "é")))
+(comment 0..45 "# café — ünï…comment, 日本語")

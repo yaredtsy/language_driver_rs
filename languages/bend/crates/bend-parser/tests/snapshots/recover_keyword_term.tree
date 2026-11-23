@@ -1,0 +1,7 @@
+(def a 0..21 "def a() -> Nat: match" SYNTAX-ERROR (params) (ret Nat))
+(def b 22..45 "def b() -> Nat: f(case)" SYNTAX-ERROR (params) (ret Nat))
+(def c 46..68 "def c() -> Nat: return" SYNTAX-ERROR (params) (ret Nat))
+(def ok 69..87 "def ok() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR 22..22 "" expected "a term (the keyword 'def' cannot head one)" observed "'def'")
+(ERROR 40..45 "case)" expected "a match heading this case (this case is orphaned)" observed "'case'")
+(ERROR 62..68 "return" expected "a do-block heading this return" observed "'return'")

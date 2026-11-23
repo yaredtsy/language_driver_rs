@@ -1,0 +1,28 @@
+== main.bend main default
+main
+  Vec2
+  Vec2
+  g
+edges:
+g | + | unresolved function_typed_value
+main | V | construct Vec2 no init
+main | V | construct Vec2 no init
+main | g | call g
+contexts:
+g | open
+main | open
+counters: function_typed_value=1, type_passed=1, type_position=6
+== main.bend main precise
+main
+  Vec2
+  Vec2
+  g
+edges:
+g | + | unresolved function_typed_value
+main | V | construct Vec2 no init
+main | V | construct Vec2 no init
+main | g | call g
+contexts:
+g | open
+main | open
+counters: function_typed_value=1, type_passed=1, type_position=6

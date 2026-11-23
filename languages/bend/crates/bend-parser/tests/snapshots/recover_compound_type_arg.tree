@@ -1,0 +1,6 @@
+(def a 0..25 "def a() -> X<A & B, C>: 0" SYNTAX-ERROR (params))
+(def ok 26..44 "def ok() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR
+  15..25 "& B, C>: 0"
+  expected "'>' or ',' (a compound type argument takes parens: F<(A & B)>)"
+  observed "'&'")

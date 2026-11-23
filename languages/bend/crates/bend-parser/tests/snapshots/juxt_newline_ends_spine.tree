@@ -1,0 +1,12 @@
+(def
+  a
+  0..32 "def a() -> N…= f⏎  (g(x))"
+  (params)
+  (ret Nat)
+  (body (let (pats x) (values f) (group (call g x)))))
+(def
+  b
+  34..72 "def b() -> L…= v⏎  [y, y]"
+  (params)
+  (ret (call List Nat))
+  (body (let (pats y) (values v) (list y y))))

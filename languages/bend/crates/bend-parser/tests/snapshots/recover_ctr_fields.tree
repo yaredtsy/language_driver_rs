@@ -1,0 +1,9 @@
+(type
+  Dup
+  0..45 "type Dup is …Nat, x: Nat}"
+  SYNTAX-ERROR
+  (params)
+  (kind Data)
+  (ctr K (params (x Nat) (y Nat))))
+(type Fine 47..71 "type Fine is Data:⏎  F{}" (params) (kind Data) (ctr F (params)))
+(ERROR 38..45 "x: Nat}" expected "a fresh field name (duplicate declaration: x)" observed "'x'")

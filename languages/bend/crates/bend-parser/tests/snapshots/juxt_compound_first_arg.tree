@@ -1,0 +1,4 @@
+(def a 0..27 "def a() -> X… & B), C>: 0" (params) (ret (tapp X (group (op & A B)) C)) (body (u32 0)))
+(def b 28..53 "def b() -> X<A, B & C>: 0" (params) (ret (tapp X A (op & B C))) (body (u32 0)))
+(def c 54..80 "def c() -> X<A, B -> C>: 0" (params) (ret (tapp X A (-> B C))) (body (u32 0)))
+(def d 81..106 "def d() -> X<(A -> B)>: 0" (params) (ret (tapp X (group (-> A B)))) (body (u32 0)))

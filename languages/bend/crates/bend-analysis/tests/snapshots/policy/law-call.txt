@@ -1,0 +1,6 @@
+== main.bend main
+main
+  add_zero
+edges:
+main | add_zero | call add_zero#1
+counters: type_position=1

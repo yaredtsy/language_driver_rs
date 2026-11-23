@@ -1,0 +1,3 @@
+(def f 0..31 "@unsafe def …2) -> U32: x" unsafe (params (x U32)) (ret U32) (body x))
+(def g 32..64 "@ unsafe⏎def…2) -> U32: x" unsafe (params (x U32)) (ret U32) (body x))
+(def h 65..89 "def h?(x: U32) -> U32: x" unsafe? (params (x U32)) (ret U32) (body x))

@@ -1,0 +1,3 @@
+(def a 0..22 "def a() -> Nat: f(a, b" SYNTAX-ERROR (params) (ret Nat))
+(def ok 23..41 "def ok() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR 23..23 "" expected "a term (the keyword 'def' cannot head one)" observed "'def'")

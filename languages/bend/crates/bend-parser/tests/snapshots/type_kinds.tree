@@ -1,0 +1,13 @@
+(type
+  Vec
+  0..72 "type Vec<a, …: Vec<a, n>}"
+  (params a (n Nat))
+  (kind (Kind a))
+  (ctr Nil (params))
+  (ctr Cons (params (head a) (tail (tapp Vec a n)))))
+(type
+  Box
+  74..134 "type Box<-A:…A, +b: B, c}"
+  (params (-A Data) (+B Data))
+  (kind Data)
+  (ctr Box (params (-a A) (+b B) c)))

@@ -1,0 +1,23 @@
+(def
+  a
+  0..111 "def a(n: Nat…v = g(y)⏎  p"
+  (params (n Nat))
+  (ret Nat)
+  (body
+    (let-
+      (pats e)
+      (values n)
+      (let
+        (pats x)
+        (ty Nat)
+        (values n)
+        (let
+          (pats y z)
+          (values n n)
+          (let
+            (pats (ctr Succ p))
+            (values n)
+            (let
+              (pats (tuple a b))
+              (values pair)
+              (let (pats w) (values (call f x)) (let (pats v) (values (call g y)) p)))))))))

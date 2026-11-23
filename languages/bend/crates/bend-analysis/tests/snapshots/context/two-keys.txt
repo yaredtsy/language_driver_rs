@@ -1,0 +1,49 @@
+== main.bend main default
+main
+  each
+  work [Passed]
+  each
+  other [Passed]
+  each
+  work [Passed]
+edges:
+each | f | unresolved function_typed_value
+main | each | call each
+main | work | pass work
+main | each | call each
+main | other | pass other
+main | each | call each
+main | work | pass work
+contexts:
+each | open
+main | open
+other | open
+work | open
+counters: function_typed_value=1, type_position=8
+== main.bend main precise
+main
+  each
+    work
+  work [Passed]
+  each
+    other
+  other [Passed]
+  each
+    work
+  work [Passed]
+edges:
+each@1ef9a869 | f | call other
+each@e5163dd2 | f | call work
+main | each | call each@e5163dd2
+main | work | pass work
+main | each | call each@1ef9a869
+main | other | pass other
+main | each | call each@e5163dd2
+main | work | pass work
+contexts:
+each | 1ef9a8691a787a8b262863ccfbf01374
+each | e5163dd2de398288bafd317070624c16
+main | open
+other | open
+work | open
+counters: type_position=8

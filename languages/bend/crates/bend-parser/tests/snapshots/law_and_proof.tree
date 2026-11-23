@@ -1,0 +1,7 @@
+(law add_zero 0..51 "law add_zero…d(n, 0n), n)" (for n Nat) (claim (call Eq Nat (call add n (nat 0)) n)))
+(def
+  add_zero
+  53..125 "def add_zero…ucc{p}: {==}"
+  (params n)
+  (body (match (on n) (case (pats (ctr Zero)) refl) (case (pats (ctr Succ p)) refl))))
+(def Laws.sorted 127..150 "def Laws.sorted(xs): xs" (params xs) (body xs))

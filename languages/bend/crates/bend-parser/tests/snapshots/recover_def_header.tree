@@ -1,0 +1,10 @@
+(def ok1 0..19 "def ok1() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(def
+  broken
+  41..100 "def broken(a… body line 2"
+  (doc 21..40 "# the doc of broken")
+  SYNTAX-ERROR
+  (params (a Nat)))
+(def ok2 102..121 "def ok2() -> Nat: 1" (params) (ret Nat) (body (u32 1)))
+(comment 21..40 "# the doc of broken")
+(ERROR 60..100 ", b) -> Nat:… body line 2" expected "a name" observed "','")

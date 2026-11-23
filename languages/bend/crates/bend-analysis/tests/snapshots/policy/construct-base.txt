@@ -1,0 +1,4 @@
+== main.bend main
+main
+edges: none
+counters: type_position=5

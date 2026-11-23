@@ -1,0 +1,10 @@
+(def a 0..39 "def a() -> N…; Succ: 1n }" (params) (ret Nat) (body (lammatch (Zero (nat 0)) (Succ (nat 1)))))
+(def b 40..59 "def b() -> Nat: \\{}" (params) (ret Nat) (body (lammatch)))
+(def
+  c
+  60..109 "def c() -> N…  fallback }"
+  (params)
+  (ret Nat)
+  (body (lammatch (Zero (nat 0)) (Succ (nat 1)) (tail fallback))))
+(def d 110..139 "def d() -> N…{ Zero: 0n }" (params) (ret Nat) (body (lammatch (Zero (nat 0)))))
+(def e 140..162 "def e() -> Nat: \\{ k }" (params) (ret Nat) (body (lammatch (tail k))))

@@ -1,0 +1,6 @@
+def a(x: U32, y: U32) -> U32: (x + y : U32)
+def b(x: U32, y: U32, z: U32) -> U32: (x + y * z : U32)
+def c(x: U32, y: U32) -> U32: f((x + y : U32), (x - y : U32))
+def d(x: Nat) -> Nat: (x : Nat)
+def e(x: Nat, y: Nat) -> Pair: (x, y : Nat)
+def f(x: U32) -> U32: ((x + 1 : U32) * 2 : U32)

@@ -1,0 +1,3 @@
+Other("law") add_zero [0..63] name [16..24] (n)
+Function add_zero [65..149] name [81..89] (n)
+Other("law") clauses [151..240] name [155..162] (~k, -A, +x, y)

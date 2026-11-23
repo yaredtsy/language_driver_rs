@@ -1,0 +1,12 @@
+(def
+  p
+  0..66 "def p(n: Nat…n, n)⏎  {==}"
+  (params (n Nat))
+  (ret (call Eq Nat n n))
+  (body (rewrite (call lemma n) (call Eq Nat n n) refl)))
+(def
+  q
+  68..128 "def q(n: Nat… n, n); {==}"
+  (params (n Nat))
+  (ret (call Eq Nat n n))
+  (body (rewrite E (as h) (call Eq Nat n n) refl)))

@@ -1,0 +1,30 @@
+== main.bend main default
+main
+  twice
+  g [Passed]
+edges:
+main | twice | call twice
+main | g | pass g
+twice | h | unresolved function_typed_value
+twice | h | unresolved function_typed_value
+contexts:
+g | open
+main | open
+twice | open
+counters: function_typed_value=2, type_position=6
+== main.bend main precise
+main
+  twice
+    g
+    g
+  g [Passed]
+edges:
+main | twice | call twice@529df335
+main | g | pass g
+twice@529df335 | h | call g
+twice@529df335 | h | call g
+contexts:
+g | open
+main | open
+twice | 529df335cc645e165017b2b2478a3ea0
+counters: type_position=6

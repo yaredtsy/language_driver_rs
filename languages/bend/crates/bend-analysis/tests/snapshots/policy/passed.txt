@@ -1,0 +1,14 @@
+== main.bend main
+main
+  h
+  g [Passed]
+  view [Passed]
+  tick [Passed]
+edges:
+h | f | unresolved function_typed_value
+main | h | call h
+main | g | pass g
+main | App.run | external Base App.run
+main | view | pass view
+main | tick | pass tick
+counters: function_typed_value=1, type_position=9

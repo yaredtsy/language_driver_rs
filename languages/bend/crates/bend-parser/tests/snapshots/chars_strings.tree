@@ -1,0 +1,13 @@
+(def a 0..20 "def a() -> Char: 'a'" (params) (ret Char) (body (char "a")))
+(def b 21..42 "def b() -> Char: '\\n'" (params) (ret Char) (body (char "\\n")))
+(def c 43..71 "def c() -> C… '\\u{1F600}'" (params) (ret Char) (body (char "\\u{1F600}")))
+(def
+  d
+  72..113 "def d() -> S…\" \\\\ \\u{e9}\""
+  (params)
+  (ret String)
+  (body (str "a\\tb \\\"q\\\" \\\\ \\u{e9}")))
+(def e 114..146 "def e() -> S…raw⏎newline\"" (params) (ret String) (body (str "raw\nnewline")))
+(def f 147..177 "def f() -> String: \"é 日本\"" (params) (ret String) (body (str "é 日本")))
+(def g 178..199 "def g() -> Char: '\\''" (params) (ret Char) (body (char "\\'")))
+(def h 200..221 "def h() -> String: \"\"" (params) (ret String) (body (str "")))

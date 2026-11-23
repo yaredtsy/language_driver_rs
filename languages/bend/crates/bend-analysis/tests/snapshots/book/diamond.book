@@ -1,0 +1,18 @@
+files, in load order
+  #0 shared.bend  ns="shared"  in root  []
+  #1 a.bend  ns="a"  in root  [S -> #0]
+  #2 b.bend  ns="b"  in root  [T -> #0]
+  #3 main.bend  ns=""  in root  [A -> #1, B -> #2]
+imports Base: true
+decls (file:def)
+  0:0 shared:one function
+  1:0 a:a function
+  2:0 b:b function
+  3:0 main function
+tlds, sorted
+  a:a -> 1:0
+  b:b -> 2:0
+  main -> 3:0
+  shared:one -> 0:0
+ctrs, sorted
+counters

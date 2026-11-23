@@ -1,0 +1,11 @@
+(def a 0..21 "def a() -> X<A, B>: 0" (params) (ret (tapp X A B)) (body (u32 0)))
+(def b 22..52 "def b() -> B…x < y : Nat)" (params) (ret Bool) (body (group (op < x y) (ns Nat))))
+(def c 53..81 "def c() -> B… (x<y : Nat)" (params) (ret Bool) (body (group (op < x y) (ns Nat))))
+(def d 82..100 "def d() -> X: x<y>" (params) (ret X) (body (tapp x y)))
+(def e 101..122 "def e() -> X: x<y, z>" (params) (ret X) (body (tapp x y z)))
+(def
+  f
+  123..162 "def f() -> B…y < z : Nat)"
+  (params)
+  (ret Bool)
+  (body (group (op && (op < x y) (op < y z)) (ns Nat))))

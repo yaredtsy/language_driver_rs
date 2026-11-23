@@ -1,0 +1,199 @@
+# Bend: the policy table
+
+What the analyzer draws, and what it does not, for each feature of the language: the default resolver, layer 1 (BD4). **Every row names a
+fixture** and the entries built from it. Changing a row is a policy change: the fixture and its snapshot change in the same commit, and the
+version takes a minor step (`docs/01-monorepo/06-versions-and-vnoc.md`).
+
+The plan is `docs/08-bend/03-phase-2-defs-and-calls.md` (§3.2 the walk, §3.3 this table) and the draft rows BD-D5, BD-D8, BD-D9, BD-D12 of
+`docs/08-bend/05-decisions-and-questions.md`. This file says what was built (BD4 step 4, 0adfc30, 8059bd9, 8e77a0c, reviewed 2026-11-20).
+Written from the 27 snapshots, which are what the code does when this file and they disagree.
+
+**Where a row is checked.** The last cell of a row is read by a test (`crates/bend-analysis/tests/policy.rs`, BD4 step 5; Rust's
+`rust-analysis/tests/policy.rs` is the model), so it holds nothing but its words in backticks, in this grammar (the test reads the rows of
+this first table only, from its `| Row |` header to the first line that is not a row; the counters table at the end is not read):
+
+- **groups** separated by `; `;
+- a group is a **fixture folder** under `crates/bend-analysis/tests/fixtures/policy/`, which is also the root the book is opened at, then
+  **one file** of it (relative to that root), then **the entries** in that file (qualnames; `call_graph` takes a qualname, and when a law
+  and its proof share one the proof is the entry, so no `#n` form is needed or read);
+- a group that begins with a file keeps the folder of the group before it.
+
+The test fails on a row with no fixture, a folder or file that is not there, a file with no entry, a row without its snapshot
+`crates/bend-analysis/tests/snapshots/policy/<row>.txt` and a snapshot of no row. A snapshot is, for each entry, a heading
+`== <file> <entry>`, the tree (the project's defs; `[Passed]` and `[Recursive]` are the renderer's marks), then every edge of the graph as
+`from | callee text | what it is` (sorted by the `from` def's name, byte order; by (start, end) of the site within one def; the callee text
+is the site's text: an operator's site is the operator token, `+`; an index's the whole `a[i]`; a do statement's the statement, `x : U32 <- item()`), then `counters: key=n, …` above 0 (`Stats.language`,
+the book's counters merged in, so `type_position` shows on every row: every walked def has a return type). Write the expected text by hand
+before running; bless only to write a snapshot you then review.
+
+## How a callee is found
+
+Four steps, Bend's own (`parse_var`, `parse_reso`; `docs/08-bend/01-what-bend-is.md` §3), over the whole book with declaration order ignored
+(BD-D12: a forward reference `bend` would refuse still gets its edge):
+
+1. **a binder in scope wins**: a parameter (template or not), a `let` pattern's name, a lambda's binder, a `case` pattern's variable, a `do`
+   bind or let name, a rewrite's named equation, an `@`/`&` binder. A dotted name is never a binder. The call is `Unresolved(function_typed_value)`.
+2. **an alias**: `M.f` is `f` of the file imported `as M`.
+3. **this file's own** declaration.
+4. **Base**: `External`, named as written.
+
+A name none of the four knows is `Unresolved(unknown_name)`. Every resolved edge rests on `Basis::Name`: the code's own names fixed it.
+
+## The rows
+
+| Row | Bend | Edge | Counter | Where it is checked |
+|---|---|---|---|---|
+| `direct` | `f(1)` to a def declared above | `Call` | | `direct` `main.bend` `main` |
+| `gpu` | `f!(1)` | `Call` (the `!` changes where it runs, not what) | | `gpu` `main.bend` `main` |
+| `recursion` | `count(n)` inside `count` | `Call` to itself; the renderer marks it `[Recursive]` | | `recursion` `main.bend` `count` |
+| `below` | `g()` in an `@unsafe def` where `g` is declared below | `Call` (order ignored, BD-D12) | | `below` `main.bend` `main` |
+| `alias` | `M.f(1)` with `import ./lib.bend as M` | `Call` to `f` of `lib.bend` | | `alias` `main.bend` `main` |
+| `no-shadow` | `def Nat.add` in a file where Base has it: `bend` refuses the declaration (`parse_fresh`); we outline it and `Nat.add(1n, 2n)` resolves to **this file's** def | `Call` to this file's | `duplicate_declaration` (the book's, once per declaration) | `no-shadow` `main.bend` `main` |
+| `binder-wins` | `f(1)` where `f` is a parameter and a def `f` exists | `Unresolved` (step 1 before step 3) | `function_typed_value` | `binder-wins` `main.bend` `main` |
+| `base` | `IO.print(U32.show(1))` | `External("IO.print")`, `External("U32.show")`, module `Base` | | `base` `main.bend` `main` |
+| `hub` | `P.f(1)` with `import 0x…/main.bend as P`: nothing fetched, nothing read from disk | `External("P.f")`, module `P` | `hub_import`, once per import line | `hub` `main.bend` `main` |
+| `foreign` | a call to a def whose body is `import "./leaf.c"` | `Call` to the leaf: it is declared here, its code is not ours to read | | `foreign` `main.bend` `main` |
+| `variable` | `f(…)` with `f` a parameter, `g(…)` with `g` a `let`, `k(…)` with `k` a `case` variable | `Unresolved` each | `function_typed_value` | `variable` `main.bend` `main` |
+| `closure-call` | `adder(2)(add2(1))` after `add2 = adder(2)` | the two `adder(2)` are `Call adder`; the outer call (its callee is a call) and `add2(…)` are `Unresolved` | `function_typed_value` | `closure-call` `main.bend` `main` |
+| `lambda-inline` | `(x => g(x))(1)` | `Unresolved` for the call of the lambda; `g` is a `Call` **from the enclosing def** (a lambda's calls are its def's, phase 1) | `function_typed_value` | `lambda-inline` `main.bend` `main` |
+| `template-arg` | `twice(~(x => f(x)), 40)`, `twice(~g, a)`; inside `twice`, `h(h(x))` with `~h` | `Call twice` twice; `f` a `Call` from `main`; `g` a **passed** edge (D22); `twice`'s two `h(…)` are `Unresolved` (BC1 resolves them per caller) | `function_typed_value` | `template-arg` `main.bend` `main` |
+| `passed` | `h(g)` with `g` a def; `App.run(~U32, ~App{view, tick})` | `g`, `view`, `tick`: passed edges (a bare def name as a direct argument, or as a direct field of a constructor argument); `App.run` an `External`; `h`'s own `f(1)` is `Unresolved`. A def name deeper in an argument is **not** drawn | `function_typed_value`; `passed_deep` for the deeper ones; `type_passed` for a project type handed over (a Base type such as `~U32` is quiet: the row's snapshot has none) | `passed` `main.bend` `main` |
+| `construct` | `Circle{5}` of a project `type Shape` | `Construct Shape`, no init (a type has no constructor function: a leaf) | | `construct` `main.bend` `main` |
+| `construct-base` | `Some{x}`, `Con{h, t}`, `[1, 2]`, `"s"`, `3n+p`, `(a, b)` | nothing: data, constructors of Base types underneath | | `construct-base` `main.bend` `main` |
+| `op-project` | `(a + b : Vec2)` with `def Vec2.add` in the project | `Call Vec2.add`; the site is the operator token `+`, where Bend's own `Ref` sits (step 5.1: 11,399 operator Refs of the demos at exactly our bytes) | | `op-project` `main.bend` `main` |
+| `op-base` | `(a + b : U32)`, `(a < b : U32)`, `x && y`, `s ++ t`, `h <> l` | nothing: Base's arithmetic and the fixed operators are the language's, not sites (BD-D8); a Base call written out (`U32.add(a, b)`) is still an `External` | `sugar_base`, one per operator | `op-base` `main.bend` `main` |
+| `index` | `a[i]`, `a[i] <- v` | nothing (Base's `Array.get` / `Array.set`); the site is the whole `a[i]`, as Bend's `Ref` is (46 of 46 demo indexes equal) | `sugar_base` | `index` `main.bend` `main` |
+| `do-project` | `do Parser<U32>:` with `def Parser.bind`, `def Parser.pure` in the project | `Call Parser.bind` per bind, exec or step (the site is the statement), `Call Parser.pure` per `return`; the statement's own call (`item()`) is drawn too, before its bind (sites sort by start) | | `do-project` `main.bend` `main` |
+| `passed-do` | `x : String <- name`, `Unit <- pop`, a step `tick`, `return done`, in a `do` of a project monad, with `name`, `pop`, `tick`, `done` defs | `Call Parser.bind` for each statement as in `do-project`, and `name`, `pop`, `tick`: passed edges (D22) at the name's span, a bare def name being a direct argument of the sugar's `M.bind`; a step's statement and its name share a span, the bind first | | `passed-do` `main.bend` `main` |
+| `do-base` | `do IO<Unit>:`, `do Maybe<U32>:` | nothing for the monad; a Base call inside a step (`IO.print("a")`) is still its `External` | `sugar_base`, one per statement | `do-base` `main.bend` `main` `maybe` |
+| `rewrite` | `%add_zero(p) : Nat` | `Call add_zero`: proof code calls proof code | | `rewrite` `main.bend` `main` |
+| `type-position` | `-> Or(IsEven(n), Empty)`, `{Unit{} : IsEven(n)}`, `List<Nat>`: calls and constructors inside a type | nothing, in layer 1 (BD-D9): parameter and return types, annotations' right sides, type arguments, a `do`'s monad arguments, bind and let types, `@` domains, a rewrite's motive, a law's claim | `type_position`, one per skipped term | `type-position` `main.bend` `main` |
+| `law-call` | `add_zero(2n)` where both `law add_zero` and its proof `def add_zero(x)` exist | `Call` to the **proof** (the def with code, `add_zero#1`); the law gets no edge. An entry named `add_zero` is the proof | | `law-call` `main.bend` `main` |
+| `law-open` | `f(2n)` where only `law f` exists | `Call` to the law: a leaf, the only declaration | `open_law` | `law-open` `main.bend` `main` |
+| `unknown` | `nope(1)` | `Unresolved` | `unknown_name` | `unknown` `main.bend` `main` |
+
+Rows the owner may reopen after seeing real trees: `op-base`, `index`, `do-base` (Q-BD4: show Base's sugar as `External` edges?) and
+`type-position` (Q-BD5: a proof's type-level calls). Either flip changes a row and its snapshot, not a qualname or the wire.
+
+## What is not a site
+
+| Form | Why |
+|---|---|
+| a `let`, a `match`, a `case` pattern, a lambda's binder | binders; patterns bind, they do not call |
+| `Nil{}`, a literal, a list, a tuple, `3n+p` | data (row `construct-base`) |
+| `&&` `\|\|` `++` `<>` `&` `\|` `<&>` `->` | fixed operators: the language's (counted `sugar_base` with the rest of the sugar) |
+| an operator with no `: T` | `bend` refuses it; we draw `Unresolved(unknown_name)` |
+| a project type handed over (`f(Shape)`) | no edge, `type_passed`. A Base type (`~U32`) is quiet, as every Base name handed over is |
+| a def outside the root handed over | no edge, `external_passed` (D33) |
+| a def's parameter and return types; a law's claim | type positions |
+
+## The counters
+
+`Stats.language`, all of them, and the row that shows each:
+
+| Key | What | Row |
+|---|---|---|
+| `function_typed_value` | a call through a binder, a call result or a lambda written in place | `variable`, `closure-call`, `lambda-inline`, `template-arg`, `binder-wins` |
+| `unknown_name` | a name none of the four steps knows; an operator with no `: T` | `unknown` |
+| `unknown_constructor` | `K{…}` of no known type | (none in the table: a fixture when it is first seen) |
+| `type_position` | a term inside a type, not walked | every row |
+| `sugar_base` | sugar that names a Base def | `op-base`, `index`, `do-base` |
+| `passed_deep` | a def name deeper than a direct argument or a direct constructor field | `passed` |
+| `type_passed` | a project type handed over | the precise row `limit-bound-type` |
+| `external_passed` | a def outside the root handed over | (none in the table) |
+| `open_law` | a call to a law with no proof | `law-open` |
+| `outside_root` | a call into a file the root does not hold (D33) | (the book fixture `outside_root`) |
+| `hub_import`, `import_missing`, `import_cycle`, `duplicate_declaration`, `import_no_alias` | the book's (BD3) | `hub`, `no-shadow` |
+
+## Scenarios
+
+The wire's `target_kind` is the outline's `DefKind` as core's wire writes it (`"Function"`, `"Enum"`, `{"Other":"law"}`); a marked type gets
+`class_prefix` as an entry and as a construction (D45). `bend-cli outline` prints line:column and the marker text, as the other CLIs do.
+
+`scenarios/*/bend/`, run by `tests/scenarios.rs` at `Level::Default`: `straight-line`, `recursion-direct`, `external-call`, `method-on-class`
+and `law-across-files` give the shared tree; `construct-marked-class` and `two-callers` have a Bend tree of their own (`expected.bend.tree`,
+`expected.default.bend.tree`) because Bend has no constructor function and no receiver to dispatch on; each scenario's README says why.
+
+## The precise rows (the context layer)
+
+**Built 2026-11-21** (89a07ba … 2c03f3b; the design is `docs/08-bend/06-context-layer-design.md`, BC1 + BC2 as one step, D51 and D52; the demos' numbers are `ENGINE.md` §BC1+BC2), and **on by
+default since D53** (0e1667d): `Options::new` gives `Precision::Precise`, and `bend-cli calls --level default` asks for layer 1. The rows above are the
+default level (`Precision::Default`, which stays selectable for good) and do not change. These are what `Options::precision = Precise` draws: a def's parameter that a caller named (a `~` template or
+a plain function-typed one) is called as that def, per caller, and the key flows down through a caller's own parameter passed along. The
+last cell is read by `crates/bend-analysis/tests/context.rs` in the grammar of "Where a row is checked", with the fixtures under
+`crates/bend-analysis/tests/fixtures/context/` and one snapshot per row, `crates/bend-analysis/tests/snapshots/context/<row>.txt`, which holds a
+`default` and a `precise` section for each entry. `def@{p ↦ v}` below is a context of `def` whose key has `v` at parameter `p`. The `limit-*`
+rows are the known limits of the layer: both sections are equal, but for the `key_slot_*` counter that says why (only `Precise` counts it).
+
+| Precise row | Bend | Default | Precise | Counter | Where it is checked |
+|---|---|---|---|---|---|
+| `template-def` | `twice(~g, a)`; inside `twice`, `h(h(x))` with `~h` | `twice`'s two `h` are `Unresolved`; `g [Passed]` | two `Call g` from `twice@{h ↦ g}`; `g [Passed]` stays | | `template-def` `main.bend` `main` |
+| `template-lambda` | `twice(~(x => f(x)), 40)` | `f` is a `Call` from `main`; `twice`'s `h` are `Unresolved` | the same tree; `twice@{h ↦ lambda 0 of main}`'s two `h` are `Unresolved(anonymous_function_called)` | `anonymous_function_called` | `template-lambda` `main.bend` `main` |
+| `template-flow` | `outer(~h, x)` calls `middle(~h, x)` calls `twice(~h, x)`; `main` calls `outer(~g, 1)` | `g [Passed]` under `main`; the chain's `twice` is a leaf | `main` ▸ `outer` ▸ `middle` ▸ `twice` ▸ `g` · `g`; each context's key is `{h ↦ g}` (the demos' 15 of 16) | | `template-flow` `main.bend` `main` |
+| `template-type` | `blk(~S: Data, ~at: S -> U32, s: S)` called `blk(~U32, ~sky, 1)`; inside, `at(s)` | `at(s)` `Unresolved` | `blk@{at ↦ sky}` calls `sky`; `S` is in no key, so the digest is the same with any type. `U32` is Base's and quiet; a project type there counts `type_passed` as in layer 1 (the plain test `a_type_is_in_no_key`) | | `template-type` `main.bend` `main` |
+| `param-def` | `each(f: U32 -> U32, x)` calls `f(x)`; `main` calls `each(work, 1)` | `each` a leaf; `work [Passed]` | `each@{f ↦ work}` ▸ `work`; `work [Passed]` stays | | `param-def` `main.bend` `main` |
+| `param-flow` | `relay(f, x)` calls `each(f, x)`; `main` calls `relay(work, 1)` | `relay` ▸ `each` (a leaf); `work [Passed]` under `main` | `relay@{f ↦ work}` ▸ `each@{f ↦ work}` ▸ `work`; no passed edge inside `relay` (BC-D4) | | `param-flow` `main.bend` `main` |
+| `param-lambda-captures` | `outer(~h, x)` calls `each(y => h(y), x)`; `main` calls `outer(~g, 1)` | `outer`'s `h(y)` `Unresolved`; `each` a leaf | `outer@{h ↦ g}` ▸ `each` · `g`: the lambda's call is `outer`'s, resolved by `outer`'s key; `each@{f ↦ lambda 0 of outer}` says `anonymous_function_called` | `anonymous_function_called` | `param-lambda-captures` `main.bend` `main` |
+| `two-keys` | `each(work, 1)`, `each(other, 2)`, `each(work, 3)` | one `each`, three times | two contexts of `each` with two digests, reached by three edges: the third call reaches the first context again; each `each` node shows its own callee | | `two-keys` `main.bend` `main` |
+| `param-through-param` | `apply(h, f, x)` is `h(f, x)`; `main` calls `apply(each, work, 1)` | `apply` a leaf, its `h(f, x)` `Unresolved`; `each [Passed]`, `work [Passed]` | `apply@{h ↦ each, f ↦ work}` ▸ `each@{f ↦ work}` ▸ `work`: `f` is relevant in `apply` as an argument of a call through `apply`'s own parameter (§3.2 c); the two passed edges stay, `each` under the open key a leaf | | `param-through-param` `main.bend` `main` |
+| `not-relevant` | `log(f: U32 -> U32, x)` never uses `f`; `log(work, 1)`, `log(other, 2)` | one `log` context | **one** `log` context, digest zeros: the slot is not relevant (§3.2) | | `not-relevant` `main.bend` `main` |
+| `entry-open` | the entry is `twice` itself | its `h` are `Unresolved` | the same: the entry is the open key (BC-D7) | `function_typed_value` | `entry-open` `main.bend` `twice` |
+| `recursion-keyed` | `f(~g, n)` is `g(f(~g, n))`; `r(~g, n)` is `r(~(y => g(y)), n)`; `main` calls both with `~work` | `f`, `r` `[Recursive]`; their `g` `Unresolved` | `f` ▸ `work` · `f [Recursive]`; `r` ▸ `r [Recursive]` · `work`. The graph has three contexts of the two: `f@{g ↦ work}`, and `r@{g ↦ work}` → `r@{g ↦ lambda 0 of r}` → itself (the lambda key reaches itself: finite, rule 3), where `g(y)` is `anonymous_function_called`. The tree marks the second `r` `[Recursive]` because the renderer marks recursion by function, not by context (tree rule 8) | `anonymous_function_called` | `recursion-keyed` `main.bend` `main` |
+| `passed-open` | `h(g)` with `g` a def that has a function-typed parameter; and `each(work, 1)` | `g [Passed]`, `work [Passed]` | `g` is walked under the open key (its own parameter site stays `Unresolved`); `work` has **one** context, reached as passed and as called | `function_typed_value` | `passed-open` `main.bend` `main` |
+| `local-let` | `g = work`, then `each(g, 1)` | `each` a leaf, its `f(x)` `Unresolved` | `each@{f ↦ work}` ▸ `work`: a variable has the value of its binding (BV-D3) | layer 1's `passed_deep`, for the `work` in the `let` | `local-let` `main.bend` `main` |
+| `local-alias` | `run(f, x)` is `g = f`, then `g(x)`; `main` calls `run(work, 1)` | `run` a leaf, its `g(x)` `Unresolved` | `run@{f ↦ work}` ▸ `work`: a parameter is relevant as the value of a `let`, and the variable is called as what it holds | | `local-alias` `main.bend` `main` |
+| `local-shadow` | `run(f, x)` is `f = other`, then `f(x)`; `main` calls `run(work, 1)` | `run`'s `f(x)` `Unresolved` | `run` ▸ `other`: the innermost binder of a name decides. `run` has the open key (its parameter is never read); `work [Passed]` stays | `passed_deep` | `local-shadow` `main.bend` `main` |
+| `local-join` | `g = (match b: case True{}: work; case False{}: other)`, then `g(1)` | `g(1)` `Unresolved` | `work` and `other`, both at the one site `g(1)`: the value of a `match` is the join of its cases, no condition is evaluated | `passed_deep` | `local-join` `main.bend` `main` |
+| `local-lambda` | `g = y => work(y)`, then `each(g, 1)` | `main` ▸ `work` · `each`; `each`'s `f(x)` `Unresolved` | the same tree; `each@{f ↦ lambda 0 of main}`'s `f(x)` says `anonymous_function_called`: a lambda in a `let` stays with its writer | `anonymous_function_called` | `local-lambda` `main.bend` `main` |
+| `return-def` | `pick()` is `work`; `g = pick()`, then `g(1)` | `main` ▸ `pick`; `g(1)` `Unresolved` | `main` ▸ `pick` · `work`: the value of a call is what the def's body evaluates to | `passed_deep` | `return-def` `main.bend` `main` |
+| `return-join` | `pick(b)` is `match b: case True{}: work; case False{}: other`; `main` calls `pick(b)(1)` | the outer call `Unresolved` | `work` and `other` at the outer call's site, beside `pick`: a factory returns the join of its cases | `passed_deep` | `return-join` `main.bend` `main` |
+| `return-param` | `id(f)` is `f`; `main` calls `id(work)(1)` | the outer call `Unresolved`; `work [Passed]` | `id@{f ↦ work}`, and `work` called at the outer call; the passed edge stays. A parameter that reaches the reply is relevant | | `return-param` `main.bend` `main` |
+| `return-chain` | `make()` is `pick()`; `pick()` is `work`; `main` calls `make()(1)` | `main` ▸ `make` ▸ `pick`; the outer call `Unresolved` | the same, and `work` at the outer call: a value through two returns | `passed_deep` | `return-chain` `main.bend` `main` |
+| `return-as-argument` | `each(pick(), 1)` | `each` a leaf | `each@{f ↦ work}` ▸ `work`: a call's value fills a slot | `passed_deep` | `return-as-argument` `main.bend` `main` |
+| `return-set-argument` | `each(pick(b), 1)`, `pick` by case as above | `each` a leaf | one context `each@{f ↦ {other, work}}`, whose one site `f(x)` has both targets: a set stays a set, it is not two contexts | `passed_deep` | `return-set-argument` `main.bend` `main` |
+| `return-lambda` | `adder(k)` is `x => add(x, k)`; `add2 = adder(2)`, then `add2(1)` | `main` ▸ `adder` ▸ `add`; `add2(1)` `Unresolved` | the same tree; `add2(1)` says `anonymous_function_called`: a returned lambda stays with the def that writes it, where its calls are drawn | `anonymous_function_called` | `return-lambda` `main.bend` `main` |
+| `return-recursive` | `loop(n)` returns `work` at zero and `loop(p)` otherwise; `main` calls `loop(3n)(1)` | `loop` ▸ `loop [Recursive]`; the outer call `Unresolved` | `work` at the outer call: the value of a recursive def starts as nothing and is evaluated again until it stops changing | `passed_deep` | `return-recursive` `main.bend` `main` |
+| `return-cycle` | `a(n)` returns `work` or `b(p)`; `b(n)` returns `other` or `a(p)`; `from_a` calls `a(2n)(1)`, `from_b` calls `b(2n)(1)` | the outer calls `Unresolved` | both entries draw `work` and `other` at the outer call: the value of a cycle does not depend on which def was entered first | `passed_deep` | `return-cycle` `main.bend` `from_a` `from_b` |
+| `limit-return-base` | `g = List.head(fs)`-like: the result of a Base def, then `g(1)` | `g(1)` `Unresolved` | the same: what Base returns is unknown | `function_typed_value` | `limit-return-base` `main.bend` `main` |
+| `partial-def` | `add(a, b)`; `inc = add(1)`, then `inc(2)` | `main` ▸ `add` (the under-applied call, drawn as a call); `inc(2)` `Unresolved` | `add [Passed]` at `add(1)`: the def is handed over, its body does not run there; `add` called at `inc(2)` | | `partial-def` `main.bend` `main` |
+| `partial-twice` | `add(1)(2)` | `main` ▸ `add`; the outer call `Unresolved` | `add [Passed]` at the inner call, `add` called at the outer one | | `partial-twice` `main.bend` `main` |
+| `partial-callback` | `each(add(1), 5)` | `main` ▸ `each` · `add`; `each`'s `f(x)` `Unresolved` | `each@{f ↦ add with one argument}` ▸ `add`: the partial application is in the key and `each` gives it the rest; `add [Passed]` under `main` | | `partial-callback` `main.bend` `main` |
+| `partial-keyed` | `app(f, x)` is `f(x)`; `p = app(work)`, then `p(1)` | `main` ▸ `app`; `work [Passed]`; `p(1)` `Unresolved` | `app [Passed]`, `work [Passed]`, and at `p(1)` `app@{f ↦ work}` ▸ `work`: the arguments a partial application holds make the key | | `partial-keyed` `main.bend` `main` |
+| `limit-partial-base` | `inc = U32.add(1)`, then `inc(2)` | `inc(2)` `Unresolved` | the same: a partial application of a Base def is unknown | `function_typed_value` | `limit-partial-base` `main.bend` `main` |
+| `do-flat` | a `do P<U32>:` of a project monad with two binds of `item()` and a `return` | `main` ▸ `P.bind` · `item` · `P.bind` · `item` · `P.pure` | the same shape, never one statement nested under the one before; the two binds are one context of `P.bind`: the continuation is not in the key | | `do-flat` `main.bend` `main` |
+| `do-partial` (was `limit-partial-application`) | `drop(n, k, s)` calls `k(…)`; `Unit <- drop(2n)` in a `do P<Unit>:` | `main` ▸ `P.bind` · `drop` · `P.pure`; `drop`'s `k` `Unresolved` | `drop [Passed]` under `main`; `P.bind@{m ↦ drop with one argument}` ▸ `drop@{k ↦ lambda of P.bind}`, where `k` says `anonymous_function_called`. In the open context of the passed edge `k` is still `function_typed_value`, and `P.bind`'s `f(a)` and `f(a)(k)` are too (the continuation is not in the key) | `anonymous_function_called`, `function_typed_value` | `do-partial` `main.bend` `main` |
+| `do-handed` (was `limit-handed-to-bind`) | `peek(k, s)` calls `k(…)`; `h : U32 <- peek` in a `do P<U32>:` | `peek [Passed]`; its `k` `Unresolved` | `peek [Passed]` stays; `P.bind@{m ↦ peek}` ▸ `peek@{k ↦ lambda of P.bind}`, where `k` says `anonymous_function_called` | `anonymous_function_called`, `function_typed_value` | `do-handed` `main.bend` `main` |
+| `ctor-fields` (was `limit-constructor-of-defs`) | `run(~app: App, s)` matches `case App{v, t}: t(s)`; `main` calls `run(~App{view, tick}, 0)` | `view`, `tick` `[Passed]`; `t(s)` `Unresolved` | `run@{app ↦ App{view, tick}}` ▸ `tick`; the two passed edges stay | | `ctor-fields` `main.bend` `main` |
+| `ctor-let` | `App{v, t} = App{work, other}`, then `t(1)`, in one body | `work`, `other` `[Passed]`; `t(1)` `Unresolved` | `other` called at `t(1)` | | `ctor-let` `main.bend` `main` |
+| `ctor-factory` | `game()` is `Game{step, read}`; `play(g)` is `Game{s, r} = g`, then `s(1)`; `main` calls `play(game())` | `play` a leaf; `step`, `read` `[Passed]` under `game` | `play@{g ↦ Game{step, read}}` ▸ `step`: a factory of an object, the demos' `Walkers.game()` | | `ctor-factory` `main.bend` `main` |
+| `ctor-passed-along` | `outer(g)` calls `play(g)`; `main` calls `outer(game())` | `outer` ▸ `play`, a leaf | `outer` ▸ `play` ▸ `step`, each under the key that holds the constructor: it flows down as a def does | | `ctor-passed-along` `main.bend` `main` |
+| `ctor-join` | `pick(b)` returns `Box{work}` or `Box{other}`; `Box{f} = pick(b)`, then `f(1)` | `f(1)` `Unresolved` | `work` and `other` at `f(1)`: a field of a set of one constructor is the join of that field | | `ctor-join` `main.bend` `main` |
+| `ctor-two` | `type Sum` with `L{f}` and `R{f}`; `x = L{work}`; `match x: case L{f}: f(1)` and `case R{f}: f(2)` | both `f` `Unresolved` | `work` at `f(1)`; `f(2)` stays `Unresolved`: no member of the value is an `R`, and no case is pruned | `function_typed_value` | `ctor-two` `main.bend` `main` |
+| `limit-ctor-base` | `m = Some{work}`, then `match m: case Some{f}: f(1)` | `f(1)` `Unresolved` | the same: a constructor of a Base type is unknown | `function_typed_value` | `limit-ctor-base` `main.bend` `main` |
+| `limit-lambda-binder` | `pure(x)` is `k => s => k(x, s)` | `k(x, s)` `Unresolved` | the same: `k` is a lambda's own binder, its value comes from whoever calls the lambda | `function_typed_value` | `limit-lambda-binder` `main.bend` `main` |
+| `limit-bound-type` | `g(-T: Data, a: T, b: T)` is `(a + b : T)`; `g(Vec2, p, q)` | `Sugar::Bound`: `Unresolved` | the same: a type is not a Known (0 sites in the corpus) | `function_typed_value`, `type_passed` | `limit-bound-type` `main.bend` `main` |
+| `limit-base-def` | `each(U32.show, 1)` | `each` a leaf | the same: a Base def is not a Known | `key_slot_value` | `limit-base-def` `main.bend` `main` |
+| `limit-open-parameter` | `relay(f, x)` is `each(f, x)`, and the entry is `relay` | `each` a leaf, its `f(x)` `Unresolved` | the same: `f` is `relay`'s own parameter and nobody named it (the entry is the open key, BC-D7) | `function_typed_value`, `key_slot_open` | `limit-open-parameter` `main.bend` `relay` |
+
+The counters the layer adds to `Stats.language`: `anonymous_function_called` (the reason of a call through a parameter known to be a lambda: its
+calls are drawn where the lambda is written), and, per context walked, for a parameter **the callee calls** that the caller did not name: `key_slot_open` (the argument
+is the caller's own parameter and the caller's key does not know it), `key_slot_local` (a `let`, a `case` variable, a lambda's binder),
+`key_slot_value` (a value the layer cannot name: a Base def, a Base call's result). `key_slot_missing` is no longer counted: a call with too few arguments is a
+hand-over now, and makes no key. The value layer adds `value_widened_set` (a set of more than 8 became unknown), `value_widened_depth` (a value nested deeper than 3 inside a
+value became unknown there) and `return_in_cycle` (a request's values did not settle in 64 evaluations of one def: all of them unknown).
+
+## Known limits, each a fixture
+
+- a bare project def as the value of a `do` bind, exec, step or `return` is a passed edge since 85aee89 and 55368ce (row `passed-do`; the
+  demos' `passed_deep` fell from 28 to 15, the rest being type names in value position, which owe nothing under BD-D9).
+- at the default level a call through a variable is unresolved, whatever the variable is (rows `template-arg`, `variable`, `binder-wins`,
+  `closure-call`). The precise level, on by default, follows the value: an argument, a variable, what a call returns, a partial application, a
+  constructor's field (the precise rows above). On the demos (`ENGINE.md` §The value layer): of the 55 unresolved sites of the default level, 19
+  are drawn in every context, 14 are a known lambda in every context, 17 are named in some contexts, 5 stay unresolved in every context.
+- **a lambda is known, not drawn under the def that calls it**: its calls are under the def that writes it, at both levels (BC-D6; rows
+  `template-lambda`, `param-lambda-captures`, `local-lambda`, `return-lambda`). Moving one under its caller is decided (D54) and held:
+  `docs/08-bend/07-value-layer-design.md` §6.1.
+- the limits of the precise level are its `limit-*` rows: a parameter no caller names, a lambda's own binder, a type as an operator's namespace,
+  and what comes from Base (a Base def in a slot, a Base call's result, a partial application of a Base def, a Base constructor). And three
+  without a row yet: the continuation of a `do` statement is not in a key (`P.bind`'s `f`); a call written with more arguments than the def has
+  parameters has no value; a value that arrives across a cycle through an argument can leave an "unknown" behind (`ENGINE.md`, Known corners).

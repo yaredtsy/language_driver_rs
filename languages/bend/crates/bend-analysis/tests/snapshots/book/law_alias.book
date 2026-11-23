@@ -1,0 +1,18 @@
+files, in load order
+  #0 code.bend  ns="code"  in root  []
+  #1 LAWS.bend  ns="LAWS"  in root  [C -> #0]
+  #2 main.bend  ns=""  in root  [C -> #0, Laws -> #1]
+imports Base: true
+decls (file:def)
+  0:0 code:is_sorted function
+  1:0 LAWS:sorted law
+  1:1 LAWS:lonely law
+  2:0 LAWS:sorted function  proves 1:0
+  2:1 use function
+tlds, sorted
+  LAWS:lonely -> 1:1
+  LAWS:sorted -> 2:0
+  code:is_sorted -> 0:0
+  use -> 2:1
+ctrs, sorted
+counters

@@ -1,0 +1,39 @@
+(def a 0..35 "def a(x: Lis…>) -> Nat: 0" (params (x (tapp List (tapp List Nat)))) (ret Nat) (body (u32 0)))
+(def
+  b
+  36..86 "def b(x: (Na…}) -> Nat: 0"
+  (params (x (group (op & Nat Nat))) (y (eq n m Nat)))
+  (ret Nat)
+  (body (u32 0)))
+(def
+  c
+  87..144 "def c(f: Nat…)) -> Nat: 0"
+  (params (f (-> Nat (-> Nat Nat))) (g (all n Nat (call P n))))
+  (ret Nat)
+  (body (u32 0)))
+(def
+  d
+  145..186 "def d(x: Vec…>) -> Nat: 0"
+  (params (x (tapp Vec (group (op & Nat Bool)) (nat 3))))
+  (ret Nat)
+  (body (u32 0)))
+(def e 187..223 "def e(n: Nat… n, 1n+n): 0" (params (n Nat)) (ret (call Eq Nat n (nat+ 1 n))) (body (u32 0)))
+(def
+  f
+  224..298 "def f(s: Str… ':', c)): 0"
+  (params (s String) (c Char))
+  (ret (call Or (call Eq String (str "a:b") s) (call Eq Char (char ":") c)))
+  (body (u32 0)))
+(def
+  g
+  299..362 "def g(xs: Li…t -> P(k): 0"
+  (params (xs (tapp List &2 F32)) (p (op & Audio U32)))
+  (ret (exists k Nat (call P k)))
+  (body (u32 0)))
+(def
+  h
+  363..404 "def h(a: Nat…) -> Data: 0"
+  (params (a Nat))
+  (ret (-> (Kind (op <&> a a)) Data))
+  (body (u32 0)))
+(def i 405..433 "def i(x: A[0…> {y : T}: 0" (params (x (index A (u32 0)))) (ret (annot y T)) (body (u32 0)))

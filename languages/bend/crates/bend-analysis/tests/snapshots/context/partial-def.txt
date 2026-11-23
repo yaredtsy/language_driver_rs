@@ -1,0 +1,21 @@
+== main.bend main default
+main
+  add
+edges:
+main | add | call add
+main | inc | unresolved function_typed_value
+contexts:
+add | open
+main | open
+counters: function_typed_value=1, type_position=4
+== main.bend main precise
+main
+  add [Passed]
+  add
+edges:
+main | add | pass add
+main | inc | call add
+contexts:
+add | open
+main | open
+counters: type_position=4

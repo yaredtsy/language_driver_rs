@@ -1,0 +1,12 @@
+(def
+  f
+  0..61 "def f(~g: Na…,) -> Nat: 0"
+  (params (~g (-> Nat Nat)) (+x Nat) (-y Nat) z (w Nat))
+  (ret Nat)
+  (body (u32 0)))
+(type
+  T
+  62..133 "type T<a, +b…b, -z: c, w}"
+  (params a (+b Data) (-c Data) (d a))
+  (kind Data)
+  (ctr K (params (x a) (+y b) (-z c) w)))

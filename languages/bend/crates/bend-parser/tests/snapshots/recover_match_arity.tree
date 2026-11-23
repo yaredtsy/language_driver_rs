@@ -1,0 +1,3 @@
+(def a 0..49 "def a(x: Nat…case p q: 0n" SYNTAX-ERROR (params (x Nat)) (ret Nat))
+(def ok 50..68 "def ok() -> Nat: 0" (params) (ret Nat) (body (u32 0)))
+(ERROR 42..49 "p q: 0n" expected "1 patterns (one per scrutinee)" observed "'p q'")

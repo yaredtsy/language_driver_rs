@@ -1,0 +1,12 @@
+(def
+  twice
+  0..49 "def twice(~f…U32: f(f(x))"
+  (params (~f (-> U32 U32)) (x U32))
+  (ret U32)
+  (body (call f (call f x))))
+(def
+  poly
+  50..118 "def poly(~f:…, n) -> A: x"
+  (params (~f (-> Nat Nat)) (~g (-> Nat Nat)) (-A Data) (+x A) n)
+  (ret A)
+  (body x))

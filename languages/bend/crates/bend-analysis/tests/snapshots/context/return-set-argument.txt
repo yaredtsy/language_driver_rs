@@ -1,0 +1,31 @@
+== main.bend main default
+main
+  each
+  pick
+edges:
+each | f | unresolved function_typed_value
+main | each | call each
+main | pick | call pick
+contexts:
+each | open
+main | open
+pick | open
+counters: function_typed_value=1, passed_deep=2, type_position=7
+== main.bend main precise
+main
+  each
+    work
+    other
+  pick
+edges:
+each@10b9d991 | f | call other
+each@10b9d991 | f | call work
+main | each | call each@10b9d991
+main | pick | call pick
+contexts:
+each | 10b9d991f5f27d4268cafb9c24ed699c
+main | open
+other | open
+pick | open
+work | open
+counters: passed_deep=2, type_position=11

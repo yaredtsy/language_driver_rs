@@ -1,0 +1,3 @@
+(import "Base")
+(def a 26..49 "def a(x: Nat) -> Nat: x" (doc 16..25 "# the doc") (params (x Nat)) (ret Nat) (body x))
+(comment 16..25 "# the doc")

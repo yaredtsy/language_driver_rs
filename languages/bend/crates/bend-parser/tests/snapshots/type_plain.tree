@@ -1,0 +1,16 @@
+(type Unit 0..27 "type Unit is…ta:⏎  Unit{}" (params) (kind Data) (ctr Unit (params)))
+(type Pair 29..78 "type Pair<A,…: A, snd: B}" (params A B) (kind Data) (ctr MkPair (params (fst A) (snd B))))
+(type
+  List
+  80..158 "type List<a,… List<a, A>}"
+  (params a (-A (Kind a)))
+  (kind (Kind a))
+  (ctr Nil (params))
+  (ctr Con (params (head A) (tail (tapp List a A)))))
+(type
+  Either
+  160..256 "type Either<…ht{value: B}"
+  (params a b (-A (Kind a)) (-B (Kind b)))
+  (kind (Kind (op <&> a b)))
+  (ctr Left (params (value A)))
+  (ctr Right (params (value B))))

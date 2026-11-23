@@ -1,0 +1,3 @@
+(def empty 0..19 "def empty() -> Nat:" SYNTAX-ERROR (params) (ret Nat))
+(def after 20..41 "def after() -> Nat: 9" (params) (ret Nat) (body (u32 9)))
+(ERROR 20..20 "" expected "a term (the keyword 'def' cannot head one)" observed "'def'")
