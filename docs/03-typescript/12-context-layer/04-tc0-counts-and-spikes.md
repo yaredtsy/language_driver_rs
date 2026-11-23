@@ -179,6 +179,30 @@ constructor, `n7_assigned_elsewhere` when one is not, `n7_never_written` when th
 the file's own code is swept too, `TS_SWEEP_FILE_CODE`, since `export const s = new S()` is file code): sites in classes built by `new`
 in the project, and in others.
 
+### 3.6 N5, as decided (2026-11-23)
+
+**Which objects.** Per def walked: its own parameters whose type is capable and has no call signature (an object, not a callback), and its
+locals whose initializer, under `unwrap_expression`, is an object literal (nested anonymous functions in, nested defs out, as N4). Per file
+walked (its own code): the top-level `const`s whose initializer is an object literal, and whether each is exported. Keys `n5_param_…`,
+`n5_local_…`, `n5_module_…`.
+
+**What is done with one.** Every reference of the object's name in its container (the def; the whole file for a module `const`, since every
+def of the file sees it), found by §3.5's scoped search and kept when its symbol is the object's. From the reference up through
+parentheses, `as`, `satisfies` and `!` to its use, the first that fits:
+
+| Flag | The use |
+|---|---|
+| `written_through` | `o.k = v`, `o[k] = v`, `o.k++` (the member access is a write), `delete o.k`, or `o` as the first argument of a call written `Object.assign(…)` |
+| `handed_project` / `handed_external` | an argument of a call or a `new`, by where its resolved signature is declared (as N8) |
+| `handed_jsx` | the value of a JSX attribute |
+| `in_array` | an element of an array literal (a hook's dependency list) |
+| `second_name` | the initializer of a variable (`const o2 = o`, `const { a } = o`) |
+| `returned` | `return o` |
+
+Each flag counts once per object; an object with none is `untouched`. The flags are what TC4's trust rule of 03 §11 reads: written through
+and handed to code that may write through it open an object's members, a second name and an array literal are the rows that may be
+relaxed. Whether a project function that receives an object writes through it is not asked here: `handed_project` is an upper bound.
+
 A "no" is written in `ENGINE.md` with the phase it hits: E1, E2, E4, E5, E10 hit TC2 (binding and the tripwire), E3 nothing yet
 (types in a key are later), E6 and E11 TC3 (variables, and the completeness rule of [03](03-design.md) §5), E7 and E8 TC5, E9 TC8.
 
