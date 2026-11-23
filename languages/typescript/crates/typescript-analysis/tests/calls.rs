@@ -1572,18 +1572,7 @@ fn class_entry_equals_what_a_new_site_of_the_class_draws() {
             .collect();
         assert_eq!(defs, entry.defs.iter().collect::<Vec<_>>(), "{class}");
         // the counters, all of them: `Stats.language` holds the reasons, the notes and the uncovered counters
-        #[cfg(not(feature = "__tc0_counts"))]
         assert_eq!(caller.stats.language, entry.stats.language, "{class}");
-        // the TC0 counts (04-tc0-counts-and-spikes.md §3.3–3.4) are counted at the caller's site and have no equal in a class entry; removed with the feature at TC0 step 7
-        #[cfg(feature = "__tc0_counts")]
-        {
-            let (mut caller_language, mut entry_language) =
-                (caller.stats.language.clone(), entry.stats.language.clone());
-            for language in [&mut caller_language, &mut entry_language] {
-                language.retain(|key, _| !key.starts_with("tc0_"));
-            }
-            assert_eq!(caller_language, entry_language, "{class}");
-        }
         assert_eq!(caller.stats.unresolved, entry.stats.unresolved, "{class}");
     }
 }

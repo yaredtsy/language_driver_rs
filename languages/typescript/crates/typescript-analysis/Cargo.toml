@@ -13,9 +13,6 @@ workspace = true
 # Without it rustdoc finds no such doctest and reports success, so `scripts/check-proofs.sh` runs them with it and counts them. Cargo unifies
 # features across a build: a crate that enables this exposes `Sem` to everything built alongside it. The name is a convention, not a wall.
 __proof = []
-# Not API. The TC0 counts N2, N3, N8 (docs/03-typescript/12-context-layer/04-tc0-counts-and-spikes.md §3.3): measurement only, in Stats.language as `tc0_…`.
-# Off by default, so no snapshot changes; removed with the counts once their numbers are written in ENGINE.md.
-__tc0_counts = []
 
 [dependencies]
 analyzer-core     = { workspace = true }

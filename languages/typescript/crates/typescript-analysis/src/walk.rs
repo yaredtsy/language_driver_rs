@@ -44,20 +44,6 @@ pub(crate) fn body<'p>(
     env: &Env,
     cancel: &Cancel,
 ) -> Summary<TypeScript<'p>> {
-    // N4: how often the locals and parameters of this def are written, once per walk of it
-    #[cfg(feature = "__tc0_counts")]
-    if let Some(n4) = lang.sem.tc0_n4(f, lang.style) {
-        for key in &n4.fixed {
-            lang.note(key);
-        }
-    }
-    // N5: what is done with the objects of this def, or of this file's own code, once per walk
-    #[cfg(feature = "__tc0_counts")]
-    if let Some(n5) = lang.sem.tc0_n5(f, lang.style) {
-        for key in &n5.fixed {
-            lang.note(key);
-        }
-    }
     let (summary, unhandled) = counted(|| body_of(lang, f, env, cancel));
     lang.note_n(
         UNHANDLED_KEY,
@@ -126,29 +112,6 @@ fn resolve<'p>(
                 .filter(|resolved| **resolved == Resolved::Unknown(Why::FunctionTypedValue))
             {
                 lang.note(origin.counter());
-                #[cfg(feature = "__tc0_counts")]
-                if let Some(tc0) = &facts.tc0 {
-                    for key in &tc0.fixed {
-                        lang.note(key);
-                    }
-                    for key in &tc0.named {
-                        lang.note_named(key.clone());
-                    }
-                }
-            }
-        }
-        // N1: what the arguments of a site with a project target are, once per site whatever the number of targets
-        #[cfg(feature = "__tc0_counts")]
-        if found
-            .iter()
-            .any(|resolved| matches!(resolved, Resolved::Def(_)))
-            && let Some(n1) = lang.sem.tc0_n1(f, site_index, lang.style)
-        {
-            for key in &n1.fixed {
-                lang.note(key);
-            }
-            for key in n1.named {
-                lang.note_named(key);
             }
         }
         for _ in 0..facts.outside_root {

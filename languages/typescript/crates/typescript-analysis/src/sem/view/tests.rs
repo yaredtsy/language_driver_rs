@@ -40,10 +40,6 @@ fn touch(node: P<Node>, text: &str) {
     if let Some(view) = JsxTag::cast(node) {
         seen(view.tag_name());
     }
-    #[cfg(feature = "__tc0_counts")]
-    if let Some(view) = JsxAttrs::cast(node) {
-        seen(view.attributes());
-    }
     if let Some(view) = NameToken::cast(node) {
         seen(view.value());
     }
@@ -199,8 +195,6 @@ fn every_cast_and_every_accessor_of_every_view_is_total_on_the_libraries_and_the
         ("Elements", Elements::KINDS),
         ("Properties", Properties::KINDS),
         ("JsxTag", JsxTag::KINDS),
-        #[cfg(feature = "__tc0_counts")]
-        ("JsxAttrs", JsxAttrs::KINDS),
         ("NameToken", NameToken::KINDS),
         ("Binary", Binary::KINDS),
         ("ElementAccess", ElementAccess::KINDS),

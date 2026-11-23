@@ -10,11 +10,7 @@
 //! one file, or of one entry in its own run (the project is still opened whole).
 //!
 //! `TS_SWEEP_FILE_CODE=1` also sweeps the file's own code (`Entry::File`) after the defs of each file, outside a sample run (its dump line says `FILE` and `0`, as in a
-//! sample): `export const s = new S()` is file code, and a class that only it builds is built.
-//!
-//! With the feature `__tc0_counts` the run ends with the N7 line (`docs/03-typescript/12-context-layer/04-tc0-counts-and-spikes.md` §3.5): the `this.x` sites of the
-//! classes that a `new` of some graph of the run builds, and of the others. It reads the `Construct` edges of every graph, so it needs `TS_SWEEP_FILE_CODE=1` to see the
-//! ones in file code.
+//! sample): `export const s = new S()` is file code.
 //!
 //! `TS_SWEEP_DUMP=<file>` writes one line per def, `<file>\t<qualname>\t<occurrence>\t<hash>`, sorted, where the hash is 16 hex digits of the graph's `Debug` text (or
 //! `none` when there is no graph). Two dumps are comparable only when both builds were made with the same toolchain (`DefaultHasher`'s algorithm may change between
@@ -338,8 +334,6 @@ struct Totals {
     no_graph: u64,
     made: Vec<Made>,
     counts: BTreeMap<String, u64>,
-    /// The classes some graph of the run builds, `<file>#<qualname>`: the target of a `Construct` edge.
-    built: BTreeSet<String>,
     gaps: Vec<String>,
     unhandled: Vec<String>,
     /// `Some` only when the site measure is asked for: it keeps every site of the run.
@@ -374,13 +368,6 @@ impl Totals {
         };
         if let Some(sites) = &mut self.sites {
             add_sites(sites, &graph);
-        }
-        for edge in &graph.edges {
-            if let EdgeTo::Construct { class, .. } = &edge.to
-                && let Some(def) = graph.def(class)
-            {
-                self.built.insert(format!("{}#{}", def.file, def.qualname));
-            }
         }
         let stats = &graph.stats;
         for (key, value) in [
@@ -424,28 +411,6 @@ impl Totals {
             contexts: stats.contexts,
         });
     }
-}
-
-/// N7's join: the `this.x` sites per class (`<file>#<qualname>`, or `?` for a class that is not a def of the outline), split by whether some graph of the run has a
-/// `Construct` edge to the class.
-fn n7_line(counts: &BTreeMap<String, u64>, built: &BTreeSet<String>, prefix: &str) -> String {
-    let (mut by_new, mut others) = ((0, 0), (0, 0));
-    for (key, sites) in counts {
-        let Some(class) = key.strip_prefix(prefix) else {
-            continue;
-        };
-        let group = if built.contains(class) {
-            &mut by_new
-        } else {
-            &mut others
-        };
-        group.0 += sites;
-        group.1 += 1;
-    }
-    format!(
-        "N7: this-sites in classes built by new in the project: {} ({} classes); in others: {} ({} classes)",
-        by_new.0, by_new.1, others.0, others.1
-    )
 }
 
 #[test]
@@ -573,7 +538,6 @@ fn sweep_every_def_of_a_project() {
         no_graph,
         mut made,
         counts,
-        built,
         gaps,
         unhandled,
         sites,
@@ -609,12 +573,8 @@ fn sweep_every_def_of_a_project() {
         unhandled.len()
     );
     eprintln!("the sum of every count over all the graphs:");
-    const N7_CLASS: &str = "language tc0_n7_class:";
-    for (key, value) in counts.iter().filter(|(key, _)| !key.starts_with(N7_CLASS)) {
+    for (key, value) in &counts {
         eprintln!("  {key}: {value}");
-    }
-    if cfg!(feature = "__tc0_counts") {
-        eprintln!("{}", n7_line(&counts, &built, N7_CLASS));
     }
     if let Some(sites) = &sites {
         print_measure(sites);

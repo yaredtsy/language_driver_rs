@@ -148,22 +148,6 @@ impl Statements {
     }
 }
 
-#[cfg(feature = "__tc0_counts")]
-view! {
-    /// A JSX opening or self-closing element: it has attributes.
-    JsxAttrs: JsxOpeningElement | JsxSelfClosingElement
-}
-
-#[cfg(feature = "__tc0_counts")]
-impl JsxAttrs {
-    /// The attributes as written: a `JsxAttribute` (`a="x"`, `a={x}`) or a `JsxSpreadAttribute` (`{...x}`); none when the element has no `JsxAttributes` node.
-    pub(super) fn attributes(self) -> &'static [P<Node>] {
-        self.0
-            .attributes()
-            .map_or(&[], |attributes| attributes.properties())
-    }
-}
-
 view! {
     /// A binding pattern or an array literal: a list of elements.
     Elements: ObjectBindingPattern | ArrayBindingPattern | ArrayLiteralExpression
