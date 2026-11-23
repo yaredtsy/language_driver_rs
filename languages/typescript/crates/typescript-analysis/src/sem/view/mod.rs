@@ -76,10 +76,11 @@ macro_rules! view {
 }
 
 view! {
-    /// A node that has an expression: the engine's `expression` handles each of these kinds, and answers `Some` for all of them.
+    /// A node that has an expression: the engine's `expression` handles each of these kinds. It answers `Some` for all of them but `JsxExpression`, which
+    /// holds none in `{}` (an empty attribute or child).
     HasExpression: PropertyAccessExpression | ElementAccessExpression | ParenthesizedExpression | CallExpression | NewExpression
         | ExpressionWithTypeArguments | ComputedPropertyName | NonNullExpression | TypeAssertionExpression | AsExpression
-        | SatisfiesExpression | AwaitExpression | SpreadAssignment | Decorator
+        | SatisfiesExpression | AwaitExpression | SpreadAssignment | Decorator | JsxExpression | JsxSpreadAttribute | SpreadElement
 }
 
 impl HasExpression {
@@ -116,7 +117,7 @@ impl CallOrNew {
 
 view! {
     /// A node that can hold an initializer (`= value`).
-    Initialized: VariableDeclaration | Parameter | BindingElement | PropertyDeclaration | PropertyAssignment | EnumMember
+    Initialized: VariableDeclaration | Parameter | BindingElement | PropertyDeclaration | PropertyAssignment | EnumMember | JsxAttribute
 }
 
 impl Initialized {
@@ -144,6 +145,22 @@ view! {
 impl Statements {
     pub(super) fn statements(self) -> &'static [P<Node>] {
         self.0.statements()
+    }
+}
+
+#[cfg(feature = "__tc0_counts")]
+view! {
+    /// A JSX opening or self-closing element: it has attributes.
+    JsxAttrs: JsxOpeningElement | JsxSelfClosingElement
+}
+
+#[cfg(feature = "__tc0_counts")]
+impl JsxAttrs {
+    /// The attributes as written: a `JsxAttribute` (`a="x"`, `a={x}`) or a `JsxSpreadAttribute` (`{...x}`); none when the element has no `JsxAttributes` node.
+    pub(super) fn attributes(self) -> &'static [P<Node>] {
+        self.0
+            .attributes()
+            .map_or(&[], |attributes| attributes.properties())
     }
 }
 

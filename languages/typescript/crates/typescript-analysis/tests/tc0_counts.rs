@@ -1,5 +1,5 @@
-//! The TC0 counts N2, N3 and N8 (`docs/03-typescript/12-context-layer/04-tc0-counts-and-spikes.md` §3.3): `function_typed_value`, split further, in keys `tc0_…` of
-//! `Stats.language`. They exist only behind the feature `__tc0_counts`, so this file is empty without it.
+//! The TC0 counts N2, N3 and N8 (`docs/03-typescript/12-context-layer/04-tc0-counts-and-spikes.md` §3.3): `function_typed_value`, split further, and N1 (§3.4): what
+//! callers pass, in keys `tc0_…` of `Stats.language`. They exist only behind the feature `__tc0_counts`, so this file is empty without it.
 //!
 //! **Written before it was run:** the counts of each file of `fixtures/tc0-counts`, by hand, from the table of the design.
 #![cfg(feature = "__tc0_counts")]
@@ -93,6 +93,38 @@ fn a_call_result_is_split_by_the_call_that_made_it() {
             ("tc0_n8_package:fakelib:make", 1),
             ("tc0_n8_package_bound_direct", 1),
             ("tc0_n8_project", 1),
+        ])
+    );
+}
+
+#[test]
+fn what_a_caller_passes_is_counted_by_class() {
+    let (found, _) = counts("src/args.tsx", &["callers", "Box.go"]);
+    let found: BTreeMap<String, u64> = found
+        .into_iter()
+        .filter(|(key, _)| key.starts_with("tc0_n1:"))
+        .collect();
+    assert_eq!(
+        found,
+        expected(&[
+            ("tc0_n1:arg:def", 1),
+            ("tc0_n1:arg:anonymous", 1),
+            ("tc0_n1:arg:object_with_function", 1),
+            ("tc0_n1:arg:object_other", 1),
+            ("tc0_n1:arg:parameter", 1),
+            ("tc0_n1:arg:parameter_member", 1),
+            ("tc0_n1:arg:local", 2),
+            ("tc0_n1:arg:module_variable", 1),
+            ("tc0_n1:arg:new", 1),
+            ("tc0_n1:arg:call_result_project", 1),
+            ("tc0_n1:arg:call_result_external", 1),
+            ("tc0_n1:arg:other:NoSubstitutionTemplateLiteral", 1),
+            ("tc0_n1:arg:this_member", 1),
+            ("tc0_n1:arg:data_slot", 1),
+            ("tc0_n1:arg:spread", 1),
+            ("tc0_n1:jsx:def", 1),
+            ("tc0_n1:jsx:spread", 1),
+            ("tc0_n1:static_class", 2),
         ])
     );
 }

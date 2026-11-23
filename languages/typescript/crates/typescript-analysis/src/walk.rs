@@ -123,6 +123,20 @@ fn resolve<'p>(
                 }
             }
         }
+        // N1: what the arguments of a site with a project target are, once per site whatever the number of targets
+        #[cfg(feature = "__tc0_counts")]
+        if found
+            .iter()
+            .any(|resolved| matches!(resolved, Resolved::Def(_)))
+            && let Some(n1) = lang.sem.tc0_n1(f, site_index, lang.style)
+        {
+            for key in &n1.fixed {
+                lang.note(key);
+            }
+            for key in n1.named {
+                lang.note_named(key);
+            }
+        }
         for _ in 0..facts.outside_root {
             lang.note(OUTSIDE_ROOT);
         }

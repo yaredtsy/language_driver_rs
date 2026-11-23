@@ -1,7 +1,11 @@
 use analyzer_core::graph::{DefInfo, StableDef};
 use analyzer_core::outline::DefKind;
+#[cfg(feature = "__tc0_counts")]
+use tsrs_ast::Symbol;
 use tsrs_ast::SymbolFlags;
 use tsrs_checker::{Checker, TypeFlags};
+#[cfg(feature = "__tc0_counts")]
+use tsrs_checker::{ObjectFlags, Type};
 
 use super::collect::{Access, AccessCandidate, CallNode, SiteKind, unwrap_expression};
 use super::hierarchy::{
@@ -9,7 +13,7 @@ use super::hierarchy::{
     is_property_function_value, symbol_of_declaration,
 };
 #[cfg(feature = "__tc0_counts")]
-use super::view::ElementAccess;
+use super::view::{CallOrNew, ElementAccess, JsxAttrs, properties_of};
 use super::view::{expression_of, initializer_of, spelled};
 use super::*;
 
@@ -286,35 +290,227 @@ impl Sem {
                 });
         } else {
             let call = initializer_of(owner).and_then(call_of_initializer)?;
-            let signature = checker.get_resolved_signature_exported(call);
-            let Some(declaration) = signature.declaration() else {
-                counts.fixed.push("tc0_n8_unknown");
-                return Some(counts);
-            };
-            let Some(source_file) = ast::get_source_file_of_node(declaration) else {
-                counts.fixed.push("tc0_n8_unknown");
-                return Some(counts);
-            };
-            let file = File {
-                node: source_file,
-                _sem: PhantomData,
-                _one_thread: PhantomData,
-            };
-            if self.is_project_code(file) {
-                counts.fixed.push("tc0_n8_project");
-            } else {
-                let package = self.package_of(file).unwrap_or_else(|| self.place_of(file));
-                let own = declaration
-                    .name()
-                    .and_then(|name| spelled(source_file.text(), name))
-                    .unwrap_or_else(|| "?".to_owned());
-                counts.named.push(format!("tc0_n8_package:{package}:{own}"));
-                if members == 0 {
-                    counts.fixed.push("tc0_n8_package_bound_direct");
+            match self.tc0_declared_by(&mut checker, call) {
+                CallDeclaredBy::Unknown => counts.fixed.push("tc0_n8_unknown"),
+                CallDeclaredBy::Project => counts.fixed.push("tc0_n8_project"),
+                CallDeclaredBy::Package { package, name } => {
+                    counts
+                        .named
+                        .push(format!("tc0_n8_package:{package}:{name}"));
+                    if members == 0 {
+                        counts.fixed.push("tc0_n8_package_bound_direct");
+                    }
                 }
             }
         }
         Some(counts)
+    }
+
+    /// What declares the function a call resolves to, as N8 and N1's `call_result_*` read it: the declaration of the call's resolved signature.
+    #[cfg(feature = "__tc0_counts")]
+    fn tc0_declared_by(&self, checker: &mut Checker, call: P<Node>) -> CallDeclaredBy {
+        let signature = checker.get_resolved_signature_exported(call);
+        let Some(declaration) = signature.declaration() else {
+            return CallDeclaredBy::Unknown;
+        };
+        let Some(file) = file_of(declaration) else {
+            return CallDeclaredBy::Unknown;
+        };
+        if self.is_project_code(file) {
+            return CallDeclaredBy::Project;
+        }
+        let package = self.package_of(file).unwrap_or_else(|| self.place_of(file));
+        let name = declaration
+            .name()
+            .and_then(|name| spelled(file.node.text(), name))
+            .unwrap_or_else(|| "?".to_owned());
+        CallDeclaredBy::Package { package, name }
+    }
+
+    /// N1 (04-tc0-counts-and-spikes.md §3.4): what the arguments of a site with a project target are, by class: the keys to note, once per site. `None` for a
+    /// site that passes nothing (a tagged template, a decorator, an accessor) and when the tree is not what the site said it was.
+    #[cfg(feature = "__tc0_counts")]
+    pub(crate) fn tc0_n1(
+        &self,
+        func: Func<'_>,
+        site_index: usize,
+        style: MarkerStyle<'_>,
+    ) -> Option<Tc0Counts> {
+        let calls = self.body(func, style)?;
+        let site = *calls.sites.get(site_index)?;
+        let _scope = self.region.enter();
+        let mut checker = self.checker();
+        let mut counts = Tc0Counts::default();
+        match site.kind {
+            SiteKind::Call => {
+                let call = CallOrNew::cast(site.call)?;
+                let signature = checker.get_resolved_signature_exported(site.call);
+                for (index, argument) in call.arguments().iter().enumerate() {
+                    if index >= signature.parameters().len() && !signature.has_rest_parameter() {
+                        counts.named.push("tc0_n1:arg:no_slot".to_owned());
+                        continue;
+                    }
+                    let slot = checker.get_type_at_position_exported(signature, index);
+                    if !is_capable(slot) {
+                        counts.named.push("tc0_n1:arg:data_slot".to_owned());
+                        continue;
+                    }
+                    let class = self.tc0_argument_class(&mut checker, *argument, style);
+                    counts.named.push(format!("tc0_n1:arg:{class}"));
+                    if is_class_instance(&mut checker, *argument) {
+                        counts.named.push("tc0_n1:static_class".to_owned());
+                    }
+                }
+            }
+            SiteKind::Jsx => {
+                // `site.call` is the opening element, or the self-closing one: the node that holds the attributes
+                for attribute in JsxAttrs::cast(site.call)?.attributes() {
+                    match attribute.kind() {
+                        Kind::JsxSpreadAttribute => {
+                            counts.named.push("tc0_n1:jsx:spread".to_owned())
+                        }
+                        Kind::JsxAttribute => {
+                            // `a="x"` and `a` hold no expression: nothing is passed that could be followed
+                            let Some(value) = initializer_of(*attribute)
+                                .filter(|value| value.kind() == Kind::JsxExpression)
+                                .and_then(expression_of)
+                            else {
+                                continue;
+                            };
+                            if !is_capable(checker.get_type_at_location(value)) {
+                                counts.named.push("tc0_n1:jsx:data_slot".to_owned());
+                                continue;
+                            }
+                            let class = self.tc0_argument_class(&mut checker, value, style);
+                            counts.named.push(format!("tc0_n1:jsx:{class}"));
+                            if is_class_instance(&mut checker, value) {
+                                counts.named.push("tc0_n1:static_class".to_owned());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => return None,
+        }
+        Some(counts)
+    }
+
+    /// What an argument is (the table of §3.4), the first row that fits, after parentheses, `as`, `satisfies` and `!`.
+    #[cfg(feature = "__tc0_counts")]
+    fn tc0_argument_class(
+        &self,
+        checker: &mut Checker,
+        node: P<Node>,
+        style: MarkerStyle<'_>,
+    ) -> String {
+        let node = unwrap_expression(node);
+        match node.kind() {
+            Kind::SpreadElement => return "spread".to_owned(),
+            Kind::ArrowFunction => return "anonymous".to_owned(),
+            Kind::FunctionExpression => {
+                return if node.name().is_none() {
+                    "anonymous"
+                } else {
+                    "def"
+                }
+                .to_owned();
+            }
+            Kind::ObjectLiteralExpression => {
+                let holds_function =
+                    properties_of(node)
+                        .iter()
+                        .any(|property| match property.kind() {
+                            Kind::MethodDeclaration | Kind::GetAccessor | Kind::SetAccessor => true,
+                            Kind::PropertyAssignment => {
+                                initializer_of(*property).is_some_and(|value| {
+                                    matches!(
+                                        self.tc0_argument_class(checker, value, style).as_str(),
+                                        "anonymous" | "def"
+                                    )
+                                })
+                            }
+                            Kind::ShorthandPropertyAssignment => checker
+                                .get_shorthand_assignment_value_symbol(Some(*property))
+                                .is_some_and(|symbol| self.is_project_def(symbol, style)),
+                            _ => false,
+                        });
+                return if holds_function {
+                    "object_with_function"
+                } else {
+                    "object_other"
+                }
+                .to_owned();
+            }
+            Kind::NewExpression => return "new".to_owned(),
+            Kind::CallExpression => {
+                return match self.tc0_declared_by(checker, node) {
+                    CallDeclaredBy::Project => "call_result_project",
+                    CallDeclaredBy::Package { .. } => "call_result_external",
+                    CallDeclaredBy::Unknown => "call_result_unknown",
+                }
+                .to_owned();
+            }
+            _ => {}
+        }
+        let is_member = matches!(
+            node.kind(),
+            Kind::PropertyAccessExpression | Kind::ElementAccessExpression
+        );
+        if (is_member || node.kind() == Kind::Identifier)
+            && own_symbol(checker, node).is_some_and(|symbol| self.is_project_def(symbol, style))
+        {
+            return "def".to_owned();
+        }
+        if is_member {
+            let Some(name) = leftmost_name(node) else {
+                return "other_member".to_owned();
+            };
+            if name.kind() == Kind::ThisKeyword {
+                return "this_member".to_owned();
+            }
+            return match name_origin(checker, name) {
+                Some(NameOrigin::Parameter) => "parameter_member",
+                Some(NameOrigin::ModuleVariable) => "module_variable_member",
+                Some(NameOrigin::Local) => "local_member",
+                None => "other_member",
+            }
+            .to_owned();
+        }
+        if node.kind() == Kind::Identifier {
+            return match name_origin(checker, node) {
+                Some(NameOrigin::Parameter) => "parameter".to_owned(),
+                Some(NameOrigin::ModuleVariable) => "module_variable".to_owned(),
+                Some(NameOrigin::Local) => "local".to_owned(),
+                None => "other:Identifier".to_owned(),
+            };
+        }
+        format!("other:{:?}", node.kind())
+    }
+
+    /// Whether one of the symbol's declarations is a def of the outline of a file of project code, or holds one: a variable, property declaration or property
+    /// assignment whose initializer is.
+    #[cfg(feature = "__tc0_counts")]
+    fn is_project_def(&self, symbol: P<Symbol>, style: MarkerStyle<'_>) -> bool {
+        symbol.declarations().iter().any(|declaration| {
+            let Some(file) = file_of(*declaration) else {
+                return false;
+            };
+            if !self.is_project_code(file) {
+                return false;
+            }
+            let Some(defs) = self.file_defs(file, style) else {
+                return false;
+            };
+            defs.def_of.contains_key(declaration)
+                || (matches!(
+                    declaration.kind(),
+                    Kind::VariableDeclaration
+                        | Kind::PropertyDeclaration
+                        | Kind::PropertyAssignment
+                ) && initializer_of(*declaration)
+                    .is_some_and(|value| defs.def_of.contains_key(&unwrap_expression(value))))
+        })
     }
 
     fn callee_found(
@@ -904,14 +1100,126 @@ fn origin_of_declaration(declaration: P<Node>) -> FunctionOrigin {
     }
 }
 
-/// The first declaration of the symbol of `name`, through an import (as `function_origin` reads it).
+/// The symbol at `location`, through an import: the symbol it leads to.
 #[cfg(feature = "__tc0_counts")]
-fn first_declaration(checker: &mut Checker, name: P<Node>) -> Option<P<Node>> {
-    let mut symbol = checker.get_symbol_at_location_exported(name)?;
+fn aliased_symbol_at(checker: &mut Checker, location: P<Node>) -> Option<P<Symbol>> {
+    let mut symbol = checker.get_symbol_at_location_exported(location)?;
     if symbol.flags().intersects(SymbolFlags::Alias) {
         symbol = checker.get_aliased_symbol(symbol);
     }
-    symbol.declarations().first().copied()
+    Some(symbol)
+}
+
+/// The first declaration of the symbol of `name`, through an import (as `function_origin` reads it).
+#[cfg(feature = "__tc0_counts")]
+fn first_declaration(checker: &mut Checker, name: P<Node>) -> Option<P<Node>> {
+    aliased_symbol_at(checker, name)?
+        .declarations()
+        .first()
+        .copied()
+}
+
+/// The symbol an expression is, by itself: of an identifier, of a property access, of the literal of an element access (none for another argument), through an
+/// import.
+#[cfg(feature = "__tc0_counts")]
+fn own_symbol(checker: &mut Checker, node: P<Node>) -> Option<P<Symbol>> {
+    let location = match node.kind() {
+        Kind::Identifier | Kind::PropertyAccessExpression => node,
+        Kind::ElementAccessExpression => {
+            let argument = ElementAccess::cast(node)?.argument();
+            ast::is_string_literal_like(argument).then_some(argument)?
+        }
+        _ => return None,
+    };
+    aliased_symbol_at(checker, location)
+}
+
+/// What declares a name an argument is made from.
+#[cfg(feature = "__tc0_counts")]
+enum NameOrigin {
+    Parameter,
+    /// A variable declared at the top of a file or of a namespace.
+    ModuleVariable,
+    /// A variable declared anywhere else.
+    Local,
+}
+
+/// Where a name comes from: its declaration, through the binding elements it is taken out of. `None` for a declaration of another kind, and for no symbol.
+#[cfg(feature = "__tc0_counts")]
+fn name_origin(checker: &mut Checker, name: P<Node>) -> Option<NameOrigin> {
+    let (_, owner) = walk_out_of_patterns(first_declaration(checker, name)?)?;
+    match owner.kind() {
+        Kind::Parameter => Some(NameOrigin::Parameter),
+        Kind::VariableDeclaration => Some(if is_module_variable(owner) {
+            NameOrigin::ModuleVariable
+        } else {
+            NameOrigin::Local
+        }),
+        _ => None,
+    }
+}
+
+/// A variable declared by a statement of a file or of a module block (`const x = 1;`, not `for (const x of xs)`, not inside a function).
+#[cfg(feature = "__tc0_counts")]
+fn is_module_variable(declaration: P<Node>) -> bool {
+    let statement = declaration
+        .parent()
+        .filter(|list| list.kind() == Kind::VariableDeclarationList)
+        .and_then(|list| list.parent())
+        .filter(|statement| statement.kind() == Kind::VariableStatement);
+    statement
+        .and_then(|statement| statement.parent())
+        .is_some_and(|scope| matches!(scope.kind(), Kind::SourceFile | Kind::ModuleBlock))
+}
+
+/// The source file a node is in, as a `File`.
+#[cfg(feature = "__tc0_counts")]
+fn file_of<'p>(node: P<Node>) -> Option<File<'p>> {
+    Some(File {
+        node: ast::get_source_file_of_node(node)?,
+        _sem: PhantomData,
+        _one_thread: PhantomData,
+    })
+}
+
+/// What declares the function a call resolves to.
+#[cfg(feature = "__tc0_counts")]
+enum CallDeclaredBy {
+    /// Code of the project.
+    Project,
+    /// Anywhere else: the package, and the declaration's own name as written.
+    Package { package: String, name: String },
+    /// No declaration.
+    Unknown,
+}
+
+/// Whether a slot of this type can hold a function or an object (TC0's rule; TC2 has its own): a union with a member that can, or a type whose flags meet
+/// `Any`, `Unknown`, `Object`, `NonPrimitive`, `TypeParameter`, `Intersection`, `IndexedAccess`, `Conditional` or `Substitution`. An array is an `Object`.
+#[cfg(feature = "__tc0_counts")]
+fn is_capable(ty: P<Type>) -> bool {
+    if ty.flags().intersects(TypeFlags::Union) {
+        return ty.types().iter().any(|member| is_capable(*member));
+    }
+    ty.flags().intersects(
+        TypeFlags::Any
+            | TypeFlags::Unknown
+            | TypeFlags::Object
+            | TypeFlags::NonPrimitive
+            | TypeFlags::TypeParameter
+            | TypeFlags::Intersection
+            | TypeFlags::IndexedAccess
+            | TypeFlags::Conditional
+            | TypeFlags::Substitution,
+    )
+}
+
+/// Whether the argument's own type is an instance of a class.
+#[cfg(feature = "__tc0_counts")]
+fn is_class_instance(checker: &mut Checker, argument: P<Node>) -> bool {
+    checker
+        .get_type_at_location(argument)
+        .object_flags()
+        .intersects(ObjectFlags::Class)
 }
 
 /// From a declaration up through the binding elements it is inside (as `origin_of_declaration` does): how many it passed, and the node reached (the
