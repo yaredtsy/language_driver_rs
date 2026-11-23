@@ -31,7 +31,7 @@ of it; a later phase fills more and adds `Expr` variants. `Flow` and `Expr` are 
 | Filled in TC1 | Left empty until |
 |---|---|
 | `sites`: for each site, its span, its kind (call, `new`, JSX, tagged, decorator, accessor), the callee as an `Expr`, the arguments as `Expr`s with a `spread` flag, the anonymous function it is written in (if any) | — |
-| `Expr::Unknown`, `Def`, `Anon`, `OneOf`, and the look-through forms (parentheses, `as`, `!`, `satisfies`) | `Param` (TC2), `Var` (TC3), `Member`, `Object` (TC4), `New`, `This` (TC5), `Call` (TC6) |
+| `Expr::Unknown`, `Data`, `Def`, `Anon`, `OneOf`, and the look-through forms (parentheses, `as`, `!`, `satisfies`) | `Param` (TC2), `Var` (TC3), `Member`, `Object` (TC4), `New`, `This` (TC5), `Call` (TC6) |
 | `handed`: the hand-overs, as `(span, Expr)` | — |
 | `anons`: span and number, in source order | their parameters and captures (TC7) |
 | `params`: how many, which is a rest parameter | `capable` (TC2) |
@@ -44,7 +44,10 @@ A JSX element's attributes are one argument. In TC1 it is `Expr::Unknown`; TC4 m
 ```rust
 impl Sem {
     /// The table of `func`'s body. `None` for a def with no node in the program's tree (as `call_sites`). Read once and kept, like `body`.
-    pub(crate) fn flow<'p>(&'p self, func: Func<'p>, style: MarkerStyle<'_>) -> Option<Rc<Flow<'p>>>;
+    pub(crate) fn flow(&self, def: DefId, style: MarkerStyle<'_>) -> Option<Arc<Flow>>;
+    /// A def as a number, and back. The number is good while this program is loaded.
+    pub(crate) fn def_id(&self, func: Func<'_>) -> DefId;
+    pub(crate) fn func(&self, def: DefId) -> Func<'_>;
 }
 ```
 
@@ -58,17 +61,21 @@ to_expr(node)
     an identifier or a property access the checker resolves to a def with a body, or to a class   → Def(func)
     an arrow or a function expression that is not a def of the outline                            → Anon(its number)
     `c ? a : b`, `a || b`, `a ?? b`, `a && b`                                                     → OneOf([…])
+    a literal, arithmetic, a comparison, `typeof`, a JSX element used as a value                  → Data
     anything else                                                                                 → Unknown
 ```
 
 Everything is done inside one entered region with one held checker, and what leaves is owned (the tsrs memory rule of `CLAUDE.md`).
 
-> **🦀 Rust note: `Rc<T>` for a table that several readers hold.** `flow` is asked for by the walk of the def, and again by every
+> **🦀 Rust note: `Arc<T>` for a table that several readers hold.** `flow` is asked for by the walk of the def, and again by every
 > caller that builds a key for it (to know how many parameters it has). Returning a `Flow` by value would copy the table each time;
 > returning `&Flow` would tie the borrow of the memo map to the caller for as long as it holds the table, and the next `flow` call
-> (which needs to insert into the map) would not compile. `Rc<Flow>` is a shared pointer with a counter: `Rc::clone` copies the
-> pointer and adds one, the table is freed when the last holder drops it. It is single-threaded (`Rc`, not `Arc`), which fits: a
-> `Sem` is `Send` and not `Sync`, one thread at a time.
+> (which needs to insert into the map) would not compile. `Arc<Flow>` is a shared pointer with a counter: `Arc::clone` copies the
+> pointer and adds one, the table is freed when the last holder drops it. It must be `Arc` and not `Rc`: an `Rc` counts without a lock, so
+> Rust forbids sending it to another thread, and **a struct that holds an `Rc` cannot be sent either**. The table is kept inside `Sem`, a
+> `Session` holds the `Sem`, and a `Session` must be able to move to a worker thread (the doctests of `proof` pin that `Sem` is `Send`).
+> `Arc` pays an atomic add for it, which is nothing here. `Sem::bodies` already holds `Arc<Body>` for the same reason. And the table has no
+> lifetime: it holds numbers, not `Func<'p>` ([03](03-design.md) §4).
 
 ## 4. The switch
 
@@ -86,17 +93,17 @@ pub enum Precision {
 ```
 
 `typescript-cli calls` gains `--precise`. The default stays `Default` until Q-TC4 is answered. With `Default`, `sem::flow` is never
-called: the layer costs nothing when it is off.
+called: the layer costs nothing when it is off. `Precise` stands for a private set of capability bits ([03](03-design.md) §15.2). TC1 defines the set; no bit does anything yet.
 
 ## 5. The empty layer
 
 | File | TC1 |
 |---|---|
-| `key.rs` | `pub(crate) struct Key<'p> { … }` with the three fields of [03](03-design.md) §6, all empty; `Key::open()`; `is_open()`. `Eq` and `Hash` derived |
-| `walk.rs`, `calls.rs` | the five `()` become `Key::open()` ([01](01-where-we-start.md) §2) |
+| `key.rs` | `KeyId` (a number), `KeyData` with the three fields of [03](03-design.md) §6, all empty, `Keys` (the interner, on `indexmap`), `KeyId::OPEN`, and the one function that puts a key in its normal form |
+| `walk.rs`, `calls.rs` | the five `()` become `KeyId::OPEN` ([01](01-where-we-start.md) §2) |
 | `calls.rs` | `Lang::digest`: zeros for the open key; for any other, the function S-TC3 settled. No other key can exist yet, and a unit test builds one by hand to pin the bytes |
-| `value.rs` | `Value`, `One` (no variant used yet), `Value::unknown()`, `join` |
-| `env.rs` | `Env { flow: Rc<Flow>, key: &Key }`, built in `Lang::walk` when the switch is on |
+| `value.rs` | `Value`, `One` (no variant used yet), `Value::unknown()`, `Value::data()`, `Value::Wide`, `join`. No import from `sem` |
+| `env.rs` | `Env { flow: Arc<Flow>, key: KeyId }`, built in `Lang::walk` when the switch is on |
 | `eval.rs` | `eval(&Expr, &Env) -> Value`: unknown for every `Expr` |
 | `walk.rs` | `resolve_from_env` calls `eval` on the site's callee and returns `None` when the value has no known member (always, in TC1) |
 
@@ -125,16 +132,19 @@ called: the layer costs nothing when it is off.
 | the defs `Sem::handed_over` finds equal the `Def`s of `flow.handed` | the table sees what D22 sees |
 | a text snapshot of the tour's tables (`tests/snapshots/context/tour.flow.txt`) | reviewed by reading it against the source |
 | `eval` on hand-written tables | unknown, for now; the test file exists |
+| the laws, on generated values (`proptest`, a dev-dependency): `join` in any order and twice gives the same; `Wide` absorbs; data changes nothing; equal keys have equal digests and unequal keys unequal ones; a key survives its canonical form and back | the value and the key are sound before any phase leans on them |
+| a second program loaded in the same test: no number of the first is read through the second | the rule that replaces the lifetime ([03](03-design.md) §4) |
 | the sweep with the switch on, V-NOC and the compiler | no panic, `engine_kind_unhandled` 0, equal counters; time and memory beside the switch-off run **[measure]** |
 
 ## 8. Steps
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | `Precision`, `Options::precision`, `--precise`; `Key` as a struct, the five literals | all tests green; `cargo tree` unchanged |
+| 0 | **H17 first** ([`../10-review-fixes.md`](../10-review-fixes.md) §6.3): the engine's `Node` only inside `sem/view/`. `sem/flow.rs` is then written against the views from its first line | clippy's `disallowed-types` passes; the four sweeps: `engine_kind_unhandled` 0, graphs byte-identical |
+| 1 | `Precision`, the capability set, `Options::precision`, `--precise`; `KeyId`, `Keys`, the five literals | all tests green; `cargo tree`: `indexmap`, `smallvec`, `bitflags`, `rustc-hash` become direct dependencies, and no crate is new to the lockfile but `proptest` (tests only) |
 | 2 | `flow.rs`; `sem/flow.rs` for sites and arguments | the `call_sites` equality |
 | 3 | `handed` in the table | the `handed_over` equality |
-| 4 | `value.rs`, `env.rs`, `eval.rs`, `resolve_from_env` wired | equal graphs with the switch on |
+| 4 | `value.rs`, `env.rs`, `eval.rs` (behind the `World` trait), `resolve_from_env` wired | equal graphs with the switch on; the laws |
 | 5 | the harness, the tour, its default snapshot | the tour's "today" column of [03](03-design.md) §2 confirmed or corrected, cell by cell |
 | 6 | the sweep with the switch on | the numbers in `ENGINE.md` |
 | 7 | (mine) `ENGINE.md`: the engine items `sem/flow.rs` calls; `policy.md`: the second table's header | reviewed |

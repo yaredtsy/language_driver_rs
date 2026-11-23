@@ -48,9 +48,9 @@ the policy); the reader reuses those walks.
 ## 3. Values
 
 ```rust
-pub(crate) struct Object<'p> {
+pub(crate) struct Object {
     /// Sorted by name. A later write of the same name in the literal wins.
-    members: Box<[(Name, Value<'p>)]>,
+    members: Box<[(NameId, Value)]>,
     /// `false`: a spread of something unknown, a computed key or an accessor. A member that is not listed may still be there.
     complete: bool,
 }
@@ -100,6 +100,16 @@ compare it, test it          if (x)    x === y    typeof x
 Because a variable has one value in a body (§5 of the design), "open in that body" covers the uses before the write as well as after,
 and every key the body passes it in.
 
+**Three cases the lists above must name** (added by the review of 2026-11-23):
+
+| Case | Rule |
+|---|---|
+| a second name: `const o = opts`; `const { actions } = props`, where `actions` is an object | not a store: allowed, and the test then covers **both** variables. If either is written through, stored or returned, the object is open under both names. Two names defined through each other: open |
+| a variable of an enclosing function, used in a nested def | "in a body" means in the variable's whole scope, the nested functions included, as for assignments ([03](03-design.md) §5) |
+| a `const` at the top of a file | every def of the file can use it, and so can every file that imports it. Trusted only if the declaring file passes the test **and** the constant is not exported; otherwise its members are open, counted `module_object_shared`. N5 says whether a look across the project is worth building |
+
+An array literal that holds the object (`[props]`, a hook's dependency list) is a store by the list above. N5 counts it before the row is kept.
+
 **"Leaves it alone"** is a fact about a function and one of its parameters, from its table alone:
 
 ```
@@ -124,7 +134,7 @@ A JSX element is already a call site on its tag (D8). TC4 gives it an argument:
 - **A tag that is a value** (`<Icon />` with `Icon` a prop, a local, a member): the tag is evaluated like a callee. A function is
   called; a class is constructed.
 - **A class component**: the attributes go to the constructor's parameter 0. `this.props` in its methods is a field: TC8.
-- **`children`**: listed as unknown. A function passed as a child (`{x => …}`) is an anonymous function: Q-TC1.
+- **`children`**: listed as unknown. A function passed as a child (`{x => …}`) is an anonymous function: TC7 (D54).
 - **A component wrapped by a library** (`memo(Panel)`, `forwardRef(…)`): the tag's value is a call's result. Unknown here; TC10 has
   the row.
 
@@ -135,6 +145,12 @@ unknown (`value_widened_depth`). `KeyPolicy::max_members` (64): a larger literal
 `capable` (TC2 §2) already keeps an object-typed parameter; a parameter of an object type **none of whose members can hold a function or
 an object** (`{ id: string; n: number }`) is not capable **[check]** that the checker's property list makes this cheap.
 
+**Relevance by member.** Python's relevance is per parameter, and for an object that is too coarse: `Dialog` reads `props.onClose` and
+nothing else, so two `<Dialog>` elements that differ in a handler `Dialog` never reads would be two contexts. When a parameter is only ever
+read through members or a pattern (never passed on whole, spread, stored or returned), its slot holds **only the members the body reads**;
+`Flow::facts` lists them. A parameter that is used whole keeps the whole object. **[measure]** on V-NOC: contexts per component, with and
+without.
+
 ## 8. Fixtures and tests
 
 `object-options` · `object-shorthand` · `object-method` (the literal's own method) · `object-nested` · `object-too-deep` ·
@@ -143,6 +159,9 @@ an object** (`{ id: string; n: number }`) is not capable **[check]** that the ch
 `object-written-in-callee` (`touches`) · `object-to-external` (open, counted) · `object-stored` · `object-implements` (B7) ·
 `props-function-component` · `props-destructured` · `props-nested-handler` (A8, whole) · `props-spread-through` ·
 `props-component-as-prop` · `props-class-component` · `props-children` (unknown) · `class-as-value` · `class-as-value-jsx`.
+Added by the review: `object-second-name` · `object-second-name-written` (open under both) · `object-module-const` ·
+`object-module-const-exported` (open, counted) · `object-in-array` · `props-unread-member` (two elements that differ in a member the
+component never reads: one context).
 
 | Test | |
 |---|---|

@@ -39,8 +39,9 @@ In every row the `[Passed]` edge of the function under its caller stays.
 
 `sem/flow.rs` learns two things.
 
-**`Expr::Param(i)`.** An identifier whose symbol's `value_declaration` is a `Parameter` node, a direct child of **this def's** node, at
-position `i` of its parameter list, declared by a plain name. Not yet: a parameter of an enclosing def (TC3), a name bound by a
+**`Expr::Param(i)`.** An identifier whose symbol's `value_declaration` is a `Parameter` node, a direct child of **this def's** node, declared by a plain
+name. `i` is its place in the def's own **signature** (`Signature::parameters()`), not in the syntax: a `this` parameter is not in that
+list, so `function f(this: Ctx, cb)` has `cb` at 0, and a call `f(handler)` binds `handler` to it ([03](03-design.md) §7). Not yet: a parameter of an enclosing def (TC3), a name bound by a
 destructuring pattern (TC4), a parameter of an anonymous function inside the def (it is that function's, filled by whoever calls it:
 unknown). The table also says, per parameter:
 
@@ -58,13 +59,13 @@ unknown). The table also says, per parameter:
 | `One` | Made by | Called |
 |---|---|---|
 | `Fn(func)` | `Expr::Def` naming a def with a body | `Target::Call(func, key_of(func, site))` |
-| `Anon(def, n)` | `Expr::Anon(n)` | `Target::Unresolved(anonymous_function_called)`: known, and drawn where it is written (Q-TC1) |
-| `Undefined` | a parameter with no argument | nothing: a site whose value is only `Undefined` has no edge, counted `callee_undefined` |
+| `Anon(def, n)` | `Expr::Anon(n)` | `Target::Unresolved(anonymous_function_called)`: known, and drawn where it is written (until TC7, D54). In a key it is written `AnonAny`: which arrow it is changes no edge yet |
+| `Undefined` | a parameter with no argument | nothing is called there, and the layer knows it: no edge, counted `callee_undefined`. (Rule 2 of the README is about call targets; this site had an `Unresolved` edge, which said "unknown", and it is no longer unknown) |
 
 `Expr::Def` naming a **class** is still unknown here (TC4), and so is one naming a signature without a body (D43: nothing to enter).
 
 `join(a, b)`: the union of the known members, sorted by a stable order (a def by file and offset, an anonymous function by its def and
-number), open if either is. More than `max_set` members: unknown, counted `value_widened_set`.
+number), open if either is. More than `max_set` members: `Wide`, which absorbs every later join ([03](03-design.md) §3), counted `value_widened_set`. Data joined with anything changes nothing.
 
 A parameter with a default: where its value holds `Undefined`, that member is replaced by the default's value, evaluated in the
 callee's own env (a default may name another parameter). Where its value is open, the default's value is joined in: the caller may
@@ -77,7 +78,7 @@ have passed nothing.
 ```
 admit(g, i, v)
     flow(g).params[i] is not capable, or is a rest parameter   → unknown
-    v has more than max_set members                            → unknown   (counted)
+    an anonymous function among v's members                    → written AnonAny
     otherwise                                                   → v
 then: unknown slots at the end are dropped
 ```
@@ -86,7 +87,7 @@ then: unknown slots at the end are dropped
 
 ```rust
 #[derive(Serialize, PartialEq, Eq, PartialOrd, Ord)]
-enum Canon { Unknown, Fn(StableDef), Anon(StableDef, u32), Undefined, Set { known: Vec<Canon>, open: bool } }
+enum Canon { Unknown, Data, Wide, Fn(StableDef), AnonAny, Undefined, Set { known: Vec<Canon>, open: bool } }
 struct CanonKey { params: Vec<Canon> }          // TC3 adds `captured`, TC5 `this`; a field is skipped when empty,
                                                 // so a key's digest does not change when a later phase adds a field it does not use
 ```
@@ -115,7 +116,7 @@ for each site, in order:
 
 The split counters follow the edges: a site that is answered no longer adds to `function_typed_value_from_parameter`.
 
-**Binding** is by position, against `flow(g).params`. `new C(a, b)` binds to the constructor that runs (`init`). A tagged template, a
+**Binding** goes through the signature the checker resolved ([03](03-design.md) §7): argument `i` to `Signature::parameters()[i]`, which is `flow(g).params[i]`. A function target that is not assignable to the callee's static type is counted `value_type_mismatch` and the engine's answer is kept beside it. `new C(a, b)` binds to the constructor that runs (`init`). A tagged template, a
 decorator and an accessor pass nothing in TC2 (every slot unknown). A JSX element passes nothing until TC4.
 
 ## 6. What a real key forces
@@ -126,8 +127,8 @@ Both are in [03](03-design.md) §10; both are built here because TC2 is the firs
 the first time a def is walked in a request, and summed by `finish`. A test: a function with one `uncovered_bind`, reached under two
 keys, counts 1.
 
-**A request that starts from a context** (Q-TC3). `Session` keeps `HashMap<ContextId, CanonKey>` for the contexts of the graphs it
-answered, cleared by `reload`. `Session::graph_from(&ContextId, budget, cancel)` turns the canonical key back into a `Key<'p>` (each
+**A request that starts from a context** (Q-TC3). `Session` keeps `HashMap<ContextId, CanonKey>` for the contexts its graphs listed and did not
+finish (a frontier, a cut), cleared by `reload`. `Session::graph_from(&ContextId, budget, cancel)` turns the canonical key back into a `Key<'p>` (each
 `StableDef` is looked up as an entry is) and starts the solver there. A digest it does not have, or a def that is gone: the open key,
 and `context_not_found` in `Stats.language`. The test is the one that motivates it: a tree cut at depth 1 and continued from each cut
 node equals the tree asked for whole.
@@ -141,7 +142,7 @@ Each gets a short note in `docs/02-tree-rules/` first, as passed edges did, and 
 | Change | Why now | Shape |
 |---|---|---|
 | **the scenario level is per scenario** ([`04-rust/02-architecture.md`](../../04-rust/02-architecture.md) §9, row 2) | TC2 makes one scenario precise, not all | `analyzer_testkit::scenarios::run` takes a function from the scenario's name to its `Level`; a language lists the scenarios it is precise for |
-| **a cut for "too many contexts of one function"** ([03](03-design.md) §12; Rust's design §7 leaves the same choice open) | a real key can multiply contexts | `Limits::max_contexts_per_function: Option<u32>` (`None` by default, so flat languages do not change), a `Cut` value for it, counted like the others |
+| **a cut for "too many contexts of one function"** ([03](03-design.md) §12; Rust's design §7 leaves the same choice open) | a real key can multiply contexts. **Built only if N6, or a phase's sweep, shows a function near 64.** Until then core does not change for it, and the sweep's count of sites lost to a cut (README rule 2) is the alarm | `Limits::max_contexts_per_function: Option<u32>` (`None` by default, so flat languages do not change), a `Cut` value for it, counted like the others |
 
 ## 8. Relevance, after it works
 
@@ -157,7 +158,7 @@ parameter i of g is relevant if its value can reach, in g's body (through locals
 
 This is Python's `relevant.rs` on the table instead of on the syntax tree. A parameter that is not relevant is unknown in every key,
 so `function log(cb) { console.log("x") }` has one context however it is called. Whether this step is needed inside TC2 or can wait
-is N6's answer.
+is N6's answer. Relevance is a fact of the code: it is kept in `Flow::facts`, worked out once per program, never once per request.
 
 ## 9. Fixtures and tests
 
@@ -168,6 +169,9 @@ is N6's answer.
 (line h) · `callback-recursive` (R1) · `callback-mutual` (R2) · `callback-spread` (`run(...args)`: unknown) · `callback-rest` ·
 `callback-reassigned` (open: the handler **and** the engine's answer) · `callback-not-capable` (a `string` parameter: one context) ·
 `callback-entry` (asked at the callee: today's tree) · `callback-javascript` (the same in a `.js` file, untyped).
+Added by the review: `callback-this-parameter` (`function f(this: Ctx, cb)`) · `callback-overload` (the checker picks the signature, the def
+with the body is entered) · `callback-or-data` (`run(ok && handler)`: one edge, nothing unresolved beside it) · `callback-two-arrows` (two
+callers pass two different arrows: **one** context of the callee).
 
 | Test | |
 |---|---|
@@ -177,13 +181,16 @@ is N6's answer.
 | digests: the same key from two entries, in two processes | equal |
 | `contexts_per_function` set to 2 on `callback-two-callers` with three callers | the third is `Incomplete`, counted, and the first two are whole |
 | a tree cut and continued (§6) | equals the whole tree |
+| the capability bit `PARAMS` off | every graph is TC1's, byte for byte |
+| the inline evaluator against the solver, on every fixture without a cycle | equal trees ([03](03-design.md) §14) |
+| `value_type_mismatch`; sites drawn at `Default` and missing at `Precise` | 0 and 0, on the fixtures and on the four projects |
 | the four projects | the per-site measure before and after; contexts, walks, time |
 
 ## 10. Steps
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | the two core notes; core: the level per scenario, the per-function cut | core green; every language's tests green; flat graphs byte-identical |
+| 1 | the core note; core: the level per scenario (the per-function cut only if N6 asks for it) | core green; every language's tests green; flat graphs byte-identical |
 | 2 | `sem/flow.rs`: `Param`, the `Param` table | the tour's table snapshot changes as expected |
 | 3 | `value.rs`: `Fn`, `Anon`, `Undefined`, `join`; `eval`: `Param`, `Def`, `Anon`, `OneOf`, defaults | unit tests on hand-written tables |
 | 4 | `key.rs`: `params`, `admit`, the canonical form; `key_of` at every project target | `callback-two-callers`: two contexts, two digests, still no new edge |

@@ -2,10 +2,10 @@
 
 ```
 later
-├── 1. TC7   an anonymous function under the function that calls it   (Q-TC1)
+├── 1. TC7   an anonymous function under the function that calls it   (D54)
 ├── 2. TC8   fields a constructor stored
-├── 3. TC9   recursion with values; arrays and maps; a value per place
-├── 4. TC10  a table of library functions                              (Q-TC2)
+├── 3. TC9   arrays and maps; a value per place
+├── 4. TCL and TC10  library-made functions; a table of library functions   (Q-TC2)
 └── 5. what is not planned
 ```
 
@@ -17,7 +17,8 @@ The rule for every phase ([README](README.md)) holds for these too.
 
 ## 1. TC7: an anonymous function under the function that calls it
 
-**Needs Q-TC1 = B.** Today, and through TC6, an arrow's calls are drawn under the def it is written in. TC7 draws them where the arrow
+**Decided by D54 (2026-11-21), to be confirmed for TypeScript (README).** Python's layer has no example of it: it evaluates a `lambda` to
+unknown. Today, and through TC6, an arrow's calls are drawn under the def it is written in. TC7 draws them where the arrow
 is **called**, when a project function calls it.
 
 | Code | Through TC6 | TC7 |
@@ -36,6 +37,12 @@ A sketch:
   call its parameter `i`, itself or through what it passes it to" is a fact about `g`'s table, like `touches` in TC4. If it does not
   (it stores the arrow), the calls must stay with the writer, or they vanish from every tree.
 - An arrow reached at two calling sites is drawn at both, and at neither twice. An arrow inside an arrow repeats the rule.
+- In a key, an arrow that moves gets its identity back (through TC6 a key writes every arrow `AnonAny`), with its captures.
+- **The tree marks recursion by function, not by context** (rule 8 of [`02-tree-rules/02-the-rules.md`](../../02-tree-rules/02-the-rules.md)).
+  An arrow moved under `each` whose body leads back to `each` (a continuation, a visitor, a retry) makes that second `each` a `[Recursive]`
+  leaf, and the calls the arrow makes after it are in the graph and not in the tree. Three ways out, yours to choose when TC7 is designed:
+  an arrow moves only when its body cannot lead back to the function it is handed to; or arrows never move; or rule 8 changes in core, for
+  every language. The wire tree is the output that is used (D17), so this is decided on a tree, not on a graph.
 
 It is designed once, with Rust (Q-RC1), in `docs/02-tree-rules/`: the question "where is a closure's call drawn" is about the tree,
 not about a language.
@@ -74,14 +81,13 @@ N7 decides whether this phase is built and for whom: if a project's `this.x` sit
 **Asks of the earlier phases:** `Key.this` is a `Value` (TC5), so an instance with fields fits in it; the depth cap counts fields
 like members; `Expr::Member` on `This` is in the table from TC5 and evaluates to unknown until TC8.
 
-## 3. TC9: recursion with values; arrays and maps; a value per place
+## 3. TC9: arrays and maps; a value per place
 
-Three things that each wait for a counter.
+Two things that each wait for a counter. (A third, a value around a cycle, was here until the review of 2026-11-23.)
 
-**A value around a cycle.** TC6 answers unknown when a context asks for the return value of one that is still being walked. If
-`return_in_cycle` is large on real code: iterate. Values are finite sets with caps, and a join only adds members, so repeating the
-walks of a cycle until no return value changes must end. Python's `solver.rs` does this with groups, parked walks and a round limit;
-core would get the smallest form of it, in the note style, with Rust's RC6.
+**A value around a cycle: moved into TC6.** It was planned here, "if `return_in_cycle` is large". But answering unknown inside a cycle is not
+only less precise: it makes a context's edges depend on where the request entered ([10](10-tc6-return-values.md) §3.1). So the rounds are
+part of the solver's handle from the day return values exist, as they are in Python.
 
 **Collections.** `for (const h of handlers) h()` needs "an array is the join of what was put in it": a literal's elements, with every
 `push` a write-through (open). `handlers.forEach(h => h())` needs that **and** a library model (who calls the arrow, with what):
@@ -92,9 +98,30 @@ TC10. A `Map` or a `Set` keyed by run-time values stays unknown.
 our own walk of it. Captured variables keep the whole-scope join, which is the sound one for them.
 
 **Asks of the earlier phases:** `eval` never assumes a variable has one value except through `Env::value_of`; the solver's handle
-answers `None` and not a panic for a context in progress.
+answers the value so far, and never panics, for a context in progress.
 
-## 4. TC10: a table of library functions
+## 4. TCL and TC10: library-made functions; a table of library functions
+
+### 4.1 TCL: a function a library made has a name (pulled forward, 2026-11-23)
+
+**Needs Q-TC2 (b). Needs nothing of the layer**: no key, no value, no table. It can be built any time after TC0, and before TC1.
+
+```tsx
+const [open, setOpen] = useState(false);     setOpen(true);       // today: Unresolved(function_typed_value), counted `_from_call_result`
+const { mutate } = useMutation(opts);        mutate(task);
+const navigate = useNavigate();              navigate("/");
+```
+
+| | |
+|---|---|
+| what it is | the callee is a `const` name bound straight from the result of a call, by a plain name, an array pattern or an object pattern, and that call's target is **outside the project** |
+| what it becomes | an `External` edge named after the call that made it and the path to the name: `react` · `useState()[1]`, `@tanstack/react-query` · `useMutation().mutate`. The spelling is part of Q-TC2 (b) |
+| what it is not | a project function's result (that is TC6); a `let`; a name bound through anything but one pattern; a function passed in |
+| where | `sem/resolve.rs`, beside the split that already tells a call's result from a parameter (`FunctionOrigin`) |
+| what changes | the **default** graph: so it is a policy row with its fixture, a line in the tag notes, and N8 (TC0) is its forecast. On `TaskDetailPanel` it is 43 of the 86 unresolved calls |
+| why now | it is the largest single group of "unresolved" in React code, no phase of the layer can ever reach it (the function is made inside the library), and it risks nothing the layer depends on |
+
+### 4.2 TC10: a table of library functions
 
 **Needs Q-TC2.** Some of the most common unresolved calls go through a library function whose behaviour is fixed and simple, and
 that no amount of value tracking can see into, because we never walk a package.

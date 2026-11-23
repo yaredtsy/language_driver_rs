@@ -40,7 +40,7 @@ shapes of code where that is knowable, grouped by how the function gets there. E
 | A8 | **a nested handler reads a parameter of the function around it** | `function Panel({ onClose }) { const back = () => { onClose(); }; return <button onClick={back} />; }` | `onClose()` open inside `back` | `back` → what the parent passed as `onClose` | TC3 (with TC4 for the props) |
 | A9 | a module constant | `const onSave = flag ? a : b;` at the top of a file · `onSave()` in a function | `[check]` open | resolved; the value belongs to the module, not to a key | TC3 |
 | A10 | bound | `run(handler.bind(null))`, `run(this.save.bind(this))` | counted (`uncovered_bind`), no edge | the function behind the `bind`; `this` not followed | TC3 |
-| A11 | an anonymous function | `each(() => work())` | `work` under the caller (it is written there); `f()` in `each` open | TC2: `f()` is known to be that arrow: `Unresolved(anonymous_function_called)`, as `(() => {})()` already is (H10). **TC7** moves `work` under `each`, if Q-TC1 says so | TC2, TC7 |
+| A11 | an anonymous function | `each(() => work())` | `work` under the caller (it is written there); `f()` in `each` open | TC2: `f()` is known to be that arrow: `Unresolved(anonymous_function_called)`, as `(() => {})()` already is (H10). **TC7** moves `work` under `each` (D54) | TC2, TC7 |
 
 A8 is the reason captures are in the plan from TC3 and not "later": in a React component almost every call of a prop sits inside a
 nested `const` arrow, which is a def of its own.
@@ -80,7 +80,7 @@ nested `const` arrow, which is a def of its own.
 | D5 | curry | `function twice(f) { return () => { f(); f(); }; }` · `twice(work)()` | `Unresolved(no_declaration)` | TC6: known to be the arrow written in `twice`; TC7 draws `work` under it | TC6, TC7 |
 | D6 | awaited | `const w = await makeWriter(); w.write()` | open | as D1: `await` is looked through | TC6 |
 | D7 | a getter's result, a decorator factory's result | `b.fn()` with `fn` a getter; `@factory(1)` | counted (`uncovered_getter_result_calls`); `Unresolved(decorator_result)` | resolved | TC6, last |
-| D8 | a recursive function's value | `function build(n) { return n ? build(n - 1) : leaf; }` · `build(3)()` | open | **open**, counted `return_in_cycle`, until TC9 | TC9 |
+| D8 | a recursive function's value | `function build(n) { return n ? build(n - 1) : leaf; }` · `build(3)()` | open | `leaf`: the value of a cycle is worked out by rounds ([10](10-tc6-return-values.md) §3.1) | TC6 |
 
 ## 6. E: something is stored
 
@@ -99,13 +99,13 @@ nested `const` arrow, which is a def of its own.
 | R1 | a callback carried around a cycle | `function walk(n, visit) { visit(n); n.kids.forEach(k => walk(k, visit)); }` | the recursive call passes the same value, so it is the **same key**: one context, an edge to itself, drawn `[Recursive]`. The flat solver needs nothing | TC2 |
 | R2 | mutual recursion with a callback | `a(cb) { b(cb) }` · `b(cb) { cb(); a(cb) }` | the same: two contexts, a cycle of edges | TC2 |
 | R3 | a key that grows | `function f(cb) { f(() => cb()); }`, `function g(o) { g({ next: o }); }` | each call would make a new key for ever. The depth cap of a key stops it: past the cap the member is `Unknown`, so the next key equals the last | TC4 (objects), TC7 (closures); the cap is in TC2 |
-| R4 | a value around a cycle | D8 | `Unknown`, counted | TC9 |
+| R4 | a value around a cycle | D8 | worked out by rounds, the same from any entry | TC6 |
 
 ## 8. F: what no phase reaches, and what it is instead
 
 | | Pattern | Why not | It stays |
 |---|---|---|---|
-| F1 | what a library call returned: `const [open, setOpen] = useState()` · `setOpen(true)`; a store made by `create(…)` | the function is made inside code we never enter. Half of `TaskDetailPanel`'s 86 unresolved calls are this one idiom | open; TC10 asks whether a small library table should answer some of it (Q-TC2) |
+| F1 | what a library call returned: `const [open, setOpen] = useState()` · `setOpen(true)`; a store made by `create(…)` | the function is made inside code we never enter. Half of `TaskDetailPanel`'s 86 unresolved calls are this one idiom | open today. **TCL** gives it a name: an `External` after the call that made it (Q-TC2 b; [11](11-later.md) §4) |
 | F2 | an object a container built: vscode's `@IFileService private readonly files: IFileService` | no `new` in project code gives the constructor its arguments | open (`this` column) |
 | F3 | a name computed at run time: `obj[name]()`, reflection | no value to follow | `Unresolved(computed_name)` |
 | F4 | **the entry's own parameters** | a request names a def; nobody says what was passed to it | today's answer. A tree asked for at the parent is richer than one asked for at the child: that is the nature of the layer, and worth one sentence in the product |

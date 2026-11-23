@@ -92,7 +92,7 @@ function main() {
 | f | `send` (nothing under it); `Json`, a construction | **TC5** | `send` → `Json.write` → `encode` |
 | g | `pick`; `.write()` unresolved | **TC6** | `pick`, then `Csv.write` → `join` |
 | h | `twice` (nothing under it); `encode` `[Passed]`; the second call unresolved | **TC2** | `twice` → `encode`, `encode`: the arrow is written in `twice`, so its calls are `twice`'s, and `twice` now knows `f`. TC6 only changes the reason of the second call |
-| i | `each` (nothing under it); `join` under `main` | **TC2**, then TC7 | TC2: the same tree; `f()` in `each` has the reason `anonymous_function_called`. TC7 (if Q-TC1): `each` → `join` |
+| i | `each` (nothing under it); `join` under `main` | **TC2**, then TC7 | TC2: the same tree; `f()` in `each` has the reason `anonymous_function_called`. TC7 (D54): `each` → `join` |
 
 This program is `tests/fixtures/context/tour/src/tour.tsx` from TC1 on, with the first column as its snapshot. Writing that snapshot
 is how every "today" cell of this plan gets checked.
@@ -467,7 +467,7 @@ Each row is a fixture in `tests/fixtures/context/` and a row of the precise tabl
 | parentheses, `as`, `!`, `satisfies`, `<T>x` | looked through | TC2 |
 | a number, a string, a boolean, `null`, a regular expression, a template; arithmetic, a comparison, `typeof`; a JSX element as a value | **data**: nothing callable is there. Not unknown: `ok && handler` is `handler` alone | TC2 |
 | `f?.()` | as `f()` | TC2 |
-| an anonymous function, as a value | known by where it is written; called where known: `anonymous_function_called` | TC2 (Q-TC1: TC7) |
+| an anonymous function, as a value | known by where it is written; called where known: `anonymous_function_called` | TC2 (its calls move in TC7, D54) |
 | a `const`, `let` or `var` | **one value: the join of everything assigned to it** | TC3 |
 | assigned twice (`let h = a; h(); h = b; h()`) | both calls show both. Stricter would need the order of execution | TC3; refined only if measured |
 | a variable of an enclosing function, read in a nested def | the value it has there, carried in the nested def's key | TC3 |
@@ -490,7 +490,7 @@ Each row is a fixture in `tests/fixtures/context/` and a row of the precise tabl
 | `this`, in a method | the receiver's value, from the key | TC5 |
 | the result of a call | unknown before TC6; the callee's return value after | TC6 |
 | `await e` | `e`'s value | TC6 |
-| a recursive call's result | unknown, counted `return_in_cycle` | TC9 |
+| a recursive call's result | the value of the cycle, worked out by rounds; `Wide` past the cap of rounds, counted | TC6 |
 | `this.x`, `obj.x` on an instance | unknown before TC8 | TC8 |
 | a `Map`, a `Set`, an array, a `Promise` holding a tracked value | unknown | TC9 |
 | `eval`, `with`, `Proxy`, `Reflect`, a name computed at run time | unknown | never |
@@ -520,7 +520,7 @@ not released. Python's cap behaves the same way (`solver.rs` `cost_limit`: a cut
 
 | | `sem/` | `flow.rs` | `value.rs` | `env.rs` | `key.rs` | `eval.rs` | `walk.rs` | `calls.rs`, `session.rs` | core |
 |---|---|---|---|---|---|---|---|---|---|
-| TC1 | `sem/flow.rs`: sites, arguments, names | new: the types | new: `Value::unknown` only | a struct with a `Flow` | a struct; `Key::open()` | new: returns unknown | the five `()` | `Options::precision`; `digest` | — |
+| TC1 | `sem/flow.rs`: sites, arguments, names | new: the types | new: `Value::unknown` only | a struct with a `Flow` | `KeyId`, the interner; `KeyId::OPEN` | new: returns unknown | the five `()` | `Options::precision`; `digest` | — |
 | TC2 | which parameter a name is; capable types | `Param`, `Anon`, `OneOf` | `Fn`, `Anon`, `Undefined`; join | parameters from the key | `params`; the canonical form | `Param`, `Def`, `Anon`, `OneOf` | `resolve_from_env` answers; `key_of` | counters per def; `graph_from`; the per-site measure | scenario level per scenario; `Cut` per function |
 | TC3 | every assignment; `needs`; module variables | `Var`, `needs` | | locals, captured, module | `captured` | `Var` | hand-over keys carry captures | the module memo | — |
 | TC4 | literals, JSX attributes, patterns, writes-through, escapes | `Object`, `Member` | `Object`, `Class` | | objects in slots; the depth cap | `Object`, `Member` | JSX binds one object | | — |
