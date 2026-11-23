@@ -79,7 +79,7 @@ if [ -d languages/rust ]; then
   grep -q 'ra_ap_syntax' <<<"$tree" || bad "rust-syntax does not depend on ra_ap_syntax (is the tree check reading the right crate?)"
   # the oracle's engine crate is a dev-dependency (RS4 §8): the normal tree of what ships has `ra_ap_ide_db`, which it needs, and no `ra_ap_ide`
   for crate in rust-analysis rust-cli; do
-    tree=$(cd languages/rust && cargo tree --locked -p "$crate" -e normal 2>&1) || bad "cargo tree -p $crate failed: $tree"
+    tree=$(cd languages/rust && cargo tree --locked --color never -p "$crate" -e normal 2>&1) || bad "cargo tree -p $crate failed: $tree"
     if grep -E 'ra_ap_ide v' <<<"$tree"; then bad "$crate depends on ra_ap_ide outside its dev-dependencies"; fi
     grep -q 'ra_ap_ide_db' <<<"$tree" || bad "$crate does not depend on ra_ap_ide_db (is the tree check reading the right crate?)"
   done
@@ -87,9 +87,10 @@ fi
 
 # bend-parser is the engine Bend has no other source for (BD-D1): it depends on analyzer-core and on nothing else, dev-dependencies included
 if [ -d languages/bend/crates/bend-parser ]; then
-  parser_deps=$(cd languages/bend && cargo tree --locked -p bend-parser --depth 1 2>&1) || bad "cargo tree -p bend-parser failed: $parser_deps"
+  parser_deps=$(cd languages/bend && cargo tree --locked --color never -p bend-parser --depth 1 2>&1) || bad "cargo tree -p bend-parser failed: $parser_deps"
   # only the lines of the tree are counted: on a machine that has not fetched the crates yet, cargo's own progress lines ("Updating crates.io index",
-  # "Downloaded ..") arrive on the same stream, and counting them made this check fail in CI the day the Bend workspace gained a crate
+  # "Downloaded ..") arrive on the same stream, and counting them made this check fail in CI the day the Bend workspace gained a crate.
+  # --color never: CI sets CARGO_TERM_COLOR=always, which wraps the branch characters in escape codes, so no line starts with `└──`
   direct=$(grep -cE '^[├└]── ' <<<"$parser_deps" || true)
   if [ "$direct" != 1 ] || ! grep -q 'analyzer-core' <<<"$parser_deps"; then bad "bend-parser depends on something besides analyzer-core: $parser_deps"; fi
 fi
