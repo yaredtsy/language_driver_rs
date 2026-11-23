@@ -1361,5 +1361,6 @@ answer those. V-NOC against its own file: 733 every, 0 some, 0 none, 0 not reach
 reviewer's scratch folder; a later phase is compared against a fresh baseline run of the commit before it, not against these files.
 
 **Found at the review:** the measure keeps every site of every graph of a run, even when no site file is asked for. A full depth-1 sweep
-of the private codebase took 339 MB at its peak instead of 214 MB (`5362028`'s sweep); on vscode that would be gigabytes. Fixed next: the
-sites are kept only when `TS_SWEEP_SITES` or `TS_SWEEP_BASELINE` is set.
+of the private codebase took 339 MB at its peak instead of 214 MB (`5362028`'s sweep); on vscode that would be gigabytes. **Fixed** (`f444d71`): the
+sites are kept only when `TS_SWEEP_SITES` or `TS_SWEEP_BASELINE` is set; the full private sweep peaks at 213 MB again, and V-NOC's site file is
+byte-identical.

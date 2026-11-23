@@ -96,6 +96,25 @@ TC0's baseline is the same code run against its own file (every site "every", as
 V-NOC's own entry file reaches 2 contexts and its route files 1 (the router is a library that holds the pages as data), so the pages
 are entries of their own.
 
+### 3.3 N2, N3, N8, as decided (2026-11-23)
+
+They split the `function_typed_value` edges that today's origin split (`FunctionOrigin`, `sem/resolve.rs`) already puts in a column. One
+count per edge, like the origin split, so each group adds up to its column.
+
+**Behind a feature, not in every graph.** The counters exist only when `typescript-analysis` is built with the feature `__tc0_counts`
+(off by default; the double underscore says "not API", as `__proof` does). Without it no line runs and no snapshot changes; with it the
+sweep reads them from `Stats.language`. They are removed, with the feature, in the commit that writes their numbers down (§5).
+
+| Count | Edges | Keys (`tc0_…`) |
+|---|---|---|
+| **N2**, whose parameter | origin `Parameter` | the parameter's function, found from the leftmost name's declaration through its binding elements: `n2_own` (the def walked), `n2_enclosing` (a def the walked def is written inside), `n2_anonymous` (an anonymous function written inside the walked def: whoever calls that function fills it), `n2_other` |
+| **N2**, how deep | origin `Parameter` | the binding elements between the name's declaration and its parameter, plus the member steps (`.k`, `[k]`) between the leftmost name and the callee: `n2_depth_0`, `n2_depth_1`, `n2_depth_2`, `n2_depth_3_or_more`. `props.onClose()` is 1, `({ onClose }) … onClose()` is 1, `({ actions }) … actions.close()` is 2 |
+| **N3**, called or called on | origin `Parameter` | the first declaration of the **callee's** symbol (not the leftmost name's): a method signature, a method or an accessor is `n3_method` (a method called on the value: TC5's half); anything else `n3_value` (the value is a function: TC2's and TC4's half); no symbol `n3_unknown` |
+| **N8**, whose result | origin `CallResult` | the call in the variable's initializer (under parentheses and `await`), by the declaration of its resolved signature: `n8_project`; `n8_package:<package>:<name>`, package as `classify` names an external's and name as written; `n8_unknown` (no declaration). And `n8_package_bound_direct` for a package call whose name is the callee itself, declared by the variable or a binding element of it (`const [open, setOpen] = useState(); setOpen()`): TCL's forecast |
+
+The N8 key holds the package and the name, so it is built at run time: a count with a text key is added beside today's notes (a
+`String` key, merged into `Stats.language` the same way).
+
 A "no" is written in `ENGINE.md` with the phase it hits: E1, E2, E4, E5, E10 hit TC2 (binding and the tripwire), E3 nothing yet
 (types in a key are later), E6 and E11 TC3 (variables, and the completeness rule of [03](03-design.md) §5), E7 and E8 TC5, E9 TC8.
 
@@ -126,7 +145,7 @@ pass, "a value is complete when every assignment was read" does not hold as writ
   same `[profile.dev]` lines, the same `rev` for every `tsrs_*`, and `CARGO_TARGET_DIR=../../target` when built. Then no engine crate
   is compiled again (measured 2026-11-23 with a probe: only the probe itself compiled), where a target of its own would cost about
   2 GB of a disk that has 3.5 GB free.
-- **Counts** (N1 – N8): they need what `sem` knows, so they are counters in the analyzer, as the origin split was. A count that a later
+- **Counts** (N1 – N8): they need what `sem` knows, so they are counters in the analyzer, as the origin split was, **behind the feature `__tc0_counts`** (§3.3) so that no snapshot changes while they exist. A count that a later
   phase reads again stays (N6 becomes a line of the breakdown); the others are removed in the commit that writes their numbers down.
 - **The measure** (S-TC4): stays, in `tests/sweep.rs`.
 - **Answers**: `languages/typescript/ENGINE.md`, a section "TC0: what was counted". Corrections to this folder in the same commit as
