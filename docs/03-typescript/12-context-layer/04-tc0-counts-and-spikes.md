@@ -50,6 +50,29 @@ The breakdown of today (`function_typed_value_from_*`) is the model: a key in `S
 | **S-TC3** | **The digest.** A canonical key written and hashed as Python's `interp/canon.rs` does. Is the result equal in two processes and on two machines; `xxhash-rust` is already in the TypeScript lockfile (tsrs depends on it); the function goes to core in TC2's first step (D57; Python and Bend each hold a copy, and switch in a session of their own) | the answer, and where the function lives |
 | **S-TC4** | **The measure and the sample.** The per-site measure of [03](03-design.md) §10, on today's graphs: for a fixed list of entries per project, the open sites reached, by reason. And the list itself: which entries (for V-NOC `TaskDetailPanel` and the page components; for the others the files' own code, `Entry::File`, of their entry points), such that all of them finish in minutes on the 8 GB machine | `tests/sweep.rs` can print the measure; the baseline table in `ENGINE.md`, to which every phase adds a column |
 
+### 3.1 S-TC1, case by case (written 2026-11-23, before it ran)
+
+The program is the tour ([03](03-design.md) §2) and one more file, `extra.ts`, in a folder with a `tsconfig.json` (`"jsx": "preserve"`,
+`"strict": true`, and a three-line `declare namespace JSX` so the elements type-check). Every expectation below was written before the
+spike ran; the spike prints `got` beside it.
+
+| # | Code | Ask | Expected |
+|---|---|---|---|
+| E1 | `function withThis(this: Ctx, cb: () => void) {}` and `withThis(handler)` | `get_resolved_signature_exported(call)`: `parameters()`, `this_parameter()` | parameters `[cb]`; this parameter `this` |
+| E2 | `function run<T>(x: T, cb: (v: T) => void) {}` and `run(1, handler)` | each of `parameters()`: its `value_declaration()` | the `Parameter` nodes `x` and `cb` of `run`'s own declaration (same position in the file) |
+| E3 | `declare function useState<S>(initial: S): [S, (next: S) => void]` and `const [open, setOpen] = useState(false)` | `get_type_at_position_exported(sig, 0)`, printed by `type_to_string_exported` | `boolean` |
+| E4 | `function many(first: number, ...fs: (() => void)[]) {}` and `many(1, handler, handler)` | `has_rest_parameter()`, `min_argument_count()`, `parameters().len()`, the type at positions 1, 2, 3 | `true`, `1`, `2`, `() => void` three times |
+| E5 | E4's call, and the tour's `each(encode)` | `is_type_assignable_to_exported(type of argument, type at its position)`, the argument's type by `get_type_at_location` | `encode` to `each`'s slot 0: `true`; `1` to `many`'s slot 1: `false` |
+| E6 | the tour: `onClose()` in `back`, `f()` in `each`, `h()` in `main` | the callee's `get_symbol_at_location_exported`, its `value_declaration()` kind, and `get_root_declaration` of it | `BindingElement` → root `Parameter` of `Panel`; `Parameter` of `each`; `VariableDeclaration` in `main` |
+| E7 | the tour's `send(new Json())`, and `const w: Writer = new Json(); send(w)` in `extra.ts` | the argument's `get_type_at_location`: `object_flags()` has `Class`? `symbol()` | `new Json()`: class, `Json`; `w`: not a class (an interface), `Writer` |
+| E8 | `class Sub extends Json {}` and `new Sub()` | `get_property_of_type_exported(instance type, "write")`, its `value_declaration()` | for `Json` and for `Sub`: `Json.write`'s `MethodDeclaration` |
+| E9 | `class Box { x = 1; set() { this.x = 2; } read() { return this.x; } }` | `get_references_to_symbol_in_file(file, x)`, and `ast::is_write_access` of each | three references: the declaration's name `false`, `this.x = 2` `true`, `return this.x` `false` |
+| E10 | the tour's `<Panel onClose={join} />` | `get_resolved_signature_exported(element)`: `declaration()`, `parameters()` | `Panel`, one parameter |
+| E11 | `let k = encode; k = join; ({ k } = o); [k] = xs; k ||= join; for (k of xs) {} k();` | the references to `k` in the file, and `ast::is_write_access` of each | the declaration's name `false`; the five writes `true`; `k()` `false` |
+
+A "no" is written in `ENGINE.md` with the phase it hits: E1, E2, E4, E5, E10 hit TC2 (binding and the tripwire), E3 nothing yet
+(types in a key are later), E6 and E11 TC3 (variables, and the completeness rule of [03](03-design.md) §5), E7 and E8 TC5, E9 TC8.
+
 S-TC2 is the one that can change the design: if assignments inside nested functions cannot be attributed to the variable's scope in one
 pass, "a value is complete when every assignment was read" does not hold as written, and [03](03-design.md) §5 needs another rule.
 
@@ -73,7 +96,10 @@ pass, "a value is complete when every assignment was read" does not hold as writ
 ## 5. Where the code lives, and where the answers go
 
 - **Spikes** (S-TC1 – S-TC3): `languages/typescript/spikes/`, a workspace of its own, deleted when the answer is written
-  (`CLAUDE.md`, "How to work here").
+  (`CLAUDE.md`, "How to work here"). **It shares the TypeScript workspace's build**: a copy of `languages/typescript/Cargo.lock`, the
+  same `[profile.dev]` lines, the same `rev` for every `tsrs_*`, and `CARGO_TARGET_DIR=../../target` when built. Then no engine crate
+  is compiled again (measured 2026-11-23 with a probe: only the probe itself compiled), where a target of its own would cost about
+  2 GB of a disk that has 3.5 GB free.
 - **Counts** (N1 – N8): they need what `sem` knows, so they are counters in the analyzer, as the origin split was. A count that a later
   phase reads again stays (N6 becomes a line of the breakdown); the others are removed in the commit that writes their numbers down.
 - **The measure** (S-TC4): stays, in `tests/sweep.rs`.
