@@ -1364,3 +1364,42 @@ reviewer's scratch folder; a later phase is compared against a fresh baseline ru
 of the private codebase took 339 MB at its peak instead of 214 MB (`5362028`'s sweep); on vscode that would be gigabytes. **Fixed** (`f444d71`): the
 sites are kept only when `TS_SWEEP_SITES` or `TS_SWEEP_BASELINE` is set; the full private sweep peaks at 213 MB again, and V-NOC's site file is
 byte-identical.
+
+### N2, N3, N8: inside the parameter and call-result columns (`25a04c8`, feature `__tc0_counts`; reviewed 2026-11-23)
+
+Full depth-1 sweeps (every site of the project once), release build with the feature, run by the reviewer. Every group adds up to its
+column (checked on each project). The keys are defined in `docs/03-typescript/12-context-layer/04-tc0-counts-and-spikes.md` §3.3.
+
+**N2 and N3: `function_typed_value` through a parameter**
+
+| Project | Column | Own | Enclosing def | Anonymous fn | Depth 0 | 1 | 2 | 3+ | Value called | Method called on it |
+|---|---|---|---|---|---|---|---|---|---|---|
+| V-NOC frontend | 177 | 130 | 40 | 7 | 30 | 139 | 8 | 0 | 177 | 0 |
+| the private codebase | 1,981 | 1,440 | 349 | 192 | 660 | 1,223 | 96 | 2 | 1,588 | 393 |
+| TypeScript `src/compiler` | 2,252 | 1,649 | 549 | 54 | 820 | 1,145 | 270 | 17 | 964 | 1,288 |
+
+**N8: `function_typed_value` through a call's result**
+
+| Project | Column | Project function | Package | of which bound straight from the call | Unknown |
+|---|---|---|---|---|---|
+| V-NOC frontend | 799 | 33 | 766 | 748 | 0 |
+| the private codebase | 1,007 | 978 | 21 (all the bundled library: `Map.get` 16, `Array.shift`, `find`, `splice`) | 7 | 8 |
+| TypeScript `src/compiler` | 1,616 | 1,609 | 7 (`Map.get`) | 0 | 0 |
+
+V-NOC's package calls, the top: `zustand` (the store hook, whose call signature has no name, so `?`) 416, `react` `useState` 235,
+`useCallback` 31, `react-hook-form` `useForm` 21, `class-variance-authority` (`cva`, no name) 17, `memo` 15, `forwardRef` 7,
+`useEffectEvent` 6, `useRef` 4, `react-router` `useNavigate` 4; 18 keys in all.
+
+**What they say** (the rules of 04 §4):
+
+- **Captures are not rare** (a parameter of an enclosing def: 23%, 18%, 24% of the column): TC3 stays before TC4.
+- **Depth 3 or more is rare** (0, 2, 17): `max_depth` 2 stands.
+- **"Called on" is the larger half only in the TypeScript compiler** (57%; 20% in the private codebase, 0 in V-NOC). It does not move TC5
+  before TC4 yet: a method called on an interface parameter is answered by TC4 when an object literal is passed, by TC5 when an instance
+  is. N1 says which is passed.
+- **TCL's forecast is large in V-NOC and nothing elsewhere.** 748 of V-NOC's 1,035 `function_typed_value` edges (72%) are a name bound
+  straight from a package call. In the other two, the call-result column is project functions (97% and 99.6%): that is TC6's.
+- **The package half is not only "makers".** `useCallback`, `memo` and `forwardRef` (53 in V-NOC) return the project function they were
+  given: TCL names them after the library, which is right until TC10 follows them. And the declaration of a maker can have no name
+  (zustand's store hook and `cva` are call signatures: 433 of V-NOC's 766): TCL names a library-made function after **the call as written
+  in the project** (`useStore()`, `create()()`), never after the declaration (`11-later.md` §4.1).

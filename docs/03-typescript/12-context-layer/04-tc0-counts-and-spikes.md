@@ -151,7 +151,7 @@ pass, "a value is complete when every assignment was read" does not hold as writ
   same `[profile.dev]` lines, the same `rev` for every `tsrs_*`, and `CARGO_TARGET_DIR=../../target` when built. Then no engine crate
   is compiled again (measured 2026-11-23 with a probe: only the probe itself compiled), where a target of its own would cost about
   2 GB of a disk that has 3.5 GB free.
-- **Counts** (N1 – N8): they need what `sem` knows, so they are counters in the analyzer, as the origin split was, **behind the feature `__tc0_counts`** (§3.3) so that no snapshot changes while they exist. A count that a later
+- **Counts** (N1 – N8): they need what `sem` knows, so they are counters in the analyzer, as the origin split was, **behind the feature `__tc0_counts`** (§3.3) so that no snapshot changes while they exist. They are all removed together, with the feature, at step 7, once every number is written (decided 2026-11-23: one removal, not one per count). A count that a later
   phase reads again stays (N6 becomes a line of the breakdown); the others are removed in the commit that writes their numbers down.
 - **The measure** (S-TC4): stays, in `tests/sweep.rs`.
 - **Answers**: `languages/typescript/ENGINE.md`, a section "TC0: what was counted". Corrections to this folder in the same commit as
@@ -165,7 +165,7 @@ Memory: the machine has 8 GB. One project at a time, `-j2`, `--test-threads=2`, 
 |---|---|---|
 | 1 | S-TC1. **Done** (spike 9b91422, reviewed 2026-11-23: 40 of 40 as expected, and seven more shapes probed by the reviewer) | the table in `ENGINE.md` |
 | 2 | S-TC4: the sample entries and the per-site measure, on today's code. **Built** (`b0f21fb`; reviewed 2026-11-23, baseline in `ENGINE.md`; a fix for its memory on a full sweep follows; vscode's row waits) | the baseline table |
-| 3 | N2, N3, N8: they split counters that exist | three tables |
+| 3 | N2, N3, N8: they split counters that exist. **Done** (`25a04c8`; reviewed 2026-11-23, tables in `ENGINE.md`: TC3 stays before TC4, `max_depth` 2 stands, TC4/TC5 waits for N1) | three tables |
 | 4 | N1, N4, N5, N7: they read arguments and assignments, which is most of S-TC2's reader | four tables; S-TC2's list of syntax with no `Expr` |
 | 5 | S-TC2's cost, S-TC3 | the numbers; where the hash lives |
 | 6 | N6, from the arguments N1 found | the distribution |
