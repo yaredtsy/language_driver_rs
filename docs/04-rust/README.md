@@ -75,11 +75,12 @@ shapes it needs: [`02-architecture.md`](02-architecture.md) §7 is the list of w
 
 ## What V-NOC gets, and when
 
-```
-**Tags, as the owner will make them (2026-11-17):** none before the default resolver (RS0–RS5) is finished; then the first Rust tag.
-The qualname rule (rule 10) freezes at that tag, not at RS2: until then a naming change is still allowed. The three milestones below
-stay the plan's order of work.
+**Tags, as the owner made them (decided 2026-11-17, tagged 2026-11-23):** none before the default resolver (RS0–RS5) was finished;
+then one tag, **`rust-v0.1.0` on `cdc4f42`**, which holds all of layer 1: the three milestones below arrived together. The qualname rule
+(rule 10) froze at that tag, not at RS2. The names in the block are the plan's order of work, not tag names: the next Rust tag is
+`rust-v0.2.0`, whatever it adds.
 
+```
 rust-v0.1.0   .rs files appear in the tree and on the canvas · docs attach · docs survive renames
 rust-v0.2.0   call trees, computed whole
 rust-v0.3.0   call trees that open one level at a time, can be cancelled, are fast the second time
