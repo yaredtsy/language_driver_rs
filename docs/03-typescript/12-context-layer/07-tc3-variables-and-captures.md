@@ -53,10 +53,14 @@ pub(crate) struct Var {
 | an assignment **inside a nested function**, def or anonymous, to a variable of this scope | counted here, in the declaring scope's table |
 
 The last row is what makes "complete" checkable ([03](03-design.md) §5): the reader walks the whole text of the declaring function,
-its nested functions included, looking for writes to the function's own variables. S-TC2 measured that pass.
+its nested functions included, looking for writes to the function's own variables. (S-TC2 was to measure that pass; TC0 moved the measure
+into TC1 step 2, `ENGINE.md` "S-TC2, S-TC3, N6".)
 
 **The reader does not trust its own list.** For every reference of the variable in that text it asks `ast::is_write_access`. A write that is
-none of the rows above makes the variable `open` and is counted `variable_write_unmodelled`. The count is expected to fall to 0 as rows are
+none of the rows above makes the variable `open` and is counted `variable_write_unmodelled`. The references are found by a text search of the
+variable's scope and the node at each hit, the helper TC0 built and deleted (`names_in`, at `25793b3` in `src/sem/resolve.rs`; the
+engine's own scoped search is not reachable: `ENGINE.md` "N4, N7: reading the writes of a name"); it must take a private name (`#x`) too.
+TC0 counted the writes it would not read: 0, 29 and 148 names on the three projects (N4). The count is expected to fall to 0 as rows are
 added; while it is not 0, a form nobody thought of costs precision and never an edge ([03](03-design.md) §5).
 
 An identifier that names a variable becomes `Expr::Var(id)`. `Param(i)` of TC2 stays for the parameter as passed; a parameter the body
