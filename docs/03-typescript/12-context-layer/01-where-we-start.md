@@ -126,9 +126,10 @@ None is large. Each is a step of TC1 or TC2, or goes before them.
    struct cannot hold a value that borrows from itself. So the table holds numbers, and `sem` converts at its door
    ([03](03-design.md) §4). It also may not hold an `Rc`: `Sem` is `Send` today (a `Session` moves to a worker thread, and doctests
    pin it), an `Rc` inside would end that. `Sem::bodies` already uses `Arc`.
-7. **H17 is not built.** The type `Node` is still used outside `sem/view/` (112 signatures). `sem/flow.rs` will read every kind of
-   expression, and an engine accessor that panics on an unexpected kind was H14. H17 goes first
-   ([`../10-review-fixes.md`](../10-review-fixes.md) §6.3).
+7. **H17 is not built.** The engine's downcasts (`as_binary_expression` and 184 more) panic on the wrong kind in every build and are
+   not banned yet; `sem` calls 13 of them outside `sem/view/`. `sem/flow.rs` will read every kind of expression, and an engine
+   accessor that panics on an unexpected kind was H14. H17 goes first ([`../10-review-fixes.md`](../10-review-fixes.md) §6.3,
+   revised 2026-11-23: the ban of the type `Node` was dropped, it would not stop a panic).
 
 Two more, noted and not blocking: the origin counter cannot tell a function's own parameter from one it captures from the function
 around it (TC0 splits it); and a sweep at depth 1 says nothing about this layer, because an entry always has the open key (TC0 defines

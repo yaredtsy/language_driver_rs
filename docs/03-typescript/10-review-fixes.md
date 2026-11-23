@@ -286,7 +286,8 @@ only).
 | H14 | **built** (733e26c; reviewed 2026-11-19, accepted). **found by the owner, 2026-11-19; the fix revised at the review (§6.2: typed views, one name spelling shared with the outline, clippy bans).** a library method with a computed name (`a[Symbol.iterator]()`) panics inside the engine (`Node.Text` on a `ComputedPropertyName`), in any build: `classify` reads the external's name with a panicking accessor. §6.2 | §6.2 (c), and the check of (b) |
 | H15 | **built** (ae59938; reviewed 2026-11-19). An anonymous class written directly as the callee of `new` counted `decl_not_in_outline` at the top of a file and drew a false `Call` to the enclosing def inside one (§6.3) | fixture `anonymous-in-place` |
 | H16 | **closed, no code**: vscode's slow entries are the machine's swap (§6.3) | — |
-| H17 | **not built**: the type `Node` only in `sem/view/` (§6.3) | — |
+| H17 | **not built; revised 2026-11-23**: the engine's 185 downcasts (`as_<kind>`, they `assert!` the kind in every build) banned outside `sem/view/` like H14's accessors, six views by kind for the 13 calls; the type ban of the first version dropped, it would not stop a panic (§6.3) | clippy `-D warnings` with the ban; the totality walk meets every kind of the six views; every snapshot unchanged; one hash per graph equal before and after on the four projects |
+| H20 | **not built** (found 2026-11-23): `typescript-syntax`'s five raw accessors are guarded by their callers (§6.3) | before the next tag of `typescript-syntax` |
 | H18 | **found by the owner, 2026-11-19; (a) built (520770f), (b) the owner's.** the renderer's 100,000-node limit cuts the tree of a complete graph (`runAgent`: 1,974 contexts, 100,000 lines, `[Cut]` on the root) while the breakdown says `cuts: none`; the merged wire is merged from the cut tree. §6.4 | (a) with row 8; (b) the owner's |
 | H19 | **built** (8995425; reviewed 2026-11-19: three runs at `--test-threads=2` pass). **found at row 8's review, 2026-11-19.** `tests/threads.rs` (`opening_on_one_thread_and_dropping_on_another_100_times_does_not_grow_the_process`) reads the whole process's resident memory while other tests of its binary run: it passes at the default thread count (3 runs by the reviewer) and fails at `--test-threads=2` (34 → 78 MB against a limit of 30). The memory tests of `tests/memory.rs` already take one lock for this (H2); this one does not | take the same kind of lock in `threads.rs` |
 
@@ -444,10 +445,37 @@ driver runs the analyzer in a process it supervises, so one panic costs one requ
   (slowest entry 186 ms) and then 355 s (slowest 6 s): the machine has 8 GB of memory, and 5 to 5.4 GB of swap was in use during the
   slow runs. The counter `uncovered_construct_initializer_sites` is 1.4% of a sweep. A sweep's times on this machine are only
   comparable when the swap is low.
-- **H17: the type `Node` only in `sem/view/`.** `disallowed-types` for the engine's node outside the views; 112 signatures of `sem`
-  name `P<Node>` today. After H14, as its own step: a mechanical change of every signature, with no answer changing. **Not built.**
-  H14 built views **by capability** (`HasExpression`, `CallOrNew`, `Members`, `NameToken`, …: ten views, one cast serving several
-  kinds) rather than one per node kind; H17 needs a view for every kind that sem holds, so it may add views by kind.
+- **H17: no call outside `sem/view/` can panic on the kind of a node.** **Revised 2026-11-23 before it was built** (the manager of
+  the context layer, reading the code and tsrs at the pin):
+  - **The first version is dropped: "the type `Node` only in `sem/view/`", by `disallowed-types`.** It would not stop the panic it is
+    for. Clippy's `disallowed-types` fires where a type is *written* (a signature, a `let x: P<Node>`), not where it is *inferred*:
+    `let d = symbol.declarations()[0]; d.as_binding_element()` names no type. And the checker takes and returns raw nodes
+    (`get_symbol_at_location`, `declarations`), so a view would have to hand its raw node back to every checker call, and anything
+    can be asked of that node. The price was 112 signatures changed for no answer changed.
+  - **The hole that is real, and was not seen at H14: the engine's downcasts.** `Node::as_binary_expression()` and 182 more
+    (`as_<kind>`, every one in `impl Node` of `tsrs_ast/src/generated.rs` at the pin) begin with `assert!(self.data_tag() == …)`:
+    on the wrong kind they panic, **in every build**, like H14's accessors, and `clippy.toml` does not list them. `sem` calls 13 of
+    them outside `sem/view/` (`hierarchy.rs` 1, `collect.rs` 5, `handed.rs` 6, `coverage.rs` 1), each behind a kind check written
+    by hand beside it: the rule that failed at H14. `ast.rs` adds two more of the kind (`as_source_file_p`,
+    `as_flow_reduce_label_data_p`); `sem` calls neither.
+  - **The fix.** (a) Six views by kind in `sem/view/` (`Binary`, `ElementAccess`, `TaggedTemplate`, `Conditional`, `Binding`,
+    `StaticBlock`), and the 13 calls go through them. (b) `clippy.toml` bans all 185 downcasts by path, as it bans H14's accessors
+    (the list is generated from the engine's source; the command is in the file's header, and `ENGINE.md`'s bump steps say to run
+    it again). (c) The totality walk of H14 covers the six views. (d) The sweep can write one hash per graph
+    (`TS_SWEEP_DUMP`), so "no answer changed" is shown on the four projects, not only on the fixtures.
+  - **Then:** every call outside `sem/view/` that could panic on the kind of a node fails `clippy -D warnings`, so `sem/flow.rs`
+    (TC1) cannot be written with one. That was the reason to do H17 before TC1.
+  - **Still outside the ban, said so:** the engine's free functions (`ast::is_declaration_name` unwraps a parent,
+    `ast::get_source_file_of_node` downcasts what it found) and the checker's own functions are trusted as the engine's: the checker
+    calls them on any node itself. And `typescript-syntax` (the outline) calls five raw accessors in its `sem.rs`, guarded by its
+    callers (H20 below).
+- **H20 (found at H17's revision, 2026-11-23; not built): the outline's raw accessors.** `typescript-syntax/src/sem.rs`'s
+  `initializer`, `expression`, `members`, `statements` (guarded by `can_have_statements`) and `declarations` call the engine's
+  panicking accessors and two downcasts; `members` calls `Node::members` for any kind that is not an object literal. Today every
+  caller in `outline.rs` asks only for a kind the engine handles (the four sweeps run the outline on every file, and none panicked).
+  The fix is H14's, at the size of that file: each accessor checks the kind it is given and answers nothing otherwise, and a
+  `clippy.toml` for the crate bans the raw calls outside those five functions. Not needed by any phase of the context layer, which
+  does not touch the outline; do it before the next tag of `typescript-syntax`.
 
 ### 6.4 H18: the renderer's node limit cuts a complete graph, and nothing says so (found by the owner, 2026-11-19; (a) built in 520770f, (b) not built)
 

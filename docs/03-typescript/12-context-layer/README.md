@@ -132,6 +132,6 @@ Checked against Python's `interp/` and against tsrs at the pin `13a31a4`. Bend's
 | 10 | "never fewer edges" is also counted on the four projects | a cut loses a subtree the default tree shows, and no fixture reaches a cap | this page, [03](03-design.md) §12 |
 | 11 | a capability bit per phase; a version for context ids; neutral files; crates | so that each phase is an addition | [03](03-design.md) §15 |
 | 12 | Q-TC1 is answered (D54); TCL is pulled out of TC10; Q-TC6 is new. Answered by you the same day: D56 (TCL), D57 (`xxhash-rust` in core), D58 (arrows stay, TC7 not scheduled) | | this page, `docs/07` |
-| 13 | H17 (engine nodes only through `sem/view/`) goes before TC1 | `sem/flow.rs` reads more kinds of node than all of `sem` does today, and H14 was a panic of exactly that kind | [05](05-tc1-the-body-as-data.md) §8 |
+| 13 | H17 (no call outside `sem/view/` that can panic on a node's kind; revised 2026-11-23: the engine's downcasts banned, the type ban dropped) goes before TC1 | `sem/flow.rs` reads more kinds of node than all of `sem` does today, and H14 was a panic of exactly that kind | [05](05-tc1-the-body-as-data.md) §8 |
 
 Next: [`01-where-we-start.md`](01-where-we-start.md)

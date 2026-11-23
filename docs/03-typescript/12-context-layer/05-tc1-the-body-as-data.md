@@ -140,7 +140,7 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
 
 | # | Do | Proof |
 |---|---|---|
-| 0 | **H17 first** ([`../10-review-fixes.md`](../10-review-fixes.md) §6.3): the engine's `Node` only inside `sem/view/`. `sem/flow.rs` is then written against the views from its first line | clippy's `disallowed-types` passes; the four sweeps: `engine_kind_unhandled` 0, graphs byte-identical |
+| 0 | **H17 first** ([`../10-review-fixes.md`](../10-review-fixes.md) §6.3, revised 2026-11-23): every engine accessor and downcast that can panic on a kind is banned outside `sem/view/`. `sem/flow.rs` is then written against the views from its first line, and adds a view by kind for each kind it reads | clippy `-D warnings` with the ban; the four sweeps: `engine_kind_unhandled` 0, one hash per graph equal before and after |
 | 1 | `Precision`, the capability set, `Options::precision`, `--precise`; `KeyId`, `Keys`, the five literals | all tests green; `cargo tree`: `indexmap`, `smallvec`, `bitflags`, `rustc-hash` become direct dependencies, and no crate is new to the lockfile but `proptest` (tests only) |
 | 2 | `flow.rs`; `sem/flow.rs` for sites and arguments | the `call_sites` equality |
 | 3 | `handed` in the table | the `handed_over` equality |
