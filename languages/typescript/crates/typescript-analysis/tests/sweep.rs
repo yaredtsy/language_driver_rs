@@ -13,16 +13,29 @@
 //! `none` when there is no graph). Two dumps are comparable only when both builds were made with the same toolchain (`DefaultHasher`'s algorithm may change between
 //! Rust releases); a line that differs is re-run alone with `TS_SWEEP_ENTRY`.
 //!
+//! `TS_SWEEP_SAMPLE=<file>` runs only the entries of that file instead of every def: one per line, fields separated by a tab, blank lines and lines starting with
+//! `#` skipped. `<file>` is the file's own code, `<file>\t<qualname>` that def (occurrence 0) and `<file>\t<qualname>\t<n>` its n-th occurrence; the file is relative to
+//! `TS_SWEEP_ROOT`. In a sample run the depth is `TS_SWEEP_DEPTH` when that is set and the whole graph when it is not (outside a sample run the default is 1),
+//! `TS_SWEEP_ONLY` and `TS_SWEEP_ENTRY` are ignored, and a line whose graph is `None` is a failure. In the dump, a file entry's qualname is `FILE` and its occurrence `0`.
+//!
+//! `TS_SWEEP_SITES=<file>` writes the site measure (see "The site measure" below), one line per site open in some context, in key order:
+//! `<file>\t<qualname>\t<occurrence>\t<start>\t<end>\t<reasons joined by ,>\t<contexts that reach it>\t<contexts it is open in>`.
+//!
+//! `TS_SWEEP_BASELINE=<file>` reads a file written that way (its first five fields name the site, the sixth is its reasons) and says, for each of its sites, whether this
+//! run leaves it open in every context that reaches it, in some, in none, or does not reach it; and how many sites open in this run the file does not have.
+//!
 //! Depth 1 resolves every site of the project exactly once, which is what finds a disagreement between the engine and the outline; a larger depth is for the
 //! speed runs. It fails when a graph counted `decl_not_in_outline` or `engine_kind_unhandled` (the first 20 entries of each are named), and a panic in any graph is a failure by itself: nothing
 //! here catches one.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hasher;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use typescript_analysis::{Budget, Cancel, Entry, MarkerStyle, Options, Placement, Session};
+use typescript_analysis::{
+    Budget, Cancel, ContextId, EdgeTo, Entry, Graph, MarkerStyle, Options, Placement, Session,
+};
 use typescript_syntax::Dialect;
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
@@ -35,6 +48,272 @@ fn rss_mb() -> f64 {
     usage.physical_mem as f64 / (1024.0 * 1024.0)
 }
 
+// ---- The site measure ------------------------------------------------------------------------------------------------------------------------------------
+//
+// `docs/03-typescript/12-context-layer/04-tc0-counts-and-spikes.md` §3.2. With contexts, one call site gives one edge per context that reaches it, so counting edges
+// cannot say how many sites a phase answers. This counts sites.
+//
+// A **site** is named by what does not move between runs and phases: the def it is in (file, qualname, occurrence, from `Graph::defs`) and its `Site` (relative to the
+// def). A context **reaches** a site when it has an edge there (every site has one: an unknown target is an `Unresolved` edge, never dropped). A site is **open in** a
+// context when that context's edge there is `Unresolved`. Contexts are told apart by `ContextId`, over every graph of the run, so a context that two entries both reach
+// is one. Edges handed over and not called (`passed`) are not sites.
+
+/// A call site, by what does not move between runs and phases: its def (file, qualname, occurrence) and its `Site` (relative to the def).
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct SiteKey {
+    file: String,
+    qualname: String,
+    occurrence: u16,
+    start: u32,
+    end: u32,
+}
+
+/// What the run saw at one site: the contexts with an edge there, those with an `Unresolved` edge there, and the reasons.
+#[derive(Default, Debug)]
+struct SiteSeen {
+    reaching: BTreeSet<ContextId>,
+    open_in: BTreeSet<ContextId>,
+    reasons: BTreeSet<String>,
+}
+
+impl SiteSeen {
+    fn reasons_text(&self) -> String {
+        self.reasons
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+}
+
+/// Adds every call edge of `graph` (not the `passed` ones) to `sites`.
+fn add_sites(sites: &mut BTreeMap<SiteKey, SiteSeen>, graph: &Graph) {
+    for edge in graph.edges.iter().filter(|edge| !edge.passed) {
+        let def = graph
+            .def(&edge.from.func)
+            .unwrap_or_else(|| panic!("a broken graph: no def row for {:?}", edge.from.func));
+        let key = SiteKey {
+            file: def.file.clone(),
+            qualname: def.qualname.clone(),
+            occurrence: def.occurrence,
+            start: edge.site.start,
+            end: edge.site.end,
+        };
+        let seen = sites.entry(key).or_default();
+        seen.reaching.insert(edge.from.clone());
+        if let EdgeTo::Unresolved(reason) = &edge.to {
+            seen.open_in.insert(edge.from.clone());
+            seen.reasons.insert(reason.as_str().to_owned());
+        }
+    }
+}
+
+/// How many sites are open, and in how many of those the site is open in every context that reaches it and in some.
+#[derive(Default, Debug, PartialEq, Eq)]
+struct OpenCounts {
+    total: u64,
+    every: u64,
+    some: u64,
+}
+
+/// The counts over the sites open somewhere, in total and per reason set (the reasons joined by `,`), sorted by that text.
+fn open_counts(sites: &BTreeMap<SiteKey, SiteSeen>) -> (OpenCounts, BTreeMap<String, OpenCounts>) {
+    let mut all = OpenCounts::default();
+    let mut by_reason: BTreeMap<String, OpenCounts> = BTreeMap::new();
+    for seen in sites.values().filter(|seen| !seen.open_in.is_empty()) {
+        let every = seen.open_in == seen.reaching;
+        for counts in [&mut all, by_reason.entry(seen.reasons_text()).or_default()] {
+            counts.total += 1;
+            if every {
+                counts.every += 1;
+            } else {
+                counts.some += 1;
+            }
+        }
+    }
+    (all, by_reason)
+}
+
+/// The text of `TS_SWEEP_SITES`: one line per site open in some context, in key order.
+fn sites_text(sites: &BTreeMap<SiteKey, SiteSeen>) -> String {
+    let mut text = String::new();
+    for (key, seen) in sites.iter().filter(|(_, seen)| !seen.open_in.is_empty()) {
+        text.push_str(&format!(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+            key.file,
+            key.qualname,
+            key.occurrence,
+            key.start,
+            key.end,
+            seen.reasons_text(),
+            seen.reaching.len(),
+            seen.open_in.len()
+        ));
+    }
+    text
+}
+
+/// What a run says about a site of a baseline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum SiteState {
+    /// Open in every context that reaches it.
+    Every,
+    /// Open in some of them.
+    Some,
+    /// Reached, and open in none.
+    None,
+    /// No context of this run has an edge there.
+    NotReached,
+}
+
+impl SiteState {
+    const ALL: [SiteState; 4] = [
+        SiteState::Every,
+        SiteState::Some,
+        SiteState::None,
+        SiteState::NotReached,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            SiteState::Every => "every",
+            SiteState::Some => "some",
+            SiteState::None => "none",
+            SiteState::NotReached => "not reached",
+        }
+    }
+}
+
+/// One site of a baseline, and its state in this run.
+#[derive(Debug, PartialEq, Eq)]
+struct Compared {
+    key: SiteKey,
+    /// The baseline's reasons for the site: the sixth field of its line.
+    reasons: String,
+    state: SiteState,
+}
+
+/// Each site of `baseline` (the text of an earlier `TS_SWEEP_SITES`), in its order, with its state in `sites`; and the number of sites open in `sites` that the
+/// baseline does not have.
+fn compare_with_baseline(
+    sites: &BTreeMap<SiteKey, SiteSeen>,
+    baseline: &str,
+) -> (Vec<Compared>, usize) {
+    let mut compared = Vec::new();
+    let mut known: BTreeSet<SiteKey> = BTreeSet::new();
+    for line in baseline.lines().filter(|line| !line.is_empty()) {
+        let fields: Vec<&str> = line.split('\t').collect();
+        assert!(
+            fields.len() >= 6,
+            "a baseline line with too few fields: {line:?}"
+        );
+        let number = |at: usize| -> u32 {
+            fields[at]
+                .parse()
+                .unwrap_or_else(|_| panic!("a baseline line with a bad number: {line:?}"))
+        };
+        let key = SiteKey {
+            file: fields[0].to_owned(),
+            qualname: fields[1].to_owned(),
+            occurrence: u16::try_from(number(2)).expect("an occurrence fits u16"),
+            start: number(3),
+            end: number(4),
+        };
+        let state = match sites.get(&key) {
+            None => SiteState::NotReached,
+            Some(seen) if seen.open_in.is_empty() => SiteState::None,
+            Some(seen) if seen.open_in == seen.reaching => SiteState::Every,
+            Some(_) => SiteState::Some,
+        };
+        known.insert(key.clone());
+        compared.push(Compared {
+            key,
+            reasons: fields[5].to_owned(),
+            state,
+        });
+    }
+    let new_open = sites
+        .iter()
+        .filter(|(key, seen)| !seen.open_in.is_empty() && !known.contains(*key))
+        .count();
+    (compared, new_open)
+}
+
+fn print_measure(sites: &BTreeMap<SiteKey, SiteSeen>) {
+    let (all, by_reason) = open_counts(sites);
+    eprintln!(
+        "open sites: {} ({} open in every context that reaches them, {} in some)",
+        all.total, all.every, all.some
+    );
+    for (reasons, counts) in &by_reason {
+        eprintln!(
+            "  {reasons}: {} ({} every, {} some)",
+            counts.total, counts.every, counts.some
+        );
+    }
+}
+
+fn print_baseline(sites: &BTreeMap<SiteKey, SiteSeen>, baseline: &str) {
+    let (compared, new_open) = compare_with_baseline(sites, baseline);
+    let tally = |compared: &[&Compared]| {
+        SiteState::ALL.map(|state| compared.iter().filter(|site| site.state == state).count())
+    };
+    let line = |name: &str, counts: [usize; 4]| {
+        let states: Vec<String> = SiteState::ALL
+            .iter()
+            .zip(counts)
+            .map(|(state, count)| format!("{count} {}", state.label()))
+            .collect();
+        eprintln!("  {name}: {}", states.join(", "));
+    };
+    eprintln!("against the baseline ({} sites):", compared.len());
+    line("total", tally(&compared.iter().collect::<Vec<_>>()));
+    let mut by_reason: BTreeMap<&str, Vec<&Compared>> = BTreeMap::new();
+    for site in &compared {
+        by_reason.entry(&site.reasons).or_default().push(site);
+    }
+    for (reasons, group) in &by_reason {
+        line(reasons, tally(group));
+    }
+    eprintln!("new open sites (open in this run, not in the baseline): {new_open}");
+}
+
+// ---- The sample --------------------------------------------------------------------------------------------------------------------------------------------
+
+/// One entry of a sample file.
+#[derive(Debug, PartialEq, Eq)]
+struct SampleEntry {
+    file: String,
+    /// `None`: the file's own code.
+    def: Option<(String, u16)>,
+}
+
+fn parse_sample(text: &str) -> Vec<SampleEntry> {
+    text.lines()
+        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+        .map(|line| {
+            let fields: Vec<&str> = line.split('\t').collect();
+            let def = match fields[..] {
+                [_] => None,
+                [_, qualname] => Some((qualname.to_owned(), 0)),
+                [_, qualname, occurrence] => Some((
+                    qualname.to_owned(),
+                    occurrence.parse().unwrap_or_else(|_| {
+                        panic!("a sample line with a bad occurrence: {line:?}")
+                    }),
+                )),
+                _ => panic!("a sample line with too many fields: {line:?}"),
+            };
+            SampleEntry {
+                file: fields[0].to_owned(),
+                def,
+            }
+        })
+        .collect()
+}
+
+// ---- The run -----------------------------------------------------------------------------------------------------------------------------------------------
+
 /// One graph that was made.
 struct Made {
     file: String,
@@ -43,20 +322,113 @@ struct Made {
     contexts: u64,
 }
 
+/// What the graphs of a run add up to.
+#[derive(Default)]
+struct Totals {
+    dump: Option<Vec<String>>,
+    defs: u64,
+    no_graph: u64,
+    made: Vec<Made>,
+    counts: BTreeMap<String, u64>,
+    gaps: Vec<String>,
+    unhandled: Vec<String>,
+    sites: BTreeMap<SiteKey, SiteSeen>,
+}
+
+impl Totals {
+    /// Adds the graph of one entry. `time` was taken right after the graph was made, before anything here.
+    fn add(
+        &mut self,
+        file: &str,
+        qualname: &str,
+        occurrence: u16,
+        graph: Option<Graph>,
+        time: Duration,
+    ) {
+        self.defs += 1;
+        if let Some(dump) = &mut self.dump {
+            let hash = graph.as_ref().map_or_else(
+                || "none".to_owned(),
+                |graph| {
+                    let mut hasher = std::hash::DefaultHasher::new();
+                    hasher.write(format!("{graph:?}").as_bytes());
+                    format!("{:016x}", hasher.finish())
+                },
+            );
+            dump.push(format!("{file}\t{qualname}\t{occurrence}\t{hash}"));
+        }
+        let Some(graph) = graph else {
+            self.no_graph += 1;
+            return;
+        };
+        add_sites(&mut self.sites, &graph);
+        let stats = &graph.stats;
+        for (key, value) in [
+            ("walks", stats.walks),
+            ("contexts", stats.contexts),
+            ("reuse_hits", stats.reuse_hits),
+            ("frontier", stats.frontier),
+            ("merged_defs", stats.merged_defs),
+            ("unresolved", stats.unresolved),
+        ] {
+            *self.counts.entry(key.to_owned()).or_default() += value;
+        }
+        for (cut, value) in &stats.cuts {
+            *self.counts.entry(format!("cut {cut:?}")).or_default() += value;
+        }
+        for (key, value) in &stats.language {
+            *self.counts.entry(format!("language {key}")).or_default() += value;
+        }
+        if stats
+            .language
+            .get("decl_not_in_outline")
+            .copied()
+            .unwrap_or(0)
+            > 0
+        {
+            self.gaps.push(format!("{file} {qualname}"));
+        }
+        if stats
+            .language
+            .get("engine_kind_unhandled")
+            .copied()
+            .unwrap_or(0)
+            > 0
+        {
+            self.unhandled.push(format!("{file} {qualname}"));
+        }
+        self.made.push(Made {
+            file: file.to_owned(),
+            qualname: qualname.to_owned(),
+            time,
+            contexts: stats.contexts,
+        });
+    }
+}
+
 #[test]
 #[ignore = "a sweep of a real project, driven by TS_SWEEP_ROOT, TS_SWEEP_FILE and TS_SWEEP_DEPTH"]
 fn sweep_every_def_of_a_project() {
     let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("set {name}"));
     let root = std::path::PathBuf::from(var("TS_SWEEP_ROOT"));
     let file = var("TS_SWEEP_FILE");
-    let depth: u32 = std::env::var("TS_SWEEP_DEPTH")
-        .map(|text| text.parse().expect("TS_SWEEP_DEPTH is a number"))
-        .unwrap_or(1);
+    let depth: Option<u32> = std::env::var("TS_SWEEP_DEPTH")
+        .ok()
+        .map(|text| text.parse().expect("TS_SWEEP_DEPTH is a number"));
+    let sample = std::env::var("TS_SWEEP_SAMPLE").ok().map(|path| {
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
+        parse_sample(&text)
+    });
 
     let only = std::env::var("TS_SWEEP_ONLY").ok();
     let only_entry = std::env::var("TS_SWEEP_ENTRY").ok();
     let dump_to = std::env::var("TS_SWEEP_DUMP").ok();
-    let mut dump: Vec<String> = Vec::new();
+    let sites_to = std::env::var("TS_SWEEP_SITES").ok();
+    let baseline_from = std::env::var("TS_SWEEP_BASELINE").ok();
+    let mut totals = Totals {
+        dump: dump_to.is_some().then(Vec::new),
+        ..Totals::default()
+    };
     let before_open = rss_mb();
     let started = Instant::now();
     let session = Session::open(&root, Path::new(&file), Options::new(STYLE))
@@ -65,118 +437,109 @@ fn sweep_every_def_of_a_project() {
     let after_open = rss_mb();
 
     let files = session.project().expect("a session just opened").files();
-    let budget = Budget::new(Some(depth), None);
+    // a sample run is the whole graph unless asked otherwise; a sweep of every def is depth 1 unless asked otherwise
+    let budget = Budget::new(
+        if sample.is_some() {
+            depth
+        } else {
+            Some(depth.unwrap_or(1))
+        },
+        None,
+    );
     let cancel = Cancel::new();
-    let mut defs = 0;
-    let mut no_graph = 0;
-    let mut made: Vec<Made> = Vec::new();
-    let mut counts: BTreeMap<String, u64> = BTreeMap::new();
-    let mut gaps: Vec<String> = Vec::new();
-    let mut unhandled: Vec<String> = Vec::new();
     let sweep = Instant::now();
-    for name in &files {
-        if only
-            .as_ref()
-            .is_some_and(|only| !name.contains(only.as_str()))
-        {
-            continue;
-        }
-        let Some(dialect) = Dialect::from_path(name) else {
-            continue;
-        };
-        let text = std::fs::read_to_string(root.join(name))
-            .unwrap_or_else(|error| panic!("{name}: {error}"));
-        let outline = typescript_syntax::outline(&text, dialect, STYLE);
-        // the entry names a def by its qualname and which of the same-named defs it is, in source order
-        let mut seen: BTreeMap<&str, u16> = BTreeMap::new();
-        for def in &outline.defs {
-            let occurrence = seen.entry(def.qualname.as_str()).or_default();
-            let skip = only_entry
-                .as_ref()
-                .is_some_and(|only| *only != def.qualname);
-            let this = *occurrence;
-            let entry = Entry::Def {
-                qualname: &def.qualname,
-                occurrence: this,
-            };
-            *occurrence += 1;
-            if skip {
-                continue;
-            }
-            defs += 1;
-            let started = Instant::now();
-            let graph = session.graph(name, &entry, &budget, &cancel);
-            if dump_to.is_some() {
-                let hash = graph.as_ref().map_or_else(
-                    || "none".to_owned(),
-                    |graph| {
-                        let mut hasher = std::hash::DefaultHasher::new();
-                        hasher.write(format!("{graph:?}").as_bytes());
-                        format!("{:016x}", hasher.finish())
+    if let Some(sample) = &sample {
+        for line in sample {
+            let (entry, qualname, occurrence) = match &line.def {
+                None => (Entry::File, "FILE", 0),
+                Some((qualname, occurrence)) => (
+                    Entry::Def {
+                        qualname,
+                        occurrence: *occurrence,
                     },
-                );
-                dump.push(format!("{name}\t{}\t{this}\t{hash}", def.qualname));
+                    qualname.as_str(),
+                    *occurrence,
+                ),
+            };
+            let started = Instant::now();
+            let graph = session.graph(&line.file, &entry, &budget, &cancel);
+            let time = started.elapsed();
+            assert!(
+                graph.is_some(),
+                "no graph for the sample line {:?}",
+                (&line.file, qualname, occurrence)
+            );
+            totals.add(&line.file, qualname, occurrence, graph, time);
+        }
+    } else {
+        for name in &files {
+            if only
+                .as_ref()
+                .is_some_and(|only| !name.contains(only.as_str()))
+            {
+                continue;
             }
-            let Some(graph) = graph else {
-                no_graph += 1;
+            let Some(dialect) = Dialect::from_path(name) else {
                 continue;
             };
-            let time = started.elapsed();
-            let stats = &graph.stats;
-            for (key, value) in [
-                ("walks", stats.walks),
-                ("contexts", stats.contexts),
-                ("reuse_hits", stats.reuse_hits),
-                ("frontier", stats.frontier),
-                ("merged_defs", stats.merged_defs),
-                ("unresolved", stats.unresolved),
-            ] {
-                *counts.entry(key.to_owned()).or_default() += value;
+            let text = std::fs::read_to_string(root.join(name))
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            let outline = typescript_syntax::outline(&text, dialect, STYLE);
+            // the entry names a def by its qualname and which of the same-named defs it is, in source order
+            let mut seen: BTreeMap<&str, u16> = BTreeMap::new();
+            for def in &outline.defs {
+                let occurrence = seen.entry(def.qualname.as_str()).or_default();
+                let skip = only_entry
+                    .as_ref()
+                    .is_some_and(|only| *only != def.qualname);
+                let this = *occurrence;
+                let entry = Entry::Def {
+                    qualname: &def.qualname,
+                    occurrence: this,
+                };
+                *occurrence += 1;
+                if skip {
+                    continue;
+                }
+                let started = Instant::now();
+                let graph = session.graph(name, &entry, &budget, &cancel);
+                let time = started.elapsed();
+                totals.add(name, &def.qualname, this, graph, time);
             }
-            for (cut, value) in &stats.cuts {
-                *counts.entry(format!("cut {cut:?}")).or_default() += value;
-            }
-            for (key, value) in &stats.language {
-                *counts.entry(format!("language {key}")).or_default() += value;
-            }
-            if stats
-                .language
-                .get("decl_not_in_outline")
-                .copied()
-                .unwrap_or(0)
-                > 0
-            {
-                gaps.push(format!("{name} {}", def.qualname));
-            }
-            if stats
-                .language
-                .get("engine_kind_unhandled")
-                .copied()
-                .unwrap_or(0)
-                > 0
-            {
-                unhandled.push(format!("{name} {}", def.qualname));
-            }
-            made.push(Made {
-                file: name.clone(),
-                qualname: def.qualname.clone(),
-                time,
-                contexts: stats.contexts,
-            });
         }
     }
     let all_graphs = sweep.elapsed();
-    if let Some(path) = &dump_to {
+    if let (Some(path), Some(dump)) = (&dump_to, &mut totals.dump) {
         dump.sort();
         let mut text = dump.join("\n");
         text.push('\n');
         std::fs::write(path, text).unwrap_or_else(|error| panic!("{path}: {error}"));
     }
+    if let Some(path) = &sites_to {
+        std::fs::write(path, sites_text(&totals.sites))
+            .unwrap_or_else(|error| panic!("{path}: {error}"));
+    }
     let after_last = rss_mb();
 
+    let Totals {
+        defs,
+        no_graph,
+        mut made,
+        counts,
+        gaps,
+        unhandled,
+        sites,
+        ..
+    } = totals;
+    let depth_text = depth.map_or_else(|| "the whole graph".to_owned(), |depth| depth.to_string());
     eprintln!(
-        "depth {depth}: {} files, {defs} defs, {} graphs made ({no_graph} defs with no graph)",
+        "depth {depth_text}: {} files, {defs} {}, {} graphs made ({no_graph} with no graph)",
         files.len(),
+        if sample.is_some() {
+            "sample entries"
+        } else {
+            "defs"
+        },
         made.len()
     );
     eprintln!("open: {open_time:?}");
@@ -201,6 +564,12 @@ fn sweep_every_def_of_a_project() {
     for (key, value) in &counts {
         eprintln!("  {key}: {value}");
     }
+    print_measure(&sites);
+    if let Some(path) = &baseline_from {
+        let baseline =
+            std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{path}: {error}"));
+        print_baseline(&sites, &baseline);
+    }
     assert!(
         gaps.is_empty(),
         "decl_not_in_outline is counted by {} entries; the first 20: {:#?}",
@@ -212,5 +581,121 @@ fn sweep_every_def_of_a_project() {
         "engine_kind_unhandled is counted by {} entries; the first 20: {:#?}",
         unhandled.len(),
         &unhandled[..unhandled.len().min(20)]
+    );
+}
+
+#[test]
+fn the_site_measure_tells_every_some_none_and_not_reached() {
+    use typescript_analysis::DefKind;
+    use typescript_analysis::{
+        Basis, Context, DefInfo, Edge, Reason, Site, Span, StableDef, Stats,
+    };
+
+    let def = |name: &str, range: Span| {
+        DefInfo::new(
+            StableDef::Path {
+                module: "a.ts".to_owned(),
+                qname: name.to_owned(),
+                nth: 0,
+            },
+            name,
+            name,
+            0,
+            DefKind::Function,
+            "a.ts",
+            range,
+        )
+    };
+    let func = |name: &str| StableDef::Path {
+        module: "a.ts".to_owned(),
+        qname: name.to_owned(),
+        nth: 0,
+    };
+    let context = |name: &str, digest: u8| ContextId {
+        func: func(name),
+        digest: [digest; 16],
+    };
+    let (f0, f1, g0) = (context("f", 0), context("f", 1), context("g", 0));
+    let open = |reason: &str| EdgeTo::Unresolved(Reason::new(reason));
+    let calls_g = || EdgeTo::Context(g0.clone(), Basis::Type);
+    let edges = vec![
+        Edge::new(f0.clone(), Site::new(10, 20), open("function_typed_value")),
+        Edge::new(f1.clone(), Site::new(10, 20), open("function_typed_value")),
+        Edge::new(f0.clone(), Site::new(30, 40), open("any_or_untyped")),
+        Edge::new(f1.clone(), Site::new(30, 40), calls_g()),
+        Edge::new(f0.clone(), Site::new(50, 60), calls_g()),
+        Edge::new(f1.clone(), Site::new(50, 60), calls_g()),
+    ];
+    let graph = Graph::new(
+        vec![],
+        vec![def("f", Span::new(0, 100)), def("g", Span::new(200, 300))],
+        vec![Context::new(f0), Context::new(f1), Context::new(g0.clone())],
+        edges,
+        Stats::default(),
+    );
+
+    let mut sites = BTreeMap::new();
+    add_sites(&mut sites, &graph);
+
+    // 1. two open sites: 10..20 in every context, 30..40 in some; 50..60 is a site, open nowhere
+    let (all, _) = open_counts(&sites);
+    assert_eq!(
+        all,
+        OpenCounts {
+            total: 2,
+            every: 1,
+            some: 1
+        }
+    );
+    assert_eq!(sites.len(), 3);
+    let answered = sites
+        .iter()
+        .find(|(key, _)| key.start == 50)
+        .expect("50..60 is a site");
+    assert!(answered.1.open_in.is_empty());
+
+    // 2. the lines of TS_SWEEP_SITES
+    let text = sites_text(&sites);
+    let wanted = "a.ts\tf\t0\t10\t20\tfunction_typed_value\t2\t2\n\
+                  a.ts\tf\t0\t30\t40\tany_or_untyped\t2\t1\n";
+    assert_eq!(text, wanted);
+
+    // 3. against a baseline of four sites
+    let baseline = format!(
+        "{wanted}a.ts\tf\t0\t50\t60\tfunction_typed_value\t1\t1\na.ts\tf\t0\t70\t80\tfunction_typed_value\t1\t1\n"
+    );
+    let (compared, new_open) = compare_with_baseline(&sites, &baseline);
+    let states: Vec<SiteState> = compared.iter().map(|site| site.state).collect();
+    assert_eq!(
+        states,
+        [
+            SiteState::Every,
+            SiteState::Some,
+            SiteState::None,
+            SiteState::NotReached
+        ]
+    );
+    assert_eq!(new_open, 0);
+}
+
+#[test]
+fn a_sample_file_names_files_and_defs() {
+    let text = "# a comment\n\nsrc/a.ts\nsrc/a.ts\tf\nsrc/b.ts\tC.m\t2\n";
+    assert_eq!(
+        parse_sample(text),
+        [
+            SampleEntry {
+                file: "src/a.ts".to_owned(),
+                def: None
+            },
+            SampleEntry {
+                file: "src/a.ts".to_owned(),
+                def: Some(("f".to_owned(), 0))
+            },
+            SampleEntry {
+                file: "src/b.ts".to_owned(),
+                def: Some(("C.m".to_owned(), 2))
+            },
+        ]
     );
 }
