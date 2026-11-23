@@ -88,7 +88,9 @@ fi
 # bend-parser is the engine Bend has no other source for (BD-D1): it depends on analyzer-core and on nothing else, dev-dependencies included
 if [ -d languages/bend/crates/bend-parser ]; then
   parser_deps=$(cd languages/bend && cargo tree --locked -p bend-parser --depth 1 2>&1) || bad "cargo tree -p bend-parser failed: $parser_deps"
-  direct=$(tail -n +2 <<<"$parser_deps" | grep -c . || true)
+  # only the lines of the tree are counted: on a machine that has not fetched the crates yet, cargo's own progress lines ("Updating crates.io index",
+  # "Downloaded ..") arrive on the same stream, and counting them made this check fail in CI the day the Bend workspace gained a crate
+  direct=$(grep -cE '^[├└]── ' <<<"$parser_deps" || true)
   if [ "$direct" != 1 ] || ! grep -q 'analyzer-core' <<<"$parser_deps"; then bad "bend-parser depends on something besides analyzer-core: $parser_deps"; fi
 fi
 
