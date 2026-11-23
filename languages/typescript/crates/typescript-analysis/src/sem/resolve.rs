@@ -8,6 +8,8 @@ use super::hierarchy::{
     declarations_of, declarations_of_signature, declarations_of_union_symbol,
     is_property_function_value, symbol_of_declaration,
 };
+#[cfg(feature = "__tc0_counts")]
+use super::view::ElementAccess;
 use super::view::{expression_of, initializer_of, spelled};
 use super::*;
 
@@ -28,7 +30,8 @@ pub(crate) enum Resolved<'p> {
 }
 
 /// What is known about a site beyond what it resolves to, found while the declarations were at hand.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(not(feature = "__tc0_counts"), derive(Copy))]
 pub(crate) struct SiteFacts {
     /// The site is a JSX element: a class it constructs is a class component.
     pub(crate) jsx: bool,
@@ -38,6 +41,19 @@ pub(crate) struct SiteFacts {
     pub(crate) outside_root: u64,
     /// Where the function of a `function_typed_value` answer comes from, when the site has one (`FunctionOrigin`).
     pub(crate) function_typed: Option<FunctionOrigin>,
+    /// The TC0 counts of a `function_typed_value` site (`Tc0Counts`).
+    #[cfg(feature = "__tc0_counts")]
+    pub(crate) tc0: Option<Tc0Counts>,
+}
+
+/// The TC0 counts of one `function_typed_value` site (04-tc0-counts-and-spikes.md §3.3): the keys to note, once per such edge.
+#[cfg(feature = "__tc0_counts")]
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Tc0Counts {
+    /// Keys without a run-time part: `tc0_n2_own`, `tc0_n2_depth_1`, `tc0_n3_value`, `tc0_n8_project`, …
+    pub(crate) fixed: Vec<&'static str>,
+    /// Keys with one: `tc0_n8_package:<package>:<name>`.
+    pub(crate) named: Vec<String>,
 }
 
 /// Where the function a `function_typed_value` call goes through comes from, told by the **leftmost name** of the callee expression: `onClose` in `onClose()`,
@@ -174,6 +190,10 @@ impl Sem {
             .count() as u64;
         if found.contains(&Resolved::Unknown(Why::FunctionTypedValue)) {
             facts.function_typed = self.function_origin(func, site_index, style);
+            #[cfg(feature = "__tc0_counts")]
+            if let Some(origin) = facts.function_typed {
+                facts.tc0 = self.tc0_counts(func, site_index, style, origin);
+            }
         }
         (found, facts)
     }
@@ -210,6 +230,91 @@ impl Sem {
                 origin_of_declaration(*declaration)
             });
         Some(origin)
+    }
+
+    /// The TC0 counts of the site (N2 and N3 for a parameter, N8 for a call's result), read from the declaration of the leftmost name of its callee. `None` for the
+    /// other origins, and when the tree is not what the origin said it was (the counts then do not add up, and a test says so).
+    #[cfg(feature = "__tc0_counts")]
+    fn tc0_counts(
+        &self,
+        func: Func<'_>,
+        site_index: usize,
+        style: MarkerStyle<'_>,
+        origin: FunctionOrigin,
+    ) -> Option<Tc0Counts> {
+        if !matches!(
+            origin,
+            FunctionOrigin::Parameter | FunctionOrigin::CallResult
+        ) {
+            return None;
+        }
+        let calls = self.body(func, style)?;
+        let callee = calls.sites.get(site_index)?.expr;
+        let def_node = self.node_of(func, style);
+        let _scope = self.region.enter();
+        let mut checker = self.checker();
+        let name = leftmost_name(callee)?;
+        let declaration = first_declaration(&mut checker, name)?;
+        let (pattern, owner) = walk_out_of_patterns(declaration)?;
+        let members = member_steps(callee);
+        let mut counts = Tc0Counts::default();
+        if origin == FunctionOrigin::Parameter {
+            let function = owner.parent()?;
+            counts.fixed.push(match def_node {
+                Some(def) if function == def => "tc0_n2_own",
+                Some(def) if is_inside(def, function) => "tc0_n2_enclosing",
+                Some(def) if is_inside(function, def) => "tc0_n2_anonymous",
+                _ => "tc0_n2_other",
+            });
+            counts.fixed.push(match pattern + members {
+                0 => "tc0_n2_depth_0",
+                1 => "tc0_n2_depth_1",
+                2 => "tc0_n2_depth_2",
+                _ => "tc0_n2_depth_3_or_more",
+            });
+            counts
+                .fixed
+                .push(match callee_declaration_kind(&mut checker, callee) {
+                    Some(
+                        Kind::MethodSignature
+                        | Kind::MethodDeclaration
+                        | Kind::GetAccessor
+                        | Kind::SetAccessor,
+                    ) => "tc0_n3_method",
+                    Some(_) => "tc0_n3_value",
+                    None => "tc0_n3_unknown",
+                });
+        } else {
+            let call = initializer_of(owner).and_then(call_of_initializer)?;
+            let signature = checker.get_resolved_signature_exported(call);
+            let Some(declaration) = signature.declaration() else {
+                counts.fixed.push("tc0_n8_unknown");
+                return Some(counts);
+            };
+            let Some(source_file) = ast::get_source_file_of_node(declaration) else {
+                counts.fixed.push("tc0_n8_unknown");
+                return Some(counts);
+            };
+            let file = File {
+                node: source_file,
+                _sem: PhantomData,
+                _one_thread: PhantomData,
+            };
+            if self.is_project_code(file) {
+                counts.fixed.push("tc0_n8_project");
+            } else {
+                let package = self.package_of(file).unwrap_or_else(|| self.place_of(file));
+                let own = declaration
+                    .name()
+                    .and_then(|name| spelled(source_file.text(), name))
+                    .unwrap_or_else(|| "?".to_owned());
+                counts.named.push(format!("tc0_n8_package:{package}:{own}"));
+                if members == 0 {
+                    counts.fixed.push("tc0_n8_package_bound_direct");
+                }
+            }
+        }
+        Some(counts)
     }
 
     fn callee_found(
@@ -797,6 +902,85 @@ fn origin_of_declaration(declaration: P<Node>) -> FunctionOrigin {
         }
         _ => FunctionOrigin::Other,
     }
+}
+
+/// The first declaration of the symbol of `name`, through an import (as `function_origin` reads it).
+#[cfg(feature = "__tc0_counts")]
+fn first_declaration(checker: &mut Checker, name: P<Node>) -> Option<P<Node>> {
+    let mut symbol = checker.get_symbol_at_location_exported(name)?;
+    if symbol.flags().intersects(SymbolFlags::Alias) {
+        symbol = checker.get_aliased_symbol(symbol);
+    }
+    symbol.declarations().first().copied()
+}
+
+/// From a declaration up through the binding elements it is inside (as `origin_of_declaration` does): how many it passed, and the node reached (the
+/// parameter or the variable declaration).
+#[cfg(feature = "__tc0_counts")]
+fn walk_out_of_patterns(declaration: P<Node>) -> Option<(usize, P<Node>)> {
+    let mut node = declaration;
+    let mut passed = 0;
+    while node.kind() == Kind::BindingElement {
+        node = node.parent()?.parent()?;
+        passed += 1;
+    }
+    Some((passed, node))
+}
+
+/// The member steps (`.k`, `[k]`) `leftmost_name` goes through from the callee down to the name.
+#[cfg(feature = "__tc0_counts")]
+fn member_steps(callee: P<Node>) -> usize {
+    let mut node = unwrap_expression(callee);
+    let mut steps = 0;
+    while matches!(
+        node.kind(),
+        Kind::PropertyAccessExpression | Kind::ElementAccessExpression
+    ) {
+        let Some(inner) = expression_of(node) else {
+            break;
+        };
+        node = unwrap_expression(inner);
+        steps += 1;
+    }
+    steps
+}
+
+/// Whether `ancestor` is above `node` in the tree.
+#[cfg(feature = "__tc0_counts")]
+fn is_inside(node: P<Node>, ancestor: P<Node>) -> bool {
+    let mut up = node.parent();
+    while let Some(parent) = up {
+        if parent == ancestor {
+            return true;
+        }
+        up = parent.parent();
+    }
+    false
+}
+
+/// The kind of the first declaration of the callee's own symbol: `b` of `a.b`, the literal of `a["b"]`, the name of a plain callee.
+#[cfg(feature = "__tc0_counts")]
+fn callee_declaration_kind(checker: &mut Checker, callee: P<Node>) -> Option<Kind> {
+    let node = unwrap_expression(callee);
+    let location = match node.kind() {
+        Kind::Identifier | Kind::PropertyAccessExpression => node,
+        Kind::ElementAccessExpression => {
+            let argument = ElementAccess::cast(node)?.argument();
+            ast::is_string_literal_like(argument).then_some(argument)?
+        }
+        _ => return None,
+    };
+    Some(first_declaration(checker, location)?.kind())
+}
+
+/// The call an initializer is, under parentheses, assertions and `await` (`is_a_call_result`, but the node).
+#[cfg(feature = "__tc0_counts")]
+fn call_of_initializer(initializer: P<Node>) -> Option<P<Node>> {
+    let mut node = unwrap_expression(initializer);
+    while node.kind() == Kind::AwaitExpression {
+        node = unwrap_expression(expression_of(node)?);
+    }
+    (node.kind() == Kind::CallExpression).then_some(node)
 }
 
 /// Whether `initializer` is a call, under parentheses, assertions and `await`: what a call returns.

@@ -43,6 +43,9 @@ pub(crate) struct TypeScript<'p> {
     /// Counters that are not the reason of an edge (`walk::INHERITED_*`), filled as bodies are walked, once each, and put in `Stats.language` by
     /// `call_graph`.
     notes: RefCell<BTreeMap<&'static str, u64>>,
+    /// The notes whose key is made at run time (the TC0 counts, N8).
+    #[cfg(feature = "__tc0_counts")]
+    named_notes: RefCell<BTreeMap<String, u64>>,
     /// The defs the walked bodies hand over, by identity, and whether each was written inside an expression (`Sem::handed_over`). Compared with the
     /// graph's edges by `call_graph`, once they are known.
     handed: RefCell<HashMap<StableDef, bool>>,
@@ -57,6 +60,8 @@ impl<'p> TypeScript<'p> {
             sem,
             style,
             notes: RefCell::new(BTreeMap::new()),
+            #[cfg(feature = "__tc0_counts")]
+            named_notes: RefCell::new(BTreeMap::new()),
             handed: RefCell::new(HashMap::new()),
             demoted: RefCell::new(HashSet::new()),
         }
@@ -83,6 +88,12 @@ impl<'p> TypeScript<'p> {
     /// Count one more of `key`.
     pub(crate) fn note(&self, key: &'static str) {
         self.note_n(key, 1);
+    }
+
+    /// Count one more of a key made at run time.
+    #[cfg(feature = "__tc0_counts")]
+    pub(crate) fn note_named(&self, key: String) {
+        *self.named_notes.borrow_mut().entry(key).or_default() += 1;
     }
 
     /// `n` more of `key`; nothing when `n` is 0, so the key is in `Stats.language` only when there is something to say.
@@ -185,6 +196,10 @@ fn finish(graph: &mut Graph, lang: &TypeScript<'_>) {
     graph.stats.language.extend(reasons);
     for (key, count) in lang.notes.borrow().iter() {
         graph.stats.language.insert((*key).to_owned(), *count);
+    }
+    #[cfg(feature = "__tc0_counts")]
+    for (key, count) in lang.named_notes.borrow().iter() {
+        graph.stats.language.insert(key.clone(), *count);
     }
     count_handed_over(graph, lang);
     count_duplicate_markers(graph, lang);

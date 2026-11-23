@@ -112,6 +112,15 @@ fn resolve<'p>(
                 .filter(|resolved| **resolved == Resolved::Unknown(Why::FunctionTypedValue))
             {
                 lang.note(origin.counter());
+                #[cfg(feature = "__tc0_counts")]
+                if let Some(tc0) = &facts.tc0 {
+                    for key in &tc0.fixed {
+                        lang.note(key);
+                    }
+                    for key in &tc0.named {
+                        lang.note_named(key.clone());
+                    }
+                }
             }
         }
         for _ in 0..facts.outside_root {
