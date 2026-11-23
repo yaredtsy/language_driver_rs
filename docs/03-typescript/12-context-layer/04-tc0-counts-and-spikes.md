@@ -112,6 +112,12 @@ sweep reads them from `Stats.language`. They are removed, with the feature, in t
 | **N3**, called or called on | origin `Parameter` | the first declaration of the **callee's** symbol (not the leftmost name's): a method signature, a method or an accessor is `n3_method` (a method called on the value: TC5's half); anything else `n3_value` (the value is a function: TC2's and TC4's half); no symbol `n3_unknown` |
 | **N8**, whose result | origin `CallResult` | the call in the variable's initializer (under parentheses and `await`), by the declaration of its resolved signature: `n8_project`; `n8_package:<package>:<name>`, package as `classify` names an external's and name as written; `n8_unknown` (no declaration). And `n8_package_bound_direct` for a package call whose name is the callee itself, declared by the variable or a binding element of it (`const [open, setOpen] = useState(); setOpen()`): TCL's forecast |
 
+**What N8 can see (found while building it, 2026-11-23).** A member called on what a package returned is not function-typed when the
+member is declared by the package: `make().run` with `make(): { run: () => void }` in a `.d.ts` of `node_modules` resolves to that
+declaration, which is not project code, so the edge is `External` (`classify`). N8 counts only the values that reach a project name or a
+project type: a name bound from the call (`setOpen`), or a member declared in the project (`make<Handlers>()` with `Handlers` in `src/`).
+The fixture has both.
+
 The N8 key holds the package and the name, so it is built at run time: a count with a text key is added beside today's notes (a
 `String` key, merged into `Stats.language` the same way).
 
