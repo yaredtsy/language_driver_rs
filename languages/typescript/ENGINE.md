@@ -13,6 +13,9 @@ The TS0 spikes below were run on 2026-11-11 and their code deleted when TS0 clos
   2. Build: cargo re-resolves the git source on its own when the `rev` changes, and every `tsrs_*` package comes from that one source. Commit the new `Cargo.lock`.
   3. `cargo test`, then `cargo test -p typescript-syntax` alone: the fast crate must still not compile the checker.
   4. Re-check every item this file names (the calls in the spike sections, later the "items we call" list) against the new source; fix `sem.rs` only.
+     Then the two guards of H14 and H17: run the totality walk (`sem/view/tests.rs`) first, and regenerate the list of the engine's downcasts in
+     `crates/typescript-analysis/clippy.toml` with the command written above it (183 at `13a31a4`, plus two of `ast.rs` named there); a downcast the
+     new engine adds is unbanned until then.
   5. Write the new commit, its workspace version and the TypeScript version it follows (`[workspace.metadata.typescript]` in tsrs's `Cargo.toml`) here.
 - Licence notice: tsrs is Apache-2.0, Copyright 2026 Max Schwenk and the tsrs contributors. It is a derivative work of TypeScript,
   Copyright (c) Microsoft Corporation, Apache-2.0, and the binary embeds TypeScript's `lib.*.d.ts` files. A binary that links
@@ -1253,3 +1256,38 @@ declaration above it. In vscode that was the file in 4 entries, and a false `Cal
 | vscode `src` (`59a929a7`) | 203,738 | 2.6 s | 431 / 347 MB | 37 s (443 s the first time: H16) | 0 | 0 | 1,287 |
 
 None of the four panics. V-NOC `TaskDetailPanel` unchanged (141 / 2 / 235 / 86 / 18, 90 contexts).
+
+## H17 as built and measured (477c4bd, 5362028; reviewed 2026-11-23)
+
+**The engine's downcasts.** `Node::as_<kind>()` begins with `assert!(self.data_tag() == …)` and panics on another kind in every build:
+183 of them in `impl Node` of `tsrs_ast/src/generated.rs` at the pin, and two in `ast.rs` (`as_source_file_p`, `as_flow_reduce_label_data_p`).
+H14's ban missed them. All 185 are in `clippy.toml`'s `disallowed-methods` now; the command that regenerates the list is written above
+them. A raw `node.as_binary_expression()` put back in `collect.rs` fails clippy (`use of a disallowed method`, shown by the coder).
+
+**Six views by kind** (`Binary`, `ElementAccess`, `TaggedTemplate`, `Conditional`, `Binding`, `StaticBlock`) took the 13 downcasts `sem`
+called outside `sem/view/`. Outside `sem/view/` no call of `typescript-analysis` can now panic on a node's kind, except through the
+engine's free functions and the checker, which are trusted as the engine's (`docs/03-typescript/10-review-fixes.md` §6.3).
+
+**The totality walk** meets every kind of the sixteen views: 197,048 nodes in the bundled libraries and 37 fixture projects, 0.98 s in
+the dev profile. Only `BindingElement` of the six new kinds is met in the libraries (a `.d.ts` has no expressions or static blocks); the
+other five are met in the fixtures only.
+
+**`TS_SWEEP_DUMP=<file>`** (`tests/sweep.rs`): one sorted line per def, `<file>\t<qualname>\t<occurrence>\t<hash>`, the hash being
+`DefaultHasher` over the graph's `Debug` text. Two dumps compare only between builds of one toolchain. Relative `TS_SWEEP_ROOT`s are read
+from the package directory (`crates/typescript-analysis`), as `cargo test` runs there. The hash is taken inside the timed part of the
+loop, so the times of a dumping run include it.
+
+**Before and after, run by the reviewer** (release binaries of `477c4bd` and `5362028`, depth 1):
+
+| Project | Defs (graphs) | Dumps | `engine_kind_unhandled`, `decl_not_in_outline`, panics |
+|---|---|---|---|
+| V-NOC frontend | 1,476 | identical | 0, 0, none |
+| the private codebase | 13,772 | identical | 0, 0, none |
+| TypeScript 5.9.3 `src/compiler` (`c63de15`) | 12,059 | identical | 0, 0, none; peak memory footprint 105 MB |
+| vscode `src` | **not run**: the machine's swap was at 13.3 of 14.3 GB and the disk at 3.5 GB free (a clone at `ff29272`, 2026-11-23, is ready) | | |
+
+V-NOC `TaskDetailPanel` at full depth: identical hash, 90 contexts, 90 walks, 86 unresolved (all `function_typed_value`: 19 parameter,
+64 call result, 3 other), as before. TypeScript: 378 pass, 11 ignored (reviewer's run, `-j2`, two test threads). Two guards broken on
+purpose were each caught: a view that lets through a kind its downcast does not handle panics in the totality walk; `Binding::is_rest`
+answering `false` fails two tests of `tests/calls.rs` (a rest element that takes a def).
+
