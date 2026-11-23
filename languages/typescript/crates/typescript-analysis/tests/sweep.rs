@@ -20,6 +20,7 @@
 //!
 //! `TS_SWEEP_SITES=<file>` writes the site measure (see "The site measure" below), one line per site open in some context, in key order:
 //! `<file>\t<qualname>\t<occurrence>\t<start>\t<end>\t<reasons joined by ,>\t<contexts that reach it>\t<contexts it is open in>`.
+//! The measure runs only when this or `TS_SWEEP_BASELINE` is set, because it keeps every site of the run in memory.
 //!
 //! `TS_SWEEP_BASELINE=<file>` reads a file written that way (its first five fields name the site, the sixth is its reasons) and says, for each of its sites, whether this
 //! run leaves it open in every context that reaches it, in some, in none, or does not reach it; and how many sites open in this run the file does not have.
@@ -332,7 +333,8 @@ struct Totals {
     counts: BTreeMap<String, u64>,
     gaps: Vec<String>,
     unhandled: Vec<String>,
-    sites: BTreeMap<SiteKey, SiteSeen>,
+    /// `Some` only when the site measure is asked for: it keeps every site of the run.
+    sites: Option<BTreeMap<SiteKey, SiteSeen>>,
 }
 
 impl Totals {
@@ -361,7 +363,9 @@ impl Totals {
             self.no_graph += 1;
             return;
         };
-        add_sites(&mut self.sites, &graph);
+        if let Some(sites) = &mut self.sites {
+            add_sites(sites, &graph);
+        }
         let stats = &graph.stats;
         for (key, value) in [
             ("walks", stats.walks),
@@ -427,6 +431,7 @@ fn sweep_every_def_of_a_project() {
     let baseline_from = std::env::var("TS_SWEEP_BASELINE").ok();
     let mut totals = Totals {
         dump: dump_to.is_some().then(Vec::new),
+        sites: (sites_to.is_some() || baseline_from.is_some()).then(BTreeMap::new),
         ..Totals::default()
     };
     let before_open = rss_mb();
@@ -515,9 +520,8 @@ fn sweep_every_def_of_a_project() {
         text.push('\n');
         std::fs::write(path, text).unwrap_or_else(|error| panic!("{path}: {error}"));
     }
-    if let Some(path) = &sites_to {
-        std::fs::write(path, sites_text(&totals.sites))
-            .unwrap_or_else(|error| panic!("{path}: {error}"));
+    if let (Some(path), Some(sites)) = (&sites_to, &totals.sites) {
+        std::fs::write(path, sites_text(sites)).unwrap_or_else(|error| panic!("{path}: {error}"));
     }
     let after_last = rss_mb();
 
@@ -564,11 +568,15 @@ fn sweep_every_def_of_a_project() {
     for (key, value) in &counts {
         eprintln!("  {key}: {value}");
     }
-    print_measure(&sites);
-    if let Some(path) = &baseline_from {
-        let baseline =
-            std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{path}: {error}"));
-        print_baseline(&sites, &baseline);
+    if let Some(sites) = &sites {
+        print_measure(sites);
+        if let Some(path) = &baseline_from {
+            let baseline =
+                std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{path}: {error}"));
+            print_baseline(sites, &baseline);
+        }
+    } else {
+        eprintln!("site measure: off (set TS_SWEEP_SITES or TS_SWEEP_BASELINE)");
     }
     assert!(
         gaps.is_empty(),
