@@ -9,11 +9,16 @@
 //! `TS_SWEEP_ONLY=<text>` keeps the files whose path contains the text, and `TS_SWEEP_ENTRY=<qualname>` the defs with that qualname (every occurrence): a run of
 //! one file, or of one entry in its own run (the project is still opened whole).
 //!
+//! `TS_SWEEP_DUMP=<file>` writes one line per def, `<file>\t<qualname>\t<occurrence>\t<hash>`, sorted, where the hash is 16 hex digits of the graph's `Debug` text (or
+//! `none` when there is no graph). Two dumps are comparable only when both builds were made with the same toolchain (`DefaultHasher`'s algorithm may change between
+//! Rust releases); a line that differs is re-run alone with `TS_SWEEP_ENTRY`.
+//!
 //! Depth 1 resolves every site of the project exactly once, which is what finds a disagreement between the engine and the outline; a larger depth is for the
 //! speed runs. It fails when a graph counted `decl_not_in_outline` or `engine_kind_unhandled` (the first 20 entries of each are named), and a panic in any graph is a failure by itself: nothing
 //! here catches one.
 
 use std::collections::BTreeMap;
+use std::hash::Hasher;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -50,6 +55,8 @@ fn sweep_every_def_of_a_project() {
 
     let only = std::env::var("TS_SWEEP_ONLY").ok();
     let only_entry = std::env::var("TS_SWEEP_ENTRY").ok();
+    let dump_to = std::env::var("TS_SWEEP_DUMP").ok();
+    let mut dump: Vec<String> = Vec::new();
     let before_open = rss_mb();
     let started = Instant::now();
     let session = Session::open(&root, Path::new(&file), Options::new(STYLE))
@@ -87,9 +94,10 @@ fn sweep_every_def_of_a_project() {
             let skip = only_entry
                 .as_ref()
                 .is_some_and(|only| *only != def.qualname);
+            let this = *occurrence;
             let entry = Entry::Def {
                 qualname: &def.qualname,
-                occurrence: *occurrence,
+                occurrence: this,
             };
             *occurrence += 1;
             if skip {
@@ -97,7 +105,19 @@ fn sweep_every_def_of_a_project() {
             }
             defs += 1;
             let started = Instant::now();
-            let Some(graph) = session.graph(name, &entry, &budget, &cancel) else {
+            let graph = session.graph(name, &entry, &budget, &cancel);
+            if dump_to.is_some() {
+                let hash = graph.as_ref().map_or_else(
+                    || "none".to_owned(),
+                    |graph| {
+                        let mut hasher = std::hash::DefaultHasher::new();
+                        hasher.write(format!("{graph:?}").as_bytes());
+                        format!("{:016x}", hasher.finish())
+                    },
+                );
+                dump.push(format!("{name}\t{}\t{this}\t{hash}", def.qualname));
+            }
+            let Some(graph) = graph else {
                 no_graph += 1;
                 continue;
             };
@@ -146,6 +166,12 @@ fn sweep_every_def_of_a_project() {
         }
     }
     let all_graphs = sweep.elapsed();
+    if let Some(path) = &dump_to {
+        dump.sort();
+        let mut text = dump.join("\n");
+        text.push('\n');
+        std::fs::write(path, text).unwrap_or_else(|error| panic!("{path}: {error}"));
+    }
     let after_last = rss_mb();
 
     eprintln!(
