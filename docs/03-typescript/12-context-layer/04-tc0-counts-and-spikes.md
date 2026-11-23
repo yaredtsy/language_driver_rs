@@ -139,7 +139,7 @@ Memory: the machine has 8 GB. One project at a time, `-j2`, `--test-threads=2`, 
 | # | Do | Proof |
 |---|---|---|
 | 1 | S-TC1. **Done** (spike 9b91422, reviewed 2026-11-23: 40 of 40 as expected, and seven more shapes probed by the reviewer) | the table in `ENGINE.md` |
-| 2 | S-TC4: the sample entries and the per-site measure, on today's code | the baseline table |
+| 2 | S-TC4: the sample entries and the per-site measure, on today's code. **Built** (`b0f21fb`; reviewed 2026-11-23, baseline in `ENGINE.md`; a fix for its memory on a full sweep follows; vscode's row waits) | the baseline table |
 | 3 | N2, N3, N8: they split counters that exist | three tables |
 | 4 | N1, N4, N5, N7: they read arguments and assignments, which is most of S-TC2's reader | four tables; S-TC2's list of syntax with no `Expr` |
 | 5 | S-TC2's cost, S-TC3 | the numbers; where the hash lives |

@@ -1338,3 +1338,28 @@ that needs JSX types writes them in `declare global`. The fixture's two semantic
 `checker_regions`, `regions`; `new_program`, `bind_source_files`; then one `get_type_checker(&Context::default())` handle for every
 question. Questions work outside the region's scope. `get_semantic_diagnostics` takes a handle of its own, so it runs after the held one is
 dropped (H1).
+
+### S-TC4: the per-site measure and the baseline (`b0f21fb`; reviewed 2026-11-23)
+
+`tests/sweep.rs`: `TS_SWEEP_SAMPLE` runs a list of entries (the whole graph unless `TS_SWEEP_DEPTH`), `TS_SWEEP_SITES` writes one line per
+site open in some context, `TS_SWEEP_BASELINE` compares a run with such a file (every / some / none / not reached, and new open sites).
+A site is its def (file, qualname, occurrence) and its `Site`; the definitions are in
+`docs/03-typescript/12-context-layer/04-tc0-counts-and-spikes.md` §3.2, and a test on a hand-built graph pins them.
+
+**The baseline** (reviewer, release build of `b0f21fb`, the sample of 04 §3.2, whole graphs, no cut). With one context per function
+every open site is open in every context that reaches it; for a single entry the open sites equal the `Unresolved` edges of the CLI.
+
+| Project | Sample | Open sites | `function_typed_value` | `any_or_untyped` | `no_declaration` | `anonymous_function_called` | other | All graphs | Peak footprint |
+|---|---|---|---|---|---|---|---|---|---|
+| V-NOC frontend | `Dashboard`, `HomePage`, `TaskDetailPanel` | 733 | 723 | 7 | 0 | 3 | 0 | 1.2 s | 147 MB |
+| the private codebase | its `main` | 12,807 | 2,506 | 10,225 | 35 | 37 | 4 (`union_receiver` 3, `computed_name` 1) | 3.2 s | 281 MB |
+| TypeScript 5.9.3 `src/compiler` | `createProgram` | 5,715 | 5,672 | 6 | 34 | 1 | 2 (`computed_name`) | 1.5 s | 183 MB |
+| vscode `src` | not chosen yet (swap full) | | | | | | | | |
+
+The private codebase is a bare checkout (no `node_modules`): its imports are `any`, which is most of its open sites; the layer cannot
+answer those. V-NOC against its own file: 733 every, 0 some, 0 none, 0 not reached, 0 new. The site files are kept outside git, in the
+reviewer's scratch folder; a later phase is compared against a fresh baseline run of the commit before it, not against these files.
+
+**Found at the review:** the measure keeps every site of every graph of a run, even when no site file is asked for. A full depth-1 sweep
+of the private codebase took 339 MB at its peak instead of 214 MB (`5362028`'s sweep); on vscode that would be gigabytes. Fixed next: the
+sites are kept only when `TS_SWEEP_SITES` or `TS_SWEEP_BASELINE` is set.
