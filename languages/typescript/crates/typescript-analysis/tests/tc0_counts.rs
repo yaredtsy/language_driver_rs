@@ -1,5 +1,5 @@
-//! The TC0 counts N2, N3 and N8 (`docs/03-typescript/12-context-layer/04-tc0-counts-and-spikes.md` §3.3): `function_typed_value`, split further, and N1 (§3.4): what
-//! callers pass, in keys `tc0_…` of `Stats.language`. They exist only behind the feature `__tc0_counts`, so this file is empty without it.
+//! The TC0 counts N2, N3 and N8 (`docs/03-typescript/12-context-layer/04-tc0-counts-and-spikes.md` §3.3): `function_typed_value`, split further, N1 (§3.4): what
+//! callers pass, and N4 and N7 (§3.5): how often a local is written and where `this.x` gets its value, in keys `tc0_…` of `Stats.language`. They exist only behind the feature `__tc0_counts`, so this file is empty without it.
 //!
 //! **Written before it was run:** the counts of each file of `fixtures/tc0-counts`, by hand, from the table of the design.
 #![cfg(feature = "__tc0_counts")]
@@ -12,7 +12,7 @@ use std::path::Path;
 use common::{STYLE, assert_no_outline_gap, tests_dir};
 use typescript_analysis::{Budget, Cancel, Entry, Options, Session};
 
-/// The `tc0_` keys summed over `entries` of `file`, each asked at depth 1, and the sum of `function_typed_value`.
+/// The `tc0_` keys (and `function_typed_value_from_this`) summed over `entries` of `file`, each asked at depth 1, and the sum of `function_typed_value`.
 fn counts(file: &str, entries: &[&str]) -> (BTreeMap<String, u64>, u64) {
     let root = tests_dir().join("fixtures").join("tc0-counts");
     let session = Session::open(&root, Path::new(file), Options::new(STYLE)).unwrap();
@@ -29,7 +29,7 @@ fn counts(file: &str, entries: &[&str]) -> (BTreeMap<String, u64>, u64) {
             .unwrap_or_else(|| panic!("no def `{qualname}` in {file}"));
         assert_no_outline_gap(&graph);
         for (key, count) in &graph.stats.language {
-            if key.starts_with("tc0_") {
+            if key.starts_with("tc0_") || key == "function_typed_value_from_this" {
                 *sums.entry(key.clone()).or_default() += count;
             }
         }
@@ -41,6 +41,14 @@ fn counts(file: &str, entries: &[&str]) -> (BTreeMap<String, u64>, u64) {
             .unwrap_or(0);
     }
     (sums, total)
+}
+
+/// The keys of `found` that start with one of `prefixes`: each test compares the keys of its own counts, since a count of another kind adds keys to every def.
+fn only(found: BTreeMap<String, u64>, prefixes: &[&str]) -> BTreeMap<String, u64> {
+    found
+        .into_iter()
+        .filter(|(key, _)| prefixes.iter().any(|prefix| key.starts_with(prefix)))
+        .collect()
 }
 
 fn expected(rows: &[(&str, u64)]) -> BTreeMap<String, u64> {
@@ -67,7 +75,7 @@ fn a_parameter_is_split_by_whose_it_is_how_deep_and_called_or_called_on() {
     );
     assert_eq!(total, 9);
     assert_eq!(
-        found,
+        only(found, &["tc0_n2_", "tc0_n3_"]),
         expected(&[
             ("tc0_n2_own", 7),
             ("tc0_n2_enclosing", 1),
@@ -87,7 +95,7 @@ fn a_call_result_is_split_by_the_call_that_made_it() {
     let (found, total) = counts("src/results.ts", &["results"]);
     assert_eq!(total, 3);
     assert_eq!(
-        found,
+        only(found, &["tc0_n8_"]),
         expected(&[
             ("tc0_n8_package:fakelib:useState", 1),
             ("tc0_n8_package:fakelib:make", 1),
@@ -100,12 +108,8 @@ fn a_call_result_is_split_by_the_call_that_made_it() {
 #[test]
 fn what_a_caller_passes_is_counted_by_class() {
     let (found, _) = counts("src/args.tsx", &["callers", "Box.go"]);
-    let found: BTreeMap<String, u64> = found
-        .into_iter()
-        .filter(|(key, _)| key.starts_with("tc0_n1:"))
-        .collect();
     assert_eq!(
-        found,
+        only(found, &["tc0_n1:"]),
         expected(&[
             ("tc0_n1:arg:def", 1),
             ("tc0_n1:arg:anonymous", 1),
@@ -125,6 +129,43 @@ fn what_a_caller_passes_is_counted_by_class() {
             ("tc0_n1:jsx:def", 1),
             ("tc0_n1:jsx:spread", 1),
             ("tc0_n1:static_class", 2),
+        ])
+    );
+}
+
+#[test]
+fn how_often_a_local_is_written_is_counted_per_def() {
+    let (found, _) = counts("src/vars.ts", &["locals"]);
+    assert_eq!(
+        only(found, &["tc0_n4_"]),
+        expected(&[
+            ("tc0_n4_const", 2),
+            ("tc0_n4_once", 2),
+            ("tc0_n4_more", 4),
+            ("tc0_n4_unmodelled_write", 2),
+            ("tc0_n4_data", 1),
+            ("tc0_n4_param", 3),
+            ("tc0_n4_param_assigned", 1),
+        ])
+    );
+}
+
+#[test]
+fn where_this_x_gets_its_value_is_counted_by_the_declaration_and_the_class() {
+    let (found, total) = counts("src/fields.ts", &["Svc.run", "Base.go", "Lonely.go"]);
+    assert_eq!(total, 7);
+    assert_eq!(found["function_typed_value_from_this"], 7);
+    assert_eq!(
+        only(found, &["tc0_n7_"]),
+        expected(&[
+            ("tc0_n7_parameter_property", 2),
+            ("tc0_n7_constructor_only", 2),
+            ("tc0_n7_assigned_elsewhere", 1),
+            ("tc0_n7_method", 1),
+            ("tc0_n7_never_written", 1),
+            ("tc0_n7_class:src/fields.ts#Svc", 5),
+            ("tc0_n7_class:src/fields.ts#Base", 1),
+            ("tc0_n7_class:src/fields.ts#Lonely", 1),
         ])
     );
 }

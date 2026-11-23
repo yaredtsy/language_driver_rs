@@ -44,6 +44,13 @@ pub(crate) fn body<'p>(
     env: &Env,
     cancel: &Cancel,
 ) -> Summary<TypeScript<'p>> {
+    // N4: how often the locals and parameters of this def are written, once per walk of it
+    #[cfg(feature = "__tc0_counts")]
+    if let Some(n4) = lang.sem.tc0_n4(f, lang.style) {
+        for key in &n4.fixed {
+            lang.note(key);
+        }
+    }
     let (summary, unhandled) = counted(|| body_of(lang, f, env, cancel));
     lang.note_n(
         UNHANDLED_KEY,

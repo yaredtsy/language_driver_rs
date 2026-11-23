@@ -13,7 +13,7 @@ use super::hierarchy::{
     is_property_function_value, symbol_of_declaration,
 };
 #[cfg(feature = "__tc0_counts")]
-use super::view::{CallOrNew, ElementAccess, JsxAttrs, properties_of};
+use super::view::{Binary, CallOrNew, ElementAccess, Elements, JsxAttrs, properties_of};
 use super::view::{expression_of, initializer_of, spelled};
 use super::*;
 
@@ -246,10 +246,7 @@ impl Sem {
         style: MarkerStyle<'_>,
         origin: FunctionOrigin,
     ) -> Option<Tc0Counts> {
-        if !matches!(
-            origin,
-            FunctionOrigin::Parameter | FunctionOrigin::CallResult
-        ) {
+        if origin == FunctionOrigin::Other {
             return None;
         }
         let calls = self.body(func, style)?;
@@ -257,6 +254,9 @@ impl Sem {
         let def_node = self.node_of(func, style);
         let _scope = self.region.enter();
         let mut checker = self.checker();
+        if origin == FunctionOrigin::This {
+            return self.tc0_n7(&mut checker, callee, style);
+        }
         let name = leftmost_name(callee)?;
         let declaration = first_declaration(&mut checker, name)?;
         let (pattern, owner) = walk_out_of_patterns(declaration)?;
@@ -300,6 +300,196 @@ impl Sem {
                     if members == 0 {
                         counts.fixed.push("tc0_n8_package_bound_direct");
                     }
+                }
+            }
+        }
+        Some(counts)
+    }
+
+    /// N7 (04-tc0-counts-and-spikes.md §3.5): where `this.x` gets its value, for a `function_typed_value` edge whose origin is `this`: the keys to note, once
+    /// per edge. `None` when the callee has no `this.x` in it (the origin said it had).
+    #[cfg(feature = "__tc0_counts")]
+    fn tc0_n7(
+        &self,
+        checker: &mut Checker,
+        callee: P<Node>,
+        style: MarkerStyle<'_>,
+    ) -> Option<Tc0Counts> {
+        // `this.x`: the member access whose expression is the `this` keyword, found from the callee down (`this.x()`, `this.x.m()`, `this.a.b.m()`)
+        let mut first = unwrap_expression(callee);
+        loop {
+            if !matches!(
+                first.kind(),
+                Kind::PropertyAccessExpression | Kind::ElementAccessExpression
+            ) {
+                return None;
+            }
+            let inner = unwrap_expression(expression_of(first)?);
+            if inner.kind() == Kind::ThisKeyword {
+                break;
+            }
+            first = inner;
+        }
+        let mut counts = Tc0Counts::default();
+        let Some(declaration) = own_symbol(checker, first)
+            .and_then(|symbol| symbol.declarations().first().copied().map(|d| (symbol, d)))
+        else {
+            counts.fixed.push("tc0_n7_other");
+            return Some(counts);
+        };
+        let (symbol, declaration) = declaration;
+        let class = match declaration.kind() {
+            Kind::Parameter => {
+                counts.fixed.push("tc0_n7_parameter_property");
+                declaration
+                    .parent()
+                    .and_then(|constructor| constructor.parent())
+            }
+            Kind::PropertyDeclaration => {
+                let class = declaration.parent();
+                let written = class.zip(declaration.name()).and_then(|(class, name)| {
+                    let file = ast::get_source_file_of_node(class)?;
+                    let text = spelled(file.text(), name)?;
+                    let mut writes = writes_of(checker, file, symbol, &text, class);
+                    writes.retain(|write| *write != name);
+                    Some((class, writes))
+                });
+                let initialized = initializer_of(declaration).is_some();
+                counts.fixed.push(match &written {
+                    Some((class, writes)) => {
+                        let in_constructor = |write: &P<Node>| {
+                            ast::get_containing_function(*write).is_some_and(|function| {
+                                function.kind() == Kind::Constructor
+                                    && function.parent() == Some(*class)
+                            })
+                        };
+                        if writes.is_empty() && !initialized {
+                            "tc0_n7_never_written"
+                        } else if writes.iter().all(in_constructor) {
+                            "tc0_n7_constructor_only"
+                        } else {
+                            "tc0_n7_assigned_elsewhere"
+                        }
+                    }
+                    None => "tc0_n7_other",
+                });
+                class
+            }
+            Kind::MethodDeclaration
+            | Kind::MethodSignature
+            | Kind::GetAccessor
+            | Kind::SetAccessor => {
+                counts.fixed.push("tc0_n7_method");
+                declaration.parent()
+            }
+            _ => {
+                counts.fixed.push("tc0_n7_other");
+                return Some(counts);
+            }
+        };
+        counts.named.push(format!(
+            "tc0_n7_class:{}",
+            class
+                .and_then(|class| self.tc0_class_key(class, style))
+                .unwrap_or_else(|| "?".to_owned())
+        ));
+        Some(counts)
+    }
+
+    /// `<file>#<qualname>` of a class that is a def of the outline of a file under the root.
+    #[cfg(feature = "__tc0_counts")]
+    fn tc0_class_key(&self, class: P<Node>, style: MarkerStyle<'_>) -> Option<String> {
+        let file = file_of(class)?;
+        let defs = self.file_defs(file, style)?;
+        let index = *defs.def_of.get(&class)?;
+        Some(format!(
+            "{}#{}",
+            self.relative_path(file)?,
+            defs.outline.defs[index].qualname
+        ))
+    }
+
+    /// N4 (04-tc0-counts-and-spikes.md §3.5): how often the locals and parameters of the def are written: the keys to note, once per walk of the def. `None` for
+    /// the module and for a def with no node.
+    #[cfg(feature = "__tc0_counts")]
+    pub(crate) fn tc0_n4(&self, func: Func<'_>, style: MarkerStyle<'_>) -> Option<Tc0Counts> {
+        func.outline_index()?;
+        let def = self.node_of(func, style)?;
+        let defs = self.file_defs(func.file, style)?;
+        let file = func.file.node;
+        let _scope = self.region.enter();
+        let mut checker = self.checker();
+        // the variable declarations written in the def, nested anonymous functions included and nested defs not
+        let mut declarations = Vec::new();
+        let mut pending = vec![def];
+        while let Some(node) = pending.pop() {
+            if node.kind() == Kind::VariableDeclaration {
+                declarations.push(node);
+            }
+            node.for_each_child(&mut |child| {
+                if !defs.def_of.contains_key(&child) {
+                    pending.push(child);
+                }
+                false
+            });
+        }
+        declarations.sort_by_key(|node| node.pos().source_offset());
+        let mut counts = Tc0Counts::default();
+        for declaration in declarations {
+            let Some(pattern) = declaration.name() else {
+                continue;
+            };
+            let initialized = initializer_of(declaration).is_some();
+            for name in binding_names(pattern) {
+                let Some(symbol) = checker.get_symbol_at_location_exported(name) else {
+                    continue;
+                };
+                if !is_capable(checker.get_type_of_symbol(symbol)) {
+                    counts.fixed.push("tc0_n4_data");
+                    continue;
+                }
+                if ast::get_combined_node_flags(declaration).intersects(NodeFlags::Const) {
+                    counts.fixed.push("tc0_n4_const");
+                    continue;
+                }
+                let Some(text) = spelled(file.text(), name) else {
+                    continue;
+                };
+                let mut writes = writes_of(&mut checker, file, symbol, &text, def);
+                writes.retain(|write| *write != name);
+                let total = writes.len() + usize::from(initialized);
+                counts.fixed.push(if total >= 2 {
+                    "tc0_n4_more"
+                } else {
+                    "tc0_n4_once"
+                });
+                if !writes.iter().all(|write| is_plain_assignment(*write)) {
+                    counts.fixed.push("tc0_n4_unmodelled_write");
+                }
+            }
+        }
+        if ast::is_function_like(Some(def)) {
+            for &parameter in def.parameters() {
+                let Some(name) = parameter
+                    .name()
+                    .filter(|name| name.kind() == Kind::Identifier)
+                else {
+                    continue;
+                };
+                let Some(symbol) = checker.get_symbol_at_location_exported(name) else {
+                    continue;
+                };
+                if !is_capable(checker.get_type_of_symbol(symbol)) {
+                    continue;
+                }
+                counts.fixed.push("tc0_n4_param");
+                let Some(text) = spelled(file.text(), name) else {
+                    continue;
+                };
+                let mut writes = writes_of(&mut checker, file, symbol, &text, def);
+                writes.retain(|write| *write != name);
+                if !writes.is_empty() {
+                    counts.fixed.push("tc0_n4_param_assigned");
                 }
             }
         }
@@ -1100,6 +1290,90 @@ fn origin_of_declaration(declaration: P<Node>) -> FunctionOrigin {
     }
 }
 
+/// The nodes under `container` where the text `name` stands as a whole word, as the engine's `get_possible_symbol_reference_nodes` finds them (a private function
+/// of `tsrs_checker`, and its search takes the first hit's offset from the start of the container, not of the file: `ENGINE.md`), in order: the token each hit touches,
+/// when it is not the file itself. A candidate only: a word in a comment or a string, or another symbol of the same name, is in it too. The container's own
+/// leading trivia is searched with it.
+#[cfg(feature = "__tc0_counts")]
+fn names_in(file: P<SourceFile>, name: &str, container: P<Node>) -> Vec<P<Node>> {
+    let mut found = Vec::new();
+    let text = file.text();
+    let bytes = text.as_bytes();
+    let needle = name.as_bytes();
+    if needle.is_empty() {
+        return found;
+    }
+    let end = (container.end().source_offset().unwrap_or(0) as usize).min(bytes.len());
+    let mut at = container.pos().source_offset().unwrap_or(0) as usize;
+    while at < end {
+        let Some(offset) = tsrs_core::index_bytes(&bytes[at..end], needle) else {
+            break;
+        };
+        // the engine's bug, fixed: the hit is `offset` past `at`, not at `offset`
+        let hit = at + offset;
+        let after = hit + needle.len();
+        let word = |byte: &u8| tsrs_scanner::is_identifier_part(u32::from(*byte));
+        if !bytes[..hit].last().is_some_and(word) && !bytes.get(after).is_some_and(word) {
+            let node = tsrs_checker::astnav::get_touching_property_name(file, hit as u32);
+            if node != file.as_node() {
+                found.push(node);
+            }
+        }
+        at = after;
+    }
+    found
+}
+
+/// The identifiers under `container` that write `symbol`, whose name is written `name` (N4 and N7 read it the same way): a candidate of `names_in` that is an
+/// identifier of that symbol and that `ast::is_write_access` says is written. The name in the declaration is a candidate too; the caller takes it out when it is
+/// not wanted.
+#[cfg(feature = "__tc0_counts")]
+fn writes_of(
+    checker: &mut Checker,
+    file: P<SourceFile>,
+    symbol: P<Symbol>,
+    name: &str,
+    container: P<Node>,
+) -> Vec<P<Node>> {
+    let mut writes: Vec<P<Node>> = names_in(file, name, container)
+        .into_iter()
+        .filter(|node| {
+            node.kind() == Kind::Identifier
+                && checker.get_symbol_at_location_exported(*node) == Some(symbol)
+                && ast::is_write_access(*node)
+        })
+        .collect();
+    // a position in a comment can touch the token after it, which another hit of the same word touches too
+    writes.dedup();
+    writes
+}
+
+/// `name = value`: the write is the left side of a plain assignment, and not `+=`, `||=`, `++`, a destructuring target, or a `for … of` variable.
+#[cfg(feature = "__tc0_counts")]
+fn is_plain_assignment(write: P<Node>) -> bool {
+    write
+        .parent()
+        .and_then(Binary::cast)
+        .is_some_and(|binary| binary.operator() == Kind::EqualsToken && binary.left() == write)
+}
+
+/// The names a declaration's name declares: the name itself, or each identifier in a binding pattern, through the patterns nested in it.
+#[cfg(feature = "__tc0_counts")]
+fn binding_names(name: P<Node>) -> Vec<P<Node>> {
+    match name.kind() {
+        Kind::Identifier => vec![name],
+        _ => Elements::cast(name).map_or_else(Vec::new, |pattern| {
+            pattern
+                .elements()
+                .iter()
+                .filter(|element| element.kind() == Kind::BindingElement)
+                .filter_map(|element| element.name())
+                .flat_map(binding_names)
+                .collect()
+        }),
+    }
+}
+
 /// The symbol at `location`, through an import: the symbol it leads to.
 #[cfg(feature = "__tc0_counts")]
 fn aliased_symbol_at(checker: &mut Checker, location: P<Node>) -> Option<P<Symbol>> {
@@ -1489,4 +1763,44 @@ fn is_union_callee(checker: &mut Checker, callee: P<Node>) -> bool {
             })
             .count()
             > 1
+}
+
+#[cfg(all(test, feature = "__tc0_counts"))]
+mod tc0_tests {
+    use std::path::Path;
+
+    use typescript_syntax::Placement;
+
+    use super::*;
+
+    const STYLE: MarkerStyle<'static> = MarkerStyle {
+        label: "ID",
+        placement: Placement::Docstring,
+    };
+
+    /// `names_in` finds each whole word under the container, at its place in the file (the engine's own search would give the first hit's offset from the start of
+    /// the container), and nothing outside it.
+    #[test]
+    fn names_in_finds_the_whole_words_under_one_container() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tc0-counts");
+        let sem = Sem::open(&root, Path::new("src/fields.ts")).unwrap();
+        let _scope = sem.region.enter();
+        let node_of = |qualname: &str| {
+            let class = sem.entry("src/fields.ts", qualname, 0, STYLE).unwrap();
+            (class.file.node, sem.node_of(class, STYLE).unwrap())
+        };
+        // the declaration's name, `this.moved` in `run` and `this.moved` in `move`
+        let (file, svc) = node_of("Svc");
+        let found = names_in(file, "moved", svc);
+        assert_eq!(found.len(), 3);
+        let text = file.text();
+        for node in &found {
+            assert_eq!(node.kind(), Kind::Identifier);
+            assert_eq!(&text[own_span(text, *node).start as usize..][..5], "moved");
+        }
+        // `move` and `moved` are not the same word
+        assert_eq!(names_in(file, "move", svc).len(), 1);
+        let (file, base) = node_of("Base");
+        assert!(names_in(file, "moved", base).is_empty());
+    }
 }
