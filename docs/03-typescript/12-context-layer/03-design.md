@@ -359,6 +359,21 @@ signature the call resolves to (the overload the checker picked), and `Signature
 element, a tagged template and a decorator is private (`get_effective_call_arguments`): a JSX element's one argument is built from its
 attributes here, and the other two pass nothing until a fixture asks.
 
+**What S-TC1 showed about binding (2026-11-23, `ENGINE.md` "TC0: what was counted").** Three rules follow from it:
+
+- **An overload's parameters are the overload's.** For `ov(1, handler)` the resolved signature is the overload the checker picked, and its
+  `parameters()` lead to that overload's declaration, not to the implementation the def is. So the binding is by **position**: argument `i`
+  goes to `Flow.params[i]` of the callee def (its implementation), and the resolved signature only says how many positions there are and
+  whether the last is a rest. Where the overload has a rest and the implementation does not at that position (or the other way round), the
+  slot is unknown.
+- **A position past the last parameter answers `any`**, not nothing (`get_type_at_position_exported` of a non-rest signature). So the binding
+  never asks for a type past `parameters().len()` unless `has_rest_parameter()`.
+- **An `any` callee** (`x(handler)` with `x: any`) resolves to a signature with no declaration and no parameters: the layer does not speak
+  there, and its arguments go into no key.
+
+`get_resolved_signature_exported` on a `NewExpression` gives the constructor's signature (its declaration is the `Constructor`), and on a
+JSX element the component's (one parameter, named `__0` when it is destructured).
+
 **A tripwire for a wrong binding.** Where the layer says a site calls exactly these functions, each of them must be assignable to the
 callee's static type (`is_type_assignable_to`, public). One that is not is a bug in the binding or in the table, not a fact about the
 program: it is counted `value_type_mismatch`, the engine's answer is kept beside it, and the count must be 0 on the four projects.

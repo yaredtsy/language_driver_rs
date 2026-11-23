@@ -53,7 +53,7 @@ The breakdown of today (`function_typed_value_from_*`) is the model: a key in `S
 ### 3.1 S-TC1, case by case (written 2026-11-23, before it ran)
 
 The program is the tour ([03](03-design.md) §2) and one more file, `extra.ts`, in a folder with a `tsconfig.json` (`"jsx": "preserve"`,
-`"strict": true`, and a three-line `declare namespace JSX` so the elements type-check). Every expectation below was written before the
+`"strict": true`, and a three-line `declare namespace JSX` meant to make the elements type-check; it does not: the file has an `export`, so it is a module and the namespace is local to it, and `<button>` is TS7026. A fixture that needs JSX types writes them in `declare global { … }`. No case reads `<button>`). Every expectation below was written before the
 spike ran; the spike prints `got` beside it.
 
 | # | Code | Ask | Expected |
@@ -112,7 +112,7 @@ Memory: the machine has 8 GB. One project at a time, `-j2`, `--test-threads=2`, 
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | S-TC1 | the table in `ENGINE.md` |
+| 1 | S-TC1. **Done** (spike 9b91422, reviewed 2026-11-23: 40 of 40 as expected, and seven more shapes probed by the reviewer) | the table in `ENGINE.md` |
 | 2 | S-TC4: the sample entries and the per-site measure, on today's code | the baseline table |
 | 3 | N2, N3, N8: they split counters that exist | three tables |
 | 4 | N1, N4, N5, N7: they read arguments and assignments, which is most of S-TC2's reader | four tables; S-TC2's list of syntax with no `Expr` |

@@ -1291,3 +1291,50 @@ V-NOC `TaskDetailPanel` at full depth: identical hash, 90 contexts, 90 walks, 86
 purpose were each caught: a view that lets through a kind its downcast does not handle panics in the totality walk; `Binding::is_rest`
 answering `false` fails two tests of `tests/calls.rs` (a rest element that takes a def).
 
+
+## TC0: what was counted
+
+### S-TC1: does tsrs answer what the plan says? (spike 9b91422, `spikes/s-tc1`; reviewed 2026-11-23)
+
+The cases and their expectations were written before the spike ran (`docs/03-typescript/12-context-layer/04-tc0-counts-and-spikes.md`
+§3.1). **40 answers of 40 as expected**, the same on two runs and on the reviewer's run; no engine panic. Built in the TypeScript target
+(`CARGO_TARGET_DIR=../target`): only the spike compiled.
+
+| # | Engine call | What it returned |
+|---|---|---|
+| E1 | `Checker::get_resolved_signature_exported` (`tsrs_checker/src/exports.rs:370`), `Signature::parameters`, `::this_parameter` (`types.rs:3171`–`3209`) | `withThis(handler)` with `this: Ctx`: parameters `[cb]`, this parameter `this` |
+| E2 | the same, generic | `run(1, handler)`: each parameter's `value_declaration` is the `Parameter` node of `run`'s own declaration |
+| E3 | `get_type_at_position_exported` (`services.rs:1215`), `type_to_string_exported` (`printer.rs:59`) | `useState(false)`, slot 0: `boolean` (the signature is instantiated) |
+| E4 | `has_rest_parameter`, `min_argument_count` | `many(first, ...fs)`: `true`, `1`, two parameters; the type at positions 1, 2, 3 is `() => void` (a rest answers past the count) |
+| E5 | `is_type_assignable_to_exported` (`exports.rs:528`), `get_type_at_location` | `encode` to `each`'s slot: `true`; `1` to a `() => void` slot: `false` |
+| E6 | `get_symbol_at_location_exported`, `Symbol::value_declaration`, `tsrs_ast::get_root_declaration` | `onClose` in `Panel`: `BindingElement`, root the `Parameter`; `f` in `each`: `Parameter`; `h` in `main`: `VariableDeclaration` |
+| E7 | `Type::object_flags` (`ObjectFlags::Class`), `Type::symbol` | `new Json()`: a class, `Json`; `w` declared `Writer` and set to `new Json()`: not a class, `Writer` (the checker keeps the declared type) |
+| E8 | `get_property_of_type_exported` (`exports.rs:193`) | `write` on `Json` and on `Sub extends Json`: `Json.write`'s `MethodDeclaration` |
+| E9 | `get_references_to_symbol_in_file` (`services.rs:743`), `tsrs_ast::is_write_access` (`ast.rs:1567`) | `Box.x`: three references, the declaration's name included; `false`, `true` (`this.x = 2`), `false` |
+| E10 | `get_resolved_signature_exported` on a `JsxSelfClosingElement` | `<Panel … />`: declaration `Panel`, one parameter, named `__0` (destructured) |
+| E11 | the references of a variable and `is_write_access` | `k`: seven references; the declaration's name `false`; `k = join`, `({ k } = o)`, `[k] = xs`, `k ||= join`, `for (k of xs)` all `true`; `k()` `false` |
+
+**Probed by the reviewer, the same way, beyond the eleven** (a scratch copy of the spike; not committed):
+
+| Shape | Resolved signature |
+|---|---|
+| `ov(1, handler)`, two overloads and an implementation | declaration: the **second overload**, not the implementation; parameters `a`, `cb` of that overload |
+| `x(handler)`, `x: any` | no declaration, no parameters, min 0; every position `any` |
+| `new C(handler)` | the `Constructor`; parameter `cb` |
+| `obj.m(handler)`, `m(this: C, cb)` | parameters `[cb]`, this parameter `this` |
+| `each(...arr)` and `each(handler)`, `g = handler` a default | parameters `f`, `g`; min 1; slot 1 `(() => void) \| undefined` |
+| `many(1, handler)`, a rest | rest `true`; position 2 is still `() => void` |
+| any non-rest signature, past its last parameter | `any`, not nothing |
+
+What it changes is in `03-design.md` §7: binding is by position onto the callee's implementation, the resolved signature giving the count
+and the rest; no type is asked past the count; an `any` callee binds nothing.
+
+**Found:** a `declare namespace JSX` in a file with an `export` is local to that module, so the intrinsic elements are TS7026; a fixture
+that needs JSX types writes them in `declare global`. The fixture's two semantic diagnostics: that one, and TS2684 (E1's `this`, expected).
+
+**The load sequence** (the spike's, and `Sem::build`'s with a config): `bundled::wrap_fs(cachedvfs::from(osvfs::fs()))`; a `ConfigHost`;
+`Region::new_scratch(1 << 20)` entered for the build, `ProgramRegions::default()`; `tsrs_tsoptions::get_parsed_command_line_of_config_file`;
+`CompilerOptions { checkers: Some(1), .. }`; `tsrs_compiler::new_compiler_host`; `ProgramOptions` with `use_source_of_project_reference`,
+`checker_regions`, `regions`; `new_program`, `bind_source_files`; then one `get_type_checker(&Context::default())` handle for every
+question. Questions work outside the region's scope. `get_semantic_diagnostics` takes a handle of its own, so it runs after the held one is
+dropped (H1).

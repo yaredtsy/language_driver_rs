@@ -40,7 +40,7 @@ In every row the `[Passed]` edge of the function under its caller stays.
 `sem/flow.rs` learns two things.
 
 **`Expr::Param(i)`.** An identifier whose symbol's `value_declaration` is a `Parameter` node, a direct child of **this def's** node, declared by a plain
-name. `i` is its place in the def's own **signature** (`Signature::parameters()`), not in the syntax: a `this` parameter is not in that
+name. `i` is its place in the def's own **signature** (`Signature::parameters()`; for an overloaded function, the implementation's, [03](03-design.md) §7), not in the syntax: a `this` parameter is not in that
 list, so `function f(this: Ctx, cb)` has `cb` at 0, and a call `f(handler)` binds `handler` to it ([03](03-design.md) §7). Not yet: a parameter of an enclosing def (TC3), a name bound by a
 destructuring pattern (TC4), a parameter of an anonymous function inside the def (it is that function's, filled by whoever calls it:
 unknown). The table also says, per parameter:
@@ -50,7 +50,7 @@ unknown). The table also says, per parameter:
 | `rest` | `...args` | the syntax |
 | `default` | the default's `Expr`, if any | the syntax |
 | `assigned` | the body assigns to the parameter (`cb = cb \|\| noop`). Until TC3 reads assignments, such a parameter is **open**: its key value is joined with unknown | `ast::is_write_access` on its references |
-| `capable` | its declared type can hold a function, an object or a class instance. `false` for `string`, `number`, `boolean`, `bigint`, `symbol`, `null`, `undefined`, literal types, enums, and unions, arrays and tuples of only those. `true` for everything else, `any` and an untyped JavaScript parameter included | `get_type_of_symbol`, `TypeFlags` **[check]** in S-TC1 |
+| `capable` | its declared type can hold a function, an object or a class instance. `false` for `string`, `number`, `boolean`, `bigint`, `symbol`, `null`, `undefined`, literal types, enums, and unions, arrays and tuples of only those. `true` for everything else, `any` and an untyped JavaScript parameter included | `get_type_of_symbol` (public, `checker_08.rs`; `sem/handed.rs` already calls it), `TypeFlags`. Not one of S-TC1's cases: what each type gives is this phase's own fixtures, one per kind of the list |
 
 `capable` is the first filter of [03](03-design.md) §12. It is computed from the declaration alone, so it is the same for every caller.
 
