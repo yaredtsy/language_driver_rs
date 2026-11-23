@@ -195,7 +195,7 @@ Memory: the machine has 8 GB. One project at a time, `-j2`, `--test-threads=2`, 
 | 1 | S-TC1. **Done** (spike 9b91422, reviewed 2026-11-23: 40 of 40 as expected, and seven more shapes probed by the reviewer) | the table in `ENGINE.md` |
 | 2 | S-TC4: the sample entries and the per-site measure, on today's code. **Built** (`b0f21fb`; reviewed 2026-11-23, baseline in `ENGINE.md`; a fix for its memory on a full sweep follows; vscode's row waits) | the baseline table |
 | 3 | N2, N3, N8: they split counters that exist. **Done** (`25a04c8`; reviewed 2026-11-23, tables in `ENGINE.md`: TC3 stays before TC4, `max_depth` 2 stands, TC4/TC5 waits for N1) | three tables |
-| 4a | N1 (§3.4) | the table of what is passed; S-TC2's list of syntax with no `Expr` (the `other:` keys) |
+| 4a | N1 (§3.4). **Done** (`d8c56e9`; reviewed 2026-11-23, `ENGINE.md` "N1": no syntax missing from `Expr`; TC7 and TC5 do not move; most arguments come from further up) | the table of what is passed; S-TC2's list of syntax with no `Expr` (the `other:` keys) |
 | 4b | N4, N7: variables and fields, by their references and `is_write_access` | two tables |
 | 4c | N5: objects written through, handed on, stored, renamed | one table |
 

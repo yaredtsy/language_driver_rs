@@ -1403,3 +1403,36 @@ V-NOC's package calls, the top: `zustand` (the store hook, whose call signature 
   given: TCL names them after the library, which is right until TC10 follows them. And the declaration of a maker can have no name
   (zustand's store hook and `cva` are call signatures: 433 of V-NOC's 766): TCL names a library-made function after **the call as written
   in the project** (`useStore()`, `create()()`), never after the declaration (`11-later.md` §4.1).
+
+### N1: what callers pass (`d8c56e9`, feature `__tc0_counts`; reviewed 2026-11-23)
+
+Full depth-1 sweeps, release build with the feature, run by the reviewer. At every site with a project target, each argument in a slot
+that can hold a function or an object (TC0's over-counting rule, 04 §3.4), and each JSX attribute written in braces whose value can.
+Shares are of the classified arguments; the arguments in a data slot are counted apart.
+
+| Project | Classified | Data slot | Def by name | Anonymous fn | Parameter passed on (and its member) | Local (and member) | Object literal (with a function) | `new` | Static class | Call result (project) | Other syntax |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| V-NOC frontend | 1,655 | 1,242 | 26 (2%) | 151 (9%) | 521 (31%) | 358 (22%) | 140 (3) | 0 | 24 | 42 (19) | 383 (23%) |
+| the private codebase | 18,646 | 22,981 | 268 (1%) | 914 (5%) | 5,421 (29%) | 7,216 (39%) | 2,723 (126) | 196 | 228 | 382 (265) | 1,189 (6%) |
+| TypeScript `src/compiler` | 49,012 | 15,367 | 2,953 (6%) | 1,126 (2%) | 24,883 (51%) | 12,695 (26%) | 162 (28) | 13 | 25 | 3,415 (3,277) | 1,889 (4%) |
+
+In V-NOC, 480 of the 1,655 are JSX attributes (anonymous 148, a parameter 105, a local 103, a def 26, spread 26). Module variables are
+under 1% everywhere.
+
+**S-TC2's list of syntax with no `Expr`** (the `other:` keys, largest first): V-NOC `StringLiteral` 286, `BinaryExpression` 47,
+`ConditionalExpression` 31, `ArrayLiteralExpression` 7, `JsxElement`/`JsxSelfClosingElement` 8, `TaggedTemplateExpression` 2, `NullKeyword`
+2; the private codebase adds `NullKeyword` 119, `TemplateExpression` 19, `AwaitExpression` 15, `ThisKeyword` 6, `Identifier` 27 (`undefined`
+and globals); the compiler `Identifier` 541 (`undefined`), `PrefixUnaryExpression` 76, `ThisKeyword` 50. **Every one is in the design's
+`Expr`** (data, `OneOf`, `This`, `Call`, arrays for TC9): no syntax is missing from the plan.
+
+**What it says** (04 §4):
+
+- **A value the caller can name is rare at the first step**: a def, a function literal, an object literal with a function, a `new`: 11% in
+  V-NOC, 8% in the private codebase, 8% in the compiler. Most arguments are **a parameter passed on** (29–51%) or **a local** (22–39%): the
+  value comes from further up. So TC2's chains (a parameter's value from the caller's key) and TC3's locals carry the layer, not the first
+  call; N6 and the forecast of step 7 say how far.
+- **TC7 does not move up** (04 §4's rule needs "a parameter passed on" to be small; it is the largest class). But in React code an
+  anonymous function is passed more often than a def by name (9% to 2%, 5% to 1%): D54 is worth its revisit before TC7, as D58 says.
+- **TC5 does not move before TC4.** Almost nothing passed is an instance (an argument whose static type is a class: 24, 228 and 25; a `new` among them: 0, 196, 13), so the compiler's
+  57% "method called on a parameter" (N3) has no instance to bind at the first step.
+- **TC4's share in React code is the JSX attributes** (29% of V-NOC's classified arguments), not object literals passed to calls (3).
