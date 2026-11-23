@@ -70,6 +70,32 @@ spike ran; the spike prints `got` beside it.
 | E10 | the tour's `<Panel onClose={join} />` | `get_resolved_signature_exported(element)`: `declaration()`, `parameters()` | `Panel`, one parameter |
 | E11 | `let k = encode; k = join; ({ k } = o); [k] = xs; k ||= join; for (k of xs) {} k();` | the references to `k` in the file, and `ast::is_write_access` of each | the declaration's name `false`; the five writes `true`; `k()` `false` |
 
+### 3.2 S-TC4, as decided (2026-11-23)
+
+**The site.** A call site is named by what does not move between runs and phases: the def it is in (its file, qualname and occurrence,
+from `Graph::defs` by the edge's `from.func`) and its `Site` (start and end, relative to the def). A context **reaches** a site when it
+has an edge there (every site has one: rule 8). A site is **open in a context** when that context has an `Unresolved` edge there.
+
+**The measure** of one run (every graph the run made, contexts told apart by `ContextId`): for every site open in at least one context,
+how many contexts reach it and in how many it is open, and its reasons. A site is *open in every context* or *open in some*. Written as
+one line per site to a file, and summed by reason on the screen.
+
+**Against a baseline.** Given the file of an earlier run, every site of it is one of: still open in every context that reaches it, open in
+some, open in **none** (answered everywhere), or **not reached** by this run. That last split is the one the layer reports from TC2 on;
+TC0's baseline is the same code run against its own file (every site "every", as one context per function allows nothing else).
+
+**The sample**, measured by the reviewer on 2026-11-23 (debug CLI, whole graph, no cut):
+
+| Project | Entries | Contexts | Graph time | Peak footprint |
+|---|---|---|---|---|
+| V-NOC frontend | `Dashboard` (`src/pages/Dashboard.tsx`), `HomePage` (`src/pages/HomePage.tsx`), `TaskDetailPanel` | 541, 62, 90 | 245, 83, 53 ms | 143 MB |
+| the private codebase | its entry file's `main` (kept outside git, in the reviewer's notes) | 5,923 | 0.8 s | 222 MB |
+| TypeScript 5.9.3 `src/compiler` | `createProgram` (`program.ts`) | 6,949 | 0.55 s | 131 MB |
+| vscode `src` | chosen at the reviewer's first vscode run (the machine's swap was full on 2026-11-23) | | | |
+
+V-NOC's own entry file reaches 2 contexts and its route files 1 (the router is a library that holds the pages as data), so the pages
+are entries of their own.
+
 A "no" is written in `ENGINE.md` with the phase it hits: E1, E2, E4, E5, E10 hit TC2 (binding and the tripwire), E3 nothing yet
 (types in a key are later), E6 and E11 TC3 (variables, and the completeness rule of [03](03-design.md) §5), E7 and E8 TC5, E9 TC8.
 
