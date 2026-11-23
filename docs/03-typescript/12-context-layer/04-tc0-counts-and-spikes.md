@@ -150,6 +150,31 @@ is capable here: TC0 counts a little too much, never too little. A JSX attribute
 And, across all the classes, `static_class`: the argument's type (`get_type_at_location`) is an instance of a class (`ObjectFlags::Class`).
 The keys are text (`tc0_n1:arg:<class>`, `tc0_n1:jsx:<class>`, `tc0_n1:static_class`), like N8's package keys.
 
+### 3.5 N4 and N7, as decided (2026-11-23)
+
+**Reading the writes of a name.** Both ask, for one declared name, every place that writes it. `get_references_to_symbol_in_file`
+searches the **whole file** for each name, which is quadratic on a large file (the compiler's `checker.ts`). The engine's public free
+function `get_possible_symbol_reference_nodes(file, name, Some(container))` (`tsrs_checker/src/services.rs:827`) searches the text of one
+container only; each node it gives is kept when its symbol is the name's, and it is a write when `ast::is_write_access` says so. The
+container is the def for a local and the class for a field. TC3's completeness rule (03 §5) reads writes the same way.
+
+**N4: locals and parameters, per def walked** (module variables are not counted: a top-level `let` is unknown by the policy, a top-level
+`const` has one value anyway). The names declared by a `VariableDeclaration` inside the def's body, nested anonymous functions included,
+nested defs not; a pattern declares each name in it. A name whose type (`get_type_of_symbol`) is not capable (§3.4) is `n4_data`. Else:
+`n4_const` (declared `const`); `n4_once` (the initializer and the writes are one in all); `n4_more` (two or more); and, across them,
+`n4_unmodelled_write` when a write is anything but `name = e` (a destructuring assignment, `for … of`, `||=`, `++`): the writes TC3's
+model does not read, which make a value open. And the def's own parameters with a plain name and a capable type: `n4_param`, and
+`n4_param_assigned` when the body writes one (06 §2's `assigned`).
+
+**N7: the `this` column**, per `function_typed_value` edge whose origin is `this`. The first member after `this` (`this.x` in `this.x()` and
+in `this.x.m()`), its symbol's first declaration: a parameter property (`constructor(private x: X)`) is `n7_parameter_property`; a
+property declaration is `n7_constructor_only` when every write of it in its class (the initializer included) is in that class's
+constructor, `n7_assigned_elsewhere` when one is not, `n7_never_written` when there is none (`x!: X`); a method or a signature is
+`n7_method`; anything else `n7_other`. Writes in a subclass in another file are not seen: said, not counted. And a key per class
+(`n7_class:<file>#<qualname>`), which the sweep joins with the classes a `new` of the project builds (every `Construct` edge of the run;
+the file's own code is swept too, `TS_SWEEP_FILE_CODE`, since `export const s = new S()` is file code): sites in classes built by `new`
+in the project, and in others.
+
 A "no" is written in `ENGINE.md` with the phase it hits: E1, E2, E4, E5, E10 hit TC2 (binding and the tripwire), E3 nothing yet
 (types in a key are later), E6 and E11 TC3 (variables, and the completeness rule of [03](03-design.md) §5), E7 and E8 TC5, E9 TC8.
 
