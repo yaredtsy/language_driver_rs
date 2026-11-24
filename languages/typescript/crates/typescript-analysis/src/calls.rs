@@ -854,6 +854,82 @@ mod tests {
         }
     }
 
+    /// The gate of TC1 step 2, on a real project, not a check (`docs/03-typescript/12-context-layer/05-tc1-the-body-as-data.md` §8). Same variables as
+    /// `measure_handed_over` (no entry), and `TS_MEASURE_PART`, one per process so that its peak memory can be read from `/usr/bin/time -l`:
+    /// `sweep` (the depth-1 graph of every project def in one request), `flows` (that request, then the table of every def, checked against `call_sites`),
+    /// `cold` (a fresh project, only the tables). `cargo test --release -p typescript-analysis --lib measure_flow -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "a measurement on a real project, driven by TS_MEASURE_ROOT, TS_MEASURE_FILE and TS_MEASURE_PART"]
+    fn measure_flow() {
+        use std::time::Instant;
+
+        let (Ok(root), Ok(file), Ok(part)) = (
+            std::env::var("TS_MEASURE_ROOT"),
+            std::env::var("TS_MEASURE_FILE"),
+            std::env::var("TS_MEASURE_PART"),
+        ) else {
+            eprintln!(
+                "set TS_MEASURE_ROOT, TS_MEASURE_FILE and TS_MEASURE_PART (sweep, flows or cold)"
+            );
+            return;
+        };
+        let project = Project::open(Path::new(&root), Path::new(&file)).unwrap();
+        let sem = &project.sem;
+        let defs = sem.project_defs(STYLE);
+
+        // the tables of every def, each checked against the sites `call_sites` lists
+        let tables = || -> (usize, usize, usize) {
+            let (mut sites, mut arguments, mut anons) = (0, 0, 0);
+            for &func in &defs {
+                let Some(flow) = sem.flow(sem.def_id(func), STYLE) else {
+                    assert!(sem.call_sites(func, STYLE).is_none());
+                    continue;
+                };
+                let spans: Vec<_> = flow.sites.iter().map(|site| site.span).collect();
+                assert_eq!(Some(spans), sem.call_sites(func, STYLE));
+                sites += flow.sites.len();
+                arguments += flow
+                    .sites
+                    .iter()
+                    .map(|site| site.args.as_ref().map_or(0, |args| args.len()))
+                    .sum::<usize>();
+                anons += flow.anons.len();
+            }
+            (sites, arguments, anons)
+        };
+        let sweep = || {
+            let lang = TypeScript::new(sem, STYLE);
+            let entries: Vec<_> = defs.iter().map(|&f| start_of(&lang, f)).collect();
+            let mut solver = Solver::new(lang, Limits::new(u32::MAX, None));
+            let started = Instant::now();
+            let _graph = solver.graph_within(&entries, &Budget::new(Some(1), None), &Cancel::new());
+            started.elapsed()
+        };
+        match part.as_str() {
+            "sweep" => eprintln!("defs {}, graph {:?}", defs.len(), sweep()),
+            "flows" => {
+                let graph = sweep();
+                let started = Instant::now();
+                let (sites, arguments, anons) = tables();
+                eprintln!(
+                    "defs {}, graph {graph:?}, flows {:?}, sites {sites}, arguments {arguments}, anonymous functions {anons}",
+                    defs.len(),
+                    started.elapsed()
+                );
+            }
+            "cold" => {
+                let started = Instant::now();
+                let (sites, arguments, anons) = tables();
+                eprintln!(
+                    "defs {}, flows {:?}, sites {sites}, arguments {arguments}, anonymous functions {anons}",
+                    defs.len(),
+                    started.elapsed()
+                );
+            }
+            other => eprintln!("TS_MEASURE_PART is sweep, flows or cold, not {other}"),
+        }
+    }
+
     /// A measurement on a real project, not a check: the two steps of a request that a cancel cannot stop (`docs/03-typescript/07-ts5-driver-needs.md` §4). Listing a
     /// body's sites happens before the walk looks at the cancel for the first time, and one site's resolution happens between two looks. Same variables as
     /// `measure_handed_over` (the entry is not used), `cargo test --release -p typescript-analysis --lib measure_uninterruptible_steps -- --ignored --nocapture`.

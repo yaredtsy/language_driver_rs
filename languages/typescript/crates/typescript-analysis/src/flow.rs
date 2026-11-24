@@ -1,0 +1,116 @@
+//! The body of a def as plain data (`docs/03-typescript/12-context-layer/03-design.md` §4): what `sem` understood of it, read once per program and kept.
+//! It holds numbers and owned values, never an engine pointer and never a `Func<'p>`, so it can be kept inside the `Sem` and handed out as an `Arc`.
+#![cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "the layer reads it from TC1 step 4 on (walk::resolve_from_env)"
+    )
+)]
+
+use typescript_syntax::Span;
+
+/// A def as a number: the program's number, the file's number in it, and the outline index + 1 (0 is the file's own code). Good while that program is
+/// loaded; `Sem::func` gives `None` for a number of another program.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct DefId {
+    program: u32,
+    file: u32,
+    def: u32,
+}
+
+impl DefId {
+    pub(crate) fn new(program: u32, file: u32, index: Option<u32>) -> DefId {
+        DefId {
+            program,
+            file,
+            def: index.map_or(0, |index| index + 1),
+        }
+    }
+
+    pub(crate) fn program(self) -> u32 {
+        self.program
+    }
+
+    pub(crate) fn file(self) -> u32 {
+        self.file
+    }
+
+    /// The outline index; `None` for the file's own code.
+    pub(crate) fn index(self) -> Option<u32> {
+        self.def.checked_sub(1)
+    }
+}
+
+/// What `sem` read of one def's body.
+#[derive(Debug)]
+pub(crate) struct Flow {
+    /// The parameters of the def's own declaration, in order, without a `this` parameter. Empty for the file's code, a class, and any def that is not function-like.
+    pub(crate) params: Box<[Param]>,
+    /// Index for index with `Sem::call_sites`.
+    pub(crate) sites: Box<[SiteFlow]>,
+    /// The anonymous functions written in the body, in source order (`Expr::Anon` and `SiteFlow::anon` are places in it).
+    pub(crate) anons: Box<[AnonFlow]>,
+    /// How many nodes reading the table met of a kind a view's `expect` did not handle (`view::counted`), kept with it as `Body` keeps its own.
+    pub(crate) unhandled: u64,
+}
+
+/// One parameter of a declaration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Param {
+    /// `...rest`.
+    pub(crate) rest: bool,
+}
+
+/// A site of the body, read.
+#[derive(Debug)]
+pub(crate) struct SiteFlow {
+    pub(crate) span: Span,
+    pub(crate) kind: FlowKind,
+    pub(crate) callee: Expr,
+    /// `Some` for a call or a `new` (its arguments) and for JSX (one `Unknown`: the attributes, TC4). `None` for the other kinds: **not read**, which a
+    /// later phase takes as unknown, never as "no argument".
+    pub(crate) args: Option<Box<[Arg]>>,
+    /// The innermost anonymous function whose span holds the site.
+    pub(crate) anon: Option<u32>,
+}
+
+/// What a site is, as far as the layer tells them apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FlowKind {
+    Call,
+    New,
+    Jsx,
+    Tagged,
+    Decorator,
+    Accessor,
+}
+
+/// One argument of a call.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Arg {
+    pub(crate) value: Expr,
+    /// `...xs`: `value` is what is spread, and it is not one argument.
+    pub(crate) spread: bool,
+}
+
+/// An anonymous function written in a body.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct AnonFlow {
+    pub(crate) span: Span,
+}
+
+/// What an expression is, as far as the code alone says. Later phases add variants (`Param`, `Var`, `Member`, `Object`, `New`, `This`, `Call`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Expr {
+    /// Anything not below.
+    Unknown,
+    /// A literal and the other forms of `03-design.md` §3's table: nothing callable.
+    Data,
+    /// A name or a function the checker resolves to a project def with a body.
+    Def(DefId),
+    /// The i-th anonymous function of this body.
+    Anon(u32),
+    /// One of these: `c ? a : b`, `a || b`, `a ?? b`, `a && b`, a name with several functions. Never nested.
+    OneOf(Box<[Expr]>),
+}

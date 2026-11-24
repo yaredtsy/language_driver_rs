@@ -37,6 +37,8 @@ use crate::OpenError;
 mod collect;
 #[cfg(test)]
 mod coverage;
+/// A def's body read once into plain data (`crate::flow`), for the context layer.
+mod flow;
 mod handed;
 mod hierarchy;
 mod project;
@@ -239,6 +241,15 @@ pub struct Sem {
     file_defs: RefCell<FileDefsCache>,
     /// What the walk of each def's body found, made on first use, by the def's node: its sites, the defs it stops at, the references by name.
     bodies: RefCell<HashMap<P<Node>, Arc<Body>>>,
+    /// The numbers the defs of this program are given, and the table of each def's body (`Sem::flow`).
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "the layer reads it from TC1 step 4 on (walk::resolve_from_env)"
+        )
+    )]
+    flows: flow::Flows,
     // Fields drop in this order, after `Drop::drop` has freed the program: the loaders' regions, then the program's own.
     _loaders: Arc<ProgramRegions>,
     region: Region,
@@ -364,6 +375,7 @@ impl Sem {
             checker_held: Cell::new(false),
             file_defs: RefCell::new(HashMap::new()),
             bodies: RefCell::new(HashMap::new()),
+            flows: flow::Flows::new(),
             _loaders: loaders,
             region,
         };
@@ -618,6 +630,7 @@ impl Sem {
             refs: collector.refs,
             destructured: collector.destructured,
             assigns: collector.assigns,
+            anons: collector.anons,
             unhandled,
         });
         self.bodies.borrow_mut().insert(node, Arc::clone(&made));

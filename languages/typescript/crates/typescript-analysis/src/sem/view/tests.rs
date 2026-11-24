@@ -56,6 +56,14 @@ fn touch(node: P<Node>, text: &str) {
     }
     if let Some(view) = Conditional::cast(node) {
         seen(view.condition());
+        seen(view.when_true());
+        seen(view.when_false());
+    }
+    if let Some(view) = FunctionLike::cast(node) {
+        seen(view.parameters());
+    }
+    if let Some(view) = Parameter::cast(node) {
+        seen(view.is_rest());
     }
     if let Some(view) = Binding::cast(node) {
         seen(view.is_rest());
@@ -88,7 +96,7 @@ fn walk(file: P<SourceFile>, kinds: &mut HashSet<Kind>) -> u64 {
 }
 
 /// A source file to open a fixture from: the first TypeScript or JavaScript file under it that is not a declaration file and not in `node_modules`.
-fn candidates(dir: &Path, found: &mut Vec<PathBuf>) {
+pub(in crate::sem) fn candidates(dir: &Path, found: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -138,6 +146,31 @@ fn walk_project(
     None
 }
 
+/// The folders of the fixture projects, sorted: `tests/fixtures/*`, the `typescript` folder of each scenario, and `tests/policy`.
+pub(in crate::sem) fn fixture_roots() -> Vec<PathBuf> {
+    let tests = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for folder in ["fixtures", "../../../../scenarios"] {
+        if let Ok(entries) = std::fs::read_dir(tests.join(folder)) {
+            roots.extend(entries.flatten().map(|entry| entry.path()));
+        }
+    }
+    roots.push(tests.join("policy"));
+    roots.sort();
+    roots
+        .into_iter()
+        .filter(|root| root.is_dir())
+        // a scenario keeps its TypeScript in a folder of its own
+        .map(|root| {
+            if root.join("typescript").is_dir() {
+                root.join("typescript")
+            } else {
+                root
+            }
+        })
+        .collect()
+}
+
 #[test]
 fn every_cast_and_every_accessor_of_every_view_is_total_on_the_libraries_and_the_fixtures() {
     let started = std::time::Instant::now();
@@ -158,24 +191,9 @@ fn every_cast_and_every_accessor_of_every_view_is_total_on_the_libraries_and_the
         "only {library_nodes} nodes of libraries were walked"
     );
 
-    let tests = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
-    let mut roots: Vec<PathBuf> = Vec::new();
-    for folder in ["fixtures", "../../../../scenarios"] {
-        if let Ok(entries) = std::fs::read_dir(tests.join(folder)) {
-            roots.extend(entries.flatten().map(|entry| entry.path()));
-        }
-    }
-    roots.push(tests.join("policy"));
-    roots.sort();
     let mut projects = 0;
     let mut nodes = library_nodes;
-    for root in roots.iter().filter(|root| root.is_dir()) {
-        // a scenario keeps its TypeScript in a folder of its own
-        let root = if root.join("typescript").is_dir() {
-            root.join("typescript")
-        } else {
-            root.clone()
-        };
+    for root in fixture_roots() {
         if let Some((walked, _)) = walk_project(&root, &mut done, &mut kinds) {
             projects += 1;
             nodes += walked;
@@ -206,6 +224,8 @@ fn every_cast_and_every_accessor_of_every_view_is_total_on_the_libraries_and_the
         ("Binding", Binding::KINDS),
         ("TypeReference", TypeReference::KINDS),
         ("StaticBlock", StaticBlock::KINDS),
+        ("FunctionLike", FunctionLike::KINDS),
+        ("Parameter", Parameter::KINDS),
     ] {
         let missing: Vec<&Kind> = listed
             .iter()

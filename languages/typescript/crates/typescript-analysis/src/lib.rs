@@ -2,6 +2,7 @@
 
 mod calls;
 mod env;
+mod flow;
 mod key;
 #[cfg(test)]
 mod scratch;

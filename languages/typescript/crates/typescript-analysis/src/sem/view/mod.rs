@@ -245,6 +245,16 @@ impl Conditional {
     pub(super) fn condition(self) -> P<Node> {
         self.0.as_conditional_expression().condition
     }
+
+    /// `a` of `c ? a : b`.
+    pub(super) fn when_true(self) -> P<Node> {
+        self.0.as_conditional_expression().when_true
+    }
+
+    /// `b` of `c ? a : b`.
+    pub(super) fn when_false(self) -> P<Node> {
+        self.0.as_conditional_expression().when_false
+    }
 }
 
 view! {
@@ -278,6 +288,32 @@ view! {
 impl StaticBlock {
     pub(super) fn body(self) -> P<Node> {
         self.0.as_class_static_block_declaration().body
+    }
+}
+
+view! {
+    /// A function-like def: the engine's `parameters` reads `function_like_data().unwrap()`, so it is total on these kinds only.
+    FunctionLike: FunctionDeclaration | FunctionExpression | ArrowFunction | MethodDeclaration | GetAccessor | SetAccessor | Constructor
+}
+
+impl FunctionLike {
+    pub(super) fn parameters(self) -> &'static [P<Node>] {
+        self.0.parameters()
+    }
+}
+
+view! {
+    /// A parameter: `x`, `...rest`, `this: T`.
+    Parameter: Parameter
+}
+
+impl Parameter {
+    /// `...rest`.
+    pub(super) fn is_rest(self) -> bool {
+        self.0
+            .as_parameter_declaration()
+            .dot_dot_dot_token()
+            .is_some()
     }
 }
 
@@ -327,10 +363,16 @@ pub(super) fn arguments_of(node: P<Node>) -> &'static [P<Node>] {
     CallOrNew::expect(node).map_or(&[], CallOrNew::arguments)
 }
 
+/// `node.parameters()` of a function-like node; none for any other. A def that is not function-like (a class, a variable, the file's code) has no parameters,
+/// and that is not a failure, so this is a `cast` and not an `expect`.
+pub(super) fn parameters_of(node: P<Node>) -> &'static [P<Node>] {
+    FunctionLike::cast(node).map_or(&[], FunctionLike::parameters)
+}
+
 /// `node.tag_name()` of a JSX element.
 pub(super) fn tag_name_of(node: P<Node>) -> Option<P<Node>> {
     JsxTag::expect(node).map(JsxTag::tag_name)
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

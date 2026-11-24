@@ -1,8 +1,8 @@
 use super::handed::{is_handed_function_expression, is_handed_over, literal_is_handed};
 use super::view::{
     Binary, CallOrNew, ElementAccess, NameToken, StaticBlock, TaggedTemplate, Wrapper,
-    arguments_of, elements_of, expression_of, initializer_of, members_of, spelled, statements_of,
-    tag_name_of,
+    arguments_of, elements_of, expression_of, initializer_of, members_of, parameters_of, spelled,
+    statements_of, tag_name_of,
 };
 use super::*;
 
@@ -38,6 +38,8 @@ pub(super) struct Collector<'a> {
     pub(super) destructured: Vec<P<Node>>,
     /// The assignments whose left side is an object pattern (`({ load } = api)`): the pattern and the value it takes from (`note_assignment`).
     pub(super) assigns: Vec<(P<Node>, P<Node>)>,
+    /// The anonymous functions the walk enters: an arrow or a function expression that is not a def of the outline, in the order met, which is source order.
+    pub(super) anons: Vec<Span>,
 }
 
 /// What reading one def's body found. `sites` is the calls; `nested` and `refs` are what the body hands over (`Sem::handed_over`).
@@ -51,6 +53,8 @@ pub(super) struct Body {
     pub(super) binds: Vec<P<Node>>,
     pub(super) call_apply: Vec<P<Node>>,
     pub(super) refs: Vec<(Span, P<Node>)>,
+    /// The anonymous functions of the body, in source order (`Collector::anons`).
+    pub(super) anons: Vec<Span>,
     /// How many nodes the reading met of a kind an accessor does not handle, where it expected one (`view::counted`): the count of this body, kept with it.
     pub(super) unhandled: u64,
 }
@@ -126,6 +130,7 @@ impl<'a> Collector<'a> {
             accesses: Vec::new(),
             destructured: Vec::new(),
             assigns: Vec::new(),
+            anons: Vec::new(),
         }
     }
 
@@ -270,6 +275,10 @@ impl<'a> Collector<'a> {
                         kind: SiteKind::Decorator,
                     });
                 }
+            }
+            // an anonymous function (a def of the outline has returned above): listed, and walked into as before
+            Kind::ArrowFunction | Kind::FunctionExpression => {
+                self.anons.push(own_span(self.text, node));
             }
             // `({ load } = api)`: the names on the left take members of the value on the right, and no edge follows them
             Kind::BinaryExpression => self.note_assignment(node),
@@ -426,7 +435,7 @@ impl<'a> Collector<'a> {
                 member.kind(),
                 Kind::Constructor | Kind::MethodDeclaration | Kind::GetAccessor | Kind::SetAccessor
             ) {
-                for &parameter in member.parameters() {
+                for &parameter in parameters_of(member) {
                     if let Some(modifiers) = parameter.modifiers() {
                         for &modifier in modifiers.nodes() {
                             if modifier.kind() == Kind::Decorator {
@@ -460,7 +469,7 @@ impl<'a> Collector<'a> {
             | Kind::GetAccessor
             | Kind::SetAccessor
             | Kind::Constructor => {
-                for &parameter in node.parameters() {
+                for &parameter in parameters_of(node) {
                     self.collect(Some(parameter));
                 }
                 self.collect(node.body());

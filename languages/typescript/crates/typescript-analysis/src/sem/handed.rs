@@ -454,7 +454,7 @@ impl Sem {
 
     /// The project functions with a body that `node` (a name, an access, a shorthand property) names, and how many project classes: the symbol's
     /// declarations, mapped as a call maps them (`callable_declarations`), kept if they are defs of the project.
-    fn functions_named<'p>(
+    pub(super) fn functions_named<'p>(
         &'p self,
         checker: &mut Checker,
         node: P<Node>,

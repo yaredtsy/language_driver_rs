@@ -35,6 +35,8 @@ disallowed-methods = [
     { path = "tsrs_ast::Node::type_expression", reason = "panics on a kind it does not handle: ask a view in sem/view/ (H14)" },
     { path = "tsrs_ast::Node::class_name", reason = "panics on a kind it does not handle: ask a view in sem/view/ (H14)" },
     { path = "tsrs_ast::Node::set_type", reason = "panics on a kind it does not handle: ask a view in sem/view/ (H14)" },
+    { path = "tsrs_ast::Node::parameters", reason = "panics on a node that is not function-like (function_like_data().unwrap()): ask a view in sem/view/ (TC1 step 2)" },
+    { path = "tsrs_ast::Node::parameter_list", reason = "panics on a node that is not function-like (function_like_data().unwrap()): ask a view in sem/view/ (TC1 step 2)" },
     # The engine's downcasts (`Node::as_<kind>()`): each begins with `assert!` on the node's kind and panics on another, in every build (H17, `docs/03-typescript/10-review-fixes.md`
     # §6.3). 185 of them: the 183 `pub fn as_…` of `crates/tsrs_ast/src/generated.rs` and `as_source_file_p`, `as_flow_reduce_label_data_p` of `ast.rs`. Regenerate the first part with
     #   grep -oE 'pub fn as_[a-z0-9_]+' <tsrs checkout>/crates/tsrs_ast/src/generated.rs | sort -u
