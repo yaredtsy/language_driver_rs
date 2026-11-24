@@ -209,4 +209,18 @@ key and compares), and writes it before step 5. (Found closing TC1, 2026-11-24.)
 
 After step 9 the layer can be tagged for the first time, off by default.
 
+**Step 1, as decided for the build (2026-11-24).** A core step; the shape is the note
+[`02-tree-rules/08`](../../02-tree-rules/08-the-digest-and-scenario-levels.md), with the pinned bytes in it.
+
+- **`analyzer_core::graph::digest<T: Serialize + ?Sized>(&T) -> [u8; 16]`**, beside `ContextId`: `serde_json::to_vec`, `xxh3_128`,
+  `to_le_bytes`, `expect` on a value that cannot be written. `serde_json` becomes a normal dependency of `analyzer-core`, `xxhash-rust 0.8`
+  (`xxh3`) a new one. Nothing calls it in this step; TypeScript's first caller is step 4, Python and Bend switch in their own session (D57).
+- **`analyzer_testkit::scenarios::Levels`** (`All(Level)`, `PreciseFor(&'static [&'static str])`, `From<Level>`), and `run` takes
+  `impl Into<Levels>`: every existing call is unchanged. A listed name with no program in the subject's folder fails the run.
+- **TypeScript's one new test**: the shared scenarios with `Precision::Precise`, `Levels::PreciseFor(&[])`: the layer on, every tree the
+  default one (6 scenarios). Step 5 adds `callback-argument` to the list and its `typescript/` program.
+- **Lockfiles**: core's and all four languages', updated by resolution only (`cargo metadata`); Rust gains the package `xxhash-rust`, the
+  others only `analyzer-core`'s dependency list. Python's and Rust's tests are not run on this machine (no build directory, 5 GB free):
+  their lockfiles are checked with `cargo tree --locked`, their tests run on CI when the owner pushes.
+
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)

@@ -51,7 +51,8 @@ language_driver_rs
 │   ├── the defs table             a change: definitions get their own table ──────── 04-the-defs-table.md
 │   ├── edge basis                 what an edge rests on · why it is unresolved ───────── 05-edge-basis-note-for-ts4.md
 │   ├── passed edges (D22)         a def handed over, not called, gets a marked edge ──── 06-passed-edges.md
-│   └── what a construction runs   fields, ctor, static, decorators · options, no code ── 07-what-a-construction-runs.md
+│   ├── what a construction runs   fields, ctor, static, decorators · options, no code ── 07-what-a-construction-runs.md
+│   └── digest, scenario levels    the context digest in core (D57) · a level per scenario ── 08-the-digest-and-scenario-levels.md
 │
 ├── TYPESCRIPT / JAVASCRIPT ───────────────────────── 03-typescript/
 │   ├── what tsrs gives            exported · needs our work · risks ──────────────── 01-what-tsrs-gives.md
