@@ -361,12 +361,25 @@ on a fixture. It is an ignored in-crate test, as `measure_flow` is, because the 
   95th percentile comes near 64, and relevance (step 8) moves before step 5 if the count with it is much lower and the count without it is
   near the cut. The release gate (`measure_flow`, `engine/08-tc1.md`) is re-run in the same release build.
 
-**Step 4c, as decided for the build (2026-11-24): the cost of a table, before step 5.** The release gate failed at `4c26e77` on two
+**Step 4c, as decided for the build (2026-11-24): the cost of a table, before step 5; built as decided, `5318d2c`; the private codebase passes the gate again, the compiler does not (`engine/09-tc2.md`).** The release gate failed at `4c26e77` on two
 projects (cold tables 107% and 113–190% of a depth-1 graph, swap noisy), and the parameter-write search of step 2 is about 100 ms of the
 compiler's. `writes_of` asks the checker for the symbol of every place the name is spelled and only then whether the place is a write; most
 places are reads. The fix keeps the result and reorders the test: `Kind::Identifier`, then `ast::is_write_access` (syntax only), then the
 symbol. No other change. Proof: every test and the tour unchanged, the layer-on dumps unchanged, and the gate run again by the reviewer on a
 quiet machine (`T_cold ≤ T_sweep`, peak ≤ +25%). If it still fails, the next candidate is `capable` (one `get_type_of_symbol` per named
 parameter), measured the same way before anything is decided.
+
+**Step 4d, as decided for the build (2026-11-24): a def's writes in one walk.** Measured at 4c: the write search is all of step 2's cost
+(the compiler's cold tables 358–379 ms without it, 532–713 ms with it, against a 405 ms graph; `capable`'s type read costs nothing). The
+text search per parameter goes; in its place, **once per def that has a named, capable parameter**, the reader walks the def's subtree
+(its parameters, its body, the nested defs and anonymous functions in it: the same region the text search covered) with an explicit stack and
+`for_each_child`, and for each `Identifier` that `ast::is_write_access` says is written asks `get_symbol_at_location_exported`; the result
+is the set of symbols written there. `Param::assigned` is `capable` and its symbol in that set. Writes are rare, so the checker is asked for
+few nodes, and nothing is looked up from the file's root. The set is the same as the text search's on every name the text search can find
+(it found a node by its spelling and kept the same three tests); it also sees a name spelled with a Unicode escape, which the text search
+missed. `names_in` and `writes_of` are deleted (TC3, which needs a local's writes, starts from the walk). Engine items no longer called:
+`astnav::get_touching_property_name`, `tsrs_core::index_bytes`, `tsrs_scanner::is_identifier_part`. Proof: every test, the tour and
+`tour.flow.txt` unchanged; the layer-on dumps unchanged; the gate run again by the reviewer, with experiment A (no search at all, 89% of the
+graph) as the floor.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
