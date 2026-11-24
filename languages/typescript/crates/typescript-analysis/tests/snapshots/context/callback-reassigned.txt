@@ -1,0 +1,34 @@
+== main
+-- off
+main
+  run
+    fallback [Passed]
+  handler [Passed]
+edges:
+main | run | call run
+main | handler | pass handler
+run | fallback | pass fallback
+run | cb | unresolved function_typed_value
+-- on
+main
+  run
+    fallback [Passed]
+  handler [Passed]
+edges:
+main | run | call run
+main | handler | pass handler
+run | fallback | pass fallback
+run | cb | unresolved function_typed_value
+== run
+-- off
+run
+  fallback [Passed]
+edges:
+run | fallback | pass fallback
+run | cb | unresolved function_typed_value
+-- on
+run
+  fallback [Passed]
+edges:
+run | fallback | pass fallback
+run | cb | unresolved function_typed_value

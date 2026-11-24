@@ -223,7 +223,10 @@ every row of the context table.
 | 3 | `value.rs`: `Fn`, `Anon`, `Undefined`, `join`; `eval`: `Param`, `Def`, `Anon`, `OneOf`, defaults | unit tests on hand-written tables |
 | 4 | `key.rs`: `params`, `admit`, the canonical form; `key_of` at every project target | `callback-two-callers`: two contexts, two digests, still no new edge |
 | 4b | **N6, moved here from TC0**: on the four projects, the contexts per function the keys of step 4 make (median, 95th percentile, greatest), counted with and without telling anonymous functions apart and with and without relevance (capability bits). The per-function cut (03 §12) is built in this phase only if the 95th percentile comes near 64; relevance (step 8) moves before step 5 if it is what keeps the count down | the distribution in `ENGINE.md` |
-| 5 | `resolve_from_env` answers at open sites | the fixtures flip; lines a, b, h, i of the tour |
+| 5a | `resolve_from_env` answers at open sites; `PARAMS` joins `Caps::BUILT`; `tests/precise.rs` replaced; the rows of the context table flip | the rows' "on" halves and the tour's lines a, b, h, i as written in "Step 5" below |
+| 5b | the counters (`value_widened_set`), the tripwire (`value_type_mismatch`), `CONTEXT_ID_VERSION`, the per-site measure on the projects | the counters are 0 on the fixtures and the projects; the measure run by the reviewer |
+| 5c | the rest of §9's fixtures, one row each | each row's "on" half, written by hand |
+| 5d | `scenarios/callback-argument/typescript` and `PreciseFor(&["callback-argument"])` | the scenario's two trees |
 | 6 | counters per def | the two-keys counter test |
 | 7 | `Session::graph_from` | the cut-and-continue test |
 | 8 | relevance | equal edges, fewer contexts |
@@ -381,5 +384,71 @@ missed. `names_in` and `writes_of` are deleted (TC3, which needs a local's write
 `astnav::get_touching_property_name`, `tsrs_core::index_bytes`, `tsrs_scanner::is_identifier_part`. Proof: every test, the tour and
 `tour.flow.txt` unchanged; the layer-on dumps unchanged; the gate run again by the reviewer, with experiment A (no search at all, 89% of the
 graph) as the floor.
+
+**Step 5, as decided for the build (2026-11-24): split in four; 5a is the switch.** Step 5 is where the layer first changes a graph, so it is
+cut by what can go wrong: 5a (the rule and the switch), 5b (what is counted and checked), 5c (fixtures for every row of §9), 5d (the shared
+scenario). Each ends with the "layer off is `137b4fa`" check and, from 5a, the per-site measure (never fewer edges). Written before 5a was
+built; the build corrects whatever it finds wrong.
+
+**5a: where the layer speaks, and what it says.** In `walk.rs`, `resolve` asks the engine first, as today, and `resolve_from_env` is given the
+engine's answer. The layer **speaks at a site only when** (1) the layer knows `PARAMS`, (2) the engine's answer has an entry that is
+`Unknown(FunctionTypedValue)` or `Unknown(AnyOrUntyped)` (the *open entries*: the only answers that depend on a value, as `03-design.md` §7's
+table says; `NoDeclaration` on a call's result has no value before TC6), and (3) `eval(site.callee)` has at least one known member. Otherwise the
+engine's answer stands, byte for byte as before (a value that is only data, wide or unknown is not an answer). When it speaks:
+
+```
+targets = the engine's entries that are not open entries                       (a union receiver's other members, say)
+        + one target per known member of the value, in the value's order:
+              Fn(d)      → Target::Call(sem.func(d), OPEN)                      then `keyed` gives it its key, as for every call
+              Anon(..)   → Target::Unresolved("anonymous_function_called")
+              Undefined  → nothing, and one note `callee_undefined`
+        + the open entries, again, only if the value is open                    (a write we cannot read, an untracked way in)
+```
+
+A member whose `sem.func` is `None` (a number of another program: cannot happen, but the code must not unwrap it) makes the value open at that
+site. A site may end with **no target**: `Undefined` alone, closed. That is allowed (the solver draws no edge) and it is the one case where a site
+that had an edge has none; `callback-not-passed` is its row. **The split counters follow the edges:** `function_typed_value_from_*` is noted for
+an open entry only when that entry is kept, and for none otherwise, so the four still add up to `function_typed_value`. `eval` runs only at a site
+with an open entry (today `resolve_from_env` evaluates every site and throws the answer away). The notes stay per walk until step 6 (a function
+reached under two keys counts its sites twice with the layer on; this is expected and is step 6's test).
+
+**The switch.** `Caps::BUILT = Caps::PARAMS`. With `Precision::Default` nothing runs; with `Precise` the keys of step 4 are made and answered. The
+doc comments that say "draws nothing yet" (`caps.rs`, `calls.rs`, `lib.rs`, `walk.rs`) are corrected in the same commit.
+
+**`tests/precise.rs` is replaced.** Its one test said every graph is the same with the layer on, which stops being true. It becomes
+`precise_never_has_fewer_edges`: the same plans (the shared cases and the five whole fixtures), each entry as Default, Precise and Precise again;
+`common::context::never_fewer_edges(default, precise)` empty (rule 5: an edge that is not `Unresolved` stays; a site that had an edge still has
+one) and `precise == precise again` (rule 9); and it prints how many of the compared entries differ at all. `never_fewer_edges`' second half
+learns the one allowed loss: a site with an edge in `default` and none in `precise` is allowed **only up to** `precise.stats.language["callee_undefined"]`
+sites (the counter is per walk, so it is an upper bound), and the lost edges must all be `Unresolved`. The in-crate
+`the_bit_off_is_the_layer_that_knows_nothing` is the other half ("off is identical") and stays as it is. `tests/context.rs`'s
+`the_three_properties_hold_on_every_context_row` already runs `never_fewer_edges`, `a_context_is_a_function_of_its_key` and the rest on every row.
+
+**What each row must show with the layer on** (hand-written; digests are the digest function's, checked by the reviewer against `pins-tc2-4`;
+`@d` is a context's digest; a context of `run` under `[Fn a]` is `run @5d2e5760` and under `[Fn b]` `run @ac15243e`):
+
+| Row, entry | Edges and tree with the layer on |
+|---|---|
+| `callback-two-callers`, `first` | `first` → `run @d` → `a`, and `a [Passed]` under `first`; the edge `run @d \| cb \| call a` replaces `unresolved function_typed_value`. `second` likewise with `b`. `main`: two contexts of `run`, `a`'s shared by `first` and `again` |
+| `callback-two-callers`, `run` | unchanged: the entry has the open key, `run \| cb \| unresolved function_typed_value` (F4) |
+| `callback-passed-through`, `main` | `relay @[handler]` → `each @[handler]` → `handler`; `relay @[other]` → `each @[other]` → `other`; `direct` → the **same** `each @[handler]` context. Two `f` edges that are calls, none unresolved |
+| `callback-passed-through`, `relay` and `direct` | `relay`: the open key, `each` under the open key (it takes `relay`'s unknown parameter): `unresolved function_typed_value`, as today. `direct`: `each @[handler]` → `handler` |
+| `callback-either`, `pick` | one `run @d` whose `cb` site has **two** call edges, `a` and `b`, and no unresolved edge; `run` as an entry: unchanged |
+| `callback-not-passed`, `main` | `main` → `run @d` and **no edge from `run`**; `Stats.language["callee_undefined"] = 1`. `run` as an entry: unchanged |
+| `callback-reassigned`, `main` | `run @d \| cb \| call handler` **and** `run @d \| cb \| unresolved function_typed_value` (open: the write is TC3's); `run \| fallback \| pass fallback` as today |
+| the tour, lineA | `each @d \| f \| call encode` |
+| the tour, lineB | `relay @d` → `each @d \| f \| call join` |
+| the tour, lineH | `twice @d` has two edges `twice \| f \| call encode` (the two calls in the arrow, which belongs to `twice`); `lineH \| twice(encode) \| unresolved no_declaration` stays (TC6) |
+| the tour, lineI | `each @d \| f \| unresolved anonymous_function_called` (the arrow is `AnonAny`); `lineI \| join \| call join` as today |
+| the tour, lines C–G | unchanged. A line whose graph moves is a stop |
+
+**Also in 5a:** the in-crate tests of step 4 are updated to the new truth (`keyed.rs`: "the default graph's edges exactly" becomes "the default
+graph's edges, except that each `function_typed_value` edge of a function whose parameter is called is the call to the function passed"; the no-reuse check
+runs on **every entry of every row of the context table**, the tour's included, and on `keys`). Three fixtures were added by the reviewer with this
+decision (`callback-either`, `callback-not-passed`, `callback-reassigned`: rows of the context table, both halves equal until 5a). The guards of
+5a and the test each is proven by: *speaks only at an open entry* (the row `callback-param` of the default table and the tour's lines C–G stay),
+*known members only* (`callback-reassigned`), *`Undefined` is no edge* (`callback-not-passed`), *the open entries come back when open*
+(`callback-reassigned`), *a set is both edges* (`callback-either`), *an arrow is `anonymous_function_called`* (tour lineI), *counters follow the
+edges* (`callback-reassigned` keeps one, `callback-either` none).
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)

@@ -1,0 +1,30 @@
+== pick
+-- off
+pick
+  run
+  a [Passed]
+  b [Passed]
+edges:
+pick | run | call run
+pick | a | pass a
+pick | b | pass b
+run | cb | unresolved function_typed_value
+-- on
+pick
+  run
+  a [Passed]
+  b [Passed]
+edges:
+pick | run | call run
+pick | a | pass a
+pick | b | pass b
+run | cb | unresolved function_typed_value
+== run
+-- off
+run
+edges:
+run | cb | unresolved function_typed_value
+-- on
+run
+edges:
+run | cb | unresolved function_typed_value
