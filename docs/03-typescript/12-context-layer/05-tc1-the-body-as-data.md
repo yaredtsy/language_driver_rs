@@ -164,4 +164,36 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
 - `indexmap = "2"` (default features, as tsrs takes it: nothing is rebuilt). `smallvec` (it must take the feature `union`, as tsrs does,
   or tsrs is rebuilt), `rustc-hash` and `bitflags` come in with their first use; `proptest` at step 4.
 
+**Step 2, as decided for the build (2026-11-24).**
+
+- **The handles.** `flow.rs` holds `DefId { program, file, def }` (three `u32`: the program's number, the file's number, the outline index + 1,
+  or 0 for the file's own code). `sem/flow.rs` holds `Flows`, one field of `Sem`: the program's number (from a global `AtomicU32`, taken
+  when the `Sem` is made), the files as an `IndexSet<P<Node>>` (a file's number is its place, given on first use) and the memo
+  `HashMap<DefId, Arc<Flow>>`. `Sem::def_id(func)`, `Sem::func(def) -> Option<Func>` (`None` for a number of another program, or a file
+  number never given) and `Sem::flow(def, style) -> Option<Arc<Flow>>`. The program's number is what makes "no number of one program is
+  read through another" a test and not a hope.
+- **What step 2 fills.** `Flow { params, sites, anons }`; `handed` is step 3, the rest later phases. `Param { rest }` for each parameter of
+  the def's own declaration, without a `this` parameter (`ast::is_this_parameter`); empty for the file's code, a class and any def that is not
+  function-like. `SiteFlow { span, kind, callee, args, anon }`, index for index with `Body::sites`: `kind` is call, new (a `Call` site
+  whose node is a `NewExpression`), JSX, tagged, decorator or accessor; `args` is `Some` for a call or a `new` (its arguments; a
+  `SpreadElement` is `Arg { spread: true }` of its expression) and for JSX (one `Unknown`: the attributes, TC4), and `None` for the other
+  three: **not read**, which a later phase must take as unknown, never as "no argument". `anon` is the innermost anonymous function whose
+  span holds the site. `AnonFlow { span }`: each `ArrowFunction` or `FunctionExpression` the `Collector` walks into that is not a def of the
+  outline, in the order it meets them (source order); `Body` gains the list.
+- **`to_expr`**, after `unwrap_expression`: a node that is a def of this file's outline is `Def` (a class: `Unknown`, TC5); an
+  anonymous function is `Anon(i)` (its span in the list); an `Identifier` or a `PropertyAccessExpression` is what `functions_named`
+  answers: one function `Def`, several `OneOf` of `Def`s in its order, any class or nothing `Unknown`; `c ? a : b` and `a || b`, `a ?? b`,
+  `a && b` are `OneOf` (a nested `OneOf` is flattened); `Data` is a string, number, bigint, regular-expression or template literal, `true`,
+  `false`, `null`, a prefix or postfix unary, `typeof`, `void`, `delete`, a binary arithmetic, bitwise, shift, comparison, equality,
+  `instanceof` or `in` (and their compound assignments, `+=` …), and a JSX element or fragment; **everything else is `Unknown`** (an
+  assignment, `||=`, a comma, an array, an object, a call, a `new`, `this`, `await`, an element access).
+- **A hole H17 missed, closed here.** The engine's `Node::parameters()` is `function_like_data().unwrap()`: it panics on a node that is not
+  function-like, and it is not in the ban (H14 listed the accessors that end in `panic!`). A scan of `ast.rs` at the pin for accessors
+  with `unwrap`, `expect` or `panic!` found it alone among those `sem` can reach. Step 2 adds the views `FunctionLike` (`parameters`) and
+  `Parameter` (`is_rest`), bans `Node::parameters` and `Node::parameter_list`, and moves `collect.rs`'s two calls to the view.
+- **The gate** is an ignored in-crate test, `measure_flow` (as `measure_handed_over`): on a fresh project, the depth-1 graph of every
+  project def in one request (time `T_sweep`, memory after `M_sweep`), then the table of every def, checking each against `call_sites`
+  (time `T_after`, memory `M_flows`); on a second fresh project, the tables alone (`T_cold`). It passes when `T_cold ≤ T_sweep` and
+  `M_flows ≤ 1.25 × M_sweep`, release build, on the four projects (run by the reviewer: the coder cannot see them).
+
 Next: [`06-tc2-functions-through-parameters.md`](06-tc2-functions-through-parameters.md)
