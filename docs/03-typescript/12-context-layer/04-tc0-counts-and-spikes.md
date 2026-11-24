@@ -255,6 +255,6 @@ Memory: the machine has 8 GB. One project at a time, `-j2`, `--test-threads=2`, 
 Step 4 was one row; it is split in three (2026-11-23) because each is a reader of its own and one prompt could not finish all four.
 | 5 | S-TC2's cost, S-TC3. **Answered** (2026-11-23, `ENGINE.md` "S-TC2, S-TC3, N6"): S-TC3 by reading Python's and Bend's digest; S-TC2's risk retired by N4, its cost moved to TC1 step 2 | the numbers; where the hash lives |
 | 6 | N6. **Moved into TC2** (2026-11-23): measured on TC2's real keys, not on an approximation of them | the distribution |
-| 7 | this folder corrected by §4; the order of TC3–TC5 confirmed or changed; **a forecast per phase**: of the open sites the sample entries reach, how many each of TCL, TC2–TC6 can answer. **Done** (2026-11-23, `ENGINE.md` "TC0's forecast": the order holds), then the counts and the feature removed (a coder step) | reviewed with you |
+| 7 | this folder corrected by §4; the order of TC3–TC5 confirmed or changed; **a forecast per phase**: of the open sites the sample entries reach, how many each of TCL, TC2–TC6 can answer. **Done** (2026-11-23, `ENGINE.md` "TC0's forecast": the order holds), then the counts and the feature removed (`c123d0f`, reviewed 2026-11-24). **TC0 is closed**, with vscode's rows owed | reviewed with you |
 
 Next: [`05-tc1-the-body-as-data.md`](05-tc1-the-body-as-data.md)

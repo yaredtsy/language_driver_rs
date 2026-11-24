@@ -1561,3 +1561,12 @@ and method are other splits of the same parameter column). Shares of the sample'
 phase is below "a few percent" on every project; TC2's own yield is small in React code, but every later phase needs its key. The
 "other" column, the compiler's largest, is not placed by any count: TC3's module constants answer some of it, and TC3's own sweep says
 how much.
+
+### TC0 closed (`c123d0f`; reviewed 2026-11-24)
+
+The counts and the feature `__tc0_counts` are removed in one commit; `src/` differs from H17 (`5362028`) only by the view extensions TC1
+reads (`HasExpression` with `JsxExpression`, `JsxSpreadAttribute`, `SpreadElement`; `Initialized` with `JsxAttribute`). The new fixture
+`view-kinds` is what makes the totality walk meet the two spread kinds (removing it makes the walk fail, shown by the coder): 197,105
+nodes, 0.57 s. Reviewer: 380 pass, 11 ignored; V-NOC's 1,476 depth-1 graphs hash the same as at H17. The release sweep binary built with
+the counts is kept outside the repo, for vscode's N7 when the machine has room. **Still owed from TC0: vscode's row of every table** (and of
+H17's before/after), which decides TC8's place.
