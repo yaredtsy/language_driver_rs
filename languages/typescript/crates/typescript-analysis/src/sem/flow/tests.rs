@@ -307,3 +307,58 @@ fn the_hand_overs_of_flow_are_handed_overs_defs_and_the_other_names() {
         }
     }
 }
+
+/// The tables of the tour (`tests/fixtures/context/tour`), written out for review: what every later phase of the layer starts from.
+#[test]
+fn the_tables_of_the_tour_are_reviewed() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/context/tour");
+    let sem = Sem::open(&root, Path::new("src/tour.tsx")).unwrap();
+    let text = std::fs::read_to_string(root.join("src/tour.tsx")).unwrap();
+    let outline = typescript_syntax::outline(&text, typescript_syntax::Dialect::Tsx, STYLE);
+    let mut entries: Vec<(String, Func<'_>)> = Vec::new();
+    let mut seen: HashMap<&str, u16> = HashMap::new();
+    for def in &outline.defs {
+        let occurrence = seen.entry(def.qualname.as_str()).or_default();
+        let func = sem
+            .entry("src/tour.tsx", &def.qualname, *occurrence, STYLE)
+            .unwrap_or_else(|| panic!("no def {}#{occurrence}", def.qualname));
+        entries.push((def.qualname.clone(), func));
+        *occurrence += 1;
+    }
+    entries.push((
+        "FILE".to_owned(),
+        sem.file_entry("src/tour.tsx").expect("the file's code"),
+    ));
+    let mut out = String::new();
+    for (name, func) in &entries {
+        let flow = sem
+            .flow(sem.def_id(*func), STYLE)
+            .unwrap_or_else(|| panic!("no table for {name}"));
+        out.push_str(&format!("== {name}\n"));
+        match flow.params.iter().position(|param| param.rest) {
+            Some(rest) => out.push_str(&format!("params: {}, rest at {rest}\n", flow.params.len())),
+            None => out.push_str(&format!("params: {}\n", flow.params.len())),
+        }
+        if flow.sites.is_empty() {
+            out.push_str("sites: none\n");
+        } else {
+            out.push_str("sites:\n");
+            for site in &flow.sites {
+                out.push_str(&format!("  {}\n", show(&sem, site)));
+            }
+        }
+        out.push_str(&format!("anons: {}\n", flow.anons.len()));
+        if flow.handed.is_empty() {
+            out.push_str("handed: none\n");
+        } else {
+            out.push_str("handed:\n");
+            for held in &flow.handed {
+                out.push_str(&format!("  {}\n", show_handed(&sem, &text, held)));
+            }
+        }
+    }
+    analyzer_testkit::expect_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/context/tour.flow.txt"),
+        &out,
+    );
+}

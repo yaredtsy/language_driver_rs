@@ -1,0 +1,331 @@
+//! The context table (`languages/typescript/docs/policy.md`, "With the context layer"): every row names a project under `tests/fixtures/context/` and the
+//! entries built from it, and has a snapshot of what each gives with the layer off and with it on, in `snapshots/context/<row>.txt`. A phase of the layer
+//! flips the "on" half of a snapshot; the "off" half never changes. The three properties of `common::context` hold on every row.
+
+mod common;
+
+use std::path::{Path, PathBuf};
+
+use analyzer_testkit::expect_file;
+use analyzer_testkit::graph::check_invariants;
+use common::context::{a_context_is_a_function_of_its_key, never_fewer_edges, off_is_identical};
+use common::{Row, STYLE, call_graph, edges_as_text, render_graph, rows, split_policy, tests_dir};
+use typescript_analysis::{Cancel, Entry, Graph, Options, Precision, Project};
+
+const TABLE: &str = include_str!("../../../docs/policy.md");
+
+fn context_table() -> String {
+    split_policy(TABLE).1
+}
+
+fn snapshot_path(id: &str) -> PathBuf {
+    tests_dir()
+        .join("snapshots/context")
+        .join(format!("{id}.txt"))
+}
+
+/// What is wrong with a table, one sentence for each: a row with no fixture, a fixture that is not there, no snapshot, a fixture no row names, a snapshot
+/// no row builds. `tour.flow.txt` is not a row's snapshot (`src/sem/flow/tests.rs` writes it).
+fn problems(table: &str, tests: &Path) -> Vec<String> {
+    let rows = rows(table);
+    let mut found = Vec::new();
+    let mut seen: Vec<&str> = Vec::new();
+    for row in &rows {
+        if row.id.is_empty() || seen.contains(&row.id.as_str()) {
+            found.push(format!("row `{}`: the id is empty or used twice", row.id));
+        }
+        seen.push(&row.id);
+        let Some(root) = row.words.first() else {
+            found.push(format!("row `{}`: no fixture", row.id));
+            continue;
+        };
+        if !tests.join(root).exists() {
+            found.push(format!(
+                "row `{}`: the fixture `{root}` is not there",
+                row.id
+            ));
+            continue;
+        }
+        if row.words.len() < 3 {
+            found.push(format!(
+                "row `{}`: it needs a folder, a file and an entry",
+                row.id
+            ));
+            continue;
+        }
+        if !tests.join(root).join(&row.words[1]).is_file() {
+            found.push(format!(
+                "row `{}`: the file `{}` is not in `{root}`",
+                row.id, row.words[1]
+            ));
+        }
+        if !tests
+            .join("snapshots/context")
+            .join(format!("{}.txt", row.id))
+            .is_file()
+        {
+            found.push(format!("row `{}`: no snapshot", row.id));
+        }
+    }
+    if let Ok(dir) = std::fs::read_dir(tests.join("fixtures/context")) {
+        let mut folders: Vec<String> = dir
+            .flatten()
+            .filter(|entry| entry.path().is_dir())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        folders.sort();
+        for folder in folders {
+            let named = format!("fixtures/context/{folder}");
+            if !rows
+                .iter()
+                .any(|row| row.words.first().is_some_and(|word| *word == named))
+            {
+                found.push(format!("no row names the fixture `{named}`"));
+            }
+        }
+    }
+    if let Ok(dir) = std::fs::read_dir(tests.join("snapshots/context")) {
+        let mut names: Vec<String> = dir
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".txt") && !name.ends_with(".flow.txt"))
+            .collect();
+        names.sort();
+        for name in names {
+            let id = name.trim_end_matches(".txt");
+            if !rows.iter().any(|row| row.id == id && row.words.len() > 2) {
+                found.push(format!("snapshot `{name}`: no row of the table builds it"));
+            }
+        }
+    }
+    found
+}
+
+fn precise() -> Options {
+    let mut options = Options::new(STYLE);
+    options.precision = Precision::Precise;
+    options
+}
+
+/// The graphs of one entry of a row, the layer off and on.
+fn graphs_of(project: &Project, row: &Row, entry: &str) -> (Graph, Graph) {
+    let file = &row.words[1];
+    let entry = Entry::Def {
+        qualname: entry,
+        occurrence: 0,
+    };
+    let make = |options: &Options| {
+        let graph = call_graph(project, file, &entry, options, &Cancel::new())
+            .unwrap_or_else(|| panic!("row `{}`: no def `{entry:?}` in {file}", row.id));
+        check_invariants(&graph);
+        graph
+    };
+    (make(&Options::new(STYLE)), make(&precise()))
+}
+
+fn open_row(row: &Row) -> (PathBuf, Project) {
+    let root = tests_dir().join(&row.words[0]);
+    let project = Project::open(&root, Path::new(&row.words[1]))
+        .unwrap_or_else(|error| panic!("row `{}`: {error:?}", row.id));
+    (root, project)
+}
+
+/// What a row gives: for each entry, the graph with the layer off, then with it on, each as `common::render_graph` writes it.
+fn render(row: &Row) -> String {
+    let (root, project) = open_row(row);
+    let mut out = String::new();
+    for entry in &row.words[2..] {
+        let (off, on) = graphs_of(&project, row, entry);
+        out.push_str(&format!("== {entry}\n-- off\n"));
+        out.push_str(&render_graph(&off, &root));
+        out.push_str("-- on\n");
+        out.push_str(&render_graph(&on, &root));
+    }
+    out
+}
+
+fn context_rows() -> Vec<Row> {
+    rows(&context_table())
+        .into_iter()
+        .filter(|row| row.words.len() > 2)
+        .collect()
+}
+
+#[test]
+fn every_context_row_has_a_fixture_and_a_snapshot() {
+    let found = problems(&context_table(), &tests_dir());
+    assert!(found.is_empty(), "{}", found.join("\n"));
+    assert!(!rows(&context_table()).is_empty(), "the table was not read");
+}
+
+#[test]
+fn the_check_finds_a_missing_fixture_a_fixture_without_a_row_and_a_stale_snapshot() {
+    let table = "| row | what | fixture |\n|---|---|---|\n| `gone` | x | y | `fixtures/context/gone` `src/a.ts` `f` |\n";
+    let found = problems(table, &tests_dir());
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("the fixture `fixtures/context/gone` is not there")),
+        "{found:?}"
+    );
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("no row names the fixture `fixtures/context/tour`")),
+        "{found:?}"
+    );
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("snapshot `tour.txt`: no row of the table builds it")),
+        "{found:?}"
+    );
+    assert!(
+        !found.iter().any(|p| p.contains("tour.flow.txt")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn every_context_row_gives_its_snapshot() {
+    // every row is compared, and the ones that differ are named together at the end (each diff is printed as it is found)
+    let mut differ = Vec::new();
+    for row in context_rows() {
+        let compared = std::panic::catch_unwind(|| {
+            expect_file(&snapshot_path(&row.id), &render(&row));
+        });
+        if compared.is_err() {
+            differ.push(row.id.clone());
+        }
+    }
+    assert!(differ.is_empty(), "rows that differ: {differ:?}");
+}
+
+#[test]
+fn every_context_row_gives_the_same_text_twice() {
+    for row in context_rows() {
+        assert_eq!(render(&row), render(&row), "row `{}`", row.id);
+    }
+}
+
+#[test]
+fn the_three_properties_hold_on_every_context_row() {
+    let mut found = Vec::new();
+    let mut compared = 0;
+    for row in context_rows() {
+        let (root, project) = open_row(&row);
+        let (mut offs, mut ons) = (Vec::new(), Vec::new());
+        for entry in &row.words[2..] {
+            let (off, on) = graphs_of(&project, &row, entry);
+            for problem in off_is_identical(&off, &on, &root) {
+                found.push(format!("row `{}` `{entry}`: {problem}", row.id));
+            }
+            for problem in never_fewer_edges(&off, &on) {
+                found.push(format!("row `{}` `{entry}`: {problem}", row.id));
+            }
+            offs.push(off);
+            ons.push(on);
+            compared += 1;
+        }
+        for graphs in [&offs, &ons] {
+            let graphs: Vec<&Graph> = graphs.iter().collect();
+            for problem in a_context_is_a_function_of_its_key(&graphs) {
+                found.push(format!("row `{}`: {problem}", row.id));
+            }
+        }
+    }
+    assert!(compared > 0, "no entry was compared");
+    assert!(found.is_empty(), "{}", found.join("\n"));
+}
+
+/// The tour's `lineA`, the layer off: three edges, which the next tests take apart.
+fn line_a() -> (PathBuf, Graph) {
+    let root = tests_dir().join("fixtures/context/tour");
+    let project = Project::open(&root, Path::new("src/tour.tsx")).unwrap();
+    let graph = call_graph(
+        &project,
+        "src/tour.tsx",
+        &Entry::Def {
+            qualname: "lineA",
+            occurrence: 0,
+        },
+        &Options::new(STYLE),
+        &Cancel::new(),
+    )
+    .unwrap();
+    (root, graph)
+}
+
+fn index_of(graph: &Graph, root: &Path, text: &str) -> usize {
+    let lines = edges_as_text(graph, root);
+    lines
+        .iter()
+        .position(|line| line == text)
+        .unwrap_or_else(|| panic!("no edge `{text}` in {lines:?}"))
+}
+
+#[test]
+fn each_property_finds_what_it_is_for() {
+    let (root, g) = line_a();
+    assert_eq!(
+        edges_as_text(&g, &root),
+        [
+            "each | f | unresolved function_typed_value",
+            "lineA | each | call each",
+            "lineA | encode | pass encode",
+        ]
+    );
+    let call = index_of(&g, &root, "lineA | each | call each");
+    let pass = index_of(&g, &root, "lineA | encode | pass encode");
+    let open = index_of(&g, &root, "each | f | unresolved function_typed_value");
+
+    // off_is_identical
+    assert!(off_is_identical(&g, &g, &root).is_empty());
+    let mut h = g.clone();
+    h.edges.remove(call);
+    let found = off_is_identical(&g, &h, &root);
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("only off: lineA | each | call each")),
+        "{found:?}"
+    );
+
+    // never_fewer_edges
+    assert!(never_fewer_edges(&g, &g).is_empty());
+    assert!(!never_fewer_edges(&g, &h).is_empty());
+    // an unresolved answer replaced by a function
+    let mut k = g.clone();
+    k.edges[open].to = g.edges[pass].to.clone();
+    assert!(never_fewer_edges(&g, &k).is_empty());
+
+    // a_context_is_a_function_of_its_key
+    assert!(a_context_is_a_function_of_its_key(&[&g, &g]).is_empty());
+    let found = a_context_is_a_function_of_its_key(&[&g, &k]);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("`each`"), "{found:?}");
+}
+
+#[test]
+fn a_digest_that_is_not_zeros_is_written_by_its_first_eight_hex_digits() {
+    let (root, g) = line_a();
+    let call = index_of(&g, &root, "lineA | each | call each");
+    let mut copy = g.clone();
+    copy.edges[call].from.digest[..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+    match &mut copy.edges[call].to {
+        typescript_analysis::EdgeTo::Context(id, _) => {
+            id.digest[..4].copy_from_slice(&[0x1a, 0x2b, 0x3c, 0x4d]);
+        }
+        other => panic!("not a call: {other:?}"),
+    }
+    let mut lines = edges_as_text(&copy, &root);
+    let mut plain = edges_as_text(&g, &root);
+    let at = lines
+        .iter()
+        .position(|line| line.contains("@"))
+        .expect("a line with a digest");
+    assert_eq!(lines[at], "lineA @01020304 | each | call each @1a2b3c4d");
+    lines.remove(at);
+    plain.remove(call);
+    assert_eq!(lines, plain);
+}

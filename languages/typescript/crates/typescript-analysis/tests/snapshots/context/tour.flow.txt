@@ -1,0 +1,185 @@
+== Writer
+params: 0
+sites: none
+anons: 0
+handed: none
+== Writer.write
+params: 0
+sites: none
+anons: 0
+handed: none
+== Json
+params: 0
+sites: none
+anons: 0
+handed: none
+== Json.write
+params: 0
+sites:
+  call def encode ()
+anons: 0
+handed: none
+== Csv
+params: 0
+sites: none
+anons: 0
+handed: none
+== Csv.write
+params: 0
+sites:
+  call def join ()
+anons: 0
+handed: none
+== encode
+params: 0
+sites: none
+anons: 0
+handed: none
+== join
+params: 0
+sites: none
+anons: 0
+handed: none
+== each
+params: 1
+sites:
+  call ? ()
+anons: 0
+handed: none
+== relay
+params: 1
+sites:
+  call def each (?)
+anons: 0
+handed:
+  f ?
+== open
+params: 1
+sites:
+  call ? ()
+anons: 0
+handed: none
+== Panel
+params: 1
+sites: none
+anons: 0
+handed:
+  back def Panel.<locals>.back
+== Panel.<locals>.back
+params: 0
+sites:
+  call ? ()
+anons: 0
+handed: none
+== send
+params: 1
+sites:
+  call ? ()
+anons: 0
+handed: none
+== pick
+params: 0
+sites:
+  new ? ()
+anons: 0
+handed: none
+== twice
+params: 1
+sites:
+  call ? () in anon#0
+  call ? () in anon#0
+anons: 1
+handed: none
+== main
+params: 0
+sites:
+  call def each (def encode)
+  call def relay (def join)
+  call ? ()
+  call oneof(def open | def open) (?)
+  jsx def Panel (?)
+  call def send (?)
+  new ? ()
+  call def pick ()
+  call ? ()
+  call def twice (def encode)
+  call ? ()
+  call def each (anon#0)
+  call def join () in anon#0
+anons: 1
+handed:
+  encode def encode
+  join def join
+  encode def encode
+  encode def encode
+  join def join
+  encode def encode
+== lineA
+params: 0
+sites:
+  call def each (def encode)
+anons: 0
+handed:
+  encode def encode
+== lineB
+params: 0
+sites:
+  call def relay (def join)
+anons: 0
+handed:
+  join def join
+== lineC
+params: 0
+sites:
+  call ? ()
+anons: 0
+handed:
+  encode def encode
+== lineD
+params: 0
+sites:
+  call oneof(def open | def open) (?)
+anons: 0
+handed:
+  encode def encode
+== lineE
+params: 0
+sites:
+  jsx def Panel (?)
+anons: 0
+handed:
+  join def join
+== lineF
+params: 0
+sites:
+  call def send (?)
+  new ? ()
+anons: 0
+handed: none
+== lineG
+params: 0
+sites:
+  call def pick ()
+  call ? ()
+anons: 0
+handed: none
+== lineH
+params: 0
+sites:
+  call def twice (def encode)
+  call ? ()
+anons: 0
+handed:
+  encode def encode
+== lineI
+params: 0
+sites:
+  call def each (anon#0)
+  call def join () in anon#0
+anons: 1
+handed: none
+== FILE
+params: 0
+sites: none
+anons: 0
+handed: none

@@ -5,8 +5,23 @@
 use std::path::{Path, PathBuf};
 
 use typescript_analysis::{
-    Cancel, EdgeTo, Entry, Graph, MarkerStyle, Options, Placement, Project, Session, StableDef,
+    Cancel, EdgeTo, Entry, Graph, MarkerStyle, Options, Placement, Project, RenderOptions, Session,
+    StableDef, breakdown, render, to_text,
 };
+
+pub(crate) mod context;
+
+/// A def's name, and its context's digest when it is not zeros: ` @` and the digest's first 8 hex digits.
+fn keyed(name: &str, digest: &[u8; 16]) -> String {
+    if digest.iter().all(|&byte| byte == 0) {
+        name.to_owned()
+    } else {
+        format!(
+            "{name} @{:02x}{:02x}{:02x}{:02x}",
+            digest[0], digest[1], digest[2], digest[3]
+        )
+    }
+}
 
 /// Every edge of `graph` as `from | callee text | what it is`, in the order the graph holds them. A def is named by its qualname.
 pub(crate) fn edges_as_text(graph: &Graph, root: &Path) -> Vec<String> {
@@ -20,10 +35,16 @@ pub(crate) fn edges_as_text(graph: &Graph, root: &Path) -> Vec<String> {
             let callee = &text[(from.range.start + edge.site.start) as usize
                 ..(from.range.start + edge.site.end) as usize];
             let to = match &edge.to {
-                EdgeTo::Context(id, _) if edge.passed => format!("pass {}", name(&id.func)),
-                EdgeTo::Context(id, _) => format!("call {}", name(&id.func)),
+                EdgeTo::Context(id, _) if edge.passed => {
+                    format!("pass {}", keyed(&name(&id.func), &id.digest))
+                }
+                EdgeTo::Context(id, _) => format!("call {}", keyed(&name(&id.func), &id.digest)),
                 EdgeTo::Construct { class, init, .. } => match init {
-                    Some(init) => format!("construct {} init {}", name(class), name(&init.func)),
+                    Some(init) => format!(
+                        "construct {} init {}",
+                        name(class),
+                        keyed(&name(&init.func), &init.digest)
+                    ),
                     None => format!("construct {} no init", name(class)),
                 },
                 EdgeTo::External(external, _) => {
@@ -32,7 +53,10 @@ pub(crate) fn edges_as_text(graph: &Graph, root: &Path) -> Vec<String> {
                 EdgeTo::Unresolved(reason) => format!("unresolved {}", reason.as_str()),
                 _ => unreachable!("an edge kind this test does not know"),
             };
-            format!("{} | {callee} | {to}", from.qname)
+            format!(
+                "{} | {callee} | {to}",
+                keyed(&from.qname, &edge.from.digest)
+            )
         })
         .collect()
 }
@@ -80,6 +104,31 @@ pub(crate) const STYLE: MarkerStyle<'static> = MarkerStyle {
 
 const TABLE: &str = include_str!("../../../../docs/policy.md");
 
+/// The heading of the section of `docs/policy.md` that is the table of the context layer: not a table of the first kind.
+pub(crate) const CONTEXT_HEADING: &str = "## With the context layer";
+
+/// `text` in two: the section that begins at the line that is exactly `CONTEXT_HEADING` and ends before the next line that starts with `## ` (or at the end),
+/// and the rest. No such heading: the text and nothing.
+pub(crate) fn split_policy(text: &str) -> (String, String) {
+    let mut rest = String::new();
+    let mut section = String::new();
+    let mut inside = false;
+    for line in text.split_inclusive('\n') {
+        let heading = line.trim_end_matches('\n');
+        if heading == CONTEXT_HEADING {
+            inside = true;
+        } else if inside && heading.starts_with("## ") {
+            inside = false;
+        }
+        if inside {
+            section.push_str(line);
+        } else {
+            rest.push_str(line);
+        }
+    }
+    (rest, section)
+}
+
 pub(crate) fn tests_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests")
 }
@@ -110,7 +159,10 @@ pub(crate) fn cases() -> Vec<Case> {
             entry: "main".into(),
         });
     }
-    for row in rows(TABLE).iter().filter(|row| row.words.len() > 2) {
+    for row in rows(&split_policy(TABLE).0)
+        .iter()
+        .filter(|row| row.words.len() > 2)
+    {
         for entry in &row.words[2..] {
             cases.push(Case {
                 name: format!("row {} {entry}", row.id),
@@ -191,4 +243,35 @@ fn assert_outline_gaps(graph: &Graph, gaps: u64) {
 pub(crate) fn open_project(case: &Case) -> Project {
     Project::open(&case.root, Path::new(&case.file))
         .unwrap_or_else(|error| panic!("{}: {error:?}", case.name))
+}
+
+/// What a graph is, for a snapshot: the tree (the defs of the project only), every edge of the whole graph (an external, an unresolved site and a count are not in
+/// the tree) grouped by the def it leaves, and the counters of what no edge covers when any is above 0.
+pub(crate) fn render_graph(graph: &Graph, root: &Path) -> String {
+    let mut out = String::new();
+    out.push_str(&to_text(&render(
+        graph,
+        &graph.entries[0],
+        &RenderOptions::default(),
+    )));
+    let mut edges = edges_as_text(graph, root);
+    // stable: the edges of one def stay in source order
+    edges.sort_by_key(|line| line.split(" | ").next().unwrap_or_default().to_owned());
+    if edges.is_empty() {
+        out.push_str("edges: none\n");
+    } else {
+        out.push_str("edges:\n");
+        for line in edges {
+            out.push_str(&format!("{line}\n"));
+        }
+    }
+    let uncovered: Vec<String> = breakdown(graph)
+        .uncovered
+        .iter()
+        .map(|(kind, count)| format!("{kind}={count}"))
+        .collect();
+    if !uncovered.is_empty() {
+        out.push_str(&format!("uncovered: {}\n", uncovered.join(", ")));
+    }
+    out
 }

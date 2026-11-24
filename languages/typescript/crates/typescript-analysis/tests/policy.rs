@@ -7,11 +7,8 @@ use std::path::{Path, PathBuf};
 
 use analyzer_testkit::expect_file;
 use analyzer_testkit::graph::check_invariants;
-use common::{Row, call_graph, edges_as_text, rows};
-use typescript_analysis::{
-    Cancel, Entry, MarkerStyle, Options, Placement, Project, RenderOptions, breakdown, render,
-    to_text,
-};
+use common::{Row, call_graph, render_graph, rows, split_policy};
+use typescript_analysis::{Cancel, Entry, MarkerStyle, Options, Placement, Project};
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
@@ -32,7 +29,7 @@ fn snapshot_path(id: &str) -> PathBuf {
 
 /// What is wrong with a table, one sentence for each: a row with no fixture, a fixture that is not there, no snapshot, a snapshot of no row.
 fn problems(table: &str, tests: &Path) -> Vec<String> {
-    let rows = rows(table);
+    let rows = rows(&split_policy(table).0);
     let mut found = Vec::new();
     let mut seen: Vec<&str> = Vec::new();
     for row in &rows {
@@ -108,30 +105,7 @@ fn render_row(row: &Row) -> String {
         .unwrap_or_else(|| panic!("row `{}`: no def `{entry}` in {file}", row.id));
         check_invariants(&graph);
         out.push_str(&format!("== {entry}\n"));
-        out.push_str(&to_text(&render(
-            &graph,
-            &graph.entries[0],
-            &RenderOptions::default(),
-        )));
-        let mut edges = edges_as_text(&graph, &root);
-        // stable: the edges of one def stay in source order
-        edges.sort_by_key(|line| line.split(" | ").next().unwrap_or_default().to_owned());
-        if edges.is_empty() {
-            out.push_str("edges: none\n");
-        } else {
-            out.push_str("edges:\n");
-            for line in edges {
-                out.push_str(&format!("{line}\n"));
-            }
-        }
-        let uncovered: Vec<String> = breakdown(&graph)
-            .uncovered
-            .iter()
-            .map(|(kind, count)| format!("{kind}={count}"))
-            .collect();
-        if !uncovered.is_empty() {
-            out.push_str(&format!("uncovered: {}\n", uncovered.join(", ")));
-        }
+        out.push_str(&render_graph(&graph, &root));
     }
     out
 }
@@ -140,7 +114,10 @@ fn render_row(row: &Row) -> String {
 fn every_row_of_the_table_has_a_fixture_and_a_snapshot() {
     let found = problems(TABLE, &tests_dir());
     assert!(found.is_empty(), "{}", found.join("\n"));
-    assert!(rows(TABLE).len() > 30, "the table was not read");
+    assert!(
+        rows(&split_policy(TABLE).0).len() > 30,
+        "the table was not read"
+    );
 }
 
 #[test]
@@ -205,7 +182,10 @@ fn the_check_finds_a_row_without_a_fixture_a_missing_fixture_and_a_stale_snapsho
 fn every_row_gives_the_tree_and_edges_of_its_snapshot() {
     // every row is compared, and the ones that differ are named together at the end (each diff is printed as it is found)
     let mut differ = Vec::new();
-    for row in rows(TABLE).iter().filter(|row| row.words.len() > 2) {
+    for row in rows(&split_policy(TABLE).0)
+        .iter()
+        .filter(|row| row.words.len() > 2)
+    {
         let compared = std::panic::catch_unwind(|| {
             expect_file(&snapshot_path(&row.id), &render_row(row));
         });
@@ -219,7 +199,10 @@ fn every_row_gives_the_tree_and_edges_of_its_snapshot() {
 #[test]
 fn every_row_gives_the_same_text_twice() {
     // rule 11 over the whole table: two projects opened one after the other give the same trees, edges and counters
-    for row in rows(TABLE).iter().filter(|row| row.words.len() > 2) {
+    for row in rows(&split_policy(TABLE).0)
+        .iter()
+        .filter(|row| row.words.len() > 2)
+    {
         assert_eq!(render_row(row), render_row(row), "row `{}`", row.id);
     }
 }
