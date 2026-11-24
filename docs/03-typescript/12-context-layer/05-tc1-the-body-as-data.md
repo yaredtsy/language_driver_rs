@@ -147,8 +147,8 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
 | 4a | **Built** (`7b680b7`, reviewed: `languages/typescript/engine/08-tc1.md`). `value.rs` (`Value`, `One::Fn`, `join`, the cap); `KeyData::params` and its normal form. **As decided for the build** below | the laws, exhaustively on a small universe; every graph unchanged |
 | 4b | **Built** (`9530a7d`, reviewed: `languages/typescript/engine/08-tc1.md`). `env.rs`, `eval.rs` (behind the `World` trait), `resolve_from_env` wired; **the capability set** (`Caps`, [03](03-design.md) §15.2, moved here from step 1: the first step that reads it, to decide whether an `Env` is built). **As decided for the build** below | equal graphs with the switch on: every test case and five fixtures in-crate, the three projects' depth-1 dumps by the reviewer |
 | 5 | **Built** (`07077d3`, fix `aa67599`, reviewed: `languages/typescript/engine/08-tc1.md`). the harness, the tour, its default snapshot | the tour's "today" column of [03](03-design.md) §2 confirmed or corrected, cell by cell |
-| 6 | the sweep with the switch on | the numbers in `ENGINE.md` |
-| 7 | (mine) `ENGINE.md`: the engine items `sem/flow.rs` calls; `policy.md`: the second table's header | reviewed |
+| 6 | **Done** (reviewer, 2026-11-24: `languages/typescript/engine/08-tc1.md`; vscode owed). the sweep with the switch on | the numbers in `ENGINE.md` |
+| 7 | **Done** (2026-11-24; the `policy.md` header came with step 5). (mine) `ENGINE.md`: the engine items `sem/flow.rs` calls; `policy.md`: the second table's header | reviewed |
 
 **Step 1, as decided for the build (2026-11-24).** A type or a crate comes in the step that first uses it, so no code waits behind an
 `allow(dead_code)` and no dependency sits unused:

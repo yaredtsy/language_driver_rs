@@ -186,6 +186,11 @@ callers pass two different arrows: **one** context of the callee).
 | `value_type_mismatch`; sites drawn at `Default` and missing at `Precise` | 0 and 0, on the fixtures and on the four projects |
 | the four projects | the per-site measure before and after; contexts, walks, time |
 
+**No-reuse mode (the README's rule 3), to design in this phase.** Core's flat solver has no switch that turns its memo off (that is Python's own
+solver's `Limits::reuse`). TC2 makes the first keys that differ, so it is the first phase where a summary could be reused under the wrong
+key. Step 4 decides how the check is made (a test-only switch in core, or a test that walks each context of a fixture's graph alone with its
+key and compares), and writes it before step 5. (Found closing TC1, 2026-11-24.)
+
 ## 10. Steps
 
 | # | Do | Proof |
