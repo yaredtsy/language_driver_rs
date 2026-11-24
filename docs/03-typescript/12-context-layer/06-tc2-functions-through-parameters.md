@@ -335,4 +335,30 @@ every public graph is unchanged, and the step's proofs run in the crate with `wi
   `relay` and directly (the guard of step 3, the key in `Env`, is reached here); each context of `keys` with its pinned digest; the layer with
   no bit equal to the layer off; and the no-reuse check of §9.
 
+**Step 4b, as decided for the build (2026-11-24).** N6 is a measurement the reviewer runs on the projects; the coder builds it and proves it
+on a fixture. It is an ignored in-crate test, as `measure_flow` is, because the layer can only be turned on with `PARAMS` inside the crate
+(`Caps::BUILT` is empty until step 5).
+
+- **The four counts, as built.** (1) The layer as built (`AnonAny`, every capable parameter). (2) **With relevance**: a test-only switch
+  makes `key_of` write a parameter's slot unknown when the callee's table never reads it, a solve of its own. The rule is §8's on what the
+  table holds today: parameter `i` is read when `Expr::Param(i)` is in a site's callee, a site's argument, a hand-over's value or another
+  parameter's default, `OneOf` members included. A return (TC6) and a nested def (TC3) are not in the table yet, so this undercounts what
+  §8 will keep; it is labelled an approximation. (3) and (4): **anonymous functions told apart**, one level deep: the same two solves record
+  each `bind` result before interning (`(callee, KeyData)`, with the arrows' identities), and count the distinct ones per callee. A solve that
+  propagated identities would also need a canonical form for them (`Canon` has none, on purpose); one level is what the decision needs: the
+  rule stays `AnonAny` whatever the count (04 §4), the count says how much it saves.
+- **Where.** `src/calls/keyed.rs`: a test-only `Measure { relevance: bool, bound: Vec<(DefId, KeyData)> }` held by `TypeScript` in a
+  `RefCell` under `#[cfg(test)]`; `walk::key_of` calls one test-only hook, `lang.measured(callee, &flow, data)`, between `bind` and
+  `intern_key`, which masks (with `relevance`) and then records what it returns. No line outside `#[cfg(test)]` changes.
+- **The output**, per sample entry (the sweep's sample files, `<file>\t<qualname>`), whole graph, `Limits::default()`: for the solve off, on,
+  and on with relevance: contexts, walks, cuts, time; for the two solves on: over the functions that have a context, the contexts per
+  function (median, 95th percentile by nearest rank, greatest, how many functions have 8 or more and 64 or more), and the same for the distinct
+  `bind` results per callee. Driven by `TS_MEASURE_ROOT` and `TS_MEASURE_SAMPLE`; run in release by the reviewer, one project per process.
+- **Its proof on a fixture:** `keys` gains `ignore(cb)`, which never reads `cb`, called with `a` and with `b`: without relevance `ignore` has
+  two contexts (`a`'s and `b`'s digests), with it one (zeros), and `run` keeps its three; `run`'s distinct `bind` results are four (the two
+  arrows apart) where its contexts are three.
+- **What the reviewer does with it:** the distribution goes to `engine/09-tc2.md`; the per-function cut (§7) is built in this phase only if the
+  95th percentile comes near 64, and relevance (step 8) moves before step 5 if the count with it is much lower and the count without it is
+  near the cut. The release gate (`measure_flow`, `engine/08-tc1.md`) is re-run in the same release build.
+
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
