@@ -20,6 +20,9 @@ function second(label: string, cb: () => void) {
 function tagged(parts: TemplateStringsArray, cb: () => void) {
     cb();
 }
+function ignore(cb: () => void) {
+    console.log("x");
+}
 class Box {
     constructor(cb: () => void) {
         cb();
@@ -64,6 +67,10 @@ function constructs() {
     new Sub(b);
     new Pair(1, a);
 }
+function ignored() {
+    ignore(a);
+    ignore(b);
+}
 function main() {
     notPassed();
     defaulted();
@@ -75,4 +82,5 @@ function main() {
     arrowOne();
     arrowTwo();
     constructs();
+    ignored();
 }

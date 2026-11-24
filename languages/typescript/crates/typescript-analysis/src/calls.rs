@@ -87,6 +87,9 @@ pub(crate) struct TypeScript<'p> {
     /// Every `(func, key)` `Lang::walk` was asked for, in order: `calls/keyed.rs` walks each again alone.
     #[cfg(test)]
     walked: Vec<(Func<'p>, KeyId)>,
+    /// What `measure_contexts` (`calls/keyed.rs`) asks of a solve: whether `key_of` masks the parameters a callee never reads, and every key data it made.
+    #[cfg(test)]
+    measure: RefCell<keyed::Measure>,
 }
 
 impl<'p> TypeScript<'p> {
@@ -101,6 +104,8 @@ impl<'p> TypeScript<'p> {
             layer: None,
             #[cfg(test)]
             walked: Vec::new(),
+            #[cfg(test)]
+            measure: RefCell::default(),
         }
     }
 

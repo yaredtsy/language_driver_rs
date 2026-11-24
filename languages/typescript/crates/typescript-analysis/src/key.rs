@@ -1,7 +1,7 @@
 //! What a context holds besides the function: its key, interned (`docs/03-typescript/12-context-layer/03-design.md` §6). A key is a number into
 //! the request's `Keys`; what it holds is a `KeyData` in its normal form: the values of the parameters (`crate::value::Value`). The slots are filled by
 //! `bind` at each project target when the layer knows `Caps::PARAMS` (`walk::key_of`); until then the only key is the open one, `KeyId::OPEN`, with digest
-//! zeros. Every other key's digest is core's `digest` of its canonical form, made once, when the key is first met (`docs/02-tree-rules/03-the-seam.md` §3).
+//! zeros. Every other key's digest is core's `digest` of its canonical form, made once, when the key is first met (`docs/02-tree-rules/08-the-digest-and-scenario-levels.md` §1).
 
 use indexmap::IndexSet;
 use serde::Serialize;

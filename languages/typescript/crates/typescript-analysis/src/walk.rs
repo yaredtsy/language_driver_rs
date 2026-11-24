@@ -177,7 +177,10 @@ fn key_of<'p>(lang: &TypeScript<'p>, env: &Env, site_index: usize, callee: Func<
     let Some(flow) = World::flow(lang, lang.sem.def_id(callee)) else {
         return KeyId::OPEN;
     };
-    lang.intern_key(bind(&flow.params, args, |expr| eval(lang, env, expr)))
+    let data = bind(&flow.params, args, |expr| eval(lang, env, expr));
+    #[cfg(test)]
+    let data = lang.measured(lang.sem.def_id(callee), &flow, data);
+    lang.intern_key(data)
 }
 
 /// What the context layer says the site at `site_index` calls, when it knows. It evaluates the callee and still answers `None`, so the engine answers

@@ -2,13 +2,16 @@
 //! `with_layer(Some(Caps::PARAMS))` because `Caps::BUILT` is still empty, so `Precision::Precise` makes no key yet. The layer draws nothing new, so every edge is
 //! the engine's and only the contexts split.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use analyzer_core::graph::{ContextId, EdgeTo, Graph};
 use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Target};
 
 use super::*;
+use crate::flow::Expr;
+use crate::value::Value;
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
@@ -52,14 +55,102 @@ fn open(fixture: &str) -> Sem {
     Sem::open(&root, Path::new("src/main.ts")).unwrap()
 }
 
-/// The graph under `main`, with the layer as `layer` says, and the solver that made it (its language remembers what it walked).
+/// What a measured solve asks and keeps (`06-tc2` §10, step 4b). Test-only.
+#[derive(Default)]
+pub(super) struct Measure {
+    /// `key_of` writes unknown in the slot of each parameter the callee's table never reads (`reads`): an approximation of relevance (§8).
+    pub(super) relevance: bool,
+    /// Every key data `key_of` made, with its callee, after the mask and before interning (so anonymous functions are still told apart).
+    pub(super) bound: Vec<(DefId, KeyData)>,
+}
+
+impl TypeScript<'_> {
+    /// The test-only hook of `walk::key_of`: masks `data` when `relevance` is on, records it, returns it.
+    pub(crate) fn measured(&self, callee: DefId, flow: &Flow, mut data: KeyData) -> KeyData {
+        let mut measure = self.measure.borrow_mut();
+        if measure.relevance {
+            let read = reads(flow);
+            debug_assert_eq!(
+                read.len(),
+                data.params.len(),
+                "bind makes one slot per parameter"
+            );
+            for (slot, read) in data.params.iter_mut().zip(read) {
+                if !read {
+                    *slot = Value::unknown();
+                }
+            }
+        }
+        measure.bound.push((callee, data.clone()));
+        data
+    }
+}
+
+/// Which parameters of a table are read: parameter `i` is when `Expr::Param(i)` is a site's callee, one of a site's arguments, a hand-over's value or
+/// another parameter's default, `OneOf` members included. A return (TC6) and a nested def (TC3) are not in a table yet: this is §8 on what the table holds.
+fn reads(flow: &Flow) -> Vec<bool> {
+    let mut read = vec![false; flow.params.len()];
+    for site in &flow.sites {
+        params_in(&site.callee, &mut read);
+        for arg in site.args.iter().flat_map(|args| args.iter()) {
+            params_in(&arg.value, &mut read);
+        }
+    }
+    for held in &flow.handed {
+        params_in(&held.value, &mut read);
+    }
+    for param in &flow.params {
+        if let Some(default) = &param.default {
+            params_in(default, &mut read);
+        }
+    }
+    read
+}
+
+/// Marks each `Param(i)` in `expr`, `OneOf` members included.
+fn params_in(expr: &Expr, out: &mut [bool]) {
+    match expr {
+        Expr::Param(i) => {
+            if let Some(slot) = out.get_mut(*i as usize) {
+                *slot = true;
+            }
+        }
+        Expr::OneOf(members) => members.iter().for_each(|member| params_in(member, out)),
+        Expr::Unknown | Expr::Data | Expr::Def(_) | Expr::Anon(_) => {}
+    }
+}
+
+/// The graph under `main`, with the layer as `layer` says.
 fn solve<'p>(sem: &'p Sem, layer: Option<Caps>) -> (Solver<TypeScript<'p>>, Graph) {
-    let lang = TypeScript::new(sem, STYLE).with_layer(layer);
     let main = sem.entry("src/main.ts", "main", 0, STYLE).unwrap();
-    let start = start_of(&lang, main);
-    let mut solver = Solver::new(lang, Limits::default());
-    let graph = solver.graph_within(&[start], &Budget::default(), &Cancel::new());
+    solve_from(sem, main, layer, false)
+}
+
+/// The graph from `func`, with the layer as `layer` says and relevance as `relevance` says; the solver keeps what it walked and bound.
+fn solve_from<'p>(
+    sem: &'p Sem,
+    func: Func<'p>,
+    layer: Option<Caps>,
+    relevance: bool,
+) -> (Solver<TypeScript<'p>>, Graph) {
+    let (solver, graph, _) = solve_timed(sem, func, layer, relevance);
     (solver, graph)
+}
+
+/// `solve_from`, and how long `graph_within` alone took.
+fn solve_timed<'p>(
+    sem: &'p Sem,
+    func: Func<'p>,
+    layer: Option<Caps>,
+    relevance: bool,
+) -> (Solver<TypeScript<'p>>, Graph, Duration) {
+    let lang = TypeScript::new(sem, STYLE).with_layer(layer);
+    lang.measure.borrow_mut().relevance = relevance;
+    let start = start_of(&lang, func);
+    let mut solver = Solver::new(lang, Limits::default());
+    let began = Instant::now();
+    let graph = solver.graph_within(&[start], &Budget::default(), &Cancel::new());
+    (solver, graph, began.elapsed())
 }
 
 fn on() -> Option<Caps> {
@@ -162,12 +253,11 @@ fn a_key_passes_through_a_parameter() {
     );
 }
 
-#[test]
-fn each_kind_of_argument_makes_its_key() {
-    let sem = open("tests/fixtures/keys");
-    let (_, with) = solve(&sem, on());
-    let (_, without) = solve(&sem, None);
-    let found = contexts(&with);
+/// What each context of the `keys` fixture should be, with `ignore`'s as `ignore_digests` says: the one thing relevance changes.
+fn kinds(
+    found: &BTreeMap<String, Vec<[u8; 16]>>,
+    ignore_digests: &[[u8; 16]],
+) -> BTreeMap<String, Vec<[u8; 16]>> {
     let mut want = expected(
         &[
             // the spread, the conditional, the two arrows sharing one
@@ -183,13 +273,24 @@ fn each_kind_of_argument_makes_its_key() {
             // `new Box(a)` and `Pair`'s `super(cb)` share `A`; `new Sub(b)` runs the inherited constructor with `B`
             ("Box.constructor", &[A, B]),
             ("Pair.constructor", &[UNKNOWN_A]),
+            ("ignore", ignore_digests),
         ],
         &[],
     );
     for name in found.keys() {
         want.entry(name.clone()).or_insert_with(|| vec![ZEROS]);
     }
-    assert_eq!(found, want);
+    want
+}
+
+#[test]
+fn each_kind_of_argument_makes_its_key() {
+    let sem = open("tests/fixtures/keys");
+    let (_, with) = solve(&sem, on());
+    let (_, without) = solve(&sem, None);
+    let found = contexts(&with);
+    // a parameter nothing reads still splits, until relevance (step 8)
+    assert_eq!(found, kinds(&found, &[A, B]));
     assert_eq!(
         edges_without_digests(&with),
         edges_without_digests(&without)
@@ -284,6 +385,198 @@ fn each_context_walked_alone_has_the_edges_of_the_graph() {
                 "{fixture}: {:?} under {digest:?}",
                 graph.def(&id.func).map(|def| &def.qname)
             );
+        }
+    }
+}
+
+/// Over `counts`: the median and the 95th percentile by nearest rank (`sorted[(n - 1) / 2]`, `sorted[ceil(0.95 n) - 1]`), the greatest, and how many
+/// are 8 or more and 64 or more. All zeros for none.
+fn spread(mut counts: Vec<usize>) -> Spread {
+    counts.sort_unstable();
+    let n = counts.len();
+    if n == 0 {
+        return Spread::default();
+    }
+    Spread {
+        median: counts[(n - 1) / 2],
+        p95: counts[(95 * n).div_ceil(100) - 1],
+        max: counts[n - 1],
+        at_least_8: counts.iter().filter(|count| **count >= 8).count(),
+        at_least_64: counts.iter().filter(|count| **count >= 64).count(),
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Spread {
+    median: usize,
+    p95: usize,
+    max: usize,
+    at_least_8: usize,
+    at_least_64: usize,
+}
+
+#[test]
+fn the_distribution_is_by_nearest_rank() {
+    assert_eq!(
+        spread((1..=20).collect()),
+        Spread {
+            median: 10,
+            p95: 19,
+            max: 20,
+            at_least_8: 13,
+            at_least_64: 0
+        }
+    );
+    assert_eq!(spread(vec![]), Spread::default());
+    assert_eq!(
+        spread(vec![64]),
+        Spread {
+            median: 64,
+            p95: 64,
+            max: 64,
+            at_least_8: 1,
+            at_least_64: 1
+        }
+    );
+}
+
+#[test]
+fn relevance_and_the_bind_record_on_keys() {
+    let sem = open("tests/fixtures/keys");
+    let main = sem.entry("src/main.ts", "main", 0, STYLE).unwrap();
+    let def_of = |qname: &str| sem.def_id(sem.entry("src/main.ts", qname, 0, STYLE).unwrap());
+    let (run, ignore, pair) = (def_of("run"), def_of("ignore"), def_of("Pair.constructor"));
+
+    // with relevance: `ignore`'s parameter is never read, so its two calls share one context
+    let (_, masked) = solve_from(&sem, main, on(), true);
+    let found = contexts(&masked);
+    assert_eq!(found, kinds(&found, &[ZEROS]));
+
+    // without it: what `bind` made, before interning, told apart by the arrows
+    let (solver, graph) = solve_from(&sem, main, on(), false);
+    let distinct = |def: DefId| {
+        let measure = solver.lang().measure.borrow();
+        measure
+            .bound
+            .iter()
+            .filter(|(callee, _)| *callee == def)
+            .map(|(_, data)| data.clone())
+            .collect::<HashSet<KeyData>>()
+            .len()
+    };
+    assert_eq!(distinct(run), 4);
+    assert_eq!(contexts(&graph)["run"].len(), 3);
+    assert_eq!(distinct(ignore), 2);
+
+    let read = |def: DefId| reads(&sem.flow(def, STYLE).unwrap());
+    assert_eq!(read(ignore), [false]);
+    assert_eq!(read(run), [true]);
+    assert_eq!(read(pair), [false, true]);
+}
+
+/// The contexts of each function of a graph, through `spread`, and the qname of the first def (in `graph.defs` order) that has the most.
+fn per_function(graph: &Graph) -> (Spread, String) {
+    let mut counts: HashMap<&analyzer_core::graph::StableDef, usize> = HashMap::new();
+    for context in &graph.contexts {
+        *counts.entry(&context.id.func).or_default() += 1;
+    }
+    let most = counts.values().copied().max().unwrap_or(0);
+    let name = graph
+        .defs
+        .iter()
+        .find(|def| counts.get(&def.id).copied() == Some(most))
+        .map(|def| def.qname.clone())
+        .unwrap_or_default();
+    (spread(counts.into_values().collect()), name)
+}
+
+/// The distinct `bind` results of each callee, through `spread`, and the qname of the callee with the smallest `DefId` among those with the most.
+fn per_callee(sem: &Sem, bound: &[(DefId, KeyData)]) -> (Spread, String) {
+    let mut sets: HashMap<DefId, HashSet<&KeyData>> = HashMap::new();
+    for (callee, data) in bound {
+        sets.entry(*callee).or_default().insert(data);
+    }
+    let most = sets.values().map(HashSet::len).max().unwrap_or(0);
+    let name = sets
+        .iter()
+        .filter(|(_, set)| set.len() == most)
+        .map(|(def, _)| *def)
+        .min()
+        .and_then(|def| sem.func(def))
+        .map(|func| sem.describe(func, STYLE).qname)
+        .unwrap_or_default();
+    (spread(sets.values().map(HashSet::len).collect()), name)
+}
+
+fn print_spread(label: &str, (spread, name): &(Spread, String)) {
+    println!(
+        "             {label} median {}  p95 {}  max {} ({name})  >=8 {}  >=64 {}",
+        spread.median, spread.p95, spread.max, spread.at_least_8, spread.at_least_64
+    );
+}
+
+/// N6 (`06-tc2` §10, step 4b) on a real project: for each entry of a sample file, three solves of its whole graph (off, on, on with relevance) and how many
+/// contexts per function the keys make. `cargo test --release -p typescript-analysis --lib measure_contexts -- --ignored --nocapture`.
+#[test]
+#[ignore = "a measurement on a real project, driven by TS_MEASURE_ROOT and TS_MEASURE_SAMPLE"]
+fn measure_contexts() {
+    let (Ok(root), Ok(sample)) = (
+        std::env::var("TS_MEASURE_ROOT"),
+        std::env::var("TS_MEASURE_SAMPLE"),
+    ) else {
+        eprintln!(
+            "set TS_MEASURE_ROOT (the project) and TS_MEASURE_SAMPLE (a file of `<file>\t<qualname>[\t<occurrence>]` lines)"
+        );
+        return;
+    };
+    let text = std::fs::read_to_string(&sample).expect("the sample file can be read");
+    let mut entries: Vec<(String, String, u16)> = Vec::new();
+    for line in text
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+    {
+        let fields: Vec<&str> = line.split('\t').collect();
+        match fields[..] {
+            [file] => eprintln!("skipped, a file entry: {file}"),
+            [file, qualname] => entries.push((file.to_owned(), qualname.to_owned(), 0)),
+            [file, qualname, occurrence] => entries.push((
+                file.to_owned(),
+                qualname.to_owned(),
+                occurrence
+                    .parse()
+                    .unwrap_or_else(|_| panic!("a sample line with a bad occurrence: {line:?}")),
+            )),
+            _ => panic!("a sample line with too many fields: {line:?}"),
+        }
+    }
+    let first = entries.first().expect("the sample has an entry");
+    let project = Project::open(Path::new(&root), Path::new(&first.0)).unwrap();
+    let sem = &project.sem;
+    for (file, qualname, occurrence) in &entries {
+        let func = sem
+            .entry(file, qualname, *occurrence, STYLE)
+            .unwrap_or_else(|| panic!("no entry: {file}\t{qualname}\t{occurrence}"));
+        println!("== {file} {qualname}");
+        for (label, layer, relevance) in [
+            ("off      ", None, false),
+            ("on       ", Some(Caps::PARAMS), false),
+            ("relevance", Some(Caps::PARAMS), true),
+        ] {
+            let (solver, graph, took) = solve_timed(sem, func, layer, relevance);
+            println!(
+                "  {label}  contexts {}  walks {}  cuts {:?}  {:.1} ms",
+                graph.contexts.len(),
+                solver.lang().walked.len(),
+                graph.stats.cuts,
+                took.as_secs_f64() * 1000.0
+            );
+            if layer.is_some() {
+                print_spread("per function  ", &per_function(&graph));
+                print_spread(
+                    "bind per callee",
+                    &per_callee(sem, &solver.lang().measure.borrow().bound),
+                );
+            }
         }
     }
 }
