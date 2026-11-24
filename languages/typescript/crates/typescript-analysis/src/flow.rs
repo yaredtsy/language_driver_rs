@@ -11,8 +11,8 @@
 use typescript_syntax::Span;
 
 /// A def as a number: the program's number, the file's number in it, and the outline index + 1 (0 is the file's own code). Good while that program is
-/// loaded; `Sem::func` gives `None` for a number of another program.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// loaded; `Sem::func` gives `None` for a number of another program. The derived order (program, file, def) is the order of a set of them (`value::Value`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct DefId {
     program: u32,
     file: u32,

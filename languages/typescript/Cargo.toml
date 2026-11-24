@@ -24,6 +24,7 @@ tsrs_vfs       = { git = "https://github.com/oxc-project/tsrs.git", rev = "13a31
 typescript-syntax   = { path = "crates/typescript-syntax" }
 typescript-analysis = { path = "crates/typescript-analysis" }
 indexmap = "2"
+smallvec = { version = "1.16", features = ["union"] }
 
 [workspace.lints.rust]
 unreachable_pub = "warn"

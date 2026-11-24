@@ -1,8 +1,11 @@
 //! What a context holds besides the function: its key, interned (`docs/03-typescript/12-context-layer/03-design.md` §6). A key is a number into
-//! the request's `Keys`; what it holds is a `KeyData` in its normal form. TypeScript is not context sensitive yet: `KeyData` has no field, so the
-//! only key is the open one, `KeyId::OPEN`, with digest zeros, and one context is one function (`docs/02-tree-rules/03-the-seam.md` §3).
+//! the request's `Keys`; what it holds is a `KeyData` in its normal form: the values of the parameters (`crate::value::Value`). TypeScript is not context
+//! sensitive yet: nothing fills them, so the only key is the open one, `KeyId::OPEN`, with digest zeros, and one context is one function
+//! (`docs/02-tree-rules/03-the-seam.md` §3).
 
 use indexmap::IndexSet;
+
+use crate::value::Value;
 
 /// A key: its number in the request's `Keys`. Two keys of one request are equal exactly when their numbers are.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -17,14 +20,27 @@ impl KeyId {
 /// The key the solver is keyed by (`Lang::Key`).
 pub(crate) type Key = KeyId;
 
-/// What a key holds, in its normal form. No field yet: TC1 step 4 adds the receiver, the parameters and the captured variables, so until then
-/// every `KeyData` is the open key's.
+/// What a key holds, in its normal form.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub(crate) struct KeyData {}
+pub(crate) struct KeyData {
+    /// One per parameter, in order (`Flow::params`): what the caller passes. TC2 fills it; the receiver (TC5) and the captured variables (TC3) come with their
+    /// phases.
+    pub(crate) params: Box<[Value]>,
+}
 
 impl KeyData {
-    /// The one normal form (`03-design.md` §6), made by `Keys::intern` and nowhere else. The identity while `KeyData` has no field.
-    fn normal(self) -> KeyData {
+    /// The one normal form (`03-design.md` §6), made by `Keys::intern` and nowhere else: the trailing parameters that are `Value::unknown()` are dropped, so
+    /// the open key of a function with three parameters equals that of one with none.
+    fn normal(mut self) -> KeyData {
+        let unknown = Value::unknown();
+        let keep = self
+            .params
+            .iter()
+            .rposition(|value| *value != unknown)
+            .map_or(0, |last| last + 1);
+        if keep < self.params.len() {
+            self.params = self.params[..keep].into();
+        }
         self
     }
 }
@@ -65,9 +81,13 @@ impl Keys {
     }
 }
 
-/// The digest of a key in its normal form: zeros for the open key, the only key there is. TC2 step 1 replaces this with core's function (D57),
-/// with the test that pins its bytes.
-fn digest_of(_data: &KeyData) -> [u8; 16] {
+/// The digest of a key in its normal form: zeros for the open key, the only key that can be made before TC2 step 1, which replaces this with core's function
+/// (D57), with the test that pins its bytes.
+fn digest_of(data: &KeyData) -> [u8; 16] {
+    debug_assert!(
+        data.params.is_empty(),
+        "no key but the open one can be made before TC2 step 1"
+    );
     [0; 16]
 }
 
@@ -90,5 +110,49 @@ mod tests {
         assert_eq!(keys.intern(KeyData::default()), KeyId::OPEN);
         assert_eq!(keys.table.len(), 1);
         assert_eq!(keys.digests.len(), 1);
+    }
+
+    fn f() -> Value {
+        Value::of(
+            [crate::value::One::Fn(crate::flow::DefId::new(
+                0,
+                0,
+                Some(0),
+            ))],
+            false,
+        )
+    }
+
+    #[test]
+    fn trailing_unknown_parameters_are_dropped() {
+        let normal = |params: Vec<Value>| {
+            KeyData {
+                params: params.into(),
+            }
+            .normal()
+            .params
+        };
+        assert_eq!(
+            *normal(vec![f(), Value::unknown(), Value::unknown()]),
+            [f()]
+        );
+        assert_eq!(
+            *normal(vec![Value::unknown(), f()]),
+            [Value::unknown(), f()]
+        );
+        assert_eq!(
+            *normal(vec![Value::data(), Value::unknown()]),
+            [Value::data()]
+        );
+    }
+
+    #[test]
+    fn a_key_of_unknown_parameters_is_the_open_key() {
+        let mut keys = Keys::new();
+        let key = keys.intern(KeyData {
+            params: vec![Value::unknown(), Value::unknown()].into(),
+        });
+        assert_eq!(key, KeyId::OPEN);
+        assert_eq!(keys.table.len(), 1);
     }
 }

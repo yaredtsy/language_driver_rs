@@ -8,6 +8,7 @@ mod key;
 mod scratch;
 mod sem;
 mod session;
+mod value;
 mod walk;
 
 use std::fmt;

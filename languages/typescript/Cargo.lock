@@ -765,6 +765,7 @@ dependencies = [
  "analyzer-testkit",
  "indexmap",
  "memory-stats",
+ "smallvec",
  "tsrs_ast",
  "tsrs_checker",
  "tsrs_compiler",
