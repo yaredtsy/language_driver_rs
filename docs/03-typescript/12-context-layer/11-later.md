@@ -136,8 +136,12 @@ const navigate = useNavigate();              navigate("/");
    (`property_name`, else the name), spelled by `spelled`;
 3. the `VariableDeclaration` is `const`;
 4. its initializer, under `unwrap_expression` and `await`, is a call `c`;
-5. `c`'s resolved signature has a declaration, in a file that is not project code; the package is named as `classify` names an external's
-   (`package_of`, else `place_of`);
+5. `c`'s resolved signature has a declaration, in a file that is not project code **and not a bundled library** (`lib.*.d.ts`,
+   `is_source_file_default_library`; added at review, 2026-11-24); the package is named as `classify` names an external's (`package_of`,
+   else `place_of`). TypeScript's own library makes no function: what it hands back is a value the project put there (`map.get(k)`,
+   `queue.shift()!.resolve`, `V | undefined` and `T | undefined`, which condition 7 does not see). Measured on the private sample at
+   `aa32042`: all 6 of its library-made calls were of this kind. `f.bind(x)` is not one: the engine answers its call as `f` itself
+   (`Call`), so it never reaches this rule;
 6. the maker is `c` spelled from the source: a call is its callee's spelling and `()`; a callee that is itself a call is spelled the same
    way (`create<S>()(…)` is `create()()`); any other callee is its text as written, whitespace taken out, type arguments not part of it;
 7. **the library made it** (added at review, 2026-11-24): the return type written on that declaration (`type_node()`) is not a type
@@ -147,7 +151,8 @@ const navigate = useNavigate();              navigate("/");
    answer (rule 8). Those stay `function_typed_value` (`_from_call_result`), for TC10 (Q-TC2 a) or the layer to reach. Path-blind on
    purpose: a type parameter's part is still the caller's. What it misses: a return type *computed* from a type parameter
    (zustand's no-selector `(): ExtractState<S>`, so `const { closeModal } = useStore()`) is still named after the library; 4 of 650 on
-   the V-NOC sample, accepted as the simple way (D56).
+   the V-NOC sample, accepted as the simple way (D56). A package's `T | undefined` is missed the same way (a union is not a type
+   reference): none on the V-NOC and private samples.
 
 **Measured before condition 7** (`aa32042`, V-NOC sample of three entries, whole graphs, counted by edge per context): 620 of 662
 call-result sites became library-made, unresolved 827 → 207; by name, `create()()` 237, `useState()[1]` 193 (+ `React.useState()[1]`
