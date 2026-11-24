@@ -1,8 +1,9 @@
 # Note: one digest function in core, and the scenario level per scenario
 
 Status: **decided** (D57 for the digest; [`03-typescript/12-context-layer/06-tc2-functions-through-parameters.md`](../03-typescript/12-context-layer/06-tc2-functions-through-parameters.md)
-§7 and [`04-rust/02-architecture.md`](../04-rust/02-architecture.md) §9 row 2 for the level). Shape written by the reviewer on 2026-11-24,
-before TypeScript's TC2 step 1 builds it. Written from reading `core/analyzer-core/src/graph.rs`, `core/analyzer-testkit/src/scenarios.rs`,
+§7 and [`04-rust/02-architecture.md`](../04-rust/02-architecture.md) §9 row 2 for the level). Shape written by the reviewer on 2026-11-24;
+**built as written by TypeScript's TC2 step 1 (`d36d7b9`, reviewed 2026-11-24;
+[`languages/typescript/engine/09-tc2.md`](../../languages/typescript/engine/09-tc2.md)).** Written from reading `core/analyzer-core/src/graph.rs`, `core/analyzer-testkit/src/scenarios.rs`,
 Python's `interp/canon.rs` and `stable.rs`, and Bend's `key.rs`. The pinned bytes of §1 were computed by the reviewer before the build
 (**[ran]**: a throwaway crate, `xxhash-rust` 0.8.19 and 0.8.21, `serde_json` 1.0.151 and 1.0.154, all four the same bytes).
 

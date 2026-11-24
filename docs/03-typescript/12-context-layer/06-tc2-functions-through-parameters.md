@@ -209,7 +209,7 @@ key and compares), and writes it before step 5. (Found closing TC1, 2026-11-24.)
 
 After step 9 the layer can be tagged for the first time, off by default.
 
-**Step 1, as decided for the build (2026-11-24).** A core step; the shape is the note
+**Step 1, as decided for the build (2026-11-24); built as decided, `d36d7b9` ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)).** A core step; the shape is the note
 [`02-tree-rules/08`](../../02-tree-rules/08-the-digest-and-scenario-levels.md), with the pinned bytes in it.
 
 - **`analyzer_core::graph::digest<T: Serialize + ?Sized>(&T) -> [u8; 16]`**, beside `ContextId`: `serde_json::to_vec`, `xxh3_128`,
