@@ -266,6 +266,9 @@ pub struct Breakdown {
     /// `function_typed_value` by where the function comes from, the leftmost name of the callee (`from_parameter`, `from_call_result`, `from_this`,
     /// `from_other`, from `Stats.language`): the values sum to `reasons["function_typed_value"]`. Only the origins above 0.
     pub function_typed: BTreeMap<String, u64>,
+    /// Calls of a function a library made (`setOpen` from `useState`), drawn as an `External` named after the call that made it (D56, policy row `library-made`):
+    /// `Stats.language["library_made_function"]`, said only when above 0. Not unresolved, and no longer in `function_typed` either.
+    pub library_made: u64,
     /// Defs a walked body hands over that no edge of the graph reaches, written inside an expression (`run({ onSuccess() {} })`, a property arrow of a
     /// literal passed on) and referenced by name (`onClick={handleClose}`). Counted once per def. Neither is an unresolved edge: the def is known and
     /// is not in the tree, because nothing calls it.
@@ -335,6 +338,7 @@ pub fn breakdown(graph: &Graph) -> Breakdown {
     let language = |key: &str| graph.stats.language.get(key).copied().unwrap_or(0);
     summary.handed_written = language(walk::WRITTEN_NOT_CALLED);
     summary.handed_named = language(walk::NAMED_NOT_CALLED);
+    summary.library_made = language(walk::LIBRARY_MADE);
     summary.outside_root = language(walk::OUTSIDE_ROOT);
     summary.duplicate_marker = language(walk::DUPLICATE_MARKER);
     summary.signature_passed = language(walk::SIGNATURE_PASSED);
@@ -400,6 +404,13 @@ impl fmt::Display for Breakdown {
                     writeln!(f, "    {}: {count}", origin.label())?;
                 }
             }
+        }
+        if self.library_made > 0 {
+            writeln!(
+                f,
+                "  library-made functions (named after the call that made them): {}",
+                self.library_made
+            )?;
         }
         if !self.notes.is_empty() {
             writeln!(f, "  constructions with no constructor entered, by why:")?;

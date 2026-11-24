@@ -8,7 +8,7 @@ use super::hierarchy::{
     declarations_of, declarations_of_signature, declarations_of_union_symbol,
     is_property_function_value, symbol_of_declaration,
 };
-use super::view::{expression_of, initializer_of, spelled};
+use super::view::{Binding, CallOrNew, elements_of, expression_of, initializer_of, spelled};
 use super::*;
 
 /// What one declaration the engine found for a site is.
@@ -22,6 +22,13 @@ pub(crate) enum Resolved<'p> {
         package: String,
         name: String,
         outside_root: bool,
+    },
+    /// A function a library made and handed back (D56): the callee is a `const` name bound straight from a call outside the project. No body to enter.
+    /// `walk::target` alone says how it is drawn.
+    LibraryMade {
+        package: String,
+        maker: String,
+        path: String,
     },
     /// The engine gives no declaration to enter.
     Unknown(Why),
@@ -159,7 +166,7 @@ impl Sem {
         site_index: usize,
         style: MarkerStyle<'_>,
     ) -> (Vec<Resolved<'_>>, SiteFacts) {
-        let (found, mut facts) = self.callee_found(func, site_index, style);
+        let (mut found, mut facts) = self.callee_found(func, site_index, style);
         facts.outside_root = found
             .iter()
             .filter(|resolved| {
@@ -174,8 +181,73 @@ impl Sem {
             .count() as u64;
         if found.contains(&Resolved::Unknown(Why::FunctionTypedValue)) {
             facts.function_typed = self.function_origin(func, site_index, style);
+            // a function a library made has no body to enter, and is named after the call that made it (D56). One handle at a time: `function_origin`'s is
+            // dropped by now
+            if facts.function_typed == Some(FunctionOrigin::CallResult)
+                && let Some(made) = self.library_made(func, site_index, style)
+            {
+                for resolved in &mut found {
+                    if *resolved == Resolved::Unknown(Why::FunctionTypedValue) {
+                        *resolved = made.clone();
+                    }
+                }
+            }
         }
         (found, facts)
+    }
+
+    /// The function a library made, when the callee of the site is one (D56, `docs/03-typescript/12-context-layer/11-later.md` §4.1): a plain name that is a
+    /// `const` bound straight from a call whose resolved signature is declared outside the project. `None` when any of the six conditions fails: the site then
+    /// stays a `function_typed_value`.
+    fn library_made(
+        &self,
+        func: Func<'_>,
+        site_index: usize,
+        style: MarkerStyle<'_>,
+    ) -> Option<Resolved<'_>> {
+        let calls = self.body(func, style)?;
+        let callee = unwrap_expression(calls.sites.get(site_index)?.expr);
+        // 1. a name: no member step
+        if callee.kind() != Kind::Identifier {
+            return None;
+        }
+        let _scope = self.region.enter();
+        let mut checker = self.checker();
+        let mut symbol = checker.get_symbol_at_location_exported(callee)?;
+        // through an import: the declaration it leads to
+        if symbol.flags().intersects(SymbolFlags::Alias) {
+            symbol = checker.get_aliased_symbol(symbol);
+        }
+        // 2. a plain name, or one element of one pattern, of a variable
+        let declaration = *symbol.declarations().first()?;
+        let text = ast::get_source_file_of_node(declaration)?.text();
+        let (variable, path) = variable_and_path(declaration, text)?;
+        // 3. `const`
+        if !ast::get_combined_node_flags(variable).intersects(NodeFlags::Const) {
+            return None;
+        }
+        // 4. a call
+        let made = call_result(initializer_of(variable)?)?;
+        // 5. whose signature is declared outside the project
+        let signature = checker
+            .get_resolved_signature_exported(made)
+            .declaration()?;
+        let file = File {
+            node: ast::get_source_file_of_node(signature)?,
+            _sem: PhantomData,
+            _one_thread: PhantomData,
+        };
+        if self.is_project_code(file) {
+            return None;
+        }
+        let package = self.package_of(file).unwrap_or_else(|| self.place_of(file));
+        // 6. the call as written
+        let maker = spell_call(made, ast::get_source_file_of_node(made)?.text())?;
+        Some(Resolved::LibraryMade {
+            package,
+            maker,
+            path,
+        })
     }
 
     /// Where the function of the site comes from (`FunctionOrigin`), read from the leftmost name of its callee expression. `None` when the def has no body to
@@ -799,16 +871,65 @@ fn origin_of_declaration(declaration: P<Node>) -> FunctionOrigin {
     }
 }
 
-/// Whether `initializer` is a call, under parentheses, assertions and `await`: what a call returns.
-fn is_a_call_result(initializer: P<Node>) -> bool {
+/// The call that `initializer` is, under parentheses, assertions and `await`: what a call returns.
+fn call_result(initializer: P<Node>) -> Option<P<Node>> {
     let mut node = unwrap_expression(initializer);
     while node.kind() == Kind::AwaitExpression {
-        let Some(inner) = expression_of(node) else {
-            return false;
-        };
-        node = unwrap_expression(inner);
+        node = unwrap_expression(expression_of(node)?);
     }
-    node.kind() == Kind::CallExpression
+    (node.kind() == Kind::CallExpression).then_some(node)
+}
+
+/// Whether `initializer` is a call, under parentheses, assertions and `await`.
+fn is_a_call_result(initializer: P<Node>) -> bool {
+    call_result(initializer).is_some()
+}
+
+/// The variable a name is declared by, and the path from the variable's value to the name (D56): `""` for a plain name, `[i]` for the `i`th element of an
+/// array pattern (holes counted), `.k` for the property `k` of an object pattern. A pattern inside a pattern, a rest element and anything that is not a
+/// variable (a parameter, a property) give `None`.
+fn variable_and_path(declaration: P<Node>, text: &str) -> Option<(P<Node>, String)> {
+    if declaration.kind() == Kind::VariableDeclaration {
+        return declaration
+            .name()
+            .is_some_and(ast::is_identifier)
+            .then(|| (declaration, String::new()));
+    }
+    if Binding::cast(declaration)?.is_rest() {
+        return None;
+    }
+    let pattern = declaration.parent()?;
+    let path = match pattern.kind() {
+        Kind::ArrayBindingPattern => {
+            let index = elements_of(pattern)
+                .iter()
+                .position(|element| *element == declaration)?;
+            format!("[{index}]")
+        }
+        Kind::ObjectBindingPattern => {
+            let key = declaration.property_name().or(declaration.name())?;
+            format!(".{}", spelled(text, key)?)
+        }
+        _ => return None,
+    };
+    let variable = pattern.parent()?;
+    (variable.kind() == Kind::VariableDeclaration).then_some((variable, path))
+}
+
+/// A call as written, for the name of a function it made (D56): its callee's spelling and `()`. Type arguments are not part of it.
+fn spell_call(call: P<Node>, text: &str) -> Option<String> {
+    let callee = CallOrNew::cast(call)?.callee()?;
+    Some(format!("{}()", spell_callee(callee, text)?))
+}
+
+/// A callee as written: a call is spelled as a call (`create<S>()(init)` is `create()()`), anything else is its text with the whitespace taken out.
+fn spell_callee(callee: P<Node>, text: &str) -> Option<String> {
+    let callee = unwrap_expression(callee);
+    if callee.kind() == Kind::CallExpression {
+        return spell_call(callee, text);
+    }
+    let written = own_span(text, callee).slice(text)?;
+    Some(written.chars().filter(|c| !c.is_whitespace()).collect())
 }
 
 /// A declaration with no body that stands for whatever implements it (D43): a method signature (in a type literal, an interface or `declare global`), a `get` or

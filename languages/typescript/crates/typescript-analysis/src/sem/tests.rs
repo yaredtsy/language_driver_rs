@@ -559,6 +559,11 @@ fn resolved_sites(sem: &Sem, file: &str, qualname: &str) -> Vec<(String, Vec<Str
                     Resolved::External { package, name, .. } => {
                         format!("external {package} {name}")
                     }
+                    Resolved::LibraryMade {
+                        package,
+                        maker,
+                        path,
+                    } => format!("library-made {package} {maker}{path}"),
                     Resolved::Unknown(why) => format!("unknown {}", why.counter()),
                 })
                 .collect();

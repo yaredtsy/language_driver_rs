@@ -1,0 +1,17 @@
+== library_made
+library_made
+  localMaker
+edges:
+library_made | useState | external hooks useState
+library_made | setOpen | external hooks useState()[1]
+library_made | useMutation | external hooks useMutation
+library_made | mutate | external hooks useMutation().mutate
+library_made | useNavigate | external hooks useNavigate
+library_made | navigate | external hooks useNavigate()
+library_made | useStore | external hooks create()()
+library_made | useNavigate | external hooks useNavigate
+library_made | later | unresolved function_typed_value
+library_made | useMutation | external hooks useMutation
+library_made | go | unresolved function_typed_value
+library_made | localMaker | call localMaker
+library_made | made | unresolved function_typed_value

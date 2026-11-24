@@ -36,6 +36,10 @@ pub(crate) const DUPLICATE_MARKER: &str = "duplicate_marker";
 pub(crate) const WRITTEN_NOT_CALLED: &str = "def_written_not_called";
 pub(crate) const NAMED_NOT_CALLED: &str = "def_named_not_called";
 
+/// The key of the counter, in `Stats.language`, for a call of a function a library made (`setOpen` from `useState`, D56): drawn as an `External` named after the
+/// call that made it, and counted beside the edge so how it is drawn is decided in one place (`target`).
+pub(crate) const LIBRARY_MADE: &str = "library_made_function";
+
 /// Read `f`'s body once: its sites, each with its targets. The solver does the recursion. Says (`engine_kind_unhandled`) how many nodes of a kind the engine's
 /// accessors do not handle were met where one was expected: while reading the body, and while resolving what it calls and hands over.
 pub(crate) fn body<'p>(
@@ -146,6 +150,19 @@ fn target<'p>(lang: &TypeScript<'p>, resolved: Resolved<'p>, jsx: bool) -> Targe
         }
         Resolved::Def(def) => Target::Call(def, ()),
         Resolved::External { package, name, .. } => Target::External(External { package, name }),
+        // D56: **the one place** that decides how a function a library made is drawn. Today an `External` named after the call that made it and the path to
+        // the name (`useState()[1]`); a different display later is a change of these lines alone.
+        Resolved::LibraryMade {
+            package,
+            maker,
+            path,
+        } => {
+            lang.note(LIBRARY_MADE);
+            Target::External(External {
+                package,
+                name: format!("{maker}{path}"),
+            })
+        }
         Resolved::Unknown(why) => Target::Unresolved(Reason::new(why.counter())),
     }
 }
