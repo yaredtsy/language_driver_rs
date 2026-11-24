@@ -144,7 +144,8 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
 | 1 | **Built** (`c2452bb`, reviewed: `languages/typescript/engine/08-tc1.md`). `Precision`, `Options::precision`, `--precise`; `KeyId`, `KeyData` (no field yet), `Keys`, the five literals. **As decided for the build** below | all tests green, no snapshot touched; `--precise` prints byte for byte what no flag prints; `Cargo.lock` gains only the edge `typescript-analysis → indexmap` |
 | 2 | **Built** (`bac93f9`; gate passed on three projects, vscode owed: `languages/typescript/engine/08-tc1.md`). `flow.rs`; `sem/flow.rs` for sites and arguments | the `call_sites` equality; **S-TC2's cost, the gate** (moved from TC0): the tables of every def of the four projects built in at most the time of a depth-1 sweep of the same project and at most 25% more peak memory, measured in the release build. Over that, stop and report before step 3 |
 | 3 | **Built** (`6b7c2ef`, reviewed: `languages/typescript/engine/08-tc1.md`). `handed` in the table | the `handed_over` equality |
-| 4 | `value.rs`, `env.rs`, `eval.rs` (behind the `World` trait), `resolve_from_env` wired; **the capability set** (`Caps`, [03](03-design.md) §15.2, moved here from step 1: the first step that reads it, to decide whether an `Env` is built); `KeyData`'s three fields | equal graphs with the switch on; the laws |
+| 4a | `value.rs` (`Value`, `One::Fn`, `join`, the cap); `KeyData::params` and its normal form. **As decided for the build** below | the laws, exhaustively on a small universe; every graph unchanged |
+| 4b | `env.rs`, `eval.rs` (behind the `World` trait), `resolve_from_env` wired; **the capability set** (`Caps`, [03](03-design.md) §15.2, moved here from step 1: the first step that reads it, to decide whether an `Env` is built) | equal graphs with the switch on |
 | 5 | the harness, the tour, its default snapshot | the tour's "today" column of [03](03-design.md) §2 confirmed or corrected, cell by cell |
 | 6 | the sweep with the switch on | the numbers in `ENGINE.md` |
 | 7 | (mine) `ENGINE.md`: the engine items `sem/flow.rs` calls; `policy.md`: the second table's header | reviewed |
@@ -211,5 +212,22 @@ see a hand-over D22 does not:
 not the table's. **The proof** (§7, "the table sees what D22 sees"): for every def of the fixtures and of the real projects, the
 `(at, def)` pairs of `handed_over` equal the `Def`s of `flow.handed`, **and no entry of the second kind holds a `Def`** (inside a `OneOf`
 either). A failure there means `expr_of` and `handed_over` disagree on what a name is; it is reported, not patched over.
+
+**Step 4 split, and 4a as decided for the build (2026-11-24).** Step 4 was values, keys, env, eval, `World`, `Caps` and the switch at
+once; it is two sittings. **4a**:
+
+- `value.rs` imports nothing from `sem`. `Value` is a struct around a private enum (`Set { known: SmallVec<[One; 2]>, open }` or `Wide`),
+  so it can only be built in its normal form (`unknown`, `data`, `wide`, `of(ones, open)`: sorted, no duplicates, wide past the cap) and a
+  key that holds one is in normal form too. `One` has one variant, `Fn(DefId)`; TC2 adds the anonymous functions and `Undefined`, TC4
+  classes and objects, TC5 instances. The order of a set is `DefId`'s (`derive(Ord)`): a normal form inside one program, never an output
+  order (the digest sorts by `StableDef`, TC2 step 1). `MAX_SET` = 8. `join` is pure; whoever joins counts `value_widened_set` when the
+  result is wide and neither side was.
+- **The laws are tested exhaustively, not with `proptest`**: every value over five functions with the cap at 3 (the private
+  `of_capped` / `join_capped`), every pair and every triple. That is stronger than generated cases for a finite lattice, and it adds no crate
+  (the disk is short; `proptest` is not in the lockfile). §7's row "the laws, on generated values" is met this way.
+- `KeyData` gains **`params` only**: `this` comes with TC5 and `captured` with TC3, their first users. The normal form drops trailing
+  unknown parameters, so a key of unknowns is the open key. The digest of a key that is not the open one stays TC2 step 1's; until then
+  `digest_of` asserts (debug) that it is given the open key.
+- `smallvec = { version = "1.16", features = ["union"] }`, as tsrs takes it: nothing is rebuilt.
 
 Next: [`06-tc2-functions-through-parameters.md`](06-tc2-functions-through-parameters.md)
