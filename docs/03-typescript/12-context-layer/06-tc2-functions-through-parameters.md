@@ -48,9 +48,10 @@ unknown). The table also says, per parameter:
 | `Param` field | Meaning | From |
 |---|---|---|
 | `rest` | `...args` | the syntax |
+| `named` | declared by a plain name (`cb`), not a binding pattern (`{ onClose }`): only such a parameter is ever an `Expr::Param` (added at step 2's design) | the syntax |
 | `default` | the default's `Expr`, if any | the syntax |
-| `assigned` | the body assigns to the parameter (`cb = cb \|\| noop`). Until TC3 reads assignments, such a parameter is **open**: its key value is joined with unknown | `ast::is_write_access` on its references |
-| `capable` | its declared type can hold a function, an object or a class instance. `false` for `string`, `number`, `boolean`, `bigint`, `symbol`, `null`, `undefined`, literal types, enums, and unions, arrays and tuples of only those. `true` for everything else, `any` and an untyped JavaScript parameter included | `get_type_of_symbol` (public, `checker_08.rs`; `sem/handed.rs` already calls it), `TypeFlags`. Not one of S-TC1's cases: what each type gives is this phase's own fixtures, one per kind of the list |
+| `assigned` | the body assigns to the parameter (`cb = cb \|\| noop`), a nested def or an anonymous function included. Until TC3 reads assignments, such a parameter is **open**: its key value is joined with unknown. Looked for only on a named, capable parameter (`false` on the others: never in a key) | `ast::is_write_access` on its references, found by TC0's search (`names_in`, `writes_of`: the engine's own is private) |
+| `capable` | its declared type can hold a function, an object or a class instance. `false` for `string`, `number`, `boolean`, `bigint`, `symbol`, `null`, `undefined`, `void`, `never`, literal and template literal types, enums, and unions and arrays of only those. `true` for everything else, `any` and an untyped JavaScript parameter included. **Decided at step 2's design:** a tuple is `true` (its element types come only through `get_type_arguments`, which downcasts with an assert), a recursive type is `true` where the look stops (depth 4), an intersection is `true`, and a binding pattern is `false` until TC4 reads patterns | `get_type_of_symbol` (public, `checker_08.rs`; `sem/handed.rs` already calls it), `TypeFlags`. Not one of S-TC1's cases: what each type gives is this phase's own fixtures, one per kind of the list |
 
 `capable` is the first filter of [03](03-design.md) §12. It is computed from the declaration alone, so it is the same for every caller.
 
@@ -222,5 +223,25 @@ After step 9 the layer can be tagged for the first time, off by default.
 - **Lockfiles**: core's and all four languages', updated by resolution only (`cargo metadata`); Rust gains the package `xxhash-rust`, the
   others only `analyzer-core`'s dependency list. Python's and Rust's tests are not run on this machine (no build directory, 5 GB free):
   their lockfiles are checked with `cargo tree --locked`, their tests run on CI when the owner pushes.
+
+**Step 2, as decided for the build (2026-11-24).** `sem/flow.rs` learns which parameter a name is; nothing evaluates it yet (`eval` answers
+unknown for `Expr::Param` until step 3), so no graph changes.
+
+- **`Expr::Param(u32)`**: in `expr_of`, an `Identifier` whose symbol's `value_declaration` is one of this def's own parameter nodes (the
+  syntax list without a `this` parameter, which is the implementation's signature for an overloaded function) is `Param(i)`, `i` its place in
+  that list. Asked before `functions_named`. A name bound by a pattern has a `BindingElement` declaration, and a parameter of an anonymous
+  function or of another def is not in the list: both fall through to today's answer (unknown). A parameter used inside an anonymous function
+  of the body is the body's `Param` (`twice`'s `f`, line h); one used inside a nested **def** is that def's business (TC3).
+- **`Param { rest, named, default, assigned, capable }`** (§2's table). `default` is `expr_of` of the initializer, read in the def's own
+  table, so a default naming an earlier parameter is `Param(j)` and an arrow in a default is `Anon(n)` (the collector walks parameter
+  initializers). `capable` is a function of `sem` on `get_type_of_symbol`: `holds_only_data(ty, depth 4)` = a union of members that all do;
+  `TypeFlags::Primitive | Never` (a `void`, `null`, a literal, an enum, a template literal are in `Primitive`); an array
+  (`is_array_type`) whose element (`get_element_type_of_array_type_exported`) does; nothing else. `assigned` brings back TC0's `names_in`
+  and `writes_of` (`c123d0f` removed them), without the feature.
+- **The rider** of handoff 04: the comment above `one_of` in `expr_of`'s name branch says overloads repeat a member; they do not (step 5's fix
+  showed it). It says: a script's function merged with a library global of the same name.
+- Fixtures: `tests/fixtures/flow/src/params.ts` (every row of `capable`'s rule, names, defaults, writes) and `tests/fixtures/flow-js/src/params.js`
+  (untyped, no config). The tour's snapshot changes in four tables only (`each`, `relay`, `twice` gain `param#0`; every table prints its
+  parameter rows).
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
