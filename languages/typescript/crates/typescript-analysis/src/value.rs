@@ -6,15 +6,18 @@ use smallvec::SmallVec;
 use crate::flow::DefId;
 
 /// The most members a value lists before it is wide (`KeyPolicy::max_set`, §12).
-#[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
 pub(crate) const MAX_SET: usize = 8;
 
-/// One thing a value can hold. TC2 adds the anonymous functions and `Undefined`, TC4 classes and objects, TC5 instances.
+/// One thing a value can hold: a function, an anonymous function, or "nothing was passed". TC4 adds classes and objects, TC5 instances. The derived order is
+/// `Fn` by def, then `Anon` by def and number, then `Undefined`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum One {
     /// A def with a body.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     Fn(DefId),
+    /// An anonymous function: the def it is written in, and its number among that body's anonymous functions (`Flow::anons`).
+    Anon(DefId, u32),
+    /// Nothing was passed: a parameter with this value starts from its default.
+    Undefined,
 }
 
 /// What can be at a place. `unknown` (nothing known: ask the engine), `data` (nothing callable, and the layer knows it), `wide` (too much to list: no
@@ -32,7 +35,6 @@ enum Repr {
         known: SmallVec<[One; 2]>,
         open: bool,
     },
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     Wide,
 }
 
@@ -46,7 +48,6 @@ impl Value {
     }
 
     /// Nothing callable, and the layer knows it.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn data() -> Value {
         Value(Repr::Set {
             known: SmallVec::new(),
@@ -55,13 +56,11 @@ impl Value {
     }
 
     /// Too much to list.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn wide() -> Value {
         Value(Repr::Wide)
     }
 
     /// `known` sorted, duplicates dropped; wide when more than `MAX_SET` remain.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn of(known: impl IntoIterator<Item = One>, open: bool) -> Value {
         of_capped(known, open, MAX_SET)
     }
@@ -75,7 +74,6 @@ impl Value {
     }
 
     /// Whether something unknown can be there too: true for a wide value.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn is_open(&self) -> bool {
         match &self.0 {
             Repr::Set { open, .. } => *open,
@@ -83,21 +81,36 @@ impl Value {
         }
     }
 
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn is_wide(&self) -> bool {
         matches!(self.0, Repr::Wide)
     }
 
+    /// Whether `one` is a member.
+    pub(crate) fn contains(&self, one: One) -> bool {
+        // `known` is sorted
+        self.known().binary_search(&one).is_ok()
+    }
+
+    /// The members less `one`, open as it was; a wide value stays wide.
+    pub(crate) fn without(&self, one: One) -> Value {
+        if self.is_wide() {
+            return Value::wide();
+        }
+        of_capped(
+            self.known().iter().copied().filter(|member| *member != one),
+            self.is_open(),
+            MAX_SET,
+        )
+    }
+
     /// The least value that holds both: wide if either is; else the union of the members, open if either is, wide past the cap. Pure: whoever joins counts
     /// `value_widened_set` when the result is wide and neither side was.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn join(&self, other: &Value) -> Value {
         join_capped(self, other, MAX_SET)
     }
 }
 
 /// `of` with another cap: the laws are tested with a small one.
-#[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
 fn of_capped(known: impl IntoIterator<Item = One>, open: bool, cap: usize) -> Value {
     let mut known: SmallVec<[One; 2]> = known.into_iter().collect();
     known.sort_unstable();
@@ -108,7 +121,6 @@ fn of_capped(known: impl IntoIterator<Item = One>, open: bool, cap: usize) -> Va
     Value(Repr::Set { known, open })
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
 fn join_capped(a: &Value, b: &Value, cap: usize) -> Value {
     if a.is_wide() || b.is_wide() {
         return Value::wide();
@@ -130,11 +142,27 @@ mod tests {
         One::Fn(DefId::new(0, 0, Some(index)))
     }
 
-    /// Every value over five functions with the cap at 3: each subset of them, open and closed, and `wide`, once each.
+    /// The five members the laws are tested over: three functions, one anonymous function and `Undefined`.
+    fn members() -> [One; 5] {
+        [
+            f(0),
+            f(1),
+            f(2),
+            One::Anon(DefId::new(0, 0, Some(0)), 0),
+            One::Undefined,
+        ]
+    }
+
+    /// Every value over `members()` with the cap at 3: each subset of them, open and closed, and `wide`, once each.
     fn universe() -> Vec<Value> {
         let mut values: Vec<Value> = Vec::new();
         for subset in 0u32..32 {
-            let members: Vec<One> = (0..5).filter(|i| subset >> i & 1 == 1).map(f).collect();
+            let members: Vec<One> = members()
+                .into_iter()
+                .enumerate()
+                .filter(|(i, _)| subset >> i & 1 == 1)
+                .map(|(_, member)| member)
+                .collect();
             for open in [false, true] {
                 let value = of_capped(members.iter().copied(), open, CAP);
                 if !values.contains(&value) {
@@ -224,6 +252,24 @@ mod tests {
             }
         }
         eprintln!("{pairs} pairs");
+    }
+
+    #[test]
+    fn without_removes_one_member() {
+        for v in &universe() {
+            for x in members() {
+                let less = v.without(x);
+                assert!(!less.contains(x), "{v:?} without {x:?}");
+                assert_eq!(less.without(x), less, "twice: {v:?} {x:?}");
+                assert_eq!(less.is_open(), v.is_open(), "open as it was: {v:?} {x:?}");
+                if v.is_wide() {
+                    assert!(less.is_wide(), "wide stays wide: {x:?}");
+                } else {
+                    let only = Value::of([x], false);
+                    assert_eq!(join(&less, &only), join(v, &only), "put back: {v:?} {x:?}");
+                }
+            }
+        }
     }
 
     #[test]

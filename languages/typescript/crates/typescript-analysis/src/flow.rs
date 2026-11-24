@@ -39,7 +39,6 @@ impl DefId {
 #[derive(Debug)]
 pub(crate) struct Flow {
     /// The parameters of the def's own declaration, in order, without a `this` parameter. Empty for the file's code, a class, and any def that is not function-like.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) params: Box<[Param]>,
     /// Index for index with `Sem::call_sites`.
     pub(crate) sites: Box<[SiteFlow]>,

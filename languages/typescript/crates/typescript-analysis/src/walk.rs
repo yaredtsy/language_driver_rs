@@ -131,16 +131,16 @@ fn resolve<'p>(
         })
 }
 
-/// What the context layer says the site at `site_index` calls, when it knows. TC1 knows nothing, so this is always `None` and the engine
-/// answers. What a known member gives (a `Call` per function, the engine's answer beside an open value) is TC2's.
+/// What the context layer says the site at `site_index` calls, when it knows. It evaluates the callee and still answers `None`, so the engine answers
+/// every site; step 5 answers from the value (a `Call` per function, the engine's answer beside an open value).
 fn resolve_from_env<'p>(
     lang: &TypeScript<'p>,
     env: &Env,
     site_index: usize,
 ) -> Option<Vec<Target<TypeScript<'p>>>> {
     let site = env.flow.sites.get(site_index)?;
-    let value = eval(lang, env, &site.callee);
-    debug_assert!(value.known().is_empty(), "TC1's eval knows nothing");
+    // the layer's answer; step 5 draws from it. Until then the engine answers every site
+    let _value = eval(lang, env, &site.callee);
     None
 }
 

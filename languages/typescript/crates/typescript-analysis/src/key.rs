@@ -75,6 +75,11 @@ impl Keys {
         ))
     }
 
+    /// What `key` holds, a key of this table.
+    pub(crate) fn data(&self, key: KeyId) -> &KeyData {
+        &self.table[key.0 as usize]
+    }
+
     /// The digest of `key`, a key of this table.
     pub(crate) fn digest(&self, key: KeyId) -> [u8; 16] {
         self.digests[key.0 as usize]
@@ -99,6 +104,7 @@ mod tests {
     fn a_new_table_holds_the_open_key_alone_with_digest_zeros() {
         let keys = Keys::new();
         assert_eq!(keys.digest(KeyId::OPEN), [0; 16]);
+        assert_eq!(*keys.data(KeyId::OPEN), KeyData::default());
         assert_eq!(keys.table.len(), 1);
         assert_eq!(keys.digests.len(), 1);
     }

@@ -159,16 +159,18 @@ impl<'p> Lang for TypeScript<'p> {
         self.keys.borrow().digest(*key)
     }
 
-    fn walk(&mut self, f: Self::Func, _key: &Self::Key, cancel: &Cancel) -> Summary<Self> {
+    fn walk(&mut self, f: Self::Func, key: &Self::Key, cancel: &Cancel) -> Summary<Self> {
         // the layer on: this body's table, read once per program and kept (`Sem::flow`); off, nothing is read at all
-        let env = self
-            .layer
-            .and_then(|_| World::flow(self, self.sem.def_id(f)))
-            .map(|flow| {
-                // what reading the table met of a kind the views do not handle, said at every walk as `walk::body` says the body's own
-                self.note_n(UNHANDLED_KEY, flow.unhandled);
-                Env { flow }
-            });
+        let def = self.sem.def_id(f);
+        let env = self.layer.and_then(|_| World::flow(self, def)).map(|flow| {
+            // what reading the table met of a kind the views do not handle, said at every walk as `walk::body` says the body's own
+            self.note_n(UNHANDLED_KEY, flow.unhandled);
+            Env {
+                flow,
+                def,
+                key: self.keys.borrow().data(*key).clone(),
+            }
+        });
         walk::body(self, f, env.as_ref(), cancel)
     }
 }
