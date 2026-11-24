@@ -285,7 +285,7 @@ unknown for `Expr::Param` until step 3), so no graph changes.
   (Corrected at step 4's design: `run`'s body passes nothing on, so its summary is the same under any key; the fixture that reaches the guard
   is `callback-passed-through`, where `relay`'s key decides `each`'s.)
 
-**Step 4, as decided for the build (2026-11-24).** Keys get their slots and their digests; the layer still answers nothing (`resolve_from_env`
+**Step 4, as decided for the build (2026-11-24); built as decided, `98d4c1f` ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)).** Keys get their slots and their digests; the layer still answers nothing (`resolve_from_env`
 is `None`), so every edge is the engine's and only the contexts split. **`Caps::BUILT` stays empty**: `Precision::Precise` makes no key yet,
 every public graph is unchanged, and the step's proofs run in the crate with `with_layer(Some(Caps::PARAMS))`. `PARAMS` joins `BUILT` at step
 5, with the replacement of `tests/precise.rs`.
