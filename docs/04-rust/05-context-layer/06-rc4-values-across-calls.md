@@ -74,7 +74,9 @@ the site's resolution). Arguments are evaluated **eagerly**, once, in the caller
 `a → b → c` flattens by itself, because `b` evaluates its argument `w` in an env where `w` already holds what `a` passed.
 
 The entry is walked under the open key: its erased parameters are `Unknown`, and its `dyn` sites show the declaration. That is
-correct (nobody told us), and it is why a tree asked for at `main` is richer than one asked for at `send`.
+correct (nobody told us), and it is why a tree asked for at `main` is richer than one asked for at `send`. It is also the owner's
+rule (D60, 2026-11-24): a parameter nobody passed is its declared type, and the callers of the entry are never searched for what they
+pass. The one thing an entry does get is its own `self`, from its type's init ([design §12.2](01-design.md); RC5 step 7).
 
 ## 4. Coming out: return values
 

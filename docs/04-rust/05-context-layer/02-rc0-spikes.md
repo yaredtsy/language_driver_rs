@@ -7,7 +7,7 @@ RC0
 ├── S-RC2  a trait method and concrete types → the impl's method
 ├── S-RC3  where erased values are born
 ├── S-RC4  the body: our own events, or the engine's MIR          (added 2026-11-24)
-├── S-RC5  what a private field can hold                          (added 2026-11-24)
+├── S-RC5  what an entry's `self` gets from its type's own init   (added 2026-11-24)
 └── 2. what RC0 hands on, and the go / no-go
 ```
 
@@ -22,7 +22,8 @@ below depends on its answer.
 
 **S-RC4 and S-RC5 were added on 2026-11-24**, after reading another tool built on rust-analyzer,
 [blaze](https://github.com/indexable-inc/blaze). What was read, and what each idea would change, is in
-[the design, §12](01-design.md). Both are spikes with a number that decides; neither is a decision.
+[the design, §12](01-design.md). S-RC4 is a spike with a number that decides. S-RC5 measures the owner's rule for a value nobody
+passed (D60, decided 2026-11-24); the "field set" idea it was first written for was declined the same day.
 
 ## 1. The measurement
 
@@ -47,17 +48,16 @@ The decision this table makes:
   (D36). The table then says which road the values are lost on (a local, a call, a field, a wrapper), and so which phase comes first.
 
 **A second table, for the last two rows** (added 2026-11-24). `open_dyn` and `open_fn_pointer` say that a value was not followed; they
-do not say **where it would have to be followed from**. That decides the order of RC3–RC6, and whether S-RC5's field sets are worth
-building. For each such site, where does the receiver (or the called value) come from?
+do not say **where it would have to be followed from**. That decides the order of RC3–RC6, and what an entry asked alone can show. For each such site, where does the receiver (or the called value) come from?
 
 | The receiver is | Example | Sites | Answered by | If the function is asked **as an entry** (the open key) |
 |---|---|---|---|---|
 | a local born in this body | `let w: &dyn Writer = &Json; w.write()` | | RC3 | answered |
 | a parameter | `fn send(w: &dyn Writer) { w.write() }` | | RC4, through the caller's key | **not answered**: nobody told us |
-| a field of a project struct, reached from `self` or a parameter | `self.sink.write()` | | RC5, through the caller's key | **not answered** by RC5; answered by a field set if the field has one (S-RC5) |
+| a field of a project struct, reached from `self` or a parameter | `self.sink.write()` | | RC5, through the caller's key | **not answered** by RC5; answered where the type's own init fills the field itself (D60, S-RC5), else the declaration |
 | the result of a call | `pick().write()` | | RC4 | answered when the callee is project code |
 | a static or a const | `PLUGINS[0].run()` | | RC6 C | answered |
-| taken out of a wrapper or a collection | `self.plugins.iter()` … `p.run()` | | RC6 D | as its own row; a struct **inside** the wrapper: a field set |
+| taken out of a wrapper or a collection | `self.plugins.iter()` … `p.run()` | | RC6 D | **not answered**: nobody told us (D60: callers and other writers are never searched) |
 | anything else | | | must be small, or this table has a hole | |
 
 The last column matters more for us than for a compiler: V-NOC asks for a tree per def, so most requests start at a function with the
@@ -147,26 +147,25 @@ lines, and the two limits). [Design §12.1](01-design.md) compares the two. This
 Outcome, in `ENGINE.md`: "`sem.flow` reads the syntax, as RC3 §2 says" or "`sem.flow` reads MIR, with this fallback and this join", and
 RC3 §2 rewritten in the same commit if it is the second. Either way `walk.rs` sees an owned form with no engine type (rule 4).
 
-## S-RC5: what a private field can hold
+## S-RC5: what an entry's `self` gets from its type's own init
 
-[Design §12.2](01-design.md): a field without `pub` can be written only inside its struct's module, so reading that module's bodies
-gives **every** value the field can hold. This spike says how often that set is complete on real code. It needs no new engine item
-beyond S-RC3's.
+[Design §12.2](01-design.md), D60: where nobody passed a value, the default the code writes is used, as Python runs `__init__` with
+no arguments for a method asked as an entry. Rust has no `__init__`; Q-RC5 asks which function stands for it (a `Default` impl, then
+`new`). This spike says how often that gives an entry anything, so that Q-RC5 is answered with a number. It needs no engine item
+beyond S-RC2's and S-RC3's.
 
-For every field of a carrier type (a `dyn` or a `fn` pointer behind any pointers) in a struct defined in project code, on the same
-three projects:
+For every struct or enum defined in project code that has a field of a carrier type (a `dyn` or a `fn` pointer behind any
+pointers), on the same three projects:
 
 | Write down | Why |
 |---|---|
-| its visibility: private, `pub(super)` / `pub(in …)`, `pub(crate)`, `pub` | the scope the writers are in; `pub` has no closed scope |
-| its **writers** in that scope: record expressions (`S { f: e }`, and `S(e)` for a tuple struct), assignments (`x.f = e`), and each place a `&mut x.f` leaves the body | **[check]** how they are found: the engine's usage search for a field (`ide_db::search`), or a walk of the scope's bodies |
-| what each written `e` is: a birth (S-RC3); another read of the same field (`..base`, a clone of an `Arc`); a parameter of the enclosing function; the result of a call; other | the set is complete only when every writer is one of the first two kinds |
-| whether the struct has a derive or an attribute macro that was not expanded; whether the scope's bodies hold any `unsafe`; whether the tuple-struct constructor is used as a value (`map(S)`) | each makes the set `Unknown` (§12.2's table) |
-| **the two numbers:** the share of carrier fields whose set is complete; and the share of §1's "a field of a project struct" sites those fields cover | the first says how often the rule fires; the second, what the user sees |
+| does it have `impl Default` in project code (written, or derived)? an associated function `new`? how many associated functions return the type at all? | Q-RC5's candidates 1 and 2, and how often "the init" is not one function |
+| for each carrier field, what the init stores in it: a birth (S-RC3: a known type), a parameter of the init, the result of a call, other | only the first kind gives the entry a known value; a parameter is its declared type, so the field stays the declaration |
+| for a generic type: does a type parameter with a `Writer`-like bound have a default (`struct Pipe<W: Writer = Json>`)? | Q-RC5 part (b) |
+| **the two numbers:** the share of carrier fields that the init fills itself with a known type; and the share of §1's "a field of a project struct" sites those fields cover | the first says how often the rule gives something; the second, what the user sees |
 
-A likely result is that the common shape, `fn new(sink: Box<dyn Writer>) -> Self { Self { sink } }`, makes most sets `Unknown`: the
-writer's value is a parameter. Then the number for the **next** step is worth having in the same run: how many of those constructors
-are private, or called only from the struct's own crate (§12.2, "one step further").
+A likely result is that the common shape, `fn new(sink: Box<dyn Writer>) -> Self { Self { sink } }`, leaves most fields at the
+declaration. That is the rule working as the owner wants it, not a hole to fill: what callers pass is never searched (D60).
 
 ## 2. What RC0 hands on
 
@@ -176,7 +175,7 @@ are private, or called only from the struct's own crate (§12.2, "one step furth
 | RC1 | what `Ty` is; the digest text; the substitution order; whether blanket impls give their arguments |
 | RC2 | closure naming |
 | RC3 | the table of births, and its holes; **which form `sem.flow` reads the body from** (S-RC4), after step 0's alignment with TypeScript's plan |
-| RC5, and Q-RC4 | S-RC5's two numbers, with §1's second table: they are what the owner needs to answer Q-RC4 (build field sets, or not) |
+| RC5, and Q-RC5 | S-RC5's two numbers, with §1's second table: they are what the owner needs to answer Q-RC5 (which function is a Rust type's init) |
 | this plan | every `[check]` of [`../01`](../01-what-rust-analyzer-gives.md) §7 answered there; any phase file that assumed otherwise fixed in the same commit |
 
 A "no-go" is a result too: write the numbers and the reason into [`../03-decisions-and-questions.md`](../03-decisions-and-questions.md),

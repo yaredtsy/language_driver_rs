@@ -126,7 +126,7 @@ noticed. The same here; `tests/fixtures/context/limits/`.
 | closures' calls are listed where the closure is written | Q-RC1, answer A |
 | code a proc macro or a build script generates | not loaded by default (RS3); not in the text |
 | const generics, specialization, `impl` selection by a const | not in the key |
-| the entry's own parameters | nobody told us; the open key. **One part of this may not have to stay** (proposed 2026-11-24, [design §12.2](01-design.md), Q-RC4): a field read from the entry's `self`, when the field is private and every write to it in its module is a known value |
+| the entry's own parameters | nobody told us; a parameter is its declared type, and what callers pass is never searched (D60). The one exception is the entry's `self`, which starts from its type's own init run with no arguments, as Python's does ([design §12.2](01-design.md), RC5 step 7) |
 | a type deeper than `max_type_depth`, a set larger than `max_behind`, a field deeper than `field_depth` | precision limits, counted |
 
 ## 3. When layer 2 is finished

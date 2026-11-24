@@ -103,7 +103,8 @@ a new `Value` variant, RC4 was built too narrowly, and the fix belongs there.
 | a struct read from a static or a thread-local | not a local | RC6 |
 | a field behind `RefCell` / `Mutex` | can change through `&` | stays |
 | `unsafe` writes, `mem::swap`, `mem::replace` on a tracked local | they take `&mut`: the RC3 rule fires | stays |
-| **the base itself is `Unknown`**: `self` of a method asked as an entry; a struct taken out of an `Arc`, a `Vec`, a static | no walked caller handed the struct over, so there is no `Fields` value to read | **proposed 2026-11-24** ([design §12.2](01-design.md), Q-RC4): a **private** field's writers are all in its module, so its set can be read there, complete, with no caller. RC0's S-RC5 measures how often |
+| **the base itself is `Unknown`**: a struct taken out of an `Arc`, a `Vec`, a static; a parameter of an entry | no walked caller handed the struct over, so there is no `Fields` value to read. What other code stored there is never searched for (D60) | stays |
+| `self` of a method asked **as an entry** | the same, today | **D60 (owner, 2026-11-24), as Python:** `self` starts from the type's own init run with no arguments, so a field the init fills itself is known and a field it takes from a parameter is the declaration ([design §12.2](01-design.md)). A step at the end of this phase, once Q-RC5 says which function is the init |
 
 ## 7. Tests
 
@@ -125,5 +126,6 @@ a new `Value` variant, RC4 was built too narrowly, and the fix belongs there.
 | 4 | patterns; enums; update syntax | `field-destructure`, `field-enum`, `field-update-syntax` |
 | 5 | `AssignField` | `field-write-self` |
 | 6 | `field_depth` measured and set; `policy.md`, `ENGINE.md` | the numbers |
+| 7 | the entry's `self` from the type's init (D60; needs Q-RC5's answer): the init's return value goes into the receiver's slot of the entry's key; the init is not drawn | fixtures `entry-self-default`, `entry-self-new` (a field `new` fills: known; a field from a parameter: the declaration), `entry-self-no-init` (the open key, byte-identical to before), `entry-self-two-constructors` (no join: the declaration) |
 
 Next: [`08-rc6-recursion-and-limits.md`](08-rc6-recursion-and-limits.md)

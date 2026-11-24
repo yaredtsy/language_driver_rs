@@ -122,7 +122,7 @@ then measured, then cheaper, with a test that the edge sets are identical with a
 
 | | Rule |
 |---|---|
-| the entry | walked under the open key. A generic entry therefore shows declarations at its own open sites, exactly as layer 1: nobody told us its types. Its callees get whatever closed types it passes |
+| the entry | walked under the open key. A generic entry therefore shows declarations at its own open sites, exactly as layer 1: nobody told us its types, and its callers are never searched for them (D60). Its callees get whatever closed types it passes. Open, Q-RC5 (b): whether a slot starts from a **default the type writes** (`struct Pipe<W: Writer = Json>`) instead of `None` |
 | a method as the entry, in `impl Pipe<Json>` | the impl's own slots are closed by the impl's header, not by a caller; `sem` reads them from the impl's self type, so this entry is **not** open. **[check]** how the engine exposes an impl's fixed arguments |
 | `max_type_depth` | a closed type nested deeper than this is `None`. Stops `fn f<T>(x: T) { f(Some(x)) }`. Counted `key_type_widened` |
 | contexts per function | a **cost** limit: past it, further keys of that function are cut and marked `Incomplete` (design §7). Never "fall back to the open key" |

@@ -13,7 +13,7 @@ the context layer
 ├── 9. not built: possible implementations  (D36)
 ├── 10. which file changes in which phase
 ├── 11. how it is tested
-└── 12. two options RC0 decides: the engine's MIR, and what a private field can hold  (added 2026-11-24)
+└── 12. the engine's MIR (an option RC0 decides), and a value nobody passed (D60)  (added 2026-11-24)
 ```
 
 **Not scheduled** (D3; the roadmap's "measure first"). This is the design layer 1 is built to receive. Each phase has a file of its own;
@@ -273,13 +273,14 @@ that names the lost road says which part), not to list impls.
 | a real project before and after: contexts, walks, time, and each `open_*` counter | whether the phase was worth it; written in `ENGINE.md` |
 | the frozen `open_*` counts of every policy and context entry (`rust-analysis/tests/snapshots/trees/open_counts.txt`, from RS4 step 9b) | layer 1 never changes how open a site is by accident. A phase that closes sites **on purpose** edits that file in its own commit, and the review reads each changed line |
 
-## 12. Two options RC0 decides
+## 12. The engine's MIR, and a value nobody passed
 
 Added 2026-11-24, after reading [blaze](https://github.com/indexable-inc/blaze): a Rust build tool whose first version was built on
 rust-analyzer, and which runs its own whole-program analyses (which impl a `dyn` call reaches, what a function's effects are) over
 function bodies. I read its design notes (`docs/v2/plan/design/`: `devirt.md`, `effect-summary.md`, `polymorph.md`,
-`refined-values.md`, `frontend.md`); I ran none of it, and its numbers are its own claims. Two of its ideas fit this layer. **Neither
-is decided here**: each has a spike in RC0 with a number that decides, and the second also needs the owner's answer (Q-RC4).
+`refined-values.md`, `frontend.md`); I ran none of it, and its numbers are its own claims. Two of its ideas looked as if they fit this
+layer. The first (§12.1) is a spike in RC0 with a number that decides. The second was put to the owner as Q-RC4 and **declined** the
+same day; §12.2 now holds the owner's rule instead (D60).
 
 What it confirms, so that nobody reads it again for these: its summaries are keyed by a function **plus its type arguments**, as §3;
 it shares one summary between type arguments the body cannot tell apart, as RC1 §5's relevant parameters; and a set that grew past a
@@ -349,7 +350,9 @@ My recommendation: run S-RC4 and let its first number decide. MIR is worth its r
 local lowers on the three projects **and** the join to layer 1's sites is exact. Otherwise RC3 §2 stands as written, and this section
 has still paid for itself with the answer to RC3 §6's check.
 
-### 12.2 What a private field can hold (S-RC5, Q-RC4)
+### 12.2 A value nobody passed: the default written in the code (D60; Q-RC5)
+
+**Decided by the owner on 2026-11-24 (D60), and it replaces what this section proposed earlier the same day.**
 
 Three `Unknown`s of this design share one cause, that no walked caller handed the value over:
 
@@ -362,79 +365,73 @@ Three `Unknown`s of this design share one cause, that no walked caller handed th
 The first is the one that matters. V-NOC asks for a tree per def, so a `&self` method is the usual entry, and for it RC5 changes
 nothing: `self.sink.write()` still shows the trait's declaration.
 
-Rust gives a way in that Python and TypeScript do not have: **privacy**.
+**The rule (D60): where nothing is known, use the default the code itself writes; never go looking at what other code passes or
+stores.** It is what Python does, read in its code on 2026-11-24:
 
-> **🦀 Rust note: a private field is a closed world.** A field written without `pub` can be *named* only inside the module that
-> declares its struct (and the modules nested inside it). And in safe Rust, naming it is the only way to put a value into it: a record
-> expression `Pipe { sink: … }`, an assignment `p.sink = …`, or a `&mut p.sink` handed to something. Code anywhere else can move a
-> whole `Pipe` around, swap two of them, wrap one in an `Arc`, send it to another thread. It cannot reach inside. So if we read every
-> body of that one module and collect what is written into `sink`, we know **every** value `sink` can hold, in every `Pipe` that will
-> ever exist, wherever it lives. In Python, any code holding the object can write `p.handler = x`, which is why Python has to follow
-> each object. blaze leans on the same fact to prove a struct's invariant: "privacy makes the module the only writer"
-> (`refined-values.md` §3).
+| | Python, as built | Where |
+|---|---|---|
+| a method asked as an entry | one new object of its class is made and `__init__` is walked on it **with no arguments**, hidden (its nodes are dropped, what it stored on `self` stays). The method then runs on that object | `interp/entry.rs`, `build_object` |
+| a parameter that got no argument | its **default value**; if it has none, its **annotation**, as an object of that type; else unknown | `interp/bind.rs`, `default_value`, `annotation_fallback` |
+| the callers of the function, or other code that writes the attribute | **never searched** | nothing in `interp/` does |
 
-```
-writers(S.f)   =  in the bodies of S's module and of the modules nested in it
-                  (for `pub(crate)`: the crate's bodies; for `pub(in path)`: that module's):
-    (1) a record expression        S { f: e, .. }        and  S(e)  for a tuple struct
-    (2) an assignment              place.f = e
-    (3) a `&mut place.f` that leaves the body (passed to a call, stored, returned), or a `ref mut` pattern on f
-    (4) a functional update        S { ..base }          copies base's f: it adds nothing
-    (5) a built-in derive that builds an S: `Clone` (the field type's `clone`), `Default` (its `default`)
+The owner's words: "if there was no context, use the default available on init or type. I do not want to show which other calls, like
+jedi did: it checks which parameters are sent to that function and shows them. I disabled that feature. When I analyse a method in a
+class, I only run init and use the default."
 
-field_set(S.f) =  the join of eval(e) over (1), (2) and (5), each e evaluated in its own body under the open key
-                  Unknown  if there is any (3), or if one e is not a complete set
-```
+**What was proposed here, and why it is not built.** "A private field's set": a field without `pub` can be written only inside its
+struct's module, so the join of every value that module writes into it is complete, and an entry's `self.sink` could be answered from
+it. It is sound, and it is declined all the same, because of what it shows: under `Pipe::run` asked alone it lists every type **some
+other code** stored in `sink`. That is jedi's search turned from parameters to fields, and the answer to "what does this method call"
+would change when an unrelated function elsewhere in the module is edited. The same goes for its "one step further" (a private
+function's parameter as the join of its callers' arguments). Do not propose either again without a new reason.
 
-The set is `Unknown`, whatever the writers say, when:
+**What the rule means in Rust.** Two of Python's three rows carry over directly:
 
-| | Why |
-|---|---|
-| the field is `pub` | code we do not walk may write it. (Later, perhaps: a `pub` field of a crate that nothing outside the workspace uses) |
-| the struct has a derive or an attribute macro that was not expanded (proc macros off, RS-M8) | the macro writes code **into the module**, and it may build an `S` we never see. (When it is expanded, its bodies are writers like any other: **[check]** in S-RC5 that the search for writers sees them) |
-| the tuple-struct constructor is used as a value (`iter.map(Handler)`) in the scope | a write whose value is not in sight |
-| a body in the scope holds `unsafe` | `transmute`, `ptr::write` and unions are doors the borrow checker does not guard (§6's `unsafe` row). Blunt on purpose; S-RC5 counts what it costs |
-| the field's type has interior mutability (`RefCell<Box<dyn T>>`, `Mutex<…>`) | it can change through `&`, without the field being named. Not a carrier (RC5 §2) |
+- *A parameter nobody passed is its declared type.* Rust parameters have no default values, so this is all there is, and it is what
+  the open key already says: an erased parameter is `Unknown`, and its sites show the engine's answer, the trait's declaration (RC4 §3).
+  Nothing to build.
+- *Callers and other writers are never searched.* Nothing to build; a rule to keep. So the last two cases of the table above (a
+  struct inside a wrapper, a struct from a static or another thread) stay `Unknown` until RC6 follows the value there.
+
+The third does not carry over by itself, and is **Q-RC5**: Rust has no `__init__`. A type can have a `Default` impl, a `new`, several
+constructors, or none. Which one is "init, run with no arguments"?
+
+| Candidate, in the order I would try them | What `self` becomes for the entry | Note |
+|---|---|---|
+| 1. `impl Default for S` in project code | the return value of `<S as Default>::default`, walked under the open key | the language's own name for "the default value of this type". A derived `Default` gives each field its type's `default()`, which for a `Box<dyn T>` exists only if the project wrote one |
+| 2. an associated function `new` (no `self`, returns `Self`, `S`, or a `Result` / `Option` of it) | the return value of `S::new`, walked under the open key: a parameter is its declared type, so a field **set from a parameter** stays `Unknown` (the declaration), and a field `new` **fills itself** (`sink: Box::new(Json)`) is known | `new` is the Rust API Guidelines' name for the primary constructor (C-CTOR). Choosing by name is a convention, so it is counted (`entry_self_from_new`) |
+| 3. neither | the open key, as today: every field is its declared type | layer 1's answer. Never a join over the type's other constructors: with several there is no "the init", and joining them is the declined proposal again |
+
+One more default that Rust writes **on the type**: `struct Pipe<W: Writer = Json>`. For an entry in `impl<W: Writer> Pipe<W>`, the
+slot of `W` could start from `Json`, the default the author wrote, instead of `None`. Part (b) of Q-RC5.
 
 **How it sits with the rules.**
 
-- Rule 6 (a set is complete or `Unknown`): the set is complete **by privacy**, not by having followed a path. That is the whole point.
-- Rules 1 and 3: `field_set` depends on the code alone, not on a key or a caller, like RC1 §5's `relevant`. It is computed once per
-  field per request and is the same on every run.
-- Rules 4 and 5: it speaks only at an open site, and only where the context's own value is `Unknown`. A value the context followed is
-  always used first: it is one caller's, and so a subset of the field's set.
-- Where it is used: `Expr::Field(base, f)` (RC5 §4) when `eval(base)` is `Unknown` or has no path for `f`. Nowhere else.
+- Rule 1: the init's value goes into the **entry's key** (the receiver's slot of `Key.erased`), as Python's built object is bound
+  before the root context's key is made. The entry's summary is still a function of its key. An entry whose type has no init keeps
+  the open key and its zero digest.
+- The init is asked for as a context of its own, through the same handle that gives any callee's return value (RC4 §4). It is not
+  drawn under the entry: Python's is hidden too.
+- Rules 5 and 6: init gives a complete value or `Unknown` per field, like any return value; an `Unknown` field shows the declaration.
+- It needs RC4 (return values) and RC5 (`Fields`). So it is a step at the end of RC5, not a phase.
 
-**An example.** The tour's `Pipe`, with one more constructor in the same module:
+**An example.**
 
 ```rust
-struct Pipe { sink: Box<dyn Writer> }                        // `sink` is private
+struct Pipe { sink: Box<dyn Writer>, log: Box<dyn Writer> }
 impl Pipe {
-    fn json() -> Pipe { Pipe { sink: Box::new(Json) } }      // a writer: a birth, Json
-    fn csv()  -> Pipe { Pipe { sink: Box::new(Csv) } }       // a writer: a birth, Csv
-    fn run(&self) { self.sink.write() }
+    fn new(sink: Box<dyn Writer>) -> Pipe { Pipe { sink, log: Box::new(Json) } }
+    fn run(&self) { self.sink.write(); self.log.write() }
 }
 ```
 
-| Request | RC5 alone | With the field set |
-|---|---|---|
-| entry `main`, which calls `Pipe::json().run()` | `run` → `<Json as Writer>::write` (followed through the key) | the same: the context knows, the field set is not asked |
-| entry `Pipe::run` | `run` → `Writer::write`, the declaration | `run` → `<Json as Writer>::write` and `<Csv as Writer>::write`: one of these, depending on who built the pipe |
+| Request | Shows |
+|---|---|
+| entry `main`, which calls `Pipe::new(Box::new(Csv)).run()` | `run` → `<Csv as Writer>::write`, `<Json as Writer>::write`: followed through the key (RC5) |
+| entry `Pipe::run`, today and after RC5 | `run` → `Writer::write`, `Writer::write`: two declarations |
+| entry `Pipe::run`, with the rule (candidate 2) | `run` → `Writer::write` (the declaration: `sink` came from a parameter nobody passed), `<Json as Writer>::write` (`new` filled `log` itself) |
 
-**Where it will not fire, honestly.** The usual constructor is `fn new(sink: Box<dyn Writer>) -> Self { Self { sink } }`. Its written
-value is a parameter, `Unknown` under the open key, so the field's set is `Unknown` and nothing changes. S-RC5 measures how common
-each shape is. *One step further*, named and not designed: a **private** function has a closed set of callers for the same reason a
-private field has a closed set of writers, so the parameter of a private `new` is the join of its arguments at every call in the
-module.
-
-**A test both get for nothing.** Wherever a site's value is known both ways (through the context and through the field's set), the
-context's set must be inside the field's. If it is not, one of the two has a bug. That is an oracle neither needs to be told the
-answer for, and it runs on every fixture and every real project.
-
-**Why this is a question for the owner (Q-RC4) and not a draft row.** D36 says a `dyn` is resolved "by following the value that was
-put there", never by listing the trait's impls. A field set does follow values: it holds only types that some code **stored** in that
-field, never an impl that was merely written. But D36 also says that where the value is not known, the site keeps the declaration and
-is counted. With field sets, an entry asked alone would show several targets where it shows one declaration today. That changes what
-the user sees, so it is theirs to decide, with S-RC5's numbers in hand.
+RC0's S-RC5 measures how often an entry gains something: how many project types with an erased field have a `Default` or a `new`, and
+how many of those fields the init fills itself.
 
 Next: [`02-rc0-spikes.md`](02-rc0-spikes.md)
