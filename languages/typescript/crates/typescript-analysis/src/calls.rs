@@ -878,8 +878,9 @@ mod tests {
         let defs = sem.project_defs(STYLE);
 
         // the tables of every def, each checked against the sites `call_sites` lists
-        let tables = || -> (usize, usize, usize) {
-            let (mut sites, mut arguments, mut anons) = (0, 0, 0);
+        let tables = || -> (usize, usize, usize, usize, usize) {
+            let (mut sites, mut arguments, mut anons, mut handed, mut handed_defs) =
+                (0, 0, 0, 0, 0);
             for &func in &defs {
                 let Some(flow) = sem.flow(sem.def_id(func), STYLE) else {
                     assert!(sem.call_sites(func, STYLE).is_none());
@@ -894,8 +895,42 @@ mod tests {
                     .map(|site| site.args.as_ref().map_or(0, |args| args.len()))
                     .sum::<usize>();
                 anons += flow.anons.len();
+                // the table sees what D22 sees: the defs of `handed_over` are the defs of the table, and no other entry holds one
+                fn holds_a_def(expr: &crate::flow::Expr) -> bool {
+                    match expr {
+                        crate::flow::Expr::Def(_) => true,
+                        crate::flow::Expr::OneOf(members) => members.iter().any(holds_a_def),
+                        _ => false,
+                    }
+                }
+                let key =
+                    |at: Option<crate::Span>, id: crate::flow::DefId| (at, id.file(), id.index());
+                let mut wanted: Vec<_> = sem
+                    .handed_over(func, STYLE)
+                    .handed
+                    .iter()
+                    .map(|found| key(found.at, sem.def_id(found.func)))
+                    .collect();
+                let mut found: Vec<_> = flow
+                    .handed
+                    .iter()
+                    .filter_map(|entry| match entry.value {
+                        crate::flow::Expr::Def(id) => Some(key(entry.at, id)),
+                        _ => None,
+                    })
+                    .collect();
+                wanted.sort();
+                found.sort();
+                assert_eq!(found, wanted);
+                for entry in &flow.handed {
+                    assert!(
+                        wanted.iter().any(|&(at, ..)| at == entry.at) || !holds_a_def(&entry.value)
+                    );
+                }
+                handed += flow.handed.len();
+                handed_defs += found.len();
             }
-            (sites, arguments, anons)
+            (sites, arguments, anons, handed, handed_defs)
         };
         let sweep = || {
             let lang = TypeScript::new(sem, STYLE);
@@ -910,18 +945,18 @@ mod tests {
             "flows" => {
                 let graph = sweep();
                 let started = Instant::now();
-                let (sites, arguments, anons) = tables();
+                let (sites, arguments, anons, handed, handed_defs) = tables();
                 eprintln!(
-                    "defs {}, graph {graph:?}, flows {:?}, sites {sites}, arguments {arguments}, anonymous functions {anons}",
+                    "defs {}, graph {graph:?}, flows {:?}, sites {sites}, arguments {arguments}, anonymous functions {anons}, hand-overs {handed}, of them defs {handed_defs}",
                     defs.len(),
                     started.elapsed()
                 );
             }
             "cold" => {
                 let started = Instant::now();
-                let (sites, arguments, anons) = tables();
+                let (sites, arguments, anons, handed, handed_defs) = tables();
                 eprintln!(
-                    "defs {}, flows {:?}, sites {sites}, arguments {arguments}, anonymous functions {anons}",
+                    "defs {}, flows {:?}, sites {sites}, arguments {arguments}, anonymous functions {anons}, hand-overs {handed}, of them defs {handed_defs}",
                     defs.len(),
                     started.elapsed()
                 );

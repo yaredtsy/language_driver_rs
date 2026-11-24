@@ -51,8 +51,21 @@ pub(crate) struct Flow {
     pub(crate) sites: Box<[SiteFlow]>,
     /// The anonymous functions written in the body, in source order (`Expr::Anon` and `SiteFlow::anon` are places in it).
     pub(crate) anons: Box<[AnonFlow]>,
+    /// The hand-overs, sorted by `at` (start, then end), ties in the order made: every def `Sem::handed_over` finds, then the names of a hand-over position it
+    /// found no def for, through `expr_of`.
+    pub(crate) handed: Box<[HandedFlow]>,
     /// How many nodes reading the table met of a kind a view's `expect` did not handle (`view::counted`), kept with it as `Body` keeps its own.
     pub(crate) unhandled: u64,
+}
+
+/// A place where the body hands a function over without calling it (D22): a name in a hand-over position, or a def written there.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct HandedFlow {
+    /// The span of the name (or of the written def's name, or of a literal member's key), in the file.
+    pub(crate) at: Option<Span>,
+    pub(crate) value: Expr,
+    /// Written inside an expression (a named function expression, a member of a literal), not named.
+    pub(crate) written: bool,
 }
 
 /// One parameter of a declaration.

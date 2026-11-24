@@ -16,9 +16,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use indexmap::IndexSet;
 
 use super::collect::{CallNode, SiteKind, unwrap_expression};
+use super::handed::HandOvers;
 use super::view::{Binary, Conditional, Parameter, arguments_of, expression_of, parameters_of};
 use super::*;
-use crate::flow::{AnonFlow, Arg, DefId, Expr, Flow, FlowKind, Param, SiteFlow};
+use crate::flow::{AnonFlow, Arg, DefId, Expr, Flow, FlowKind, HandedFlow, Param, SiteFlow};
 
 /// The tables of one program, and the numbers they are written in.
 pub(super) struct Flows {
@@ -85,6 +86,8 @@ impl Sem {
         }
         let func = self.func(def)?;
         let body = self.body(func, style)?;
+        // the defs the body hands over, as D22 finds them: it takes the checker itself and gives it back, so it is asked before the table takes one
+        let hand_overs = self.handed_over(func, style);
         let defs = self.file_defs(func.file, style)?;
         // a number can only come from `def_id`, which makes an index of the outline; this keeps a made-up one from reaching `node_of`'s indexing
         if func
@@ -110,7 +113,7 @@ impl Sem {
                     .map(|(index, &span)| (span, index as u32))
                     .collect(),
             };
-            reader.read(&body, node)
+            reader.read(&body, &hand_overs, node)
         });
         let made = Arc::new(Flow { unhandled, ..made });
         self.flows.memo.borrow_mut().insert(def, Arc::clone(&made));
@@ -130,7 +133,7 @@ struct Reader<'a, 'p> {
 }
 
 impl Reader<'_, '_> {
-    fn read(&mut self, body: &Body, node: P<Node>) -> Flow {
+    fn read(&mut self, body: &Body, hand_overs: &HandOvers<'_>, node: P<Node>) -> Flow {
         let params = parameters_of(node)
             .iter()
             .filter(|&&parameter| !ast::is_this_parameter(parameter))
@@ -144,13 +147,45 @@ impl Reader<'_, '_> {
             .iter()
             .map(|call| self.site(call, &anons))
             .collect();
+        let handed = self.handed(body, hand_overs);
         Flow {
             params,
             sites,
             anons,
+            handed,
             // said by the caller, which counts the whole reading
             unhandled: 0,
         }
+    }
+
+    /// The hand-overs of the body: the defs `handed_over` found (it is the one place that knows how a name in a hand-over position stands for a def), then the
+    /// names of `Body::refs` it has no def for, through `expr_of`. Sorted by place, ties in the order made.
+    fn handed(&mut self, body: &Body, hand_overs: &HandOvers<'_>) -> Box<[HandedFlow]> {
+        let mut handed: Vec<HandedFlow> = hand_overs
+            .handed
+            .iter()
+            .map(|found| HandedFlow {
+                at: found.at,
+                value: Expr::Def(self.sem.def_id(found.func)),
+                written: found.written,
+            })
+            .collect();
+        let with_a_def: HashSet<Span> = hand_overs
+            .handed
+            .iter()
+            .filter_map(|found| found.at)
+            .collect();
+        for &(span, node) in &body.refs {
+            if !with_a_def.contains(&span) {
+                handed.push(HandedFlow {
+                    at: Some(span),
+                    value: self.expr_of(node),
+                    written: false,
+                });
+            }
+        }
+        handed.sort_by_key(|entry| entry.at.map(|span| (span.start, span.end)));
+        handed.into()
     }
 
     fn site(&mut self, call: &CallNode, anons: &[AnonFlow]) -> SiteFlow {

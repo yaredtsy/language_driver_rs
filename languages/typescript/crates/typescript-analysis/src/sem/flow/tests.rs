@@ -2,7 +2,7 @@
 
 use super::super::view::tests::{candidates, fixture_roots};
 use super::*;
-use crate::flow::AnonFlow;
+use crate::flow::{AnonFlow, HandedFlow};
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
@@ -70,6 +70,25 @@ fn show(sem: &Sem, site: &SiteFlow) -> String {
         .anon
         .map_or(String::new(), |index| format!(" in anon#{index}"));
     format!("{kind} {} ({args}){anon}", expr(sem, &site.callee))
+}
+
+/// A hand-over as `<text at its place> <expr>`, and ` written` for a def written inside an expression.
+fn show_handed(sem: &Sem, text: &str, handed: &HandedFlow) -> String {
+    let name = handed
+        .at
+        .and_then(|at| at.slice(text))
+        .unwrap_or("(no place)");
+    let written = if handed.written { " written" } else { "" };
+    format!("{name} {}{written}", expr(sem, &handed.value))
+}
+
+/// Whether the expression holds a def, directly or inside a `OneOf`.
+fn holds_a_def(expr: &Expr) -> bool {
+    match expr {
+        Expr::Def(_) => true,
+        Expr::OneOf(members) => members.iter().any(holds_a_def),
+        Expr::Unknown | Expr::Data | Expr::Anon(_) => false,
+    }
 }
 
 #[test]
@@ -150,7 +169,7 @@ fn the_anonymous_functions_are_listed_in_source_order() {
 
 #[test]
 fn the_table_has_every_site_of_every_def_of_every_fixture() {
-    let (mut projects, mut defs, mut sites) = (0, 0, 0);
+    let (mut projects, mut defs, mut sites, mut handed) = (0, 0, 0, 0);
     for root in fixture_roots() {
         let mut files = Vec::new();
         candidates(&root, &mut files);
@@ -175,6 +194,38 @@ fn the_table_has_every_site_of_every_def_of_every_fixture() {
                 sem.describe(func, STYLE).qualname,
                 root.display()
             );
+            if let Some(flow) = &flow {
+                // the table sees what D22 sees: the defs of `handed_over` are the defs of the table, and no other entry holds one
+                let key = |at: Option<Span>, id: DefId| (at, id.file(), id.index());
+                let mut wanted: Vec<_> = sem
+                    .handed_over(func, STYLE)
+                    .handed
+                    .iter()
+                    .map(|found| key(found.at, sem.def_id(found.func)))
+                    .collect();
+                let mut found: Vec<_> = flow
+                    .handed
+                    .iter()
+                    .filter_map(|entry| match entry.value {
+                        Expr::Def(id) => Some(key(entry.at, id)),
+                        _ => None,
+                    })
+                    .collect();
+                wanted.sort();
+                found.sort();
+                let name = sem.describe(func, STYLE).qualname;
+                assert_eq!(found, wanted, "{name} in {}", root.display());
+                for entry in &flow.handed {
+                    let by_handed_over = wanted.iter().any(|&(at, ..)| at == entry.at);
+                    assert!(
+                        by_handed_over || !holds_a_def(&entry.value),
+                        "expr_of found a def at {:?} where handed_over found none: {name} in {}",
+                        entry.at,
+                        root.display()
+                    );
+                }
+                handed += flow.handed.len();
+            }
             if let Some(flow) = flow {
                 assert_eq!(
                     flow.unhandled,
@@ -188,7 +239,9 @@ fn the_table_has_every_site_of_every_def_of_every_fixture() {
             defs += 1;
         }
     }
-    eprintln!("compared {defs} defs and {sites} sites in {projects} fixture projects");
+    eprintln!(
+        "compared {defs} defs, {sites} sites and {handed} hand-overs in {projects} fixture projects"
+    );
     assert!(projects > 20 && defs > 100 && sites > 100);
 }
 
@@ -207,4 +260,50 @@ fn a_number_of_one_program_is_not_read_through_another() {
     let other = b.entry("src/flow.tsx", "flow", 0, STYLE).unwrap();
     assert!(b.flow(b.def_id(other), STYLE).is_some());
     assert!(b.flow(id, STYLE).is_none());
+}
+
+#[test]
+fn the_hand_overs_of_flow_are_handed_overs_defs_and_the_other_names() {
+    let sem = open();
+    let text = sem.text_of("src/flow.tsx").unwrap();
+    let flow = flow_of(&sem, "src/flow.tsx", "flow", 0);
+    let all: Vec<String> = flow
+        .handed
+        .iter()
+        .map(|entry| show_handed(&sem, &text, entry))
+        .collect();
+    eprintln!("{}", all.join("\n"));
+    let known: Vec<&String> = flow
+        .handed
+        .iter()
+        .zip(&all)
+        .filter(|(entry, _)| entry.value != Expr::Unknown)
+        .map(|(_, shown)| shown)
+        .collect();
+    assert_eq!(
+        known,
+        [
+            "held def held",
+            "held def held",
+            "held def held",
+            "named def flow.<locals>.named written",
+            "held def held",
+            "target def target",
+            "held def held",
+            "held def held",
+            "held def held",
+            "held def held",
+            "held def held",
+            "held def held",
+        ]
+    );
+    // every other entry is a name nothing is known of
+    for (entry, shown) in flow.handed.iter().zip(&all) {
+        if entry.value == Expr::Unknown {
+            assert!(
+                ["p ?", "q ?", "Shape ?"].contains(&shown.as_str()),
+                "{shown}"
+            );
+        }
+    }
 }
