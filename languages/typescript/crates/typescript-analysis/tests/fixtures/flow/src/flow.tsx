@@ -18,4 +18,5 @@ export function flow(this: unknown, p: () => void, q?: number) {
   run(-1, typeof p, 1 + 2, `t${q}`, <i />, null, true);
   run(Shape, new Shape(), [held], { held }, p = held, q);
   <Card title="x" />;
+  run(() => run(() => target(3)));
 }

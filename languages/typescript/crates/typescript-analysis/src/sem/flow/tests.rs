@@ -90,6 +90,9 @@ fn the_table_of_flow_reads_each_callee_and_argument() {
             "call ? (?, ?, ?, ?, ?, ?)",
             "new ? ()",
             "jsx def Card (?)",
+            "call ? (anon#2)",
+            "call ? (anon#3) in anon#2",
+            "call def target (data) in anon#3",
         ]
     );
     assert_eq!(flow.unhandled, 0);
@@ -132,7 +135,15 @@ fn the_anonymous_functions_are_listed_in_source_order() {
         .iter()
         .map(|&AnonFlow { span }| span.slice(&text).unwrap())
         .collect();
-    assert_eq!(written, ["() => target(2)", "function () {}"]);
+    assert_eq!(
+        written,
+        [
+            "() => target(2)",
+            "function () {}",
+            "() => run(() => target(3))",
+            "() => target(3)"
+        ]
+    );
     // `held` is a def: its own node is not an anonymous function of its body
     assert!(flow_of(&sem, "src/flow.tsx", "held", 0).anons.is_empty());
 }
