@@ -224,9 +224,10 @@ every row of the context table.
 | 4 | `key.rs`: `params`, `admit`, the canonical form; `key_of` at every project target | `callback-two-callers`: two contexts, two digests, still no new edge |
 | 4b | **N6, moved here from TC0**: on the four projects, the contexts per function the keys of step 4 make (median, 95th percentile, greatest), counted with and without telling anonymous functions apart and with and without relevance (capability bits). The per-function cut (03 §12) is built in this phase only if the 95th percentile comes near 64; relevance (step 8) moves before step 5 if it is what keeps the count down | the distribution in `ENGINE.md` |
 | 5a | `resolve_from_env` answers at open sites; `PARAMS` joins `Caps::BUILT`; `tests/precise.rs` replaced; the rows of the context table flip | the rows' "on" halves and the tour's lines a, b, h, i as written in "Step 5" below |
-| 5b | the counters (`value_widened_set`), the tripwire (`value_type_mismatch`), `CONTEXT_ID_VERSION`, the per-site measure on the projects | the counters are 0 on the fixtures and the projects; the measure run by the reviewer |
-| 5c | the rest of §9's fixtures, one row each | each row's "on" half, written by hand |
-| 5d | `scenarios/callback-argument/typescript` and `PreciseFor(&["callback-argument"])` | the scenario's two trees |
+| 5b | the counter `value_widened_set`, `CONTEXT_ID_VERSION`, the sweep's comparison of Default and Precise per entry, the riders of 5a's review | the counter on `callback-wide`; the comparison run by the reviewer on the projects: no site with fewer edges |
+| 5c | the tripwire (`value_type_mismatch`), designed after a probe (see "Step 5c" below) | 0 on the fixtures and the projects |
+| 5d | the rest of §9's fixtures, one row each | each row's "on" half, written by hand |
+| 5e | `scenarios/callback-argument/typescript` and `PreciseFor(&["callback-argument"])` | the scenario's two trees |
 | 6 | counters per def | the two-keys counter test |
 | 7 | `Session::graph_from` | the cut-and-continue test |
 | 8 | relevance | equal edges, fewer contexts |
@@ -387,7 +388,7 @@ graph) as the floor.
 
 **Step 5, as decided for the build (2026-11-24): split in four; 5a is the switch.** Step 5 is where the layer first changes a graph, so it is
 cut by what can go wrong: 5a (the rule and the switch), 5b (what is counted and checked), 5c (fixtures for every row of §9), 5d (the shared
-scenario). Each ends with the "layer off is `137b4fa`" check and, from 5a, the per-site measure (never fewer edges). Written before 5a was
+scenario). (Re-cut at 5a's review: 5b counts and compares, 5c is the tripwire, 5d the fixtures, 5e the scenario.) Each ends with the "layer off is `137b4fa`" check and, from 5a, the per-site measure (never fewer edges). Written before 5a was
 built; the build corrects whatever it finds wrong.
 
 **5a: where the layer speaks, and what it says.** In `walk.rs`, `resolve` asks the engine first, as today, and `resolve_from_env` is given the
@@ -450,5 +451,46 @@ decision (`callback-either`, `callback-not-passed`, `callback-reassigned`: rows 
 *known members only* (`callback-reassigned`), *`Undefined` is no edge* (`callback-not-passed`), *the open entries come back when open*
 (`callback-reassigned`), *a set is both edges* (`callback-either`), *an arrow is `anonymous_function_called`* (tour lineI), *counters follow the
 edges* (`callback-reassigned` keeps one, `callback-either` none).
+
+**5a built as decided, `b981438`** ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)), with three corrections to the text
+above. (1) `the_three_properties_hold_on_every_context_row` called `off_is_identical`, which says the layer on changes nothing: the call is
+gone. Rule 7 ("off is identical") is held by the `-- off` halves, `the_bit_off_is_the_layer_that_knows_nothing` and the reviewer's layer-off
+dumps. (2) The allowance case of `never_fewer_edges` is three cases inside `each_property_finds_what_it_is_for`, not a test of its own.
+(3) **The guard "a known member" had no fixture**: a value that is only data empties the site without it. The review added the row
+`callback-data` (`run(5)` into `cb: any`: the engine's `any_or_untyped` stays), which catches it, and the row `callback-wide` for 5b.
+
+**Step 5b, as decided for the build (2026-11-25): what is counted, the version, the comparison on the projects.** No graph moves.
+
+- **`value_widened_set`** is counted **where the cut is made**, as Python counts `chain_fanout_hits` where a hop is cut: at a join whose
+  result is wide when neither side was. In TC2 the only joins are `eval`'s (`OneOf`, a default joined into a slot, an assigned parameter
+  joined with unknown); `KeyData::normal`'s `map` never grows a set. `World` gains a required `fn widened(&self)` (no default body, so a
+  later world cannot forget it); `eval`, `eval_below` and `param` take the world, and every join goes through one helper,
+  `join(world, a, b)`. `TypeScript` notes `VALUE_WIDENED_SET` (`"value_widened_set"`, a `pub(crate) const` in `value.rs` beside
+  `MAX_SET`); the test world counts in a `Cell`. A value is evaluated once per use (the callee once at an open site; the arguments once per
+  project target, in `key_of`), so the count is per evaluation and per walk: an upper bound, like `callee_undefined`, until step 6.
+  `callback-wide`'s `pick` counts 1; every other row 0.
+- **`CONTEXT_ID_VERSION: u32 = 1`**, a `pub const` in `key.rs`, exported by name from `lib.rs`, documented as what versions a context's
+  digest (the canonical form and core's digest) and when it goes up (03 §6: an existing key's digest changes; the tag notes say so). The
+  pinned-bytes test asserts it is 1 beside the pins: a pin that changes must bump it.
+- **The sweep's comparison**, `TS_SWEEP_COMPARE=1` (only with `TS_SWEEP_PRECISE=1`; alone it panics): a second `Session` is opened with
+  `Precision::Default` on the same root, every entry's graph is made by both, and `common::context::never_fewer_edges(default, precise)` is
+  run on the pair (`sweep.rs` gains `mod common`). It prints how many entries were compared, how many have other edges, and the first 20
+  problems with their entries, and fails on any problem. Times in this mode are not a measure. This is the real-project form of rule 5 that
+  the site measure cannot give (it sees only open sites).
+- **Riders of 5a's review.** `the_bit_off_is_the_layer_that_knows_nothing` runs on every entry of `context_entries()` and `keys` (as the
+  no-reuse test does), not on three fixtures. `off_is_identical` and what only it uses are removed from `tests/common/context.rs`, with its
+  cases in `each_property_finds_what_it_is_for`. `the_table_of_rows_is_read_whole` learns the two new rows (27 entries). A test pins that
+  the key of `run` under `pick` in `callback-wide` holds one slot, `Value::wide()`.
+
+**Step 5c, to design: the tripwire.** 03 §7 says each function the layer draws must be assignable to the callee's static type
+(`is_type_assignable_to`), else it is counted `value_type_mismatch` and the engine's answer is kept beside it, 0 on the projects. Found
+designing 5b: inside a generic function the callee's static type names the type parameter (`f: (x: T) => void`), and a correct argument
+(`encode: (x: string) => void`) is then **not** assignable to it by TypeScript's rules (`[check]` by a probe at 5c), so the check as written
+would fire on correct bindings in every generic callee (the compiler is full of them). The checker's way out, erasure
+(`get_erased_signature`, `get_permissive_instantiation`, `could_contain_type_variables`), is `pub(crate)` at the pin; only
+`is_type_assignable_to` (an inherent `pub fn` of `Checker`, `relater_1.rs:146`, and `is_type_assignable_to_exported`) and the type readers
+are public. The options for 5c's design: skip the check where the site's def or a declaration around it has type parameters (counted, so
+the coverage shows); check at the caller against the checker's instantiated parameter type instead (catches less: not a table bug in the
+callee); or drop the tripwire and lean on the no-reuse check and the rows.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)

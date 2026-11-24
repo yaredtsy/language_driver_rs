@@ -1,0 +1,58 @@
+== pick
+-- off
+pick
+  run
+  f1 [Passed]
+  f2 [Passed]
+  f3 [Passed]
+  f4 [Passed]
+  f5 [Passed]
+  f6 [Passed]
+  f7 [Passed]
+  f8 [Passed]
+  f9 [Passed]
+edges:
+pick | run | call run
+pick | f1 | pass f1
+pick | f2 | pass f2
+pick | f3 | pass f3
+pick | f4 | pass f4
+pick | f5 | pass f5
+pick | f6 | pass f6
+pick | f7 | pass f7
+pick | f8 | pass f8
+pick | f9 | pass f9
+run | cb | unresolved function_typed_value
+-- on
+pick
+  run
+  f1 [Passed]
+  f2 [Passed]
+  f3 [Passed]
+  f4 [Passed]
+  f5 [Passed]
+  f6 [Passed]
+  f7 [Passed]
+  f8 [Passed]
+  f9 [Passed]
+edges:
+pick | run | call run @14bd25d0
+pick | f1 | pass f1
+pick | f2 | pass f2
+pick | f3 | pass f3
+pick | f4 | pass f4
+pick | f5 | pass f5
+pick | f6 | pass f6
+pick | f7 | pass f7
+pick | f8 | pass f8
+pick | f9 | pass f9
+run @14bd25d0 | cb | unresolved function_typed_value
+== run
+-- off
+run
+edges:
+run | cb | unresolved function_typed_value
+-- on
+run
+edges:
+run | cb | unresolved function_typed_value
