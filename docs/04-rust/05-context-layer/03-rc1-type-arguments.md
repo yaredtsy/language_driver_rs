@@ -137,6 +137,14 @@ applies only if a memo is added later, after a measurement asks for one. It woul
 summary is used when every context below it that the request needs is memoized too; otherwise that body is walked again, which
 recomputes its callees' keys. Bodies are cheap; types are salsa's to remember. **[measure]** the hit rate before doing more.
 
+**If it is ever built: the body's own part of the key is its tokens, not its bytes** (noted 2026-11-24, from blaze's
+`design/token-keys.md`). Hash each token's kind and text and skip whitespace and plain comments; then `cargo fmt`, or a comment
+edited above the function, drops nothing. Two things are ours to add. First, a marker: `/// ID: …` is a doc line (D6), and writing one
+must not drop the def's summary, so doc comments are left out of the hash too (they cannot change a call). Second, positions: a
+summary's sites carry byte offsets, which a reformat moves while the tokens stay equal, so a kept summary would name each site by its
+token's number and turn it into an offset against today's text. The tokens are only the body's **own** part: what the body's names
+resolve to is the engine's, and a change there must still drop the summary.
+
 ## 8. Tests
 
 | Test | |

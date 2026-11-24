@@ -60,7 +60,7 @@ recursion: the order pylspt's own plan was built in.
 | | **tag `rust-v0.2.0`** | | | | |
 | **RS5** | `Session` | `rust-analysis` | RS4; core's budget and cancel (TS5 steps 1–2) | tier-3 conformance | M |
 | | **tag `rust-v0.3.0`** | | | | |
-| **RC0** | three experiments and one measurement | `languages/rust/spikes/` | RS4 | answers in `ENGINE.md`; go / no-go for RC1 | S |
+| **RC0** | step 0 (read this folder against TypeScript's context-layer plan), five experiments (S-RC4 and S-RC5 added 2026-11-24) and one measurement | `languages/rust/spikes/` | RS4 | answers in `ENGINE.md`; go / no-go for RC1 | S–M |
 | **RC1** | `Key` holds type arguments | `rust-analysis` | RC0 | `two-callers`, `interface-dispatch` (generic form) match `expected.precise.tree` | L |
 | **RC2** | function items and closures as type arguments | `rust-analysis` | RC1 | `callback-argument` matches the precise tree | M |
 | **RC3** | `Env` inside one body | `rust-analysis` | RC2 | the `dyn` fixtures that never leave a body | M |

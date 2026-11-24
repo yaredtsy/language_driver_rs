@@ -35,6 +35,12 @@ and RC5 stand on, and it is a phase of its own so that it can be reviewed and re
 Layer 1 reads a body as a flat list of sites. Values need to know what happens **between** sites. `sem` lowers the body once more, to
 an owned, engine-free list of events; `walk.rs` interprets it.
 
+**Open since 2026-11-24: which form the body is read from.** What follows lowers the body ourselves, one rule per control construct.
+The engine also offers the body as a control-flow graph (its MIR), where branches and loops are already jumps and births are explicit
+casts. [Design §12.1](01-design.md) compares the two, and RC0's S-RC4 measures what decides: the share of real bodies the engine can
+lower, and whether its calls can be tied back to layer 1's sites exactly. Until S-RC4 is answered this section is the plan; if MIR is
+chosen, §2 and §3 are rewritten (a graph of blocks instead of `Branch` / `Loop` / `Exit`) and §4 to §7 stay.
+
 ```rust
 // sem/flow.rs — produced by sem, read by walk. No engine type inside.
 pub(crate) enum Event<'p> {
@@ -138,7 +144,7 @@ A set with several members is the first time one site has several targets in Rus
 
 | Where | Rule | Why it is sound |
 |---|---|---|
-| `&mut w` passed to a call, stored, or returned; `*r = …` through a reference | `Lose { w }` at that point. Counted `value_lost_mut_borrow` | only a `&mut` can rebind `w` from elsewhere (the borrow checker's guarantee, [design §4](01-design.md)). A method call that merely auto-borrows `&mut *w` to reach the trait object behind the box does **not** lose it: it can change the object, not which type it is. **[check]** telling the two apart from the engine's adjustments |
+| `&mut w` passed to a call, stored, or returned; `*r = …` through a reference | `Lose { w }` at that point. Counted `value_lost_mut_borrow` | only a `&mut` can rebind `w` from elsewhere (the borrow checker's guarantee, [design §4](01-design.md)). A method call that merely auto-borrows `&mut *w` to reach the trait object behind the box does **not** lose it: it can change the object, not which type it is. **[check]** telling the two apart from the engine's adjustments (in the engine's MIR the two differ by the borrowed place: `w` against `*w`; S-RC4 has the row) |
 | a closure that **assigns** to a tracked local it captured | `Lose` at the closure, for the rest of the body | the closure may run at any later point, any number of times |
 | a tracked local bound by a pattern that takes a value apart (`let (a, b) = pair;`, `Some(w) => …`) | `Unknown` | RC5 (fields) and RC6 (wrappers) |
 

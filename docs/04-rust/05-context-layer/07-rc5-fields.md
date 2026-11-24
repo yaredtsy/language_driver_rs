@@ -103,6 +103,7 @@ a new `Value` variant, RC4 was built too narrowly, and the fix belongs there.
 | a struct read from a static or a thread-local | not a local | RC6 |
 | a field behind `RefCell` / `Mutex` | can change through `&` | stays |
 | `unsafe` writes, `mem::swap`, `mem::replace` on a tracked local | they take `&mut`: the RC3 rule fires | stays |
+| **the base itself is `Unknown`**: `self` of a method asked as an entry; a struct taken out of an `Arc`, a `Vec`, a static | no walked caller handed the struct over, so there is no `Fields` value to read | **proposed 2026-11-24** ([design §12.2](01-design.md), Q-RC4): a **private** field's writers are all in its module, so its set can be read there, complete, with no caller. RC0's S-RC5 measures how often |
 
 ## 7. Tests
 

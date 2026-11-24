@@ -184,7 +184,7 @@ I read source; I built and ran nothing.
 - ✅ Whether it runs correctly without mimalloc: yes; the speed difference was not measured.
 
 **About rust-analyzer** (RS0 spikes). The full list, with the context layer's (RC0), and Rust's open questions
-(Q-RC1, Q-RC3; Q-RS1 … Q-RS6 and Q-RC2 are answered by D29, D30, D35, D36, D38) and draft rows (RS-M1–RS-M12) are in [`04-rust/03-decisions-and-questions.md`](04-rust/03-decisions-and-questions.md).
+(Q-RC1, Q-RC3, Q-RC4; Q-RS1 … Q-RS6 and Q-RC2 are answered by D29, D30, D35, D36, D38) and draft rows (RS-M1–RS-M13) are in [`04-rust/03-decisions-and-questions.md`](04-rust/03-decisions-and-questions.md).
 
 - ✅ Which `ra_ap_*` version matches commit `2a362a4`: **none**. The `hir` family (`hir`, `ide`, `ide_db`, `load-cargo`, `project_model`) stops
   at 0.0.358 (2026-10-12); every `ra_ap_*` crate is pinned `=0.0.358` (`languages/rust/ENGINE.md`, S-RS1, 2026-11-16).

@@ -3,8 +3,8 @@
 ```
 decisions and questions
 ├── 1. what is already decided, and where Rust uses it
-├── 2. draft rows (RS-M1 … RS-M12): decided by me, yours to veto
-├── 3. questions only you can answer (Q-RS1 … Q-RS8, Q-RC1 … Q-RC3; Q-RS1 … Q-RS8 and Q-RC2 answered: D29, D30, D35, D36, D38, D45, D48)
+├── 2. draft rows (RS-M1 … RS-M13): decided by me, yours to veto
+├── 3. questions only you can answer (Q-RS1 … Q-RS8, Q-RC1 … Q-RC4; Q-RS1 … Q-RS8 and Q-RC2 answered: D29, D30, D35, D36, D38, D45, D48)
 └── 4. things I did not check
 ```
 
@@ -50,6 +50,7 @@ Structure and engineering choices, made as drafts the way M1–M18 were. Each ca
 | **RS-M10** | The six rules of the context layer, in particular: a closed site is never overridden; `Unknown` means the engine's answer; a set is complete or `Unknown` | best-effort sets | design §5 |
 | **RS-M11** | A per-function context cap **cuts**; it never widens to the open key | widen (depends on the walk's order: breaks rule 10) | design §7 |
 | **RS-M12** | `Precision::Default` (layer 1, byte for byte) stays selectable for good | replace layer 1 | RC1 §6 |
+| **RS-M13** (2026-11-24) | Which form `sem.flow` reads a body from, the syntax (RC3 §2 as written) or the engine's MIR, is **decided by S-RC4's numbers**, after this folder is read against TypeScript's context-layer plan. Either way `sem` hands `walk` an owned form with no engine type | fix it now: keep RC3 §2 and never look (cheaper today; we then write and test every control-flow rule ourselves), or switch to MIR unmeasured (a body with a type error has no MIR) | design §12.1; RC0 S-RC4 |
 
 ## 3. Questions
 
@@ -65,6 +66,7 @@ Structure and engineering choices, made as drafts the way M1–M18 were. Each ca
 | ~~**Q-RS8**~~ | **ANSWERED (D48), 2026-11-20: `debug_assertions` on, `miri` off, for now; the `cfg` set becomes the user's choice later (RS3 §3).** Was: **Which `cfg` flags does a load turn on besides `test`?** Today none: code under `#[cfg(debug_assertions)]` is turned off, so a debug-only function is no def (`None` as an entry) and a debug-only statement no site (found by the 2026-11-20 sweep: ruff's `Cursor::previous` and three tests). `cargo build` and `cargo test` compile with debug assertions on by default; rust-analyzer's own default is `["debug_assertions", "miri"]` | **`debug_assertions` on, `miri` off**: the code a default `cargo build` / `cargo test` compiles, as `test` is already on. `miri` would turn on code written only for the Miri interpreter and turn off its `not(miri)` twins, which a normal build runs | the first Rust tag (it changes which defs exist; no qualname changes) | a user marks a debug-only function and the tree says it is not there |
 | **Q-RC1** | **Where do a closure's calls show once we know who calls it?** A: stay under the def the closure is written in (layer 1's rule, nothing lost, nothing twice). B: move under the function that calls it (Python's rule; needs a second kind of summary and a rule for closures handed to external code) | **A now**; B later, designed once for TypeScript and Rust | RC2 | under A the shared scenario `callback-argument` stays at `Default` for Rust, with the reason in its README |
 | ~~**Q-RC2**~~ | **"Possible implementations"**: when a `dyn` value is unknown, list the project's impls of the trait as children marked possible? Needs a new `Basis` value and a render option in core | **ANSWERED (D36), 2026-11-16: no. Follow the value, as Python's attribute tracking does**; an unknown `dyn` stays the trait's declaration, counted. Was: **not now**. Decide from RC0's numbers; it is the cheap fallback if `open_dyn` is large and RC3–RC5 resolve little | whenever asked; before RC6 part D3 at the latest | it changes what an edge means (may, not does) |
+| **Q-RC4** (2026-11-24) | **A private field's set.** When the context does not know what a struct's field holds (the usual case: `self` of a method asked as an entry; also a struct inside an `Arc`, a `Vec` or a static), may the site be answered from **everything the field's own module writes into it**? A private field can be written nowhere else, so that set is complete. Example: `Pipe::run` asked alone shows `Writer::write` (the declaration) today and after RC5; with this it shows `<Json as Writer>::write` and `<Csv as Writer>::write` if those are the two types the module stores in `sink` | **yes, if S-RC5's numbers are worth it.** It follows stored values and lists no impl (D36's rule), and the set is complete or `Unknown` (rule 6). What changes is D36's second half: an entry asked alone gets several targets where it gets one declaration now. A value followed through a caller still wins when there is one | before RC5's steps are fixed; S-RC5 and RC0 §1's second table first | most V-NOC requests start at one def with nothing known about its inputs, and RC5 by itself changes nothing for them. **[check]** before answering: what Python shows for `self.handler.process()` when the method is the entry (Python is the reference) |
 | **Q-RC3** | **The solver hands a callee's return value to its caller**: grow core's flat solver (a handle passed to `walk`, `Summary::returns`), or keep return values inside `rust-analysis`? | **grow core**, after a design note you approve; flat languages stay byte-identical | RC4 step 2 | the first change to `Lang` since `Basis`; TypeScript's C4 and the fixpoint (RC6 B) depend on the same answer |
 
 Smaller suggestions for the shared code, each with the phase that needs it, are in [`02-architecture.md`](02-architecture.md) §9. Two
@@ -108,6 +110,12 @@ I read source at `2a362a4` and the repo as of 2026-11-12. I built and ran nothin
 - How to get from an opaque type to its function, and that function's hidden type (RC4 §2).
 - How an impl's fixed type arguments (`impl Pipe<Json>`) are exposed for an entry (RC1 §6).
 - How much of pylspt's `solver.rs` is free of ty's types (RC4's note).
+- (2026-11-24, S-RC4) That `mir_body` can be asked from `sem` for a `hir::Function`; the share of real bodies that lower; that every
+  layer-1 site has exactly one `Call` terminator; what a partly open key gives `monomorphized_mir_body`. Read, not run: the items and
+  the two limits in `ENGINE.md`, "Read at the pin for the plan".
+- (2026-11-24, S-RC5) How a field's writers are found (the engine's usage search, or a walk of the module's bodies); that a derive's
+  or a `macro_rules!` expansion's writes are seen; how often a private carrier field's set is complete on real code.
+- (2026-11-24) What Python shows for an attribute read on the `self` of a method asked as an entry (Q-RC4).
 - Every size (S / M / L) in [`README.md`](README.md).
 
 Back to: [`README.md`](README.md)

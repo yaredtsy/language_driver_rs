@@ -12,7 +12,8 @@ the context layer
 ├── 8. closures: one decision to make  (Q-RC1)
 ├── 9. not built: possible implementations  (D36)
 ├── 10. which file changes in which phase
-└── 11. how it is tested
+├── 11. how it is tested
+└── 12. two options RC0 decides: the engine's MIR, and what a private field can hold  (added 2026-11-24)
 ```
 
 **Not scheduled** (D3; the roadmap's "measure first"). This is the design layer 1 is built to receive. Each phase has a file of its own;
@@ -271,5 +272,169 @@ that names the lost road says which part), not to list impls.
 | scenarios at `Level::Precise`, **per scenario** | the shared definition of done; needs the testkit change of [`../02-architecture.md`](../02-architecture.md) §9 |
 | a real project before and after: contexts, walks, time, and each `open_*` counter | whether the phase was worth it; written in `ENGINE.md` |
 | the frozen `open_*` counts of every policy and context entry (`rust-analysis/tests/snapshots/trees/open_counts.txt`, from RS4 step 9b) | layer 1 never changes how open a site is by accident. A phase that closes sites **on purpose** edits that file in its own commit, and the review reads each changed line |
+
+## 12. Two options RC0 decides
+
+Added 2026-11-24, after reading [blaze](https://github.com/indexable-inc/blaze): a Rust build tool whose first version was built on
+rust-analyzer, and which runs its own whole-program analyses (which impl a `dyn` call reaches, what a function's effects are) over
+function bodies. I read its design notes (`docs/v2/plan/design/`: `devirt.md`, `effect-summary.md`, `polymorph.md`,
+`refined-values.md`, `frontend.md`); I ran none of it, and its numbers are its own claims. Two of its ideas fit this layer. **Neither
+is decided here**: each has a spike in RC0 with a number that decides, and the second also needs the owner's answer (Q-RC4).
+
+What it confirms, so that nobody reads it again for these: its summaries are keyed by a function **plus its type arguments**, as §3;
+it shares one summary between type arguments the body cannot tell apart, as RC1 §5's relevant parameters; and a set that grew past a
+cap becomes "unknown" rather than a part of the truth, as rule 6.
+
+### 12.1 The body: our own events, or the engine's MIR (S-RC4)
+
+RC3 §2 has `sem` lower a body to a list of `Event`s, with `Branch`, `Loop` and `Exit` for control flow. That means one lowering rule,
+written and tested by us, for each construct: `if`, `match` with guards, `if let`, `let else`, `?`, `while let`, `for`, a `break` with
+a label or a value. `Exit` already shows the strain: "this path does not reach what follows" is not true of `break 'outer`, which
+does reach what follows the outer loop.
+
+The engine has done that lowering. Its **MIR** (mid-level intermediate representation) is the body as a graph: *basic blocks*, each a
+straight run of simple statements that ends in one jump, branch or call. rust-analyzer builds it for its const evaluator and borrow
+checker; blaze runs every one of its body analyses on it.
+
+> **🦀 Rust note: what MIR looks like.** `let w: Box<dyn Writer> = if fast { Box::new(Json) } else { Box::new(Csv) }; w.write();`
+> becomes, roughly:
+>
+> ```
+> bb0:  switch(fast) → bb1, bb2
+> bb1:  _2 = Box::new(Json)  → bb3            _2: Box<Json>
+> bb2:  _3 = Box::new(Csv)   → bb4            _3: Box<Csv>
+> bb3:  _1 = _2 as Box<dyn Writer> (Unsize)   → bb5        ← a birth, written out as a cast
+> bb4:  _1 = _3 as Box<dyn Writer> (Unsize)   → bb5
+> bb5:  Writer::write(&*_1)  → bb6            ← the call; `&*_1` borrows what the box points at, not the box
+> ```
+>
+> There is no `if` left, only blocks and arrows. An analysis over such a graph is always the same loop, whatever the source looked
+> like: keep a state per block, and when a block's end state changes, visit the blocks it points to again, until nothing changes. A
+> loop in the source is just an arrow that points backwards, so it needs no rule of its own. This is the standard *worklist* algorithm,
+> and it is what the borrow checker itself runs.
+
+| | Our events (RC3 §2 as written) | The engine's MIR |
+|---|---|---|
+| control flow | one rule per construct, ours | already a graph |
+| loops | RC3 §3's "until the state at the head stops changing", per `Loop` | the worklist; nothing special |
+| births | `expr_adjustments` on each expression (S-RC3's table, row by row) | explicit casts, each with its operand and target type |
+| "a `&mut` to the box" against "a borrow to reach the object" (RC3 §6's **[check]**) | to be told apart from the adjustments | told apart by the borrowed place: the second has a `Deref` in it |
+| fields (RC5) | `Expr::Record`, `Expr::Field`, `AssignField`, patterns: each lowered by us | a place with a `Field` step, on either side of an assignment; patterns are already taken apart |
+| the context's type arguments | `close(t, env.types)`, ours | `monomorphized_mir_body` puts them in |
+| the sites | the same list as layer 1's, by construction | **must be joined** to layer 1's list through each call's source span. If that join is not exact, MIR cannot be used |
+| a body with a type error | lowered anyway; what resolves is followed | **no MIR at all** (`ENGINE.md`): the whole body keeps layer 1's answers. With proc macros off such bodies exist |
+| the engine surface it leans on | `Semantics`, the surface layer 1 already uses | `hir::mir`, public under a `FIXME: Properly encapsulate`: more likely to move at a bump |
+
+Rule 4 holds in both: `sem` hands `walk.rs` an owned form with no engine type, and `walk.rs` can be unit-tested on forms built by
+hand. With MIR that form is a small graph instead of a tree of events:
+
+```rust
+// sem/flow.rs, if S-RC4 chooses MIR. Block 0 is the entry.
+pub(crate) struct Flow<'p> { pub blocks: Box<[Block<'p>]> }
+pub(crate) struct Block<'p> { pub steps: Box<[Step<'p>]>, pub next: Box<[u32]> }     // `next`: the blocks this one can jump to
+pub(crate) enum Step<'p> {
+    Site(u32),                                   // an index into sem.sites(f), as today
+    Assign { to: PlaceRef, value: Expr<'p> },    // a local, or a field path of one (RC5)
+    Lose { local: LocalId },                     // a `&mut` to the local itself left our sight
+}
+```
+
+**It depends on a choice not made yet.** TypeScript's plan keeps **one value per variable**, the join of everything assigned to it,
+and no state per path ([`03-typescript/12-context-layer/01`](../../03-typescript/12-context-layer/01-where-we-start.md)). If Rust
+takes that rule when this folder is read against TypeScript's (RC0's step 0), the order of statements stops mattering, and the first
+two rows of the table are no longer a gain: what is left for MIR is the births, the `&mut` test and the fields. So S-RC4 is answered
+after step 0, not before.
+
+My recommendation: run S-RC4 and let its first number decide. MIR is worth its risks only if nearly every body that holds an erased
+local lowers on the three projects **and** the join to layer 1's sites is exact. Otherwise RC3 §2 stands as written, and this section
+has still paid for itself with the answer to RC3 §6's check.
+
+### 12.2 What a private field can hold (S-RC5, Q-RC4)
+
+Three `Unknown`s of this design share one cause, that no walked caller handed the value over:
+
+| Case | Where the design gives up |
+|---|---|
+| the receiver of an **entry**: `Pipe::run` asked for by itself, so `self` is the open key | RC6 §2: "the entry's own parameters: nobody told us" |
+| a struct inside a wrapper or a collection: `Arc<Pipe>`, `Vec<Pipe>`, `Mutex<Pipe>` | RC6 D, tier by tier |
+| a struct read from a static, sent through a channel, captured by a spawned task | RC6 §2, known limits |
+
+The first is the one that matters. V-NOC asks for a tree per def, so a `&self` method is the usual entry, and for it RC5 changes
+nothing: `self.sink.write()` still shows the trait's declaration.
+
+Rust gives a way in that Python and TypeScript do not have: **privacy**.
+
+> **🦀 Rust note: a private field is a closed world.** A field written without `pub` can be *named* only inside the module that
+> declares its struct (and the modules nested inside it). And in safe Rust, naming it is the only way to put a value into it: a record
+> expression `Pipe { sink: … }`, an assignment `p.sink = …`, or a `&mut p.sink` handed to something. Code anywhere else can move a
+> whole `Pipe` around, swap two of them, wrap one in an `Arc`, send it to another thread. It cannot reach inside. So if we read every
+> body of that one module and collect what is written into `sink`, we know **every** value `sink` can hold, in every `Pipe` that will
+> ever exist, wherever it lives. In Python, any code holding the object can write `p.handler = x`, which is why Python has to follow
+> each object. blaze leans on the same fact to prove a struct's invariant: "privacy makes the module the only writer"
+> (`refined-values.md` §3).
+
+```
+writers(S.f)   =  in the bodies of S's module and of the modules nested in it
+                  (for `pub(crate)`: the crate's bodies; for `pub(in path)`: that module's):
+    (1) a record expression        S { f: e, .. }        and  S(e)  for a tuple struct
+    (2) an assignment              place.f = e
+    (3) a `&mut place.f` that leaves the body (passed to a call, stored, returned), or a `ref mut` pattern on f
+    (4) a functional update        S { ..base }          copies base's f: it adds nothing
+    (5) a built-in derive that builds an S: `Clone` (the field type's `clone`), `Default` (its `default`)
+
+field_set(S.f) =  the join of eval(e) over (1), (2) and (5), each e evaluated in its own body under the open key
+                  Unknown  if there is any (3), or if one e is not a complete set
+```
+
+The set is `Unknown`, whatever the writers say, when:
+
+| | Why |
+|---|---|
+| the field is `pub` | code we do not walk may write it. (Later, perhaps: a `pub` field of a crate that nothing outside the workspace uses) |
+| the struct has a derive or an attribute macro that was not expanded (proc macros off, RS-M8) | the macro writes code **into the module**, and it may build an `S` we never see. (When it is expanded, its bodies are writers like any other: **[check]** in S-RC5 that the search for writers sees them) |
+| the tuple-struct constructor is used as a value (`iter.map(Handler)`) in the scope | a write whose value is not in sight |
+| a body in the scope holds `unsafe` | `transmute`, `ptr::write` and unions are doors the borrow checker does not guard (§6's `unsafe` row). Blunt on purpose; S-RC5 counts what it costs |
+| the field's type has interior mutability (`RefCell<Box<dyn T>>`, `Mutex<…>`) | it can change through `&`, without the field being named. Not a carrier (RC5 §2) |
+
+**How it sits with the rules.**
+
+- Rule 6 (a set is complete or `Unknown`): the set is complete **by privacy**, not by having followed a path. That is the whole point.
+- Rules 1 and 3: `field_set` depends on the code alone, not on a key or a caller, like RC1 §5's `relevant`. It is computed once per
+  field per request and is the same on every run.
+- Rules 4 and 5: it speaks only at an open site, and only where the context's own value is `Unknown`. A value the context followed is
+  always used first: it is one caller's, and so a subset of the field's set.
+- Where it is used: `Expr::Field(base, f)` (RC5 §4) when `eval(base)` is `Unknown` or has no path for `f`. Nowhere else.
+
+**An example.** The tour's `Pipe`, with one more constructor in the same module:
+
+```rust
+struct Pipe { sink: Box<dyn Writer> }                        // `sink` is private
+impl Pipe {
+    fn json() -> Pipe { Pipe { sink: Box::new(Json) } }      // a writer: a birth, Json
+    fn csv()  -> Pipe { Pipe { sink: Box::new(Csv) } }       // a writer: a birth, Csv
+    fn run(&self) { self.sink.write() }
+}
+```
+
+| Request | RC5 alone | With the field set |
+|---|---|---|
+| entry `main`, which calls `Pipe::json().run()` | `run` → `<Json as Writer>::write` (followed through the key) | the same: the context knows, the field set is not asked |
+| entry `Pipe::run` | `run` → `Writer::write`, the declaration | `run` → `<Json as Writer>::write` and `<Csv as Writer>::write`: one of these, depending on who built the pipe |
+
+**Where it will not fire, honestly.** The usual constructor is `fn new(sink: Box<dyn Writer>) -> Self { Self { sink } }`. Its written
+value is a parameter, `Unknown` under the open key, so the field's set is `Unknown` and nothing changes. S-RC5 measures how common
+each shape is. *One step further*, named and not designed: a **private** function has a closed set of callers for the same reason a
+private field has a closed set of writers, so the parameter of a private `new` is the join of its arguments at every call in the
+module.
+
+**A test both get for nothing.** Wherever a site's value is known both ways (through the context and through the field's set), the
+context's set must be inside the field's. If it is not, one of the two has a bug. That is an oracle neither needs to be told the
+answer for, and it runs on every fixture and every real project.
+
+**Why this is a question for the owner (Q-RC4) and not a draft row.** D36 says a `dyn` is resolved "by following the value that was
+put there", never by listing the trait's impls. A field set does follow values: it holds only types that some code **stored** in that
+field, never an impl that was merely written. But D36 also says that where the value is not known, the site keeps the declaration and
+is counted. With field sets, an entry asked alone would show several targets where it shows one declaration today. That changes what
+the user sees, so it is theirs to decide, with S-RC5's numbers in hand.
 
 Next: [`02-rc0-spikes.md`](02-rc0-spikes.md)
