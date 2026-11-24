@@ -621,7 +621,7 @@ It stays private: users see `Precision::Default` and `Precision::Precise`. (`bit
 | the three test properties (off is identical, never fewer edges, a context is a function of its key) | nothing | they belong in `analyzer-testkit` when a second language runs them |
 
 ```rust
-/// What the evaluator asks that is not in a `Flow`. `Sem` answers it; a test answers it by hand.
+/// What the evaluator asks that is not in a `Flow`. `TypeScript` answers it (it holds the `Sem` and the marker style); a test answers it by hand.
 pub(crate) trait World {
     fn flow(&self, def: DefId) -> Option<Arc<Flow>>;
     fn member(&self, class: DefId, name: NameId) -> Member;      // TC5: a def with a body, a signature, external, nothing

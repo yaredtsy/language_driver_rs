@@ -103,8 +103,8 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
 | `walk.rs`, `calls.rs` | the five `()` become `KeyId::OPEN` ([01](01-where-we-start.md) §2) |
 | `calls.rs` | `Lang::digest`: zeros for the open key, read from `Keys`. For any other, core's function, at TC2 step 1 (D57), with the test that pins its bytes (§8, step 1) |
 | `value.rs` | `Value`, `One` (no variant used yet), `Value::unknown()`, `Value::data()`, `Value::Wide`, `join`. No import from `sem` |
-| `env.rs` | `Env { flow: Arc<Flow>, key: KeyId }`, built in `Lang::walk` when the switch is on |
-| `eval.rs` | `eval(&Expr, &Env) -> Value`: unknown for every `Expr` |
+| `env.rs` | `Env { flow: Arc<Flow> }`, built in `Lang::walk` when the switch is on (`key` comes with its first reader, TC2: step 4b below) |
+| `eval.rs` | `eval(&impl World, &Env, &Expr) -> Value`: unknown for every `Expr`; the `World` trait ([03](03-design.md) §15.4), `flow` only |
 | `walk.rs` | `resolve_from_env` calls `eval` on the site's callee and returns `None` when the value has no known member (always, in TC1) |
 
 ## 6. The harness
@@ -145,7 +145,7 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
 | 2 | **Built** (`bac93f9`; gate passed on three projects, vscode owed: `languages/typescript/engine/08-tc1.md`). `flow.rs`; `sem/flow.rs` for sites and arguments | the `call_sites` equality; **S-TC2's cost, the gate** (moved from TC0): the tables of every def of the four projects built in at most the time of a depth-1 sweep of the same project and at most 25% more peak memory, measured in the release build. Over that, stop and report before step 3 |
 | 3 | **Built** (`6b7c2ef`, reviewed: `languages/typescript/engine/08-tc1.md`). `handed` in the table | the `handed_over` equality |
 | 4a | **Built** (`7b680b7`, reviewed: `languages/typescript/engine/08-tc1.md`). `value.rs` (`Value`, `One::Fn`, `join`, the cap); `KeyData::params` and its normal form. **As decided for the build** below | the laws, exhaustively on a small universe; every graph unchanged |
-| 4b | `env.rs`, `eval.rs` (behind the `World` trait), `resolve_from_env` wired; **the capability set** (`Caps`, [03](03-design.md) §15.2, moved here from step 1: the first step that reads it, to decide whether an `Env` is built) | equal graphs with the switch on |
+| 4b | `env.rs`, `eval.rs` (behind the `World` trait), `resolve_from_env` wired; **the capability set** (`Caps`, [03](03-design.md) §15.2, moved here from step 1: the first step that reads it, to decide whether an `Env` is built). **As decided for the build** below | equal graphs with the switch on: every test case and five fixtures in-crate, the three projects' depth-1 dumps by the reviewer |
 | 5 | the harness, the tour, its default snapshot | the tour's "today" column of [03](03-design.md) §2 confirmed or corrected, cell by cell |
 | 6 | the sweep with the switch on | the numbers in `ENGINE.md` |
 | 7 | (mine) `ENGINE.md`: the engine items `sem/flow.rs` calls; `policy.md`: the second table's header | reviewed |
@@ -229,5 +229,46 @@ once; it is two sittings. **4a**:
   unknown parameters, so a key of unknowns is the open key. The digest of a key that is not the open one stays TC2 step 1's; until then
   `digest_of` asserts (debug) that it is given the open key.
 - `smallvec = { version = "1.16", features = ["union"] }`, as tsrs takes it: nothing is rebuilt.
+
+**Step 4b, as decided for the build (2026-11-24).** The layer runs for the first time, and knows nothing:
+
+- **`caps.rs`** (new, imports nothing: core-ready like `value.rs`): `Caps`, `bitflags!` over `u8`, the six bits of [03](03-design.md) §15.2
+  (`PARAMS` … `RETURNS`), `derive(Clone, Copy, Debug, PartialEq, Eq)`, and `Caps::BUILT = Caps::empty()`: the bits that are built. TC2 adds
+  `PARAMS` to it. `bitflags = "2"` as a workspace dependency, default features: tsrs takes 2.13.2 with its default features, so nothing is
+  rebuilt (`cargo tree -e features -i bitflags`, read 2026-11-24). An unused flag of a `bitflags` struct gives no `dead_code` warning
+  (probed with 2.13.2 and clippy `-D warnings`).
+- **The switch, read.** `Precision::layer(self) -> Option<Caps>` (`calls.rs`, `pub(crate)`): `Default` is `None`, the layer off;
+  `Precise` is `Some(Caps::BUILT)`. **The layer is on when there is a set, even an empty one**: so "no bit" is a run of the layer, and
+  "off is identical" (rule 7) is proved by running it, not by not running it. `TypeScript` gains `layer: Option<Caps>`, `None` in
+  `TypeScript::new`, and a builder `with_layer(self, layer) -> Self`: `graph_within` (the one place `call_graph` and `Session::graph` build
+  it) writes `TypeScript::new(sem, opts.marker).with_layer(opts.precision.layer())`; the eight test callers of `new` are unchanged.
+- **`Env { flow: Arc<Flow> }`** (`env.rs`). No `key` and no caps in it yet: nothing reads them in TC1, and a field nobody reads waits behind
+  an `allow`. TC2 adds `key` with the first `Param` it evaluates. With the switch off there is **no** `Env`: `walk::body`, `body_of` and
+  `resolve` take `Option<&Env>`, and `None` is the layer off (05-tc1 §4: it costs nothing then).
+- **`Lang::walk`** builds it: when `self.layer` is `Some`, `World::flow(self, self.sem.def_id(f))`; for a table found it notes
+  `flow.unhandled` under `engine_kind_unhandled` (as `walk::body` notes `Body::unhandled` at every walk) and passes `Some(&Env { flow })`.
+  A def with no table (no body to read) gets `None`, so the engine answers every site. When `self.layer` is `None`, neither `def_id` nor
+  `flow` is called.
+- **`Sem::flow` counts `handed_over` too.** Today it calls `handed_over` outside its `counted`, so a node of an unhandled kind met there would
+  leak into the request's count and be counted again by the walk. The call goes inside its own `view::counted`, added to `Flow::unhandled`.
+- **`eval.rs`**: `pub(crate) trait World { fn flow(&self, def: DefId) -> Option<Arc<Flow>>; }` (`member` comes with TC5), implemented for
+  `TypeScript<'_>` in `calls.rs` (`self.sem.flow(def, self.style)`: `TypeScript` holds the marker style `Sem::flow` needs).
+  `pub(crate) fn eval(world: &impl World, env: &Env, expr: &Expr) -> Value` answers `Value::unknown()` for every `Expr`, by a `match` with an
+  arm per variant and no `_`, so a variant a later phase adds does not compile until `eval` decides it. It imports nothing from `sem`.
+- **`walk::resolve_from_env(lang, env, site_index)`** (the unused `f` goes): `env.flow.sites.get(site_index)?`, `eval` of its `callee`,
+  `debug_assert!` that the value has no known member, `None`. What a known member gives (a `Call` per function, the engine's answer beside
+  an open value) is TC2's; no branch is written for a value TC1 cannot make. `resolve` asks it only when there is an `Env`.
+- **Dead code.** The four `cfg_attr(not(test), allow(dead_code))` (`flow.rs`, `value.rs`, `sem/flow.rs`, the `flows` field in
+  `sem/mod.rs`) go. What the non-test build then still never reads (the parts of `Flow` and `Value` TC2 is the first to read) gets
+  `#[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]` on the item clippy names (a struct, field, variant or function),
+  never on a module. `expect` and not `allow`: an `expect` whose lint no longer fires is itself a warning, so the day TC2 reads the item,
+  `-D warnings` says to remove the line.
+- **The proof.** `tests/precise.rs` (new, `typescript-analysis`): for every case of `common::cases()` (the six scenarios, every entry of
+  every policy row, `recursion`) and for every def and the file's code of every source file of the fixtures `flow`, `handed-over`,
+  `site-kinds`, `object-arrows` and `anonymous-in-place`, one `Project`, three graphs: `Default`, `Precise`, `Precise` again (the tables now
+  memoized); all three `==` (`Graph: PartialEq`, stats included). A graph equality alone would also hold if the switch were never read, so
+  a unit test in `calls.rs` shows that the table is read with the layer on and not with it off (`Sem::has_flow`, `cfg(test)`), and one that
+  the switch maps as above. `eval.rs` tests every `Expr` against a `World` written by hand. The sweep gains `TS_SWEEP_PRECISE=1` (a
+  test-file change), and the reviewer compares the three projects' depth-1 dumps with it against those of `137b4fa`.
 
 Next: [`06-tc2-functions-through-parameters.md`](06-tc2-functions-through-parameters.md)
