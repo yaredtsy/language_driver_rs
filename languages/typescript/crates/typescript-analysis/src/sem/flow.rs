@@ -450,7 +450,7 @@ fn names_in(file: P<SourceFile>, name: &str, container: P<Node>) -> Vec<P<Node>>
 
 /// The identifiers under `container` that write `symbol`, whose name is written `name`: a candidate of `names_in` that is an identifier of that symbol and
 /// that `ast::is_write_access` says is written. Used for a parameter's writes (TC2) and later a local's (TC3). The declaration's own name is never one of
-/// them: `is_write_access` says `Read` for a name whose parent is a `Parameter`.
+/// them: `is_write_access` says `Read` for a name whose parent is a `Parameter`. The write test is asked before the checker, since it is syntax only.
 fn writes_of(
     checker: &mut Checker,
     file: P<SourceFile>,
@@ -462,8 +462,9 @@ fn writes_of(
         .into_iter()
         .filter(|node| {
             node.kind() == Kind::Identifier
-                && checker.get_symbol_at_location_exported(*node) == Some(symbol)
+                // syntax only, so it comes first: most places that spell the name read it
                 && ast::is_write_access(*node)
+                && checker.get_symbol_at_location_exported(*node) == Some(symbol)
         })
         .collect();
     // a position in a comment can touch the token after it, which another hit of the same word touches too
