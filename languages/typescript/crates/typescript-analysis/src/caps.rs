@@ -21,6 +21,6 @@ bitflags::bitflags! {
 }
 
 impl Caps {
-    /// The bits that are built: what `Precision::Precise` turns on. None in TC1; TC2 adds `PARAMS`.
-    pub(crate) const BUILT: Caps = Caps::empty();
+    /// The bits that are built: what `Precision::Precise` turns on. `PARAMS` (TC2, step 5a): a callee that is a parameter is answered from the functions the key holds for it.
+    pub(crate) const BUILT: Caps = Caps::PARAMS;
 }

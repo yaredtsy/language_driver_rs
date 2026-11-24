@@ -65,7 +65,10 @@ fn shape(to: &EdgeTo) -> Option<String> {
 /// (a) every edge of `default` that is not `Unresolved` has an edge in `precise` with the same `from.func`, the same `site`, the same `passed`
 ///     and the same target with the key set aside (a context: its `func`; a construction: its `class` and its `init`'s `func`; an external: its
 ///     package and name);
-/// (b) every `(from.func, site)` that has an edge in `default` has at least one edge in `precise`.
+/// (b) every `(from.func, site)` that has an edge in `default` has at least one edge in `precise`, with one allowance (`06-tc2` §10, step 5a): a site
+///     whose callee the layer knows to be only `undefined` has none, and the layer says so (`Stats.language["callee_undefined"]`, per walk, so an upper
+///     bound). At most that many sites may have lost every edge, and only when each edge they had in `default` was `Unresolved`. A site that lost an
+///     edge that was an answer is always reported.
 pub(crate) fn never_fewer_edges(default: &Graph, precise: &Graph) -> Vec<String> {
     let name = |graph: &Graph, id: &typescript_analysis::StableDef| {
         graph
@@ -84,6 +87,8 @@ pub(crate) fn never_fewer_edges(default: &Graph, precise: &Graph) -> Vec<String>
         }
     }
     let mut found = Vec::new();
+    // the sites of `default` with no edge in `precise`: each with the text to report, and whether every edge it had was unresolved
+    let mut lost: BTreeMap<String, (String, bool)> = BTreeMap::new();
     for edge in &default.edges {
         let at = format!("{:?} {:?}", edge.from.func, edge.site);
         if let Some(to) = shape(&edge.to)
@@ -96,11 +101,30 @@ pub(crate) fn never_fewer_edges(default: &Graph, precise: &Graph) -> Vec<String>
             ));
         }
         if !sites.contains_key(&at) {
-            found.push(format!(
-                "the site {:?} of `{}` has no edge in the graph with the layer on",
-                edge.site,
-                name(default, &edge.from.func)
-            ));
+            let entry = lost.entry(at).or_insert_with(|| {
+                (
+                    format!(
+                        "the site {:?} of `{}` has no edge in the graph with the layer on",
+                        edge.site,
+                        name(default, &edge.from.func)
+                    ),
+                    true,
+                )
+            });
+            entry.1 &= matches!(edge.to, EdgeTo::Unresolved(_));
+        }
+    }
+    let mut allowed = precise
+        .stats
+        .language
+        .get("callee_undefined")
+        .copied()
+        .unwrap_or(0);
+    for (report, only_unresolved) in lost.into_values() {
+        if only_unresolved && allowed > 0 {
+            allowed -= 1;
+        } else {
+            found.push(report);
         }
     }
     found

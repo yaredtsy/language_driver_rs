@@ -1,6 +1,6 @@
 //! The context table (`languages/typescript/docs/policy.md`, "With the context layer"): every row names a project under `tests/fixtures/context/` and the
 //! entries built from it, and has a snapshot of what each gives with the layer off and with it on, in `snapshots/context/<row>.txt`. A phase of the layer
-//! flips the "on" half of a snapshot; the "off" half never changes. The three properties of `common::context` hold on every row.
+//! flips the "on" half of a snapshot; the "off" half never changes. The properties of `common::context` that hold with the layer on hold on every row.
 
 mod common;
 
@@ -213,13 +213,10 @@ fn the_three_properties_hold_on_every_context_row() {
     let mut found = Vec::new();
     let mut compared = 0;
     for row in context_rows() {
-        let (root, project) = open_row(&row);
+        let (_, project) = open_row(&row);
         let (mut offs, mut ons) = (Vec::new(), Vec::new());
         for entry in &row.words[2..] {
             let (off, on) = graphs_of(&project, &row, entry);
-            for problem in off_is_identical(&off, &on, &root) {
-                found.push(format!("row `{}` `{entry}`: {problem}", row.id));
-            }
             for problem in never_fewer_edges(&off, &on) {
                 found.push(format!("row `{}` `{entry}`: {problem}", row.id));
             }
@@ -313,6 +310,26 @@ fn each_property_finds_what_it_is_for() {
         "{found:?}"
     );
 
+    // the one allowed loss: a site whose callee is only `undefined`, as many sites as the layer counted
+    let mut lost = g.clone();
+    lost.edges.remove(open);
+    lost.stats.language.insert("callee_undefined".to_owned(), 1);
+    assert!(never_fewer_edges(&g, &lost).is_empty());
+    lost.stats.language.insert("callee_undefined".to_owned(), 0);
+    let found = never_fewer_edges(&g, &lost);
+    assert!(found.iter().any(|p| p.contains("has no edge")), "{found:?}");
+    lost.stats.language.remove("callee_undefined");
+    assert!(!never_fewer_edges(&g, &lost).is_empty());
+    // a site that had an answer is reported even when the counter would allow one lost site
+    let mut answered = g.clone();
+    answered.edges.remove(call);
+    answered
+        .stats
+        .language
+        .insert("callee_undefined".to_owned(), 1);
+    let found = never_fewer_edges(&g, &answered);
+    assert!(found.iter().any(|p| p.contains("has no edge")), "{found:?}");
+
     // a_context_is_a_function_of_its_key
     assert!(a_context_is_a_function_of_its_key(&[&g, &g]).is_empty());
     let found = a_context_is_a_function_of_its_key(&[&g, &k]);
@@ -352,4 +369,54 @@ fn a_digest_that_is_not_zeros_is_written_by_its_first_eight_hex_digits() {
     lines.remove(at);
     plain.remove(call);
     assert_eq!(lines, plain);
+}
+
+/// The counters follow the edges (`06-tc2` §10, step 5a): a `function_typed_value` is counted only for an edge that is drawn, and the one site whose
+/// callee is only `undefined` is counted as `callee_undefined` since it has none.
+#[test]
+fn the_counters_follow_the_edges() {
+    // (row, entry, function_typed_value, callee_undefined) with the layer on; `None` is a counter that is not said at all
+    let cases: [(&str, &str, Option<u64>, Option<u64>); 4] = [
+        // replaced by the two functions: no unresolved edge is left, so none is counted
+        ("callback-either", "pick", None, None),
+        // `undefined` alone: no edge, one note
+        ("callback-not-passed", "main", None, Some(1)),
+        // the layer cannot read the write: the open entry is kept beside `handler`, and counted
+        ("callback-reassigned", "main", Some(1), None),
+        // an entry with the open key: the engine's answer stands, counted as before
+        ("callback-either", "run", Some(1), None),
+    ];
+    for (id, entry, function_typed, undefined) in cases {
+        let row = context_rows()
+            .into_iter()
+            .find(|row| row.id == id)
+            .unwrap_or_else(|| panic!("no row `{id}`"));
+        let (_, project) = open_row(&row);
+        let (off, on) = graphs_of(&project, &row, entry);
+        let said = |graph: &Graph, key: &str| graph.stats.language.get(key).copied();
+        assert_eq!(
+            said(&on, "function_typed_value"),
+            function_typed,
+            "{id} {entry}"
+        );
+        assert_eq!(said(&on, "callee_undefined"), undefined, "{id} {entry}");
+        // the split by origin adds up to the total, with the layer on as with it off
+        for graph in [&off, &on] {
+            let split: u64 = graph
+                .stats
+                .language
+                .iter()
+                .filter(|(key, _)| key.starts_with("function_typed_value_"))
+                .map(|(_, count)| *count)
+                .sum();
+            assert_eq!(
+                split,
+                said(graph, "function_typed_value").unwrap_or(0),
+                "{id} {entry}: the split"
+            );
+        }
+        // the layer off counts the open entry wherever the engine gave one, and never says `callee_undefined`
+        assert_eq!(said(&off, "callee_undefined"), None, "{id} {entry}");
+        assert_eq!(said(&off, "function_typed_value"), Some(1), "{id} {entry}");
+    }
 }

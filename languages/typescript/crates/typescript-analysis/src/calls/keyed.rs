@@ -1,6 +1,7 @@
-//! The key a call passes (`docs/03-typescript/12-context-layer/06-tc2-functions-through-parameters.md` §5), proved in the crate: the layer is turned on with
-//! `with_layer(Some(Caps::PARAMS))` because `Caps::BUILT` is still empty, so `Precision::Precise` makes no key yet. The layer draws nothing new, so every edge is
-//! the engine's and only the contexts split.
+//! The key a call passes (`docs/03-typescript/12-context-layer/06-tc2-functions-through-parameters.md` §5), proved in the crate. `Precision::Precise` turns the
+//! layer on with `Caps::BUILT` (`PARAMS`); the tests here turn it on with `with_layer(Some(Caps::PARAMS))` so they name the bit they prove. Since step 5a
+//! the layer draws: where the engine says "a function-typed value" and the key says which functions, the site calls each of them. Every other edge is the
+//! engine's, and the contexts split by key.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
@@ -184,40 +185,61 @@ fn expected(pairs: &[(&str, &[[u8; 16]])], zeros_for: &[&str]) -> BTreeMap<Strin
     found
 }
 
-/// An edge's target with its digest set aside.
-fn target_without_digest(to: &EdgeTo) -> String {
-    match to {
-        EdgeTo::Context(id, basis) => format!("call {:?} {basis:?}", id.func),
-        EdgeTo::Construct { class, init, basis } => format!(
-            "construct {class:?} {:?} {basis:?}",
-            init.as_ref().map(|id| &id.func)
-        ),
-        EdgeTo::External(external, basis) => format!("{external:?} {basis:?}"),
-        EdgeTo::Unresolved(reason) => format!("unresolved {}", reason.as_str()),
-        other => format!("{other:?}"),
-    }
-}
-
-/// The edges of a graph, each with its digests set aside, once each.
-fn edges_without_digests(graph: &Graph) -> BTreeSet<String> {
+/// The edges of a graph as `from | callee text | target`, digests and keys set aside, once each: what a reader of a fixture sees. The callee text is read
+/// from the fixture's file by the site's range, relative to the def (the way `common::edges_as_text` does for the integration tests).
+fn readable(fixture: &str, graph: &Graph) -> BTreeSet<String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(fixture);
     graph
         .edges
         .iter()
         .map(|edge| {
-            format!(
-                "{:?} {:?} {} {}",
-                edge.from.func,
-                edge.site,
-                edge.passed,
-                target_without_digest(&edge.to)
-            )
+            let from = graph.def(&edge.from.func).unwrap();
+            let text = std::fs::read_to_string(root.join(&from.file)).unwrap();
+            let callee = &text[(from.range.start + edge.site.start) as usize
+                ..(from.range.start + edge.site.end) as usize];
+            let name = |id: &analyzer_core::graph::StableDef| graph.def(id).unwrap().qname.clone();
+            let to = match &edge.to {
+                EdgeTo::Context(id, _) if edge.passed => format!("pass {}", name(&id.func)),
+                EdgeTo::Context(id, _) => format!("call {}", name(&id.func)),
+                EdgeTo::Construct { class, init, .. } => format!(
+                    "construct {} {}",
+                    name(class),
+                    init.as_ref()
+                        .map_or("no init".to_owned(), |id| name(&id.func))
+                ),
+                EdgeTo::External(external, _) => {
+                    format!("external {} {}", external.package, external.name)
+                }
+                EdgeTo::Unresolved(reason) => format!("unresolved {}", reason.as_str()),
+                other => panic!("an edge this test does not know: {other:?}"),
+            };
+            format!("{} | {callee} | {to}", name(&edge.from.func))
         })
         .collect()
 }
 
+/// `base`, less the lines of `removed` (each must be there) and plus the lines of `added`: the graph with the layer on, written from the graph with it off.
+fn changed(base: BTreeSet<String>, removed: &[&str], added: &[&str]) -> BTreeSet<String> {
+    let mut found = base;
+    for line in removed {
+        assert!(
+            found.remove(*line),
+            "the layer-off graph has no edge `{line}`"
+        );
+    }
+    for line in added {
+        assert!(
+            found.insert((*line).to_owned()),
+            "`{line}` was already there"
+        );
+    }
+    found
+}
+
 #[test]
-fn two_callers_make_two_contexts_and_no_new_edge() {
-    let sem = open("tests/fixtures/context/callback-two-callers");
+fn two_callers_make_two_contexts_and_each_draws_its_own_callback() {
+    let fixture = "tests/fixtures/context/callback-two-callers";
+    let sem = open(fixture);
     let (_, with) = solve(&sem, on());
     let (_, without) = solve(&sem, None);
     assert_eq!(
@@ -229,15 +251,38 @@ fn two_callers_make_two_contexts_and_no_new_edge() {
     );
     assert_eq!(with.contexts.len(), 8);
     assert_eq!(without.contexts.len(), 7);
+    // the one open edge of the graph is the call of `cb`, which is `a` under one key and `b` under the other
     assert_eq!(
-        edges_without_digests(&with),
-        edges_without_digests(&without)
+        readable(fixture, &with),
+        changed(
+            readable(fixture, &without),
+            &["run | cb | unresolved function_typed_value"],
+            &["run | cb | call a", "run | cb | call b"]
+        )
     );
+    // and each context has its own: `run` under `a` calls `a` only
+    for (digest, callee) in [(A, "a"), (B, "b")] {
+        let calls: Vec<String> = with
+            .edges
+            .iter()
+            .filter(|edge| {
+                edge.from.digest == digest && with.def(&edge.from.func).unwrap().qname == "run"
+            })
+            .map(|edge| written_edge(&edge.to))
+            .collect();
+        assert_eq!(calls.len(), 1, "{calls:?}");
+        assert!(calls[0].starts_with("call"), "{calls:?}");
+        assert!(
+            calls[0].contains(&format!("qname: \"{callee}\"")),
+            "{calls:?}"
+        );
+    }
 }
 
 #[test]
 fn a_key_passes_through_a_parameter() {
-    let sem = open("tests/fixtures/context/callback-passed-through");
+    let fixture = "tests/fixtures/context/callback-passed-through";
+    let sem = open(fixture);
     let (_, with) = solve(&sem, on());
     let (_, without) = solve(&sem, None);
     assert_eq!(
@@ -248,8 +293,12 @@ fn a_key_passes_through_a_parameter() {
         )
     );
     assert_eq!(
-        edges_without_digests(&with),
-        edges_without_digests(&without)
+        readable(fixture, &with),
+        changed(
+            readable(fixture, &without),
+            &["each | f | unresolved function_typed_value"],
+            &["each | f | call handler", "each | f | call other"]
+        )
     );
 }
 
@@ -285,15 +334,40 @@ fn kinds(
 
 #[test]
 fn each_kind_of_argument_makes_its_key() {
-    let sem = open("tests/fixtures/keys");
+    let fixture = "tests/fixtures/keys";
+    let sem = open(fixture);
     let (_, with) = solve(&sem, on());
     let (_, without) = solve(&sem, None);
     let found = contexts(&with);
     // a parameter nothing reads still splits, until relevance (step 8)
     assert_eq!(found, kinds(&found, &[A, B]));
+    // what the key says about each parameter that is called, written by hand (the edges are a set, so a site under two keys is one line):
+    //  - `run`: `a` or `b` (`either`), an arrow (`arrowOne`, `arrowTwo`), and the open key of the spread, which keeps the engine's answer
+    //  - `Box.constructor`: `a` (`new Box(a)`, and `Pair`'s `super(cb)`) and `b` (`new Sub(b)`)
+    //  - `withDefault`: the default, `a`, for the call that passes nothing
+    //  - `second`: `a`, the second parameter, after a `string`
+    //  - `opt`: nothing was passed, so there is no callee and no edge
+    //  - `many` (a rest parameter) and `tagged` (a template passes no arguments) keep the engine's answer
     assert_eq!(
-        edges_without_digests(&with),
-        edges_without_digests(&without)
+        readable(fixture, &with),
+        changed(
+            readable(fixture, &without),
+            &[
+                "Box.constructor | cb | unresolved function_typed_value",
+                "opt | cb | unresolved function_typed_value",
+                "second | cb | unresolved function_typed_value",
+                "withDefault | cb | unresolved function_typed_value",
+            ],
+            &[
+                "Box.constructor | cb | call a",
+                "Box.constructor | cb | call b",
+                "run | cb | call a",
+                "run | cb | call b",
+                "run | cb | unresolved anonymous_function_called",
+                "second | cb | call a",
+                "withDefault | cb | call a",
+            ]
+        )
     );
 }
 
@@ -323,70 +397,135 @@ fn written_edge(to: &EdgeTo) -> String {
     }
 }
 
-#[test]
-fn each_context_walked_alone_has_the_edges_of_the_graph() {
-    for fixture in FIXTURES {
-        let sem = open(fixture);
-        let (solver, graph) = solve(&sem, on());
-        let walked = &solver.lang().walked;
-        assert_eq!(walked.len(), graph.contexts.len(), "{fixture}");
-        for (func, key) in walked {
-            let digest = solver.lang().digest(key);
-            let mut id = ContextId::of(sem.describe(*func, STYLE).id);
-            id.digest = digest;
-            let mut in_graph: Vec<String> = graph
-                .edges_from(&id)
-                .iter()
-                .map(|edge| format!("{:?} {} {}", edge.site, edge.passed, written_edge(&edge.to)))
-                .collect();
-            in_graph.sort();
-
-            // a fresh language: nothing it remembers is the solver's
-            let mut fresh = TypeScript::new(&sem, STYLE).with_layer(on());
-            let data = solver.lang().keys.borrow().data(*key).clone();
-            let again = fresh.intern_key(data);
-            assert_eq!(fresh.digest(&again), digest, "{fixture}");
-            let summary = Lang::walk(&mut fresh, *func, &again, &Cancel::new());
-            let name = |func: Func<'_>| sem.describe(func, STYLE).id;
-            let digest_of = |key: &KeyId| fresh.digest(key);
-            let mut alone: Vec<String> = Vec::new();
-            for site in &summary.sites {
-                for target in &site.targets {
-                    let (passed, text) = match target {
-                        Target::Call(func, key) => (
-                            site.passed,
-                            format!("call {:?} {:?}", name(*func), digest_of(key)),
-                        ),
-                        Target::Construct { class, init } => (
-                            false,
-                            format!(
-                                "construct {:?} {:?}",
-                                name(*class),
-                                init.as_ref()
-                                    .map(|(init, key)| (name(*init), digest_of(key)))
-                            ),
-                        ),
-                        Target::External(external) => (
-                            false,
-                            format!("external {} {}", external.package, external.name),
-                        ),
-                        Target::Unresolved(reason) => {
-                            (false, format!("unresolved {}", reason.as_str()))
-                        }
-                        _ => panic!("a target this test does not know"),
-                    };
-                    alone.push(format!("{:?} {passed} {text}", site.site));
-                }
-            }
-            alone.sort();
-            assert_eq!(
-                in_graph,
-                alone,
-                "{fixture}: {:?} under {digest:?}",
-                graph.def(&id.func).map(|def| &def.qname)
-            );
+/// The context table of `docs/policy.md` ("With the context layer"), as `(fixture folder, file, entry)` for every entry of every row: the words in backticks
+/// of the last cell of a row that names a fixture under `fixtures/context/`.
+fn context_entries() -> Vec<(String, String, String)> {
+    const TABLE: &str = include_str!("../../../../docs/policy.md");
+    let mut found = Vec::new();
+    for line in TABLE
+        .lines()
+        .filter(|line| line.contains("`fixtures/context/"))
+    {
+        let cell = line
+            .trim_end()
+            .trim_end_matches('|')
+            .rsplit('|')
+            .next()
+            .unwrap_or("");
+        let words: Vec<&str> = cell.split('`').skip(1).step_by(2).collect();
+        assert!(words.len() > 2, "a row with no entry: {line}");
+        for entry in &words[2..] {
+            found.push((
+                format!("tests/{}", words[0]),
+                words[1].to_owned(),
+                (*entry).to_owned(),
+            ));
         }
     }
+    found
+}
+
+#[test]
+fn the_table_of_rows_is_read_whole() {
+    let entries = context_entries();
+    let of = |folder: &str| entries.iter().filter(|(f, ..)| f.ends_with(folder)).count();
+    // `tour`: `main` and `lineA` to `lineI`; the rest as the table lists them
+    assert_eq!(of("/tour"), 10);
+    assert_eq!(of("callback-two-callers"), 4);
+    assert_eq!(of("callback-passed-through"), 3);
+    assert_eq!(of("callback-either"), 2);
+    assert_eq!(of("callback-not-passed"), 2);
+    assert_eq!(of("callback-reassigned"), 2);
+    assert_eq!(entries.len(), 23);
+}
+
+/// A context of `graph` walked alone, by a language that remembers nothing, has exactly the edges the graph has leaving it: what the solver kept for a context
+/// is not what an earlier walk left in a cache. `fixture` is opened on `file` and the graph is the one under `entry`.
+fn each_context_walked_alone(fixture: &str, file: &str, entry: &str) -> usize {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(fixture);
+    let sem = Sem::open(&root, Path::new(file)).unwrap();
+    let start = sem
+        .entry(file, entry, 0, STYLE)
+        .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
+    let (solver, graph) = solve_from(&sem, start, on(), false);
+    let walked = &solver.lang().walked;
+    assert_eq!(walked.len(), graph.contexts.len(), "{fixture} {entry}");
+    for (func, key) in walked {
+        let digest = solver.lang().digest(key);
+        let mut id = ContextId::of(sem.describe(*func, STYLE).id);
+        id.digest = digest;
+        let mut in_graph: Vec<String> = graph
+            .edges_from(&id)
+            .iter()
+            .map(|edge| format!("{:?} {} {}", edge.site, edge.passed, written_edge(&edge.to)))
+            .collect();
+        in_graph.sort();
+
+        // a fresh language: nothing it remembers is the solver's
+        let mut fresh = TypeScript::new(&sem, STYLE).with_layer(on());
+        let data = solver.lang().keys.borrow().data(*key).clone();
+        let again = fresh.intern_key(data);
+        assert_eq!(fresh.digest(&again), digest, "{fixture} {entry}");
+        let summary = Lang::walk(&mut fresh, *func, &again, &Cancel::new());
+        let name = |func: Func<'_>| sem.describe(func, STYLE).id;
+        let digest_of = |key: &KeyId| fresh.digest(key);
+        let mut alone: Vec<String> = Vec::new();
+        for site in &summary.sites {
+            for target in &site.targets {
+                let (passed, text) = match target {
+                    Target::Call(func, key) => (
+                        site.passed,
+                        format!("call {:?} {:?}", name(*func), digest_of(key)),
+                    ),
+                    Target::Construct { class, init } => (
+                        false,
+                        format!(
+                            "construct {:?} {:?}",
+                            name(*class),
+                            init.as_ref()
+                                .map(|(init, key)| (name(*init), digest_of(key)))
+                        ),
+                    ),
+                    Target::External(external) => (
+                        false,
+                        format!("external {} {}", external.package, external.name),
+                    ),
+                    Target::Unresolved(reason) => {
+                        (false, format!("unresolved {}", reason.as_str()))
+                    }
+                    _ => panic!("a target this test does not know"),
+                };
+                alone.push(format!("{:?} {passed} {text}", site.site));
+            }
+        }
+        alone.sort();
+        assert_eq!(
+            in_graph,
+            alone,
+            "{fixture} {entry}: {:?} under {digest:?}",
+            graph.def(&id.func).map(|def| &def.qname)
+        );
+    }
+    walked.len()
+}
+
+#[test]
+fn each_context_walked_alone_has_the_edges_of_the_graph() {
+    // every entry of every row of the context table, and the `keys` fixture from its `main`
+    let mut entries = context_entries();
+    entries.push((
+        "tests/fixtures/keys".to_owned(),
+        "src/main.ts".to_owned(),
+        "main".to_owned(),
+    ));
+    let mut contexts = 0;
+    for (fixture, file, entry) in &entries {
+        contexts += each_context_walked_alone(fixture, file, entry);
+    }
+    eprintln!(
+        "{} entries, {contexts} contexts walked alone",
+        entries.len()
+    );
 }
 
 /// Over `counts`: the median and the 95th percentile by nearest rank (`sorted[(n - 1) / 2]`, `sorted[ceil(0.95 n) - 1]`), the greatest, and how many

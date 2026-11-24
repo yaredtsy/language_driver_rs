@@ -9,8 +9,7 @@ run | cb | unresolved function_typed_value
 main
   run
 edges:
-main | run | call run
-run | cb | unresolved function_typed_value
+main | run | call run @600f3651
 == run
 -- off
 run

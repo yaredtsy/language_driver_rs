@@ -1,11 +1,14 @@
-//! The context layer on changes nothing yet (`docs/03-typescript/12-context-layer/05-tc1-the-body-as-data.md` §8, step 4b): every graph made with
-//! `Precision::Precise` is the one `Precision::Default` makes, stats included. `Precise` runs twice, the second time on tables already kept.
+//! The context layer on never has fewer edges than the layer off (`docs/03-typescript/12-context-layer/06-tc2-functions-through-parameters.md` §10, step 5a): for
+//! every entry of the shared cases and of the whole fixtures, the graph made with `Precision::Precise` loses no answer of `Precision::Default`'s and no site
+//! (bar the sites a callee that is only `undefined` empties, as many as `callee_undefined` counts); it is the same graph, stats included, when made twice; and
+//! a context is a function of its key across the two. `Precise` runs twice, the second time on tables already kept.
 
 mod common;
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use common::context::{a_context_is_a_function_of_its_key, never_fewer_edges};
 use common::{STYLE, call_graph, cases, open_project, tests_dir};
 use typescript_analysis::{Cancel, Entry, Options, Precision, Project};
 use typescript_syntax::Dialect;
@@ -29,7 +32,7 @@ const WHOLE: [(&str, &str); 5] = [
 ];
 
 #[test]
-fn every_graph_is_the_same_with_the_layer_on() {
+fn precise_never_has_fewer_edges() {
     let mut plans: BTreeMap<String, Plan> = BTreeMap::new();
     // the cases of the shared list: one project per root, opened on its first case
     for case in cases() {
@@ -75,7 +78,8 @@ fn every_graph_is_the_same_with_the_layer_on() {
     let cancel = Cancel::new();
 
     let mut compared = 0;
-    let mut differ = Vec::new();
+    let mut differ = 0;
+    let mut problems = Vec::new();
     for plan in plans.values() {
         for (name, file, def) in &plan.entries {
             let entry = match def {
@@ -89,18 +93,35 @@ fn every_graph_is_the_same_with_the_layer_on() {
                 |options: &Options| call_graph(&plan.project, file, &entry, options, &cancel);
             let (off, on, again) = (graph(&default), graph(&precise), graph(&precise));
             compared += 1;
-            if off != on || on != again {
-                differ.push(format!(
-                    "{name}: default == precise {}, precise == precise again {}\n  default {:.300?}\n  precise {:.300?}",
-                    off == on,
-                    on == again,
-                    off,
-                    on
-                ));
+            let (Some(off), Some(on), Some(again)) = (off, on, again) else {
+                // a graph that is not there must not be there under any precision
+                let (off, on, again) = (graph(&default), graph(&precise), graph(&precise));
+                if off.is_some() || on.is_some() || again.is_some() {
+                    problems.push(format!("{name}: only some of the three have a graph"));
+                }
+                continue;
+            };
+            if off.edges != on.edges {
+                differ += 1;
+            }
+            for problem in never_fewer_edges(&off, &on) {
+                problems.push(format!("{name}: {problem}"));
+            }
+            if on != again {
+                problems.push(format!("{name}: Precise is not the same graph twice"));
+            }
+            for problem in a_context_is_a_function_of_its_key(&[&on, &again]) {
+                problems.push(format!("{name}: {problem}"));
             }
         }
     }
-    eprintln!("compared {compared} cases, each as Default, Precise and Precise again");
+    eprintln!(
+        "compared {compared} entries, each as Default, Precise and Precise again; {differ} have other edges with the layer on"
+    );
     assert!(compared > 0);
-    assert!(differ.is_empty(), "{} differ: {differ:#?}", differ.len());
+    assert!(
+        problems.is_empty(),
+        "{} problems: {problems:#?}",
+        problems.len()
+    );
 }

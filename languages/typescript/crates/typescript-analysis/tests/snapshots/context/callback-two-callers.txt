@@ -25,23 +25,27 @@ second | b | pass b
 main
   first
     run
+      a
     a [Passed]
   second
     run
+      b
     b [Passed]
   again
     run
+      a
     a [Passed]
 edges:
-again | run | call run
+again | run | call run @5d2e5760
 again | a | pass a
-first | run | call run
+first | run | call run @5d2e5760
 first | a | pass a
 main | first | call first
 main | second | call second
 main | again | call again
-run | cb | unresolved function_typed_value
-second | run | call run
+run @5d2e5760 | cb | call a
+run @ac15243e | cb | call b
+second | run | call run @ac15243e
 second | b | pass b
 == first
 -- off
@@ -55,11 +59,12 @@ run | cb | unresolved function_typed_value
 -- on
 first
   run
+    a
   a [Passed]
 edges:
-first | run | call run
+first | run | call run @5d2e5760
 first | a | pass a
-run | cb | unresolved function_typed_value
+run @5d2e5760 | cb | call a
 == second
 -- off
 second
@@ -72,10 +77,11 @@ second | b | pass b
 -- on
 second
   run
+    b
   b [Passed]
 edges:
-run | cb | unresolved function_typed_value
-second | run | call run
+run @ac15243e | cb | call b
+second | run | call run @ac15243e
 second | b | pass b
 == run
 -- off

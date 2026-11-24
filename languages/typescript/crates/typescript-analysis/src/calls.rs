@@ -3,8 +3,8 @@
 //! One context per function, every context under the open key `KeyId::OPEN` (digest zeros): TypeScript is not context sensitive yet
 //! (`docs/03-typescript/08-later-context-sensitive.md`). The seam is kept: a target is `Target::Call(func, KeyId::OPEN)`, and `walk` is the only place
 //! that makes another key (`walk::key_of`, when the layer knows `Caps::PARAMS`: each call into project code passes the key its arguments make). With
-//! `Precision::Precise` the layer reads each walked body's table (`Lang::walk`) and asks `eval` about each callee; it draws nothing yet, so every edge is the
-//! engine's and only the contexts split.
+//! `Precision::Precise` the layer reads each walked body's table (`Lang::walk`) and asks `eval` about each callee that the engine could only call "a function-typed value"; where the key says which functions that is, the site draws
+//! a call to each (`walk::resolve_from_env`), and every other edge is the engine's.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -42,7 +42,7 @@ pub enum Precision {
     /// The engine's resolver alone: what every release so far gives.
     #[default]
     Default,
-    /// The context layer on. In TC1 it reads each walked body's table and knows nothing, so every graph is `Default`'s.
+    /// The context layer on. It reads each walked body's table, splits contexts by the functions a call passes, and where an engine answer is a function-typed value the key resolves, draws a call to each function. A graph has no fewer edges than `Default`'s, bar the sites a callee that is only `undefined` empties.
     Precise,
 }
 
@@ -612,8 +612,7 @@ mod tests {
     fn the_switch_maps_to_the_layer() {
         assert_eq!(Precision::Default.layer(), None);
         assert_eq!(Precision::Precise.layer(), Some(Caps::BUILT));
-        // TC1: no bit is built; TC2 changes this line
-        assert_eq!(Caps::BUILT, Caps::empty());
+        assert_eq!(Caps::BUILT, Caps::PARAMS);
     }
 
     #[test]

@@ -52,9 +52,11 @@ twice | f | unresolved function_typed_value
 -- on
 main
   each
+    encode
   encode [Passed]
   relay
     each
+      join
   join [Passed]
   encode [Passed]
   open
@@ -67,16 +69,20 @@ main
   pick
     Csv
   twice
+    encode
+    encode
   encode [Passed]
   each
   join
 edges:
 Panel | back | pass Panel.<locals>.back
 Panel.<locals>.back | onClose | unresolved function_typed_value
-each | f | unresolved function_typed_value
-main | each | call each
+each @718115a3 | f | call encode
+each @725b147a | f | call join
+each @e33b6f72 | f | unresolved anonymous_function_called
+main | each | call each @718115a3
 main | encode | pass encode
-main | relay | call relay
+main | relay | call relay @725b147a
 main | join | pass join
 main | encode | pass encode
 main | h | unresolved function_typed_value
@@ -88,17 +94,17 @@ main | send | call send
 main | Json | construct Json no init
 main | pick | call pick
 main | pick().write | unresolved function_typed_value
-main | twice | call twice
+main | twice | call twice @718115a3
 main | twice(encode) | unresolved no_declaration
 main | encode | pass encode
-main | each | call each
+main | each | call each @e33b6f72
 main | join | call join
 open | opts.onDone | unresolved function_typed_value
 pick | Csv | construct Csv no init
-relay | each | call each
+relay @725b147a | each | call each @725b147a
 send | w.write | unresolved function_typed_value
-twice | f | unresolved function_typed_value
-twice | f | unresolved function_typed_value
+twice @718115a3 | f | call encode
+twice @718115a3 | f | call encode
 == lineA
 -- off
 lineA
@@ -111,10 +117,11 @@ lineA | encode | pass encode
 -- on
 lineA
   each
+    encode
   encode [Passed]
 edges:
-each | f | unresolved function_typed_value
-lineA | each | call each
+each @718115a3 | f | call encode
+lineA | each | call each @718115a3
 lineA | encode | pass encode
 == lineB
 -- off
@@ -131,12 +138,13 @@ relay | each | call each
 lineB
   relay
     each
+      join
   join [Passed]
 edges:
-each | f | unresolved function_typed_value
-lineB | relay | call relay
+each @725b147a | f | call join
+lineB | relay | call relay @725b147a
 lineB | join | pass join
-relay | each | call each
+relay @725b147a | each | call each @725b147a
 == lineC
 -- off
 lineC
@@ -236,13 +244,15 @@ twice | f | unresolved function_typed_value
 -- on
 lineH
   twice
+    encode
+    encode
   encode [Passed]
 edges:
-lineH | twice | call twice
+lineH | twice | call twice @718115a3
 lineH | twice(encode) | unresolved no_declaration
 lineH | encode | pass encode
-twice | f | unresolved function_typed_value
-twice | f | unresolved function_typed_value
+twice @718115a3 | f | call encode
+twice @718115a3 | f | call encode
 == lineI
 -- off
 lineI
@@ -257,6 +267,6 @@ lineI
   each
   join
 edges:
-each | f | unresolved function_typed_value
-lineI | each | call each
+each @e33b6f72 | f | unresolved anonymous_function_called
+lineI | each | call each @e33b6f72
 lineI | join | call join

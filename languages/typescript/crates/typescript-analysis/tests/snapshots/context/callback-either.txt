@@ -12,13 +12,16 @@ run | cb | unresolved function_typed_value
 -- on
 pick
   run
+    a
+    b
   a [Passed]
   b [Passed]
 edges:
-pick | run | call run
+pick | run | call run @37e1016d
 pick | a | pass a
 pick | b | pass b
-run | cb | unresolved function_typed_value
+run @37e1016d | cb | call a
+run @37e1016d | cb | call b
 == run
 -- off
 run

@@ -13,6 +13,7 @@ use crate::env::Env;
 use crate::eval::{World, eval};
 use crate::key::{Key, KeyId, bind};
 use crate::sem::{Func, Init, Resolved, Sem, UNHANDLED_KEY, Uncovered, Why, counted};
+use crate::value::One;
 
 /// The reason of an `Unresolved` edge, and the key of its counter in `Stats.language`, for a def whose node is missing from the program's tree: a bug
 /// in one of the two parses, which must show on the graph and not as a body with no calls.
@@ -30,6 +31,10 @@ pub(crate) const SIGNATURE_PASSED: &str = "signature_passed";
 
 /// The key of the counter, in `Stats.language`, for a call into a source file outside the root (D33): an `External` edge for a body that was there to walk.
 pub(crate) const OUTSIDE_ROOT: &str = "outside_root";
+
+/// The key of the counter, in `Stats.language`, for a call whose callee, in a context, is only `undefined` (a parameter nobody passed): no edge is drawn,
+/// and the counter says that is why the site has none (rule 8).
+pub(crate) const CALLEE_UNDEFINED: &str = "callee_undefined";
 
 /// The key of the counter, in `Stats.language`, for a def of the graph whose marker another def of its file owns (D34): named by where it is, counted once.
 pub(crate) const DUPLICATE_MARKER: &str = "duplicate_marker";
@@ -100,39 +105,50 @@ fn body_of<'p>(
     Summary::complete(found)
 }
 
-/// What the site at `site_index` of `f` can reach. In its final form already: ask what was tracked on this path first, and the engine's resolver
-/// otherwise. Nothing is drawn from what is tracked yet, so the targets are the engine's; when the layer knows `PARAMS` each call into project code carries
-/// the key its arguments make (`key_of`), made here and nowhere else.
+/// What the site at `site_index` of `f` can reach. In its final form already: the engine answers first, always; then, when the layer knows `PARAMS`, it
+/// may speak (`resolve_from_env`): where the engine's answer is a value (a function-typed parameter, an untyped one) and the layer knows which functions
+/// the value holds, those functions are the targets. Each call into project code then carries the key its arguments make (`key_of`), made here and
+/// nowhere else.
 fn resolve<'p>(
     lang: &TypeScript<'p>,
     f: Func<'p>,
     site_index: usize,
     env: Option<&Env>,
 ) -> Vec<Target<TypeScript<'p>>> {
-    let targets = env
-        .and_then(|env| resolve_from_env(lang, env, site_index))
-        .unwrap_or_else(|| {
-            let (found, facts) = lang.sem.callee_with_facts(f, site_index, lang.style);
-            if facts.getter_result {
-                lang.note_uncovered(&[Uncovered::GetterResultCall]);
-            }
-            // the split of `function_typed_value` by where the function comes from: one note for each such edge, so the four add up to the total
-            if let Some(origin) = facts.function_typed {
-                for _ in found
-                    .iter()
-                    .filter(|resolved| **resolved == Resolved::Unknown(Why::FunctionTypedValue))
-                {
-                    lang.note(origin.counter());
-                }
-            }
-            for _ in 0..facts.outside_root {
-                lang.note(OUTSIDE_ROOT);
-            }
+    let (found, facts) = lang.sem.callee_with_facts(f, site_index, lang.style);
+    if facts.getter_result {
+        lang.note_uncovered(&[Uncovered::GetterResultCall]);
+    }
+    for _ in 0..facts.outside_root {
+        lang.note(OUTSIDE_ROOT);
+    }
+    let spoken = match env {
+        Some(env) if lang.knows(Caps::PARAMS) => {
+            resolve_from_env(lang, env, site_index, &found, facts.jsx)
+        }
+        _ => None,
+    };
+    // The split of `function_typed_value` by where the function comes from: one note for each such edge **that is drawn**, so the four add up to the
+    // total. When the layer replaced an open entry by the functions it holds, the entry is not an edge and is not counted.
+    let (targets, open_drawn) = match spoken {
+        Some(answer) => (answer.targets, answer.open_drawn),
+        None => (
             found
-                .into_iter()
+                .iter()
+                .cloned()
                 .map(|resolved| target(lang, resolved, facts.jsx))
-                .collect()
-        });
+                .collect(),
+            true,
+        ),
+    };
+    if open_drawn && let Some(origin) = facts.function_typed {
+        for _ in found
+            .iter()
+            .filter(|resolved| **resolved == Resolved::Unknown(Why::FunctionTypedValue))
+        {
+            lang.note(origin.counter());
+        }
+    }
     match env {
         Some(env) if lang.knows(Caps::PARAMS) => targets
             .into_iter()
@@ -183,17 +199,75 @@ fn key_of<'p>(lang: &TypeScript<'p>, env: &Env, site_index: usize, callee: Func<
     lang.intern_key(data)
 }
 
-/// What the context layer says the site at `site_index` calls, when it knows. It evaluates the callee and still answers `None`, so the engine answers
-/// every site (its targets are keyed by `resolve`, not here); step 5 answers from the value (a `Call` per function, the engine's answer beside an open value).
+/// What the layer says a site calls: the targets, and whether the engine's open entries are among them (so `resolve` counts them).
+struct Spoken<'p> {
+    targets: Vec<Target<TypeScript<'p>>>,
+    open_drawn: bool,
+}
+
+/// Whether the engine's answer for one declaration depends on a value: a function-typed value or an untyped one. The only answers a value can replace
+/// (`03-design.md` §7); a `NoDeclaration` on a call's result has no value before TC6.
+fn is_open_entry(resolved: &Resolved<'_>) -> bool {
+    matches!(
+        resolved,
+        Resolved::Unknown(Why::FunctionTypedValue | Why::AnyOrUntyped)
+    )
+}
+
+/// What the context layer says the site at `site_index` calls, given the engine's answer `found`; `None` when it does not speak, and then the engine's
+/// answer stands as it was. It speaks only when `found` has an open entry **and** the callee's value has a known member (`06-tc2` §10, step 5a): a
+/// value that is only data, wide or unknown is not an answer. When it speaks, the targets are the engine's entries that are not open, then one for each
+/// member of the value, then the open entries again if the value is open (a write we cannot read, a way in we do not track).
 fn resolve_from_env<'p>(
     lang: &TypeScript<'p>,
     env: &Env,
     site_index: usize,
-) -> Option<Vec<Target<TypeScript<'p>>>> {
+    found: &[Resolved<'p>],
+    jsx: bool,
+) -> Option<Spoken<'p>> {
+    if !found.iter().any(is_open_entry) {
+        return None;
+    }
     let site = env.flow.sites.get(site_index)?;
-    // the layer's answer; step 5 draws from it. Until then the engine answers every site
-    let _value = eval(lang, env, &site.callee);
-    None
+    let value = eval(lang, env, &site.callee);
+    if value.known().is_empty() {
+        return None;
+    }
+    let mut targets: Vec<Target<TypeScript<'p>>> = found
+        .iter()
+        .filter(|resolved| !is_open_entry(resolved))
+        .cloned()
+        .map(|resolved| target(lang, resolved, jsx))
+        .collect();
+    // a member that cannot be turned into a function leaves the value open at this site
+    let mut open = value.is_open();
+    for one in value.known() {
+        // no `_` arm: a kind of member a later phase adds is decided here before this compiles
+        match one {
+            One::Fn(def) => match lang.sem.func(*def) {
+                Some(func) => targets.push(Target::Call(func, KeyId::OPEN)),
+                None => open = true,
+            },
+            // an arrow is `AnonAny` in the body of a callee, where its key holds it
+            One::Anon(..) | One::AnonAny => targets.push(Target::Unresolved(Reason::new(
+                Why::AnonymousFunctionCalled.counter(),
+            ))),
+            One::Undefined => lang.note(CALLEE_UNDEFINED),
+        }
+    }
+    if open {
+        targets.extend(
+            found
+                .iter()
+                .filter(|resolved| is_open_entry(resolved))
+                .cloned()
+                .map(|resolved| target(lang, resolved, jsx)),
+        );
+    }
+    Some(Spoken {
+        targets,
+        open_drawn: open,
+    })
 }
 
 /// What the engine said one declaration of a site is, in the solver's terms.

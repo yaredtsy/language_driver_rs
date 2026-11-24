@@ -24,23 +24,28 @@ relay | each | call each
 main
   relay
     each
+      handler
   handler [Passed]
   relay
     each
+      other
   other [Passed]
   direct
     each
+      handler
     handler [Passed]
 edges:
-direct | each | call each
+direct | each | call each @3fa907f4
 direct | handler | pass handler
-each | f | unresolved function_typed_value
-main | relay | call relay
+each @3fa907f4 | f | call handler
+each @b6a599f6 | f | call other
+main | relay | call relay @3fa907f4
 main | handler | pass handler
-main | relay | call relay
+main | relay | call relay @b6a599f6
 main | other | pass other
 main | direct | call direct
-relay | each | call each
+relay @3fa907f4 | each | call each @3fa907f4
+relay @b6a599f6 | each | call each @b6a599f6
 == relay
 -- off
 relay
@@ -66,8 +71,9 @@ each | f | unresolved function_typed_value
 -- on
 direct
   each
+    handler
   handler [Passed]
 edges:
-direct | each | call each
+direct | each | call each @3fa907f4
 direct | handler | pass handler
-each | f | unresolved function_typed_value
+each @3fa907f4 | f | call handler
