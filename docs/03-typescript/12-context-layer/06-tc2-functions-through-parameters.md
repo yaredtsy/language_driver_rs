@@ -244,7 +244,7 @@ unknown for `Expr::Param` until step 3), so no graph changes.
   (untyped, no config). The tour's snapshot changes in four tables only (`each`, `relay`, `twice` gain `param#0`; every table prints its
   parameter rows). **Built as decided, `4bb4e98`** ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)).
 
-**Step 3, as decided for the build (2026-11-24).** Values and `eval` answer; the walk still throws the answer away (`resolve_from_env` returns
+**Step 3, as decided for the build (2026-11-24); built as decided, `36434b3`.** Values and `eval` answer; the walk still throws the answer away (`resolve_from_env` returns
 `None` until step 5), so no graph moves.
 
 - **`One`** gains `Anon(DefId, u32)` (the def it is written in, its number there) and `Undefined`, after `Fn`: the derived order is `Fn` by
