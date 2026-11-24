@@ -36,3 +36,4 @@ the `##` section above it; `grep -rn '<its title>' languages/typescript/engine` 
 | [`engine/05-h14-to-h17.md`](engine/05-h14-to-h17.md) | H14, H15, H16 as built and measured (733e26c, ae59938; reviewed 2026-11-19); H17 as built and measured (477c4bd, 5362028; reviewed 2026-11-23) |
 | [`engine/06-tc0-counts.md`](engine/06-tc0-counts.md) | TC0: what was counted |
 | [`engine/07-tcl.md`](engine/07-tcl.md) | TCL as built and measured (`aa32042`, fix `fbee1b4`; reviewed 2026-11-24) |
+| [`engine/08-tc1.md`](engine/08-tc1.md) | TC1 step 1 as built: the switch and the interned key (`c2452bb`; reviewed 2026-11-24) |
