@@ -124,7 +124,7 @@ const navigate = useNavigate();              navigate("/");
 | **how it is kept inside** (D56) | as a kind of its own: `sem` answers `Resolved::LibraryMade { package, maker, path }`, not `Resolved::External`. **One** function (`walk::target`) turns it into what the graph shows. Today that is an `External`; the day you choose another display (a mark, a kind of node, hidden), that function changes and nothing else: the finding is not done twice, and no fixture of the finding moves |
 | what it is not | a project function's result (that is TC6); a `let`; a name bound through anything but one pattern; a function passed in |
 | where | `sem/resolve.rs`, beside the split that already tells a call's result from a parameter (`FunctionOrigin`) |
-| what changes | the **default** graph: so it is a policy row with its fixture, a line in the tag notes, and N8 (TC0) is its forecast. On `TaskDetailPanel` it is 43 of the 86 unresolved calls |
+| what changes | the **default** graph: so it is a policy row with its fixture, a line in the tag notes, and N8 (TC0) is its forecast. On `TaskDetailPanel` the plan said 43 of the 86 unresolved calls (the setters); measured at `aa32042`, before condition 7: 64 (86 → 22) |
 | why now | it is the largest single group of "unresolved" in React code, no phase of the layer can ever reach it (the function is made inside the library), and it risks nothing the layer depends on |
 
 **As decided for the build (2026-11-24).** At a site whose answer holds `function_typed_value` and whose origin is a call's result:
@@ -139,7 +139,21 @@ const navigate = useNavigate();              navigate("/");
 5. `c`'s resolved signature has a declaration, in a file that is not project code; the package is named as `classify` names an external's
    (`package_of`, else `place_of`);
 6. the maker is `c` spelled from the source: a call is its callee's spelling and `()`; a callee that is itself a call is spelled the same
-   way (`create<S>()(…)` is `create()()`); any other callee is its text as written, whitespace taken out, type arguments not part of it.
+   way (`create<S>()(…)` is `create()()`); any other callee is its text as written, whitespace taken out, type arguments not part of it;
+7. **the library made it** (added at review, 2026-11-24): the return type written on that declaration (`type_node()`) is not a type
+   reference to a type parameter (of the signature or of the type around it). `useCallback<T>(callback: T, deps): T`, `useMemo<T>(…): T`,
+   `useEffectEvent<T>(e: T): T`, zustand's selector `<U>(selector: (state: S) => U): U` and `getState: () => T` hand back a value the
+   **caller** supplied, a function the project wrote (the callback, the store's action): naming it after the library would be a wrong
+   answer (rule 8). Those stay `function_typed_value` (`_from_call_result`), for TC10 (Q-TC2 a) or the layer to reach. Path-blind on
+   purpose: a type parameter's part is still the caller's. What it misses: a return type *computed* from a type parameter
+   (zustand's no-selector `(): ExtractState<S>`, so `const { closeModal } = useStore()`) is still named after the library; 4 of 650 on
+   the V-NOC sample, accepted as the simple way (D56).
+
+**Measured before condition 7** (`aa32042`, V-NOC sample of three entries, whole graphs, counted by edge per context): 620 of 662
+call-result sites became library-made, unresolved 827 → 207; by name, `create()()` 237, `useState()[1]` 193 (+ `React.useState()[1]`
+11), zustand selectors (`useProjectStore()` and the like) 87, `useCallback()` 25 (+ `React.useCallback()` 4), `useForm().…` 21, `cva()` 7,
+`useEffectEvent()` 4, `memo()` / `forwardRef()` 6. The selectors, `useCallback` and `useEffectEvent` (about 120) are what condition 7
+removes. `memo(C)` and `forwardRef(C)` stay named: their result is an object React made, and React calls `C`.
 
 Then `sem` answers `Resolved::LibraryMade { package, maker, path }` in place of each `Unknown(FunctionTypedValue)` of the site, and
 `walk::target` turns it into `External { package, name: maker + path }` and notes `library_made_function`. The site is then no longer
