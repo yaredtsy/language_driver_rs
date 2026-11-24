@@ -1,12 +1,5 @@
 //! The body of a def as plain data (`docs/03-typescript/12-context-layer/03-design.md` §4): what `sem` understood of it, read once per program and kept.
 //! It holds numbers and owned values, never an engine pointer and never a `Func<'p>`, so it can be kept inside the `Sem` and handed out as an `Arc`.
-#![cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "the layer reads it from TC1 step 4 on (walk::resolve_from_env)"
-    )
-)]
 
 use typescript_syntax::Span;
 
@@ -46,13 +39,16 @@ impl DefId {
 #[derive(Debug)]
 pub(crate) struct Flow {
     /// The parameters of the def's own declaration, in order, without a `this` parameter. Empty for the file's code, a class, and any def that is not function-like.
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) params: Box<[Param]>,
     /// Index for index with `Sem::call_sites`.
     pub(crate) sites: Box<[SiteFlow]>,
     /// The anonymous functions written in the body, in source order (`Expr::Anon` and `SiteFlow::anon` are places in it).
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) anons: Box<[AnonFlow]>,
     /// The hand-overs, sorted by `at` (start, then end), ties in the order made: every def `Sem::handed_over` finds, then the names of a hand-over position it
     /// found no def for, through `expr_of`.
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) handed: Box<[HandedFlow]>,
     /// How many nodes reading the table met of a kind a view's `expect` did not handle (`view::counted`), kept with it as `Body` keeps its own.
     pub(crate) unhandled: u64,
@@ -78,13 +74,17 @@ pub(crate) struct Param {
 /// A site of the body, read.
 #[derive(Debug)]
 pub(crate) struct SiteFlow {
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) span: Span,
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) kind: FlowKind,
     pub(crate) callee: Expr,
     /// `Some` for a call or a `new` (its arguments) and for JSX (one `Unknown`: the attributes, TC4). `None` for the other kinds: **not read**, which a
     /// later phase takes as unknown, never as "no argument".
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) args: Option<Box<[Arg]>>,
     /// The innermost anonymous function whose span holds the site.
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) anon: Option<u32>,
 }
 

@@ -2,11 +2,13 @@
 //!
 //! One context per function, every context under the open key `KeyId::OPEN` (digest zeros): TypeScript is not context sensitive yet
 //! (`docs/03-typescript/08-later-context-sensitive.md`). The seam is kept: a target is `Target::Call(func, KeyId::OPEN)`, and `walk` is the only place
-//! that will make another key.
+//! that will make another key. With `Precision::Precise` the layer reads each walked body's table (`Lang::walk`) and asks `eval` about each callee; in TC1 it
+//! knows nothing, so the answer is the engine's.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
+use std::sync::Arc;
 
 use analyzer_core::edit::MarkerStyle;
 use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Entry, Graph, StableDef};
@@ -14,7 +16,10 @@ use analyzer_core::outline::DefKind;
 use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary};
 
 use crate::Project;
+use crate::caps::Caps;
 use crate::env::Env;
+use crate::eval::World;
+use crate::flow::{DefId, Flow};
 use crate::key::{Key, KeyId, Keys};
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
 use crate::walk;
@@ -36,8 +41,18 @@ pub enum Precision {
     /// The engine's resolver alone: what every release so far gives.
     #[default]
     Default,
-    /// The context layer on. It is not built yet: until TC1 step 4 and the phases after it, the graphs are `Default`'s.
+    /// The context layer on. In TC1 it reads each walked body's table and knows nothing, so every graph is `Default`'s.
     Precise,
+}
+
+impl Precision {
+    /// The layer this asks for: `None` is off (no table is read), a set is on with those bits, **even an empty one**.
+    pub(crate) fn layer(self) -> Option<Caps> {
+        match self {
+            Precision::Default => None,
+            Precision::Precise => Some(Caps::BUILT),
+        }
+    }
 }
 
 impl Options {
@@ -66,6 +81,8 @@ pub(crate) struct TypeScript<'p> {
     demoted: RefCell<HashSet<StableDef>>,
     /// Every key of this request (`key.rs`); `digest` reads it, and the walk will intern into it from TC2 on.
     keys: RefCell<Keys>,
+    /// Whether the context layer runs, and with which bits (`Precision::layer`). `None`: no table is read and no `Env` is built.
+    layer: Option<Caps>,
 }
 
 impl<'p> TypeScript<'p> {
@@ -77,7 +94,14 @@ impl<'p> TypeScript<'p> {
             handed: RefCell::new(HashMap::new()),
             demoted: RefCell::new(HashSet::new()),
             keys: RefCell::new(Keys::new()),
+            layer: None,
         }
+    }
+
+    /// The same, with the context layer as `layer` says.
+    pub(crate) fn with_layer(mut self, layer: Option<Caps>) -> Self {
+        self.layer = layer;
+        self
     }
 
     /// Count what a walked body hands over or calls that no edge covers (`Uncovered`), once per occurrence. A count and nothing else: no edge, no node.
@@ -111,6 +135,12 @@ impl<'p> TypeScript<'p> {
     }
 }
 
+impl World for TypeScript<'_> {
+    fn flow(&self, def: DefId) -> Option<Arc<Flow>> {
+        self.sem.flow(def, self.style)
+    }
+}
+
 impl<'p> Lang for TypeScript<'p> {
     /// The engine answers with the type checker.
     const BASIS: Basis = Basis::Type;
@@ -130,7 +160,16 @@ impl<'p> Lang for TypeScript<'p> {
     }
 
     fn walk(&mut self, f: Self::Func, _key: &Self::Key, cancel: &Cancel) -> Summary<Self> {
-        walk::body(self, f, &Env, cancel)
+        // the layer on: this body's table, read once per program and kept (`Sem::flow`); off, nothing is read at all
+        let env = self
+            .layer
+            .and_then(|_| World::flow(self, self.sem.def_id(f)))
+            .map(|flow| {
+                // what reading the table met of a kind the views do not handle, said at every walk as `walk::body` says the body's own
+                self.note_n(UNHANDLED_KEY, flow.unhandled);
+                Env { flow }
+            });
+        walk::body(self, f, env.as_ref(), cancel)
     }
 }
 
@@ -167,7 +206,7 @@ pub(crate) fn graph_within(
         Entry::File => sem.file_entry(file)?,
         _ => return None,
     };
-    let lang = TypeScript::new(sem, opts.marker);
+    let lang = TypeScript::new(sem, opts.marker).with_layer(opts.precision.layer());
     // what the walk of a body says it counted is in `lang`'s notes; what the request itself met (a class entry's construction) is said here
     let ((solver, mut graph), unhandled) = counted(|| {
         let start = start_of(&lang, func);
@@ -537,6 +576,34 @@ mod tests {
         label: "ID",
         placement: analyzer_core::edit::Placement::Docstring,
     };
+
+    #[test]
+    fn the_switch_maps_to_the_layer() {
+        assert_eq!(Precision::Default.layer(), None);
+        assert_eq!(Precision::Precise.layer(), Some(Caps::BUILT));
+        // TC1: no bit is built; TC2 changes this line
+        assert_eq!(Caps::BUILT, Caps::empty());
+    }
+
+    #[test]
+    fn the_layer_reads_a_table_only_when_it_is_on() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/handed-over");
+        let walked = |layer: Option<Caps>| {
+            let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+            let f = sem
+                .entry("src/main.ts", "constArrowCalled", 0, STYLE)
+                .unwrap();
+            let mut lang = TypeScript::new(&sem, STYLE).with_layer(layer);
+            Lang::walk(&mut lang, f, &KeyId::OPEN, &Cancel::new());
+            // `def_id` gives a file a number; it does not read a table
+            sem.has_flow(sem.def_id(f))
+        };
+        assert!(!walked(None), "the layer off reads no table");
+        assert!(
+            walked(Some(Caps::empty())),
+            "the layer on, even with no bit, reads it"
+        );
+    }
 
     #[test]
     fn a_passed_edge_is_not_counted_as_a_call_and_the_breakdown_says_it_is_passed() {

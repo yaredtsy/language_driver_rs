@@ -1,7 +1,9 @@
 //! SLOW: project loading, call sites, call graph. The `sem` module is the only code that imports the checker.
 
 mod calls;
+mod caps;
 mod env;
+mod eval;
 mod flow;
 mod key;
 #[cfg(test)]

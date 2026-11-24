@@ -12,6 +12,8 @@
 //! `TS_SWEEP_FILE_CODE=1` also sweeps the file's own code (`Entry::File`) after the defs of each file, outside a sample run (its dump line says `FILE` and `0`, as in a
 //! sample): `export const s = new S()` is file code.
 //!
+//! `TS_SWEEP_PRECISE=1` turns the context layer on (`Precision::Precise`); its dump is comparable with one made without it.
+//!
 //! `TS_SWEEP_DUMP=<file>` writes one line per def, `<file>\t<qualname>\t<occurrence>\t<hash>`, sorted, where the hash is 16 hex digits of the graph's `Debug` text (or
 //! `none` when there is no graph). Two dumps are comparable only when both builds were made with the same toolchain (`DefaultHasher`'s algorithm may change between
 //! Rust releases); a line that differs is re-run alone with `TS_SWEEP_ENTRY`.
@@ -38,7 +40,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use typescript_analysis::{
-    Budget, Cancel, ContextId, EdgeTo, Entry, Graph, MarkerStyle, Options, Placement, Session,
+    Budget, Cancel, ContextId, EdgeTo, Entry, Graph, MarkerStyle, Options, Placement, Precision,
+    Session,
 };
 use typescript_syntax::Dialect;
 
@@ -430,6 +433,11 @@ fn sweep_every_def_of_a_project() {
     let only = std::env::var("TS_SWEEP_ONLY").ok();
     let only_entry = std::env::var("TS_SWEEP_ENTRY").ok();
     let file_code = std::env::var("TS_SWEEP_FILE_CODE").is_ok_and(|value| value == "1");
+    let precision = if std::env::var("TS_SWEEP_PRECISE").is_ok_and(|value| value == "1") {
+        Precision::Precise
+    } else {
+        Precision::Default
+    };
     let dump_to = std::env::var("TS_SWEEP_DUMP").ok();
     let sites_to = std::env::var("TS_SWEEP_SITES").ok();
     let baseline_from = std::env::var("TS_SWEEP_BASELINE").ok();
@@ -440,7 +448,9 @@ fn sweep_every_def_of_a_project() {
     };
     let before_open = rss_mb();
     let started = Instant::now();
-    let session = Session::open(&root, Path::new(&file), Options::new(STYLE))
+    let mut options = Options::new(STYLE);
+    options.precision = precision;
+    let session = Session::open(&root, Path::new(&file), options)
         .unwrap_or_else(|error| panic!("the project does not open: {error:?}"));
     let open_time = started.elapsed();
     let after_open = rss_mb();
@@ -544,6 +554,7 @@ fn sweep_every_def_of_a_project() {
         ..
     } = totals;
     let depth_text = depth.map_or_else(|| "the whole graph".to_owned(), |depth| depth.to_string());
+    eprintln!("precision: {precision:?}");
     eprintln!(
         "depth {depth_text}: {} files, {defs} {}, {} graphs made ({no_graph} with no graph)",
         files.len(),

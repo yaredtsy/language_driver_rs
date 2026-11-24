@@ -3,13 +3,6 @@
 //! The table is read **once** per def and kept for as long as the program is loaded, so that a later question ("what is this callee, what is each argument") is
 //! asked of plain data and not of the checker. Nothing here lets an engine pointer out: `Flow` holds numbers and owned values, and a def is named by a `DefId`,
 //! a number of this program (`Flows`), which `Sem::func` turns back into a `Func` only for the program that made it.
-#![cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "the layer reads it from TC1 step 4 on (walk::resolve_from_env)"
-    )
-)]
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -58,6 +51,12 @@ impl Sem {
         )
     }
 
+    /// For tests: whether `flow` has read `def`'s table in this program.
+    #[cfg(test)]
+    pub(crate) fn has_flow(&self, def: DefId) -> bool {
+        self.flows.memo.borrow().contains_key(&def)
+    }
+
     /// The def a number stands for. `None` for a number of another program, or a file number this one never gave.
     pub(crate) fn func(&self, def: DefId) -> Option<Func<'_>> {
         if def.program() != self.flows.program {
@@ -87,7 +86,8 @@ impl Sem {
         let func = self.func(def)?;
         let body = self.body(func, style)?;
         // the defs the body hands over, as D22 finds them: it takes the checker itself and gives it back, so it is asked before the table takes one
-        let hand_overs = self.handed_over(func, style);
+        // inside a count of its own, so what it meets is the table's and never leaks into the request's
+        let (hand_overs, unhandled_handed) = counted(|| self.handed_over(func, style));
         let defs = self.file_defs(func.file, style)?;
         // a number can only come from `def_id`, which makes an index of the outline; this keeps a made-up one from reaching `node_of`'s indexing
         if func
@@ -115,7 +115,10 @@ impl Sem {
             };
             reader.read(&body, &hand_overs, node)
         });
-        let made = Arc::new(Flow { unhandled, ..made });
+        let made = Arc::new(Flow {
+            unhandled: unhandled + unhandled_handed,
+            ..made
+        });
         self.flows.memo.borrow_mut().insert(def, Arc::clone(&made));
         Some(made)
     }

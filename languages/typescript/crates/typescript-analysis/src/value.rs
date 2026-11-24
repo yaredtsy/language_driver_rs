@@ -1,21 +1,19 @@
 //! What can be at a place, as far as the layer knows (`docs/03-typescript/12-context-layer/03-design.md` §3). Plain data: it imports nothing from `sem`
 //! (§15.4), so the same laws hold for any language. A `Value` exists only in its normal form: the functions below are the only way to make one.
-#![cfg_attr(
-    not(test),
-    allow(dead_code, reason = "the layer reads values from TC1 step 4b on")
-)]
 
 use smallvec::SmallVec;
 
 use crate::flow::DefId;
 
 /// The most members a value lists before it is wide (`KeyPolicy::max_set`, §12).
+#[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
 pub(crate) const MAX_SET: usize = 8;
 
 /// One thing a value can hold. TC2 adds the anonymous functions and `Undefined`, TC4 classes and objects, TC5 instances.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum One {
     /// A def with a body.
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     Fn(DefId),
 }
 
@@ -34,6 +32,7 @@ enum Repr {
         known: SmallVec<[One; 2]>,
         open: bool,
     },
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     Wide,
 }
 
@@ -47,6 +46,7 @@ impl Value {
     }
 
     /// Nothing callable, and the layer knows it.
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn data() -> Value {
         Value(Repr::Set {
             known: SmallVec::new(),
@@ -55,11 +55,13 @@ impl Value {
     }
 
     /// Too much to list.
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn wide() -> Value {
         Value(Repr::Wide)
     }
 
     /// `known` sorted, duplicates dropped; wide when more than `MAX_SET` remain.
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn of(known: impl IntoIterator<Item = One>, open: bool) -> Value {
         of_capped(known, open, MAX_SET)
     }
@@ -73,6 +75,7 @@ impl Value {
     }
 
     /// Whether something unknown can be there too: true for a wide value.
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn is_open(&self) -> bool {
         match &self.0 {
             Repr::Set { open, .. } => *open,
@@ -80,18 +83,21 @@ impl Value {
         }
     }
 
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn is_wide(&self) -> bool {
         matches!(self.0, Repr::Wide)
     }
 
     /// The least value that holds both: wide if either is; else the union of the members, open if either is, wide past the cap. Pure: whoever joins counts
     /// `value_widened_set` when the result is wide and neither side was.
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) fn join(&self, other: &Value) -> Value {
         join_capped(self, other, MAX_SET)
     }
 }
 
 /// `of` with another cap: the laws are tested with a small one.
+#[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
 fn of_capped(known: impl IntoIterator<Item = One>, open: bool, cap: usize) -> Value {
     let mut known: SmallVec<[One; 2]> = known.into_iter().collect();
     known.sort_unstable();
@@ -102,6 +108,7 @@ fn of_capped(known: impl IntoIterator<Item = One>, open: bool, cap: usize) -> Va
     Value(Repr::Set { known, open })
 }
 
+#[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
 fn join_capped(a: &Value, b: &Value, cap: usize) -> Value {
     if a.is_wide() || b.is_wide() {
         return Value::wide();

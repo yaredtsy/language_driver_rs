@@ -1,5 +1,5 @@
 //! One body, read once, in the solver's terms. `sem` reads the tree (it is the only file that touches tsrs nodes) and hands back plain data; this file
-//! puts it where the core wants it: the sites of a def relative to its start, and for each site the targets, through `resolve(site, &env)` in the final
+//! puts it where the core wants it: the sites of a def relative to its start, and for each site the targets, through `resolve(site, env)` in the final
 //! form it has on the first day (`docs/02-tree-rules/03-the-seam.md` §3).
 
 use analyzer_core::graph::{External, Reason, Site};
@@ -9,6 +9,7 @@ use typescript_syntax::MarkerStyle;
 
 use crate::calls::TypeScript;
 use crate::env::Env;
+use crate::eval::eval;
 use crate::key::{Key, KeyId};
 use crate::sem::{Func, Init, Resolved, Sem, UNHANDLED_KEY, Uncovered, Why, counted};
 
@@ -46,7 +47,7 @@ pub(crate) const LIBRARY_MADE: &str = "library_made_function";
 pub(crate) fn body<'p>(
     lang: &TypeScript<'p>,
     f: Func<'p>,
-    env: &Env,
+    env: Option<&Env>,
     cancel: &Cancel,
 ) -> Summary<TypeScript<'p>> {
     let (summary, unhandled) = counted(|| body_of(lang, f, env, cancel));
@@ -60,7 +61,7 @@ pub(crate) fn body<'p>(
 fn body_of<'p>(
     lang: &TypeScript<'p>,
     f: Func<'p>,
-    env: &Env,
+    env: Option<&Env>,
     cancel: &Cancel,
 ) -> Summary<TypeScript<'p>> {
     let Some(sites) = sites(lang.sem, f, lang.style) else {
@@ -103,39 +104,43 @@ fn resolve<'p>(
     lang: &TypeScript<'p>,
     f: Func<'p>,
     site_index: usize,
-    env: &Env,
+    env: Option<&Env>,
 ) -> Vec<Target<TypeScript<'p>>> {
-    resolve_from_env(lang, f, site_index, env).unwrap_or_else(|| {
-        let (found, facts) = lang.sem.callee_with_facts(f, site_index, lang.style);
-        if facts.getter_result {
-            lang.note_uncovered(&[Uncovered::GetterResultCall]);
-        }
-        // the split of `function_typed_value` by where the function comes from: one note for each such edge, so the four add up to the total
-        if let Some(origin) = facts.function_typed {
-            for _ in found
-                .iter()
-                .filter(|resolved| **resolved == Resolved::Unknown(Why::FunctionTypedValue))
-            {
-                lang.note(origin.counter());
+    env.and_then(|env| resolve_from_env(lang, env, site_index))
+        .unwrap_or_else(|| {
+            let (found, facts) = lang.sem.callee_with_facts(f, site_index, lang.style);
+            if facts.getter_result {
+                lang.note_uncovered(&[Uncovered::GetterResultCall]);
             }
-        }
-        for _ in 0..facts.outside_root {
-            lang.note(OUTSIDE_ROOT);
-        }
-        found
-            .into_iter()
-            .map(|resolved| target(lang, resolved, facts.jsx))
-            .collect()
-    })
+            // the split of `function_typed_value` by where the function comes from: one note for each such edge, so the four add up to the total
+            if let Some(origin) = facts.function_typed {
+                for _ in found
+                    .iter()
+                    .filter(|resolved| **resolved == Resolved::Unknown(Why::FunctionTypedValue))
+                {
+                    lang.note(origin.counter());
+                }
+            }
+            for _ in 0..facts.outside_root {
+                lang.note(OUTSIDE_ROOT);
+            }
+            found
+                .into_iter()
+                .map(|resolved| target(lang, resolved, facts.jsx))
+                .collect()
+        })
 }
 
-/// What a tracked value says the site calls, if anything is tracked. Nothing is yet: context sensitivity starts by making this return `Some`.
+/// What the context layer says the site at `site_index` calls, when it knows. TC1 knows nothing, so this is always `None` and the engine
+/// answers. What a known member gives (a `Call` per function, the engine's answer beside an open value) is TC2's.
 fn resolve_from_env<'p>(
-    _lang: &TypeScript<'p>,
-    _f: Func<'p>,
-    _site_index: usize,
-    _env: &Env,
+    lang: &TypeScript<'p>,
+    env: &Env,
+    site_index: usize,
 ) -> Option<Vec<Target<TypeScript<'p>>>> {
+    let site = env.flow.sites.get(site_index)?;
+    let value = eval(lang, env, &site.callee);
+    debug_assert!(value.known().is_empty(), "TC1's eval knows nothing");
     None
 }
 
@@ -281,7 +286,7 @@ mod tests {
             .entry("src/main.ts", "constArrowCalled", 0, STYLE)
             .unwrap();
         let lang = TypeScript::new(&sem, STYLE);
-        let summary = body(&lang, both, &Env, &Cancel::new());
+        let summary = body(&lang, both, None, &Cancel::new());
         // `register(both); both();`: the call of `register`, the hand-over of `both` (the argument), then the call of `both`
         let shape: Vec<bool> = summary.sites.iter().map(|s| s.passed).collect();
         assert_eq!(shape, [false, true, false]);
