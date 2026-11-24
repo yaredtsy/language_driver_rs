@@ -298,12 +298,36 @@ fn each_property_finds_what_it_is_for() {
     let mut k = g.clone();
     k.edges[open].to = g.edges[pass].to.clone();
     assert!(never_fewer_edges(&g, &k).is_empty());
+    // another function at the same site: the site still has an edge, so only check (a) can see it
+    let mut m = g.clone();
+    m.edges[call].to = g.edges[pass].to.clone();
+    let found = never_fewer_edges(&g, &m);
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("is not in the graph with the layer on")),
+        "{found:?}"
+    );
+    assert!(
+        !found.iter().any(|p| p.contains("has no edge")),
+        "{found:?}"
+    );
 
     // a_context_is_a_function_of_its_key
     assert!(a_context_is_a_function_of_its_key(&[&g, &g]).is_empty());
     let found = a_context_is_a_function_of_its_key(&[&g, &k]);
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(found[0].contains("`each`"), "{found:?}");
+    // a context that is not finished in a graph is not compared there
+    let mut c = g.clone();
+    let each = c.edges[open].from.clone();
+    for context in &mut c.contexts {
+        if context.id == each {
+            context.status = typescript_analysis::Status::Frontier;
+        }
+    }
+    c.edges.remove(open);
+    assert!(a_context_is_a_function_of_its_key(&[&g, &c]).is_empty());
 }
 
 #[test]

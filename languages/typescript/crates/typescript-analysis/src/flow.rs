@@ -124,6 +124,6 @@ pub(crate) enum Expr {
     Def(DefId),
     /// The i-th anonymous function of this body.
     Anon(u32),
-    /// One of these: `c ? a : b`, `a || b`, `a ?? b`, `a && b`, a name with several functions. Never nested.
+    /// One of these: `c ? a : b`, `a || b`, `a ?? b`, `a && b`, a name with several functions. Never nested, never a member twice, always two or more.
     OneOf(Box<[Expr]>),
 }

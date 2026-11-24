@@ -308,6 +308,15 @@ fn the_hand_overs_of_flow_are_handed_overs_defs_and_the_other_names() {
     }
 }
 
+/// A one-of never lists a member twice and is never one member alone: an overloaded function is one def, and `flag ? over : over` is that def.
+#[test]
+fn a_one_of_never_repeats_a_member() {
+    let sem = open();
+    let flow = flow_of(&sem, "src/overloads.ts", "callsOver", 0);
+    let shown: Vec<String> = flow.sites.iter().map(|site| show(&sem, site)).collect();
+    assert_eq!(shown, ["call def over (data)", "call def over (data)"]);
+}
+
 /// The tables of the tour (`tests/fixtures/context/tour`), written out for review: what every later phase of the layer starts from.
 #[test]
 fn the_tables_of_the_tour_are_reviewed() {

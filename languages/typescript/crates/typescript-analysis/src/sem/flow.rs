@@ -269,15 +269,13 @@ impl Reader<'_, '_> {
                 if classes > 0 || functions.is_empty() {
                     return Expr::Unknown;
                 }
-                let mut defs: Vec<Expr> = functions
-                    .into_iter()
-                    .map(|function| Expr::Def(self.sem.def_id(function)))
-                    .collect();
-                if defs.len() == 1 {
-                    defs.remove(0)
-                } else {
-                    Expr::OneOf(defs.into())
-                }
+                // one symbol can have several declarations of one function (overloads, a script's function merged with a library's global):
+                // `one_of` keeps each function once
+                one_of(
+                    functions
+                        .into_iter()
+                        .map(|function| Expr::Def(self.sem.def_id(function))),
+                )
             }
             Kind::ConditionalExpression => match Conditional::expect(node) {
                 Some(conditional) => {
@@ -325,16 +323,27 @@ impl Reader<'_, '_> {
     }
 }
 
-/// `OneOf` of the members, one level: a member that is itself a `OneOf` puts its members in its place. No dedup.
+/// The only maker of `Expr::OneOf`, so that it is never nested, never lists a member twice and always has two or more. A member that is itself a `OneOf`
+/// puts its members in its place; a member equal to one before it is dropped (the first is kept, the order is kept); and when one member is left, it is
+/// the answer and not a `OneOf` of one.
 fn one_of(members: impl IntoIterator<Item = Expr>) -> Expr {
-    let mut flat = Vec::new();
+    let mut flat: Vec<Expr> = Vec::new();
     for member in members {
-        match member {
-            Expr::OneOf(inner) => flat.extend(Vec::from(inner)),
-            other => flat.push(other),
+        let parts = match member {
+            Expr::OneOf(inner) => Vec::from(inner),
+            other => vec![other],
+        };
+        for part in parts {
+            if !flat.contains(&part) {
+                flat.push(part);
+            }
         }
     }
-    Expr::OneOf(flat.into())
+    if flat.len() == 1 {
+        flat.remove(0)
+    } else {
+        Expr::OneOf(flat.into())
+    }
 }
 
 /// The operators of a binary expression whose value is data: arithmetic, shifts, bitwise, comparison, equality, `instanceof`, `in`, and the compound

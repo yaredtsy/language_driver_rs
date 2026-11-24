@@ -96,7 +96,7 @@ sites:
   call def each (def encode)
   call def relay (def join)
   call ? ()
-  call oneof(def open | def open) (?)
+  call def open (?)
   jsx def Panel (?)
   call def send (?)
   new ? ()
@@ -138,7 +138,7 @@ handed:
 == lineD
 params: 0
 sites:
-  call oneof(def open | def open) (?)
+  call def open (?)
 anons: 0
 handed:
   encode def encode
