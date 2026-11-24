@@ -58,7 +58,7 @@ pin, function by function. What changed, and in which file, is the last section 
 | Phase | Adds | The key holds | What the user sees | Core change | Size |
 |---|---|---|---|---|---|
 | **TC0** | counts on the four projects, four spikes | — | numbers in `ENGINE.md` that confirm or reorder the list below | none | S |
-| **TCL** | a function a library made is named, not "unresolved" (`setOpen` from `useState`). **Not part of the layer**: no key, no value, no table. Any time after TC0 | — | on `TaskDetailPanel`, 43 of the 86 unresolved calls become `External` | none | S, decided (D56) |
+| **TCL** | a function a library made is named, not "unresolved" (`setOpen` from `useState`). **Not part of the layer**: no key, no value, no table. Any time after TC0 | — | on `TaskDetailPanel`, 56 of the 86 unresolved calls become `External` (measured; the plan said 43) | none | S, **done** (`aa32042`, `fbee1b4`) |
 | **TC1** | `sem::flow`: a body as plain data, held by number; the interned key; the capability set; `Options::precision`; the test harness of the layer | nothing (the open key only) | nothing: every graph identical | none | M |
 | **TC2** | a function passed to a parameter, bound through the resolved signature | `Fn` per parameter | `run(handler)` shows `handler` under `run`; two callers of `run` are two contexts | the scenario level per scenario; a cut per function **only if N6 asks for it** | M |
 | **TC3** | locals, variables a nested def captures, module constants | + captured variables | a nested handler that calls its component's callback resolves | none | M |
