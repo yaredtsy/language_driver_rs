@@ -93,7 +93,7 @@ Each phase ends with these, and is not done without them:
 2. **Never fewer edges.** For every fixture, each edge of the default graph from a site the layer does not speak at is in the precise
    graph, and no site that had a call target has none. **And on the four projects**: the sites the default graph draws and the precise
    graph does not are counted in the sweep, and the count is 0 (a cut is the one way to lose a subtree, and no fixture reaches a cap).
-3. **No-reuse mode agrees.** Solving with the memo off gives the same edge set (a summary is a function of its key).
+3. **No-reuse mode agrees.** Solving with the memo off gives the same edge set (a summary is a function of its key); for core's flat solver, which walks a context once per request, the check is each context walked alone in a fresh request, [06](06-tc2-functions-through-parameters.md) §9).
 4. **Same twice.** `assert_deterministic` on the precise graphs; digests equal across two processes.
 5. **Its fixtures flip on purpose.** Each row the phase adds to the precise policy table has a fixture and a reviewed snapshot.
 6. **Numbers.** Contexts, walks, time and the open-site counts on the four projects, before and after, in `ENGINE.md`.

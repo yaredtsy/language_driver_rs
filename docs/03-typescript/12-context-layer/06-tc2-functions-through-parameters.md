@@ -79,10 +79,14 @@ have passed nothing.
 ```
 admit(g, i, v)
     flow(g).params[i] is not capable, or is a rest parameter   → unknown
-    an anonymous function among v's members                    → written AnonAny
     otherwise                                                   → v
-then: unknown slots at the end are dropped
+then, in the one normal form (KeyData::normal, at interning):
+    every anonymous function among a slot's members            → written AnonAny (one member however many arrows)
+    unknown slots at the end are dropped
 ```
+
+(Step 4's design moved `AnonAny` from `admit` to the normal form, where [03](03-design.md) §6 already had it: a key interned by any path is
+then erased the same way.)
 
 **The canonical form and the digest** (S-TC3's function, used for real for the first time):
 
@@ -119,6 +123,15 @@ The split counters follow the edges: a site that is answered no longer adds to `
 
 **Binding** goes through the signature the checker resolved ([03](03-design.md) §7): argument `i` to `Signature::parameters()[i]`, which is `flow(g).params[i]`. A function target that is not assignable to the callee's static type is counted `value_type_mismatch` and the engine's answer is kept beside it. `new C(a, b)` binds to the constructor that runs (`init`). A tagged template, a
 decorator and an accessor pass nothing in TC2 (every slot unknown). A JSX element passes nothing until TC4.
+
+**Decided at step 4's design (2026-11-24): binding is by position, and asks the checker nothing.** At run time JavaScript binds argument `i`
+to the `i`-th parameter of the function that runs, which is the implementation the target names; `Flow::params` is that list without `this`
+(step 2), so an overload's own shape does not matter and a rest is the implementation's. What would make the engine's target differ from the
+function the arguments go to was probed with the CLI at `36434b3`: `f.call(x, h)` and `f.apply(x, [h])` are an `External` (and
+`uncovered_call_apply`), so they bind nothing; `f.bind(x, a)` gives a new function type and `g(h)` on it is `function_typed_value`; `f.bind(x)`
+with no argument keeps `f`'s parameters and the engine names `f`, so position is right there too; `super(cb)` is a construction of the base
+class whose `init` is the constructor that runs, and an inherited constructor receives the arguments as they are. So step 4 calls no
+`get_resolved_signature_exported`; the checker comes in at step 5, for the tripwire (`value_type_mismatch`).
 
 ## 6. What a real key forces
 
@@ -192,6 +205,15 @@ solver's `Limits::reuse`). TC2 makes the first keys that differ, so it is the fi
 key. Step 4 decides how the check is made (a test-only switch in core, or a test that walks each context of a fixture's graph alone with its
 key and compares), and writes it before step 5. (Found closing TC1, 2026-11-24.)
 
+**Decided at step 4's design (2026-11-24): a test that walks each context alone, and no switch in core.** Core's flat solver walks a
+`(func, key)` at most once per request (`Run::seen` in `graph_within`); its memo is reused only across requests of one solver
+(`reuse_hits`). So "the memo off" changes nothing inside a request, and what could make a summary depend on more than its key is the
+language's own state: the `TypeScript` value, its `Keys`, the tables `Sem` keeps. The check removes all of it: for every context a graph
+walked (a test-only record in `TypeScript`, `walked`), a **fresh** `TypeScript` on the same `Sem` interns the context's `KeyData` alone, walks
+the def once, and its targets, written with stable ids and digests, must be exactly the graph's edges leaving that context. It is
+`calls/keyed.rs` `each_context_walked_alone_has_the_edges_of_the_graph`; step 4 runs it on its three fixtures, and from step 5 on it runs on
+every row of the context table.
+
 ## 10. Steps
 
 | # | Do | Proof |
@@ -260,5 +282,57 @@ unknown for `Expr::Param` until step 3), so no graph changes.
   rule and keeps `a = a` from looping. `capable` is not read by `eval`: whether a slot may hold a value is `admit`'s (step 4). `eval` is pure;
   `value_widened_set` is counted where a value is used (step 5). **A guard no step-3 test reaches:** `Lang::walk` filling `Env::key` from the key
   (every key is the open one until step 4); step 4's `callback-two-callers` proof is the first to reach it, and its review mutates it.
+  (Corrected at step 4's design: `run`'s body passes nothing on, so its summary is the same under any key; the fixture that reaches the guard
+  is `callback-passed-through`, where `relay`'s key decides `each`'s.)
+
+**Step 4, as decided for the build (2026-11-24).** Keys get their slots and their digests; the layer still answers nothing (`resolve_from_env`
+is `None`), so every edge is the engine's and only the contexts split. **`Caps::BUILT` stays empty**: `Precision::Precise` makes no key yet,
+every public graph is unchanged, and the step's proofs run in the crate with `with_layer(Some(Caps::PARAMS))`. `PARAMS` joins `BUILT` at step
+5, with the replacement of `tests/precise.rs`.
+
+- **`One::AnonAny`**, between `Anon` and `Undefined`: an anonymous function, which one not said. Made only by `KeyData::normal`, which writes
+  every `Anon` of every slot as it (`Value::map`, new: each member through a function, in the normal form again; wide stays wide). Python has
+  no lambda in a key at all; `AnonAny` keeps what a key needs (an arrow was passed: step 5 says `anonymous_function_called`, not
+  `function_typed_value`) and nothing that would split contexts (§1's last-but-one row).
+- **`key.rs`**: `admits(&Param)` (capable and not rest) and `bind(params, args, value_of) -> KeyData`: slot `i` is unknown when the parameter
+  is not admitted (its argument is not evaluated), or when a spread is at an argument `≤ i`; else `admit` of the argument's value, or of
+  `{Undefined}` when there is no argument `i`. Arguments past the last parameter are not read. `Keys::intern(data, stable)` takes the function
+  from a def to its `StableDef`; the open key is put in by `Keys::new` with digest zeros and never hashed; every other key's digest is
+  `analyzer_core::graph::digest(&CanonKey)`, made once, with a `debug_assert!` that no earlier key of the request has it (two normal forms,
+  one canonical form, would be merged by `Graph::new` without a word; only a bug in `canon` can do it, never a user's text).
+- **The canonical form** (private to `key.rs`): `enum Canon { Unknown, Data, Wide, Fn(StableDef), AnonAny, Undefined, Set { known: Vec<Canon>,
+  open: bool } }` and `struct CanonKey { params: Vec<Canon> }`, deriving `Serialize, PartialEq, Eq, PartialOrd, Ord`. A slot is written:
+  unknown → `Unknown`, data → `Data`, wide → `Wide`, one member and closed → that member, anything else → `Set` with the members **sorted as
+  `Canon`** (by `StableDef`, never by `DefId`, whose file numbers follow the order files were first asked for). `StableDef` is core's derive, so
+  a def writes `{"Path":{"module":…,"qname":…,"nth":…}}` or `{"Marked":…}`. No def is in `CanonKey`: `Lang::digest` sees the key alone, and the
+  context id carries the def. `CONTEXT_ID_VERSION` (1) is exported at step 5, when `Precise` first makes a digest a user sees.
+- **The pinned bytes**, computed by the reviewer before the build (`xxhash-rust` 0.8.19 and 0.8.21 × `serde_json` 1.0.151 and 1.0.154, all
+  the same; `M` is `Path{"src/main.ts", qname, 0}`):
+
+  | `params` | `digest` (first 8 hex) |
+  |---|---|
+  | `[Unknown, Fn(M a)]` | `406ed661` |
+  | `[Data]` · `[Wide]` | `6eee0fda` · `14bd25d0` |
+  | `[Fn(M a)]` · `[Fn(M b)]` · `[Fn(M handler)]` · `[Fn(M other)]` | `5d2e5760` · `ac15243e` · `3fa907f4` · `b6a599f6` |
+  | `[Fn(Marked "abc")]` | `64232037` |
+  | `[AnonAny]` · `[Undefined]` | `e33b6f72` · `600f3651` |
+  | `[Set{[Fn(Marked abc), Fn(M a), Fn(M b), AnonAny, Undefined], open}]` | `87063c79` |
+  | `[Set{[Fn(M a), Fn(M b)], closed}]` · `[Set{[Fn(M a)], open}]` | `37e1016d` · `811376e0` |
+
+- **`walk.rs`**: after either answer (`resolve_from_env` or the engine's), when the layer knows `PARAMS`, every `Target::Call(g, _)` and every
+  `Construct { init: Some((g, _)) }` gets `key_of(site, g)`: the open key when the site's arguments were not read (`args: None`: a tagged
+  template, a decorator, an accessor) or `g` has no table, else `bind(flow(g).params, args, eval in the caller's env)`, interned. A JSX
+  element's one argument is `Unknown`, so it passes the open key without a rule of its own. A hand-over stays under the open key (TC3 gives it
+  its captures). A class entry starts under the open key (D60).
+- **`calls.rs`**: `TypeScript::knows(Caps)`, `TypeScript::intern_key(KeyData)` (the `StableDef` of a def is `sem.describe(sem.func(def))`'s id),
+  and a test-only record `walked` of every `(func, key)` the walk was asked for.
+- **Fixtures and tests.** Two rows of the context table, written by the reviewer with this decision, whose snapshots are both halves the same
+  until step 5: `callback-two-callers` (`run(a)` in `first` and `again`, `run(b)` in `second`) and `callback-passed-through` (`relay(handler)`,
+  `relay(other)`, each `each(cb)`; `direct` calls `each(handler)`). One fixture outside the table, `tests/fixtures/keys`, with one entry per rule
+  of `bind` (fewer arguments, a default, a conditional, a spread, a rest, a leading parameter that cannot hold a function, a tagged template,
+  two arrows, `new`, an inherited constructor, `super`). In-crate tests in `src/calls/keyed.rs`: two contexts of `run` with the pinned
+  digests and, digests set aside, the default graph's edges exactly; one context of `each` per function passed, `handler`'s reached through
+  `relay` and directly (the guard of step 3, the key in `Env`, is reached here); each context of `keys` with its pinned digest; the layer with
+  no bit equal to the layer off; and the no-reuse check of §9.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
