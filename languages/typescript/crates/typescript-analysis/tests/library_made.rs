@@ -27,7 +27,7 @@ fn graph() -> typescript_analysis::Graph {
 }
 
 #[test]
-fn the_four_functions_a_library_made_are_externals_named_after_their_maker() {
+fn the_five_functions_a_library_made_are_externals_named_after_their_maker() {
     let graph = graph();
     let edges = edges_as_text(&graph, &tests_dir().join("policy"));
     let from_it: Vec<&str> = edges
@@ -50,6 +50,15 @@ fn the_four_functions_a_library_made_are_externals_named_after_their_maker() {
             "go | unresolved function_typed_value",
             "localMaker | call localMaker",
             "made | unresolved function_typed_value",
+            "useCallback | external hooks useCallback",
+            "remembered | unresolved function_typed_value",
+            "makeStore | external hooks makeStore",
+            "store | external hooks makeStore()",
+            "picked | unresolved function_typed_value",
+            "store.getState | external hooks store.getState",
+            "fromState | unresolved function_typed_value",
+            "handlers.get | external typescript:lib Map.get",
+            "fromMap | unresolved function_typed_value",
         ]
     );
 }
@@ -58,16 +67,16 @@ fn the_four_functions_a_library_made_are_externals_named_after_their_maker() {
 fn it_is_counted_beside_the_edge_and_leaves_the_function_typed_counts() {
     let graph = graph();
     let language = |key: &str| graph.stats.language.get(key).copied().unwrap_or(0);
-    assert_eq!(language("library_made_function"), 4);
-    assert_eq!(language("function_typed_value"), 3);
-    assert_eq!(language("function_typed_value_from_call_result"), 3);
+    assert_eq!(language("library_made_function"), 5);
+    assert_eq!(language("function_typed_value"), 7);
+    assert_eq!(language("function_typed_value_from_call_result"), 7);
 }
 
 #[test]
 fn the_breakdown_says_how_many() {
     let text = breakdown(&graph()).to_string();
     assert!(
-        text.contains("  library-made functions (named after the call that made them): 4\n"),
+        text.contains("  library-made functions (named after the call that made them): 5\n"),
         "{text}"
     );
 }

@@ -8,7 +8,9 @@ use super::hierarchy::{
     declarations_of, declarations_of_signature, declarations_of_union_symbol,
     is_property_function_value, symbol_of_declaration,
 };
-use super::view::{Binding, CallOrNew, elements_of, expression_of, initializer_of, spelled};
+use super::view::{
+    Binding, CallOrNew, TypeReference, elements_of, expression_of, initializer_of, spelled,
+};
 use super::*;
 
 /// What one declaration the engine found for a site is.
@@ -197,8 +199,9 @@ impl Sem {
     }
 
     /// The function a library made, when the callee of the site is one (D56, `docs/03-typescript/12-context-layer/11-later.md` §4.1): a plain name that is a
-    /// `const` bound straight from a call whose resolved signature is declared outside the project. `None` when any of the six conditions fails: the site then
-    /// stays a `function_typed_value`.
+    /// `const` bound straight from a call whose resolved signature is declared outside the project, **not in a bundled library** (condition 5), and whose written
+    /// return type is not a type parameter (condition 7: `useCallback<T>(cb: T): T` hands back the caller's own function). `None` when any of the seven
+    /// conditions fails: the site then stays a `function_typed_value`.
     fn library_made(
         &self,
         func: Func<'_>,
@@ -241,6 +244,19 @@ impl Sem {
             return None;
         }
         let package = self.package_of(file).unwrap_or_else(|| self.place_of(file));
+        // 5. … and not TypeScript's own library: what it hands back (`map.get(k)`) is a value the project put there
+        if package == BUNDLED_LIBS {
+            return None;
+        }
+        // 7. the library made it: a return type that is one of the type's parameters is the caller's own value handed back (`useCallback<T>(cb: T): T`)
+        if signature
+            .type_node()
+            .and_then(TypeReference::cast)
+            .and_then(|written| checker.get_symbol_at_location_exported(written.type_name()))
+            .is_some_and(|symbol| symbol.flags().intersects(SymbolFlags::TypeParameter))
+        {
+            return None;
+        }
         // 6. the call as written
         let maker = spell_call(made, ast::get_source_file_of_node(made)?.text())?;
         Some(Resolved::LibraryMade {

@@ -260,6 +260,17 @@ impl Binding {
 }
 
 view! {
+    /// `T`, `Array<T>`, `NS.T` written as a type: the name it refers to.
+    TypeReference: TypeReference
+}
+
+impl TypeReference {
+    pub(super) fn type_name(self) -> P<Node> {
+        self.0.as_type_reference_node().type_name()
+    }
+}
+
+view! {
     /// `static { … }` in a class: its block.
     StaticBlock: ClassStaticBlockDeclaration
 }

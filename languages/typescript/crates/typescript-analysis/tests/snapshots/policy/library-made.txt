@@ -15,3 +15,12 @@ library_made | useMutation | external hooks useMutation
 library_made | go | unresolved function_typed_value
 library_made | localMaker | call localMaker
 library_made | made | unresolved function_typed_value
+library_made | useCallback | external hooks useCallback
+library_made | remembered | unresolved function_typed_value
+library_made | makeStore | external hooks makeStore
+library_made | store | external hooks makeStore()
+library_made | picked | unresolved function_typed_value
+library_made | store.getState | external hooks store.getState
+library_made | fromState | unresolved function_typed_value
+library_made | handlers.get | external typescript:lib Map.get
+library_made | fromMap | unresolved function_typed_value

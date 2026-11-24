@@ -60,6 +60,9 @@ fn touch(node: P<Node>, text: &str) {
     if let Some(view) = Binding::cast(node) {
         seen(view.is_rest());
     }
+    if let Some(view) = TypeReference::cast(node) {
+        seen(view.type_name());
+    }
     if let Some(view) = StaticBlock::cast(node) {
         seen(view.body());
     }
@@ -201,6 +204,7 @@ fn every_cast_and_every_accessor_of_every_view_is_total_on_the_libraries_and_the
         ("TaggedTemplate", TaggedTemplate::KINDS),
         ("Conditional", Conditional::KINDS),
         ("Binding", Binding::KINDS),
+        ("TypeReference", TypeReference::KINDS),
         ("StaticBlock", StaticBlock::KINDS),
     ] {
         let missing: Vec<&Kind> = listed
