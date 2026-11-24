@@ -242,6 +242,23 @@ unknown for `Expr::Param` until step 3), so no graph changes.
   showed it). It says: a script's function merged with a library global of the same name.
 - Fixtures: `tests/fixtures/flow/src/params.ts` (every row of `capable`'s rule, names, defaults, writes) and `tests/fixtures/flow-js/src/params.js`
   (untyped, no config). The tour's snapshot changes in four tables only (`each`, `relay`, `twice` gain `param#0`; every table prints its
-  parameter rows).
+  parameter rows). **Built as decided, `4bb4e98`** ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)).
+
+**Step 3, as decided for the build (2026-11-24).** Values and `eval` answer; the walk still throws the answer away (`resolve_from_env` returns
+`None` until step 5), so no graph moves.
+
+- **`One`** gains `Anon(DefId, u32)` (the def it is written in, its number there) and `Undefined`, after `Fn`: the derived order is `Fn` by
+  def, then `Anon` by def and number, then `Undefined`. `AnonAny` is a key's way to write an anonymous function and comes with `admit`
+  (step 4). **`Value`** gains `contains(One)` and `without(One)` (the members less one, open as it was, wide stays wide). The laws' universe
+  becomes three functions, an anonymous function and `Undefined` (still five members, cap 3).
+- **`Env { flow, def, key: KeyData }`**: the def whose body it is (for `Anon`) and what its key holds (for `Param`). `Lang::walk` fills them
+  (`Keys::data(KeyId)`, new). Under the open key every slot is unknown.
+- **`eval`**: `Unknown` → unknown; `Data` → data; `Def(d)` → `{Fn(d)}`; `Anon(n)` → `{Anon(def, n)}`; `OneOf` → the join of its members;
+  `Param(i)` → the key's slot `i` (unknown when absent), unknown for a rest parameter, joined with unknown when `assigned`, and, when the
+  slot holds `Undefined` or is open and the parameter has a default, the slot without `Undefined` joined with the default's value. **A default
+  is evaluated seeing only the parameters before its own** (`eval_below(.., i)`: `Param(j)` for `j ≥ i` is unknown), which is the language's
+  rule and keeps `a = a` from looping. `capable` is not read by `eval`: whether a slot may hold a value is `admit`'s (step 4). `eval` is pure;
+  `value_widened_set` is counted where a value is used (step 5). **A guard no step-3 test reaches:** `Lang::walk` filling `Env::key` from the key
+  (every key is the open one until step 4); step 4's `callback-two-callers` proof is the first to reach it, and its review mutates it.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
