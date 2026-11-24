@@ -25,7 +25,7 @@ fn flow_of(sem: &Sem, file: &str, qualname: &str, occurrence: u16) -> Arc<Flow> 
         .unwrap_or_else(|| panic!("no table for {qualname}#{occurrence}"))
 }
 
-/// An expression as the tests write it: `?`, `data`, `def <qualname>`, `anon#<i>`, `oneof(<a> | <b>)`.
+/// An expression as the tests write it: `?`, `data`, `def <qualname>`, `param#<i>`, `anon#<i>`, `oneof(<a> | <b>)`.
 fn expr(sem: &Sem, expr: &Expr) -> String {
     match expr {
         Expr::Unknown => "?".into(),
@@ -34,6 +34,7 @@ fn expr(sem: &Sem, expr: &Expr) -> String {
             let func = sem.func(*id).expect("a def of this program");
             format!("def {}", sem.describe(func, STYLE).qualname)
         }
+        Expr::Param(index) => format!("param#{index}"),
         Expr::Anon(index) => format!("anon#{index}"),
         Expr::OneOf(members) => {
             let members: Vec<String> = members
@@ -72,6 +73,46 @@ fn show(sem: &Sem, site: &SiteFlow) -> String {
     format!("{kind} {} ({args}){anon}", expr(sem, &site.callee))
 }
 
+/// A parameter's row as `#<index>`, then ` rest`, ` pattern` (not named), ` default <expr>`, ` assigned`, ` capable`, each only when it holds.
+fn show_param(sem: &Sem, index: usize, param: &Param) -> String {
+    let mut out = format!("#{index}");
+    if param.rest {
+        out.push_str(" rest");
+    }
+    if !param.named {
+        out.push_str(" pattern");
+    }
+    if let Some(default) = &param.default {
+        out.push_str(&format!(" default {}", expr(sem, default)));
+    }
+    if param.assigned {
+        out.push_str(" assigned");
+    }
+    if param.capable {
+        out.push_str(" capable");
+    }
+    out
+}
+
+/// The parameter rows of a def, shown.
+fn rows(sem: &Sem, file: &str, qualname: &str, occurrence: u16) -> Vec<String> {
+    flow_of(sem, file, qualname, occurrence)
+        .params
+        .iter()
+        .enumerate()
+        .map(|(index, param)| show_param(sem, index, param))
+        .collect()
+}
+
+/// The sites of a def, shown.
+fn sites(sem: &Sem, file: &str, qualname: &str, occurrence: u16) -> Vec<String> {
+    flow_of(sem, file, qualname, occurrence)
+        .sites
+        .iter()
+        .map(|site| show(sem, site))
+        .collect()
+}
+
 /// A hand-over as `<text at its place> <expr>`, and ` written` for a def written inside an expression.
 fn show_handed(sem: &Sem, text: &str, handed: &HandedFlow) -> String {
     let name = handed
@@ -87,7 +128,7 @@ fn holds_a_def(expr: &Expr) -> bool {
     match expr {
         Expr::Def(_) => true,
         Expr::OneOf(members) => members.iter().any(holds_a_def),
-        Expr::Unknown | Expr::Data | Expr::Anon(_) => false,
+        Expr::Unknown | Expr::Data | Expr::Param(_) | Expr::Anon(_) => false,
     }
 }
 
@@ -100,13 +141,13 @@ fn the_table_of_flow_reads_each_callee_and_argument() {
         shown,
         [
             "call def target (data, data, ...?)",
-            "call ? (?, def held, def held, def held)",
+            "call ? (param#0, def held, def held, def held)",
             "call ? (anon#0)",
             "call def target (data) in anon#0",
             "call ? (anon#1, def flow.<locals>.named)",
-            "call ? (oneof(def held | def target), oneof(? | def held), oneof(? | def held), oneof(? | def held))",
+            "call ? (oneof(def held | def target), oneof(param#0 | def held), oneof(param#0 | def held), oneof(param#0 | def held))",
             "call ? (data, data, data, data, data, data, data)",
-            "call ? (?, ?, ?, ?, ?, ?)",
+            "call ? (?, ?, ?, ?, ?, param#1)",
             "new ? ()",
             "jsx def Card (?)",
             "call ? (anon#2)",
@@ -283,6 +324,7 @@ fn the_hand_overs_of_flow_are_handed_overs_defs_and_the_other_names() {
     assert_eq!(
         known,
         [
+            "p param#0",
             "held def held",
             "held def held",
             "held def held",
@@ -295,15 +337,13 @@ fn the_hand_overs_of_flow_are_handed_overs_defs_and_the_other_names() {
             "held def held",
             "held def held",
             "held def held",
+            "q param#1",
         ]
     );
     // every other entry is a name nothing is known of
     for (entry, shown) in flow.handed.iter().zip(&all) {
         if entry.value == Expr::Unknown {
-            assert!(
-                ["p ?", "q ?", "Shape ?"].contains(&shown.as_str()),
-                "{shown}"
-            );
+            assert!(["Shape ?"].contains(&shown.as_str()), "{shown}");
         }
     }
 }
@@ -344,9 +384,13 @@ fn the_tables_of_the_tour_are_reviewed() {
             .flow(sem.def_id(*func), STYLE)
             .unwrap_or_else(|| panic!("no table for {name}"));
         out.push_str(&format!("== {name}\n"));
-        match flow.params.iter().position(|param| param.rest) {
-            Some(rest) => out.push_str(&format!("params: {}, rest at {rest}\n", flow.params.len())),
-            None => out.push_str(&format!("params: {}\n", flow.params.len())),
+        if flow.params.is_empty() {
+            out.push_str("params: none\n");
+        } else {
+            out.push_str("params:\n");
+            for (index, param) in flow.params.iter().enumerate() {
+                out.push_str(&format!("  {}\n", show_param(&sem, index, param)));
+            }
         }
         if flow.sites.is_empty() {
             out.push_str("sites: none\n");
@@ -370,4 +414,123 @@ fn the_tables_of_the_tour_are_reviewed() {
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/context/tour.flow.txt"),
         &out,
     );
+}
+
+/// What each parameter's row says: rest, pattern, default, assigned, capable (`06-tc2` §2).
+#[test]
+fn the_parameter_rows_say_what_each_parameter_is() {
+    let sem = open();
+    let p = "src/params.ts";
+    let row = |qualname: &str, occurrence: u16| rows(&sem, p, qualname, occurrence);
+    // s n b g y u z lit e su arr ro: data; tup: not looked into; rec: the depth stops; v tl: data; brand: an intersection; f o a k mix fns opt
+    assert_eq!(
+        row("kinds", 0),
+        [
+            "#0",
+            "#1",
+            "#2",
+            "#3",
+            "#4",
+            "#5",
+            "#6",
+            "#7",
+            "#8",
+            "#9",
+            "#10",
+            "#11",
+            "#12 capable",
+            "#13 capable",
+            "#14",
+            "#15",
+            "#16 capable",
+            "#17 capable",
+            "#18 capable",
+            "#19 capable",
+            "#20 capable",
+            "#21 capable",
+            "#22 capable",
+            "#23 capable",
+        ]
+    );
+    assert_eq!(row("generic", 0), ["#0 capable", "#1 capable"]);
+    assert_eq!(
+        row("uses", 0),
+        ["#0 capable", "#1 pattern", "#2 rest capable"]
+    );
+    assert_eq!(
+        row("reassigned", 0),
+        ["#0 assigned capable", "#1 assigned capable", "#2"]
+    );
+    assert_eq!(row("quoted", 0), ["#0 capable"]);
+    assert_eq!(row("shadowed", 0), ["#0 capable"]);
+    assert_eq!(
+        row("defaults", 0),
+        [
+            "#0 default def noop capable",
+            "#1 default param#0 capable",
+            "#2 default data",
+            "#3 capable"
+        ]
+    );
+    assert_eq!(row("overParams", 0), ["#0 capable", "#1"]);
+    assert_eq!(row("Holder.constructor", 0), ["#0 capable"]);
+    assert_eq!(row("Holder.handler", 0), ["#0 capable"]);
+    assert_eq!(row("Holder.run", 0), Vec::<String>::new());
+    assert_eq!(
+        rows(&sem, "src/flow.tsx", "flow", 0),
+        ["#0 assigned capable", "#1"]
+    );
+    assert_eq!(rows(&sem, "src/flow.tsx", "target", 0), ["#0", "#1 rest"]);
+}
+
+/// A name that is a parameter of the def's own declaration is that place; any other name is not.
+#[test]
+fn a_name_of_a_parameter_is_its_place() {
+    let sem = open();
+    let p = "src/params.ts";
+    let site = |qualname: &str, occurrence: u16| sites(&sem, p, qualname, occurrence);
+    assert_eq!(
+        site("uses", 0),
+        [
+            "call param#0 ()",
+            "call ? ()",
+            "call ? ()",
+            "call ? (anon#0)",
+            "call ? () in anon#0",
+            "call ? (anon#1)",
+            "call param#0 () in anon#1",
+            "call ? (param#0)",
+        ]
+    );
+    // a parameter of the enclosing def: TC3
+    assert_eq!(site("uses.<locals>.inner", 0), ["call ? ()"]);
+    assert_eq!(
+        site("reassigned", 0),
+        ["call param#0 ()", "call param#1 ()"]
+    );
+    assert_eq!(site("quoted", 0), ["call ? (data)", "call param#0 ()"]);
+    assert_eq!(site("shadowed", 0), ["call ? (anon#0)", "call param#0 ()"]);
+    assert_eq!(
+        site("defaults", 0),
+        ["call param#0 ()", "call param#1 ()", "call param#3 ()"]
+    );
+    assert_eq!(site("overParams", 0), ["call param#0 ()"]);
+    assert_eq!(site("Holder.constructor", 0), ["call param#0 ()"]);
+    assert_eq!(site("Holder.handler", 0), ["call param#0 ()"]);
+    assert_eq!(site("Holder.run", 0), ["call ? ()"]);
+}
+
+/// An untyped parameter is `any`, which can hold a function.
+#[test]
+fn an_untyped_parameter_is_capable() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/flow-js");
+    let sem = Sem::open(&root, Path::new("src/params.js")).unwrap();
+    let p = "src/params.js";
+    assert_eq!(rows(&sem, p, "each", 0), ["#0 capable"]);
+    assert_eq!(sites(&sem, p, "each", 0), ["call param#0 ()"]);
+    assert_eq!(
+        rows(&sem, p, "withDefault", 0),
+        ["#0 default anon#0 capable"]
+    );
+    assert_eq!(sites(&sem, p, "withDefault", 0), ["call param#0 ()"]);
 }

@@ -315,6 +315,16 @@ impl Parameter {
             .dot_dot_dot_token()
             .is_some()
     }
+
+    /// The declared name: an identifier, or a binding pattern.
+    pub(super) fn name(self) -> P<Node> {
+        self.0.as_parameter_declaration().name()
+    }
+
+    /// `= default`.
+    pub(super) fn initializer(self) -> Option<P<Node>> {
+        self.0.as_parameter_declaration().initializer()
+    }
 }
 
 /// The spelling of a name node, from its text as written in `file_text` (`typescript_syntax::spell_name`): a computed name is `[Symbol.iterator]` as written. It

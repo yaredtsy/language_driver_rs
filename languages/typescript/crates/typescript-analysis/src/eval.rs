@@ -20,6 +20,8 @@ pub(crate) fn eval(_world: &impl World, _env: &Env, expr: &Expr) -> Value {
         Expr::Unknown => Value::unknown(),
         Expr::Data => Value::unknown(),
         Expr::Def(_) => Value::unknown(),
+        // step 3: the key's value for that parameter
+        Expr::Param(_) => Value::unknown(),
         Expr::Anon(_) => Value::unknown(),
         Expr::OneOf(_) => Value::unknown(),
     }
@@ -59,6 +61,7 @@ mod tests {
             Expr::Unknown,
             Expr::Data,
             Expr::Def(def),
+            Expr::Param(0),
             Expr::Anon(0),
             Expr::OneOf([Expr::Def(def), Expr::Data].into()),
         ];

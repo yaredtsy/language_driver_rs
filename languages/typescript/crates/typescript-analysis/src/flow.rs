@@ -64,11 +64,20 @@ pub(crate) struct HandedFlow {
     pub(crate) written: bool,
 }
 
-/// One parameter of a declaration.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// One parameter of a declaration (`06-tc2` §2).
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Param {
     /// `...rest`.
     pub(crate) rest: bool,
+    /// Declared by a plain name (`cb`), not a binding pattern (`{ onClose }`): only such a parameter is ever an `Expr::Param`.
+    pub(crate) named: bool,
+    /// The default's expression, read in this def's own table (so a default naming an earlier parameter is `Param(j)`).
+    pub(crate) default: Option<Expr>,
+    /// The body writes the parameter (`cb = cb || noop`), in a nested def or an anonymous function too. Looked for only when the parameter is named and
+    /// capable; `false` on the others (they are never in a key).
+    pub(crate) assigned: bool,
+    /// Its declared type can hold a function, an object or an instance (`holds_only_data` is false). A binding pattern is not capable until TC4.
+    pub(crate) capable: bool,
 }
 
 /// A site of the body, read.
@@ -113,7 +122,7 @@ pub(crate) struct AnonFlow {
     pub(crate) span: Span,
 }
 
-/// What an expression is, as far as the code alone says. Later phases add variants (`Param`, `Var`, `Member`, `Object`, `New`, `This`, `Call`).
+/// What an expression is, as far as the code alone says. Later phases add variants (`Var`, `Member`, `Object`, `New`, `This`, `Call`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Expr {
     /// Anything not below.
@@ -122,6 +131,8 @@ pub(crate) enum Expr {
     Data,
     /// A name or a function the checker resolves to a project def with a body.
     Def(DefId),
+    /// The i-th parameter of this def's own declaration (the place in `Flow::params`).
+    Param(u32),
     /// The i-th anonymous function of this body.
     Anon(u32),
     /// One of these: `c ? a : b`, `a || b`, `a ?? b`, `a && b`, a name with several functions. Never nested, never a member twice, always two or more.
