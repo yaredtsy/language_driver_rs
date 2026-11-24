@@ -768,6 +768,8 @@ dependencies = [
  "bitflags",
  "indexmap",
  "memory-stats",
+ "serde",
+ "serde_json",
  "smallvec",
  "tsrs_ast",
  "tsrs_checker",

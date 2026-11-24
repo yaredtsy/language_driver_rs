@@ -1,0 +1,73 @@
+== main
+-- off
+main
+  relay
+    each
+  handler [Passed]
+  relay
+    each
+  other [Passed]
+  direct
+    each
+    handler [Passed]
+edges:
+direct | each | call each
+direct | handler | pass handler
+each | f | unresolved function_typed_value
+main | relay | call relay
+main | handler | pass handler
+main | relay | call relay
+main | other | pass other
+main | direct | call direct
+relay | each | call each
+-- on
+main
+  relay
+    each
+  handler [Passed]
+  relay
+    each
+  other [Passed]
+  direct
+    each
+    handler [Passed]
+edges:
+direct | each | call each
+direct | handler | pass handler
+each | f | unresolved function_typed_value
+main | relay | call relay
+main | handler | pass handler
+main | relay | call relay
+main | other | pass other
+main | direct | call direct
+relay | each | call each
+== relay
+-- off
+relay
+  each
+edges:
+each | f | unresolved function_typed_value
+relay | each | call each
+-- on
+relay
+  each
+edges:
+each | f | unresolved function_typed_value
+relay | each | call each
+== direct
+-- off
+direct
+  each
+  handler [Passed]
+edges:
+direct | each | call each
+direct | handler | pass handler
+each | f | unresolved function_typed_value
+-- on
+direct
+  each
+  handler [Passed]
+edges:
+direct | each | call each
+direct | handler | pass handler
+each | f | unresolved function_typed_value

@@ -27,7 +27,9 @@ tsrs_vfs          = { workspace = true }
 indexmap          = { workspace = true }
 bitflags          = { workspace = true }
 smallvec          = { workspace = true }
+serde             = { workspace = true }
 
 [dev-dependencies]
 analyzer-testkit = { workspace = true }
 memory-stats     = "1.2"
+serde_json       = { workspace = true }

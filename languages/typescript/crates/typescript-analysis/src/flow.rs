@@ -89,7 +89,6 @@ pub(crate) struct SiteFlow {
     pub(crate) callee: Expr,
     /// `Some` for a call or a `new` (its arguments) and for JSX (one `Unknown`: the attributes, TC4). `None` for the other kinds: **not read**, which a
     /// later phase takes as unknown, never as "no argument".
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) args: Option<Box<[Arg]>>,
     /// The innermost anonymous function whose span holds the site.
     #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]

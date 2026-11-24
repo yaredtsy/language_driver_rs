@@ -2,8 +2,9 @@
 //!
 //! One context per function, every context under the open key `KeyId::OPEN` (digest zeros): TypeScript is not context sensitive yet
 //! (`docs/03-typescript/08-later-context-sensitive.md`). The seam is kept: a target is `Target::Call(func, KeyId::OPEN)`, and `walk` is the only place
-//! that will make another key. With `Precision::Precise` the layer reads each walked body's table (`Lang::walk`) and asks `eval` about each callee; in TC1 it
-//! knows nothing, so the answer is the engine's.
+//! that makes another key (`walk::key_of`, when the layer knows `Caps::PARAMS`: each call into project code passes the key its arguments make). With
+//! `Precision::Precise` the layer reads each walked body's table (`Lang::walk`) and asks `eval` about each callee; it draws nothing yet, so every edge is the
+//! engine's and only the contexts split.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -20,7 +21,7 @@ use crate::caps::Caps;
 use crate::env::Env;
 use crate::eval::World;
 use crate::flow::{DefId, Flow};
-use crate::key::{Key, KeyId, Keys};
+use crate::key::{Key, KeyData, KeyId, Keys};
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
 use crate::walk;
 
@@ -79,10 +80,13 @@ pub(crate) struct TypeScript<'p> {
     /// The ids of the defs described that have a marker another def of their file owns (D34). Described more than once, so a set; `finish` counts the ones the
     /// graph holds.
     demoted: RefCell<HashSet<StableDef>>,
-    /// Every key of this request (`key.rs`); `digest` reads it, and the walk will intern into it from TC2 on.
+    /// Every key of this request (`key.rs`); `digest` reads it, and the walk interns into it (`intern_key`).
     keys: RefCell<Keys>,
     /// Whether the context layer runs, and with which bits (`Precision::layer`). `None`: no table is read and no `Env` is built.
     layer: Option<Caps>,
+    /// Every `(func, key)` `Lang::walk` was asked for, in order: `calls/keyed.rs` walks each again alone.
+    #[cfg(test)]
+    walked: Vec<(Func<'p>, KeyId)>,
 }
 
 impl<'p> TypeScript<'p> {
@@ -95,7 +99,25 @@ impl<'p> TypeScript<'p> {
             demoted: RefCell::new(HashSet::new()),
             keys: RefCell::new(Keys::new()),
             layer: None,
+            #[cfg(test)]
+            walked: Vec::new(),
         }
+    }
+
+    /// Whether the context layer runs with all of `caps`.
+    pub(crate) fn knows(&self, caps: Caps) -> bool {
+        self.layer.is_some_and(|layer| layer.contains(caps))
+    }
+
+    /// The number of the key that holds `data`, interned in this request's `Keys`. A def in it is named by the id the graph gives it.
+    pub(crate) fn intern_key(&self, data: KeyData) -> KeyId {
+        self.keys.borrow_mut().intern(data, |def| {
+            let func = self
+                .sem
+                .func(def)
+                .expect("a value names a def of this request's program");
+            self.sem.describe(func, self.style).id
+        })
     }
 
     /// The same, with the context layer as `layer` says.
@@ -160,6 +182,8 @@ impl<'p> Lang for TypeScript<'p> {
     }
 
     fn walk(&mut self, f: Self::Func, key: &Self::Key, cancel: &Cancel) -> Summary<Self> {
+        #[cfg(test)]
+        self.walked.push((f, *key));
         // the layer on: this body's table, read once per program and kept (`Sem::flow`); off, nothing is read at all
         let def = self.sem.def_id(f);
         let env = self.layer.and_then(|_| World::flow(self, def)).map(|flow| {
@@ -1154,3 +1178,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod keyed;

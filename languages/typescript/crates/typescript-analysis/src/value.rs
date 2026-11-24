@@ -8,14 +8,17 @@ use crate::flow::DefId;
 /// The most members a value lists before it is wide (`KeyPolicy::max_set`, §12).
 pub(crate) const MAX_SET: usize = 8;
 
-/// One thing a value can hold: a function, an anonymous function, or "nothing was passed". TC4 adds classes and objects, TC5 instances. The derived order is
-/// `Fn` by def, then `Anon` by def and number, then `Undefined`.
+/// One thing a value can hold: a function, an anonymous function, an anonymous function of which one is not said (how a key holds one), or "nothing was
+/// passed". TC4 adds classes and objects, TC5 instances. The derived order is `Fn` by def, then `Anon` by def and number, then `AnonAny`, then `Undefined`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum One {
     /// A def with a body.
     Fn(DefId),
     /// An anonymous function: the def it is written in, and its number among that body's anonymous functions (`Flow::anons`).
     Anon(DefId, u32),
+    /// An anonymous function, which one not said: how a key holds one (`KeyData::normal` writes every `Anon` of a slot as this), so callers that pass
+    /// different arrows share a context. Never made by `eval` from an expression.
+    AnonAny,
     /// Nothing was passed: a parameter with this value starts from its default.
     Undefined,
 }
@@ -101,6 +104,14 @@ impl Value {
             self.is_open(),
             MAX_SET,
         )
+    }
+
+    /// Each member through `f`, in the normal form again (sorted, none twice); open as it was; a wide value stays wide.
+    pub(crate) fn map(&self, f: impl FnMut(One) -> One) -> Value {
+        if self.is_wide() {
+            return Value::wide();
+        }
+        of_capped(self.known().iter().copied().map(f), self.is_open(), MAX_SET)
     }
 
     /// The least value that holds both: wide if either is; else the union of the members, open if either is, wide past the cap. Pure: whoever joins counts
@@ -270,6 +281,27 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn map_keeps_the_normal_form() {
+        let anon = |index| One::Anon(DefId::new(0, 0, Some(0)), index);
+        let to_any = |one| match one {
+            One::Anon(..) => One::AnonAny,
+            other => other,
+        };
+        let value = Value::of([anon(0), anon(1), f(1)], false);
+        let mapped = value.map(to_any);
+        assert_eq!(mapped, Value::of([f(1), One::AnonAny], false));
+        assert_eq!(mapped.known(), [f(1), One::AnonAny]);
+        assert!(!mapped.is_open());
+        assert!(
+            Value::of([anon(0), anon(1), f(1)], true)
+                .map(to_any)
+                .is_open()
+        );
+        assert!(Value::wide().map(to_any).is_wide());
+        assert_eq!(Value::unknown().map(to_any), Value::unknown());
     }
 
     #[test]

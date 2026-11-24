@@ -8,9 +8,10 @@ use analyzer_core::solve::{Cancel, SiteCalls, Summary, Target};
 use typescript_syntax::MarkerStyle;
 
 use crate::calls::TypeScript;
+use crate::caps::Caps;
 use crate::env::Env;
-use crate::eval::eval;
-use crate::key::{Key, KeyId};
+use crate::eval::{World, eval};
+use crate::key::{Key, KeyId, bind};
 use crate::sem::{Func, Init, Resolved, Sem, UNHANDLED_KEY, Uncovered, Why, counted};
 
 /// The reason of an `Unresolved` edge, and the key of its counter in `Stats.language`, for a def whose node is missing from the program's tree: a bug
@@ -87,6 +88,7 @@ fn body_of<'p>(
         if let Some(at) = held.at {
             found.push(SiteCalls::passed(
                 Site::new(at.start.saturating_sub(start), at.end.saturating_sub(start)),
+                // a hand-over passes nothing it knows yet: TC3 gives it what the def captures
                 vec![Target::Call(held.func, KeyId::OPEN)],
             ));
         }
@@ -99,14 +101,16 @@ fn body_of<'p>(
 }
 
 /// What the site at `site_index` of `f` can reach. In its final form already: ask what was tracked on this path first, and the engine's resolver
-/// otherwise. Nothing is tracked yet, so this is the engine's answer.
+/// otherwise. Nothing is drawn from what is tracked yet, so the targets are the engine's; when the layer knows `PARAMS` each call into project code carries
+/// the key its arguments make (`key_of`), made here and nowhere else.
 fn resolve<'p>(
     lang: &TypeScript<'p>,
     f: Func<'p>,
     site_index: usize,
     env: Option<&Env>,
 ) -> Vec<Target<TypeScript<'p>>> {
-    env.and_then(|env| resolve_from_env(lang, env, site_index))
+    let targets = env
+        .and_then(|env| resolve_from_env(lang, env, site_index))
         .unwrap_or_else(|| {
             let (found, facts) = lang.sem.callee_with_facts(f, site_index, lang.style);
             if facts.getter_result {
@@ -128,11 +132,56 @@ fn resolve<'p>(
                 .into_iter()
                 .map(|resolved| target(lang, resolved, facts.jsx))
                 .collect()
-        })
+        });
+    match env {
+        Some(env) if lang.knows(Caps::PARAMS) => targets
+            .into_iter()
+            .map(|target| keyed(lang, env, site_index, target))
+            .collect(),
+        _ => targets,
+    }
+}
+
+/// `target` with the key its call passes (`06-tc2` §5): a call, and the constructor a construction runs, get `key_of`; anything else is as it was.
+fn keyed<'p>(
+    lang: &TypeScript<'p>,
+    env: &Env,
+    site_index: usize,
+    target: Target<TypeScript<'p>>,
+) -> Target<TypeScript<'p>> {
+    match target {
+        Target::Call(func, _) => Target::Call(func, key_of(lang, env, site_index, func)),
+        Target::Construct {
+            class,
+            init: Some((init, _)),
+        } => Target::Construct {
+            class,
+            init: Some((init, key_of(lang, env, site_index, init))),
+        },
+        other => other,
+    }
+}
+
+/// The key the site at `site_index` passes to `callee`: its arguments, evaluated in this body's env, bound to the callee's parameters (`key::bind`). The
+/// open key when the site's arguments were not read (`args: None`: a tagged template, a decorator, an accessor) or the callee has no table. A JSX
+/// element's one argument is `Unknown` until TC4, so it passes the open key with no rule of its own.
+fn key_of<'p>(lang: &TypeScript<'p>, env: &Env, site_index: usize, callee: Func<'p>) -> KeyId {
+    let Some(args) = env
+        .flow
+        .sites
+        .get(site_index)
+        .and_then(|site| site.args.as_deref())
+    else {
+        return KeyId::OPEN;
+    };
+    let Some(flow) = World::flow(lang, lang.sem.def_id(callee)) else {
+        return KeyId::OPEN;
+    };
+    lang.intern_key(bind(&flow.params, args, |expr| eval(lang, env, expr)))
 }
 
 /// What the context layer says the site at `site_index` calls, when it knows. It evaluates the callee and still answers `None`, so the engine answers
-/// every site; step 5 answers from the value (a `Call` per function, the engine's answer beside an open value).
+/// every site (its targets are keyed by `resolve`, not here); step 5 answers from the value (a `Call` per function, the engine's answer beside an open value).
 fn resolve_from_env<'p>(
     lang: &TypeScript<'p>,
     env: &Env,
