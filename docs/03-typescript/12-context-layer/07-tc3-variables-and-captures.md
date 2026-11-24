@@ -34,9 +34,10 @@ unresolved today: the default graph shows `a` alone**, with nothing that says `b
 takes the declaration of the checker's resolved signature (`sem/resolve.rs`, `is_named_callee`), and the type of `h` is the type of `a`:
 `const h = flag ? a : b` reduces to one type (it is not a union, so `is_union_callee` does not see it) and `let h = a` keeps `a`'s type
 after `h = b`. `const h = a; run(h)` is as the table says (`run` empty, `a` `[Passed]`). A written type (`const h: () => void = a; h()`) makes
-the call `function_typed_value`, which is the tour's line c now. **Whether TC3 may add `b` where the engine named `a` through a variable
-is Q-TC8** (`docs/07-decisions-and-questions.md`); §7's "where the layer may speak" says only "by name", and this is not a call the code
-fixes by name. The default graph keeps the engine's answer either way ("follow the engine").
+the call `function_typed_value`, which is the tour's line c now. **TC3 adds `b` where the engine named `a` through a variable: D59**
+(owner, 2026-11-24, answering Q-TC8: show every possible call, as Python joins both branches of an `if`). The layer adds and never removes
+`a`; a variable with an assignment the table does not model stays open, so the engine's answer is kept beside what is known. The default
+graph keeps the engine's answer ("follow the engine"). TC3's sweep counts how many named callees are variables holding more than one function.
 ## 2. `sem`: every variable, and everything assigned to it
 
 ```rust

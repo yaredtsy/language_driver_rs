@@ -100,7 +100,7 @@ is how every "today" cell of this plan gets checked.
 **Checked 2026-11-24** (TC1 step 5's design, with the analyzer of `9530a7d` on this program): lines a, d, e, f, i as written; b, g, h with
 more than the cell said (now written in); **c was wrong**: written `const h = encode; h();`, the call is already `encode` today, because the
 checker's type of `h` is `encode`'s and the resolver takes the declaration of the resolved signature. The line now writes the type,
-`const h: () => void = encode`, which makes it the unresolved call TC3 is for. The same rule hides a second function: see Q-TC8 and
+`const h: () => void = encode`, which makes it the unresolved call TC3 is for. The same rule hides a second function: see D59 and
 [07](07-tc3-variables-and-captures.md) §1.
 
 ## 3. Values
@@ -343,6 +343,7 @@ answer depends on a value:
 |---|---|
 | `Unresolved`: `function_typed_value`, `any_or_untyped`, `no_declaration` when the callee is a call (`f()()`), the non-member part of `union_receiver` | may replace it |
 | a method **reached through a receiver** (`w.write()`), project or external | may replace it with the method of the receiver's tracked class, when the value is complete (TC5) |
+| a function named **through a variable** (`const h = flag ? a : b; h()`: the engine names `a`, from `h`'s type) | may **add** the other functions the variable holds, never remove the engine's (D59, TC3) |
 | a function, a `const` arrow, an import, a class, by name; `super(…)`; an external function by name | **never**. The layer still builds the callee's key |
 | `computed_name`, `decorator_result`, `decl_not_in_outline`, `anonymous_function_called` | not before the phase that names it |
 
