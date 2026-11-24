@@ -196,4 +196,20 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
   (time `T_after`, memory `M_flows`); on a second fresh project, the tables alone (`T_cold`). It passes when `T_cold ≤ T_sweep` and
   `M_flows ≤ 1.25 × M_sweep`, release build, on the four projects (run by the reviewer: the coder cannot see them).
 
+**Step 3, as decided for the build (2026-11-24).** `Flow` gains `handed: Box<[HandedFlow]>`, `HandedFlow { at: Option<Span>, value: Expr,
+written: bool }`, sorted by `at` (start, then end), ties in the order made. It is made from two sources, so that the table can never
+see a hand-over D22 does not:
+
+- **every `Handed` of `Sem::handed_over(func)`**, as `HandedFlow { at, value: Def(def_id(func)), written }`. `handed_over` is the one
+  place that knows how a name in a hand-over position stands for a def (a literal's members, a destructured member, an alias); the table
+  does not resolve it a second way;
+- **every name of `Body::refs` whose span no `Handed` has**, as `HandedFlow { at: Some(span), value: expr_of(node), written: false }`: a
+  name `handed_over` found no def for. Today that is a parameter, a local, a class, a declared function: `Unknown`. TC2 makes a parameter
+  `Param`, TC3 a local `Var`; that is why they are in the table at all.
+
+`handed_over` is called before the checker is taken (it takes its own). Its `uncovered` and `signatures_passed` are the walk's to count,
+not the table's. **The proof** (§7, "the table sees what D22 sees"): for every def of the fixtures and of the real projects, the
+`(at, def)` pairs of `handed_over` equal the `Def`s of `flow.handed`, **and no entry of the second kind holds a `Def`** (inside a `OneOf`
+either). A failure there means `expr_of` and `handed_over` disagree on what a name is; it is reported, not patched over.
+
 Next: [`06-tc2-functions-through-parameters.md`](06-tc2-functions-through-parameters.md)
