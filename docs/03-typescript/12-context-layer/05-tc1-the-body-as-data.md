@@ -300,4 +300,17 @@ once; it is two sittings. **4a**:
 - **The tour's tables**, `tests/snapshots/context/tour.flow.txt` (§7), written by an in-crate test with the text forms of
   `sem/flow/tests.rs` (`show`, `show_handed`), read by the reviewer against the source.
 
+**Step 5 fix, as decided (2026-11-24, review of `07077d3`).** Two things the review found:
+
+- **A one-of lists a function twice.** In the tour (a script: no `import` or `export`), `function open` merges with the DOM library's global
+  `open`, so its symbol has two declarations; `functions_named` maps each to the implementation, and the table wrote
+  `oneof(def open | def open)` (coder's report). Overloads in project code take the same path. Step 2's rule never said a member must not
+  repeat. **Rule now**: `one_of` (`sem/flow.rs`) is the only maker of `Expr::OneOf`, and it flattens, drops a member equal to an earlier one,
+  and gives the member alone when one is left; the name branch of `expr_of` goes through it. So `OneOf` always holds two or more different
+  members, and `c ? a : a` is `Def(a)`. `functions_named` itself is unchanged: it feeds the graph (whose `Graph::new` drops the duplicate
+  edges), and the graph must not move. Fixture: `tests/fixtures/flow/src/overloads.ts` (a module with an overloaded function).
+- **Two guards no test reached** (mutation): `never_fewer_edges`'s check (a) (an edge whose target changed while its site keeps an edge),
+  and `a_context_is_a_function_of_its_key`'s "finished in both" filter (no graph of the tests has a context that is not finished). Test 6
+  gains one hand-broken copy for each.
+
 Next: [`06-tc2-functions-through-parameters.md`](06-tc2-functions-through-parameters.md)
