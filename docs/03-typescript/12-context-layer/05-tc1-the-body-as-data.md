@@ -146,7 +146,7 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
 | 3 | **Built** (`6b7c2ef`, reviewed: `languages/typescript/engine/08-tc1.md`). `handed` in the table | the `handed_over` equality |
 | 4a | **Built** (`7b680b7`, reviewed: `languages/typescript/engine/08-tc1.md`). `value.rs` (`Value`, `One::Fn`, `join`, the cap); `KeyData::params` and its normal form. **As decided for the build** below | the laws, exhaustively on a small universe; every graph unchanged |
 | 4b | **Built** (`9530a7d`, reviewed: `languages/typescript/engine/08-tc1.md`). `env.rs`, `eval.rs` (behind the `World` trait), `resolve_from_env` wired; **the capability set** (`Caps`, [03](03-design.md) §15.2, moved here from step 1: the first step that reads it, to decide whether an `Env` is built). **As decided for the build** below | equal graphs with the switch on: every test case and five fixtures in-crate, the three projects' depth-1 dumps by the reviewer |
-| 5 | the harness, the tour, its default snapshot | the tour's "today" column of [03](03-design.md) §2 confirmed or corrected, cell by cell |
+| 5 | **Built** (`07077d3`, fix `aa67599`, reviewed: `languages/typescript/engine/08-tc1.md`). the harness, the tour, its default snapshot | the tour's "today" column of [03](03-design.md) §2 confirmed or corrected, cell by cell |
 | 6 | the sweep with the switch on | the numbers in `ENGINE.md` |
 | 7 | (mine) `ENGINE.md`: the engine items `sem/flow.rs` calls; `policy.md`: the second table's header | reviewed |
 
@@ -304,7 +304,8 @@ once; it is two sittings. **4a**:
 
 - **A one-of lists a function twice.** In the tour (a script: no `import` or `export`), `function open` merges with the DOM library's global
   `open`, so its symbol has two declarations; `functions_named` maps each to the implementation, and the table wrote
-  `oneof(def open | def open)` (coder's report). Overloads in project code take the same path. Step 2's rule never said a member must not
+  `oneof(def open | def open)` (coder's report). (Overloads in a module, expected to take the same path, do not: the fix's run showed `over(1)` already
+  one `def`.) Step 2's rule never said a member must not
   repeat. **Rule now**: `one_of` (`sem/flow.rs`) is the only maker of `Expr::OneOf`, and it flattens, drops a member equal to an earlier one,
   and gives the member alone when one is left; the name branch of `expr_of` goes through it. So `OneOf` always holds two or more different
   members, and `c ? a : a` is `Def(a)`. `functions_named` itself is unchanged: it feeds the graph (whose `Graph::new` drops the duplicate
