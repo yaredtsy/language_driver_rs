@@ -67,6 +67,20 @@ impl ContextId {
     }
 }
 
+/// The 16 bytes of a [`ContextId::digest`] for a key a language has written in its canonical form: `canonical` as compact JSON
+/// (`serde_json::to_vec`), hashed with XXH3-128 (seed 0), little-endian. Bytes we wrote, never `#[derive(Hash)]`: std promises no stable
+/// output, and a digest is stored outside the process.
+///
+/// What the canonical form holds, and the open key's zeros, are the language's rule (`docs/02-tree-rules/08-the-digest-and-scenario-levels.md`).
+///
+/// # Panics
+///
+/// When `canonical` cannot be written as JSON (a map whose keys are not strings, a `Serialize` that fails). A canonical key holds neither.
+pub fn digest<T: Serialize + ?Sized>(canonical: &T) -> [u8; 16] {
+    let bytes = serde_json::to_vec(canonical).expect("a canonical key always serializes");
+    xxhash_rust::xxh3::xxh3_128(&bytes).to_le_bytes()
+}
+
 /// Why a walk or a graph stopped short. Every cost limit has one, and every cut is counted in [`Stats::cuts`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[non_exhaustive]
@@ -658,6 +672,90 @@ pub(crate) mod tests {
                 qualname: "main",
                 occurrence: 1
             }
+        );
+    }
+
+    #[derive(Serialize)]
+    enum Canon {
+        Unknown,
+        Fn(StableDef),
+        Set { known: Vec<Canon>, open: bool },
+    }
+
+    #[derive(Serialize)]
+    struct Key {
+        params: Vec<Canon>,
+    }
+
+    #[derive(Serialize)]
+    struct Grown {
+        params: Vec<Canon>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        captured: Vec<Canon>,
+    }
+
+    fn params() -> Vec<Canon> {
+        vec![
+            Canon::Fn(StableDef::Path {
+                module: "src/a.ts".into(),
+                qname: "handler".into(),
+                nth: 0,
+            }),
+            Canon::Unknown,
+            Canon::Set {
+                known: vec![Canon::Fn(StableDef::Marked("abc".into()))],
+                open: true,
+            },
+        ]
+    }
+
+    /// A change here changes every context id a consumer stored.
+    #[test]
+    fn the_digest_is_xxh3_128_of_the_json_little_endian() {
+        assert_eq!(
+            serde_json::to_string(&Key { params: params() }).unwrap(),
+            concat!(
+                r#"{"params":[{"Fn":{"Path":{"module":"src/a.ts","qname":"handler","nth":0}}},"#,
+                r#""Unknown",{"Set":{"known":[{"Fn":{"Marked":"abc"}}],"open":true}}]}"#
+            )
+        );
+        assert_eq!(
+            digest(&Key { params: params() }),
+            [
+                222, 81, 217, 167, 216, 56, 119, 221, 205, 106, 67, 102, 68, 16, 248, 74
+            ]
+        );
+        assert_eq!(
+            digest(&Key { params: vec![] }),
+            [
+                122, 58, 146, 60, 100, 231, 89, 134, 25, 59, 41, 249, 84, 241, 149, 151
+            ]
+        );
+        // the algorithm is the specified one: the published XXH3-128 vector for empty input
+        assert_eq!(
+            xxhash_rust::xxh3::xxh3_128(b""),
+            0x99aa_06d3_0147_98d8_6001_c324_468d_497f_u128
+        );
+    }
+
+    /// The growth rule: a field a later phase adds is skipped when empty, so a key that does not use it keeps its digest.
+    #[test]
+    fn a_field_skipped_when_empty_keeps_the_digest() {
+        assert_eq!(
+            digest(&Grown {
+                params: params(),
+                captured: vec![]
+            }),
+            digest(&Key { params: params() })
+        );
+        assert_eq!(
+            digest(&Grown {
+                params: params(),
+                captured: vec![Canon::Unknown]
+            }),
+            [
+                197, 253, 104, 34, 64, 12, 233, 198, 225, 138, 19, 150, 9, 170, 124, 236
+            ]
         );
     }
 }

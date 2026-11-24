@@ -7,6 +7,5 @@ publish.workspace = true
 
 [dependencies]
 serde = { workspace = true }
-
-[dev-dependencies]
 serde_json = { workspace = true }
+xxhash-rust = { workspace = true }

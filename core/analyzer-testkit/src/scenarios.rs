@@ -36,6 +36,32 @@ impl Level {
     }
 }
 
+/// Which tree each scenario is held to.
+#[derive(Debug, Clone, Copy)]
+pub enum Levels {
+    /// Every scenario at one level: what `run(subject, Level::Default)` has always meant.
+    All(Level),
+    /// The scenarios named here (by folder name) at `Level::Precise`, every other at `Level::Default`. A name that is not a scenario with a
+    /// program in the subject's folder fails the run: a stale or misspelt list would otherwise hold nothing to the precise tree.
+    PreciseFor(&'static [&'static str]),
+}
+
+impl From<Level> for Levels {
+    fn from(level: Level) -> Self {
+        Levels::All(level)
+    }
+}
+
+impl Levels {
+    fn of(self, scenario: &str) -> Level {
+        match self {
+            Levels::All(level) => level,
+            Levels::PreciseFor(names) if names.contains(&scenario) => Level::Precise,
+            Levels::PreciseFor(_) => Level::Default,
+        }
+    }
+}
+
 /// How one language runs a scenario.
 pub struct Subject {
     /// The folder inside a scenario that holds this language's program: `"python"`, `"typescript"`, `"rust"`.
@@ -49,9 +75,11 @@ pub struct Subject {
 /// Run every scenario that has a program in this language's folder. Returns how many ran.
 ///
 /// A scenario without that folder is skipped (it is not written in this language yet); a folder the language cannot
-/// analyze is a failure, and so is a tree that does not match.
-pub fn run(subject: &Subject, level: Level) -> usize {
-    let mut ran = 0;
+/// analyze is a failure, and so is a tree that does not match. `levels` says which tree each scenario is held to: a bare [`Level`] holds them all to
+/// it, [`Levels::PreciseFor`] holds the named ones to the precise tree.
+pub fn run(subject: &Subject, levels: impl Into<Levels>) -> usize {
+    let levels = levels.into();
+    let mut ran = Vec::new();
     for dir in sorted_dirs(Path::new(subject.scenarios)) {
         let program = dir.join(subject.folder);
         if !program.is_dir() {
@@ -68,11 +96,20 @@ pub fn run(subject: &Subject, level: Level) -> usize {
             .first()
             .unwrap_or_else(|| panic!("scenario {name}: the graph has no entry"));
         let actual = to_text(&render(&graph, entry, &RenderOptions::default()));
-        let expected = expected_tree(&dir, subject.folder, level);
+        let expected = expected_tree(&dir, subject.folder, levels.of(&name));
         expect_file(&expected, &actual);
-        ran += 1;
+        ran.push(name);
     }
-    ran
+    if let Levels::PreciseFor(names) = levels {
+        for name in names {
+            assert!(
+                ran.iter().any(|ran| ran == name),
+                "scenario {name} is listed as precise but has no {} program",
+                subject.folder
+            );
+        }
+    }
+    ran.len()
 }
 
 /// The tree a language's graph is compared with, most specific first: its own tree for the level, its own single tree, the shared tree for the level,
@@ -171,6 +208,72 @@ mod tests {
                 Level::Default,
             )
         });
+        fs::remove_dir_all(&dir).ok();
+        std::panic::resume_unwind(result.unwrap_err());
+    }
+
+    /// A scratch `Subject` over scenarios written under a directory of the process id, and that directory.
+    fn scratch(tag: &str, scenarios: &[(&str, &[(&str, &str)])]) -> (Subject, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("testkit-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        for (name, files) in scenarios {
+            let prog = dir.join(name).join("toy");
+            fs::create_dir_all(&prog).unwrap();
+            fs::write(prog.join("main.toy"), "main: x\nx:\n").unwrap();
+            for (file, text) in *files {
+                fs::write(dir.join(name).join(file), text).unwrap();
+            }
+        }
+        let leaked = Box::leak(dir.to_string_lossy().into_owned().into_boxed_str());
+        (
+            Subject {
+                scenarios: leaked,
+                ..TOY
+            },
+            dir,
+        )
+    }
+
+    const RIGHT: &str = "main\n  x\n";
+    const WRONG: &str = "main\n  wrong\n";
+
+    #[test]
+    fn levels_are_chosen_per_scenario() {
+        let (subject, dir) = scratch(
+            "levels",
+            &[
+                (
+                    "a",
+                    &[
+                        ("expected.precise.tree", RIGHT),
+                        ("expected.default.tree", WRONG),
+                    ],
+                ),
+                (
+                    "b",
+                    &[
+                        ("expected.default.tree", RIGHT),
+                        ("expected.precise.tree", WRONG),
+                    ],
+                ),
+            ],
+        );
+        let mixed = std::panic::catch_unwind(|| run(&subject, Levels::PreciseFor(&["a"])));
+        let all_default = std::panic::catch_unwind(|| run(&subject, Level::Default));
+        let all_precise = std::panic::catch_unwind(|| run(&subject, Level::Precise));
+        fs::remove_dir_all(&dir).ok();
+        assert_eq!(mixed.unwrap(), 2);
+        // each level alone meets a wrong file
+        assert!(all_default.is_err());
+        assert!(all_precise.is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "missing is listed as precise")]
+    fn a_scenario_listed_as_precise_must_exist() {
+        let (subject, dir) = scratch("listed", &[("a", &[("expected.tree", RIGHT)])]);
+        let result =
+            std::panic::catch_unwind(|| run(&subject, Levels::PreciseFor(&["a", "missing"])));
         fs::remove_dir_all(&dir).ok();
         std::panic::resume_unwind(result.unwrap_err());
     }

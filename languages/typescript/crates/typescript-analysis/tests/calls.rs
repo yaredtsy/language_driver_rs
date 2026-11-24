@@ -3,10 +3,11 @@
 use std::path::{Path, PathBuf};
 
 use analyzer_testkit::graph::check_invariants;
-use analyzer_testkit::scenarios::{Level, Subject, run};
+use analyzer_testkit::scenarios::{Level, Levels, Subject, run};
 use typescript_analysis::{
-    Basis, Cancel, Edge, EdgeTo, Entry, Frame, Graph, MarkerStyle, Options, Project, Reason,
-    RenderOptions, Root, StableDef, WireOptions, WireStyle, breakdown, render, to_text, wire,
+    Basis, Cancel, Edge, EdgeTo, Entry, Frame, Graph, MarkerStyle, Options, Precision, Project,
+    Reason, RenderOptions, Root, StableDef, WireOptions, WireStyle, breakdown, render, to_text,
+    wire,
 };
 
 mod common;
@@ -34,19 +35,23 @@ fn graph_of(root: &Path, file: &str, entry: &str) -> Graph {
         .unwrap_or_else(|| panic!("no entry {entry:?} in {file}"))
 }
 
-fn scenario_graph(program: &Path) -> Option<Graph> {
+fn scenario_graph_at(program: &Path, precision: Precision) -> Option<Graph> {
     let project = Project::open(program, Path::new("main.ts")).ok()?;
     let entry = Entry::Def {
         qualname: "main",
         occurrence: 0,
     };
-    call_graph(
-        &project,
-        "main.ts",
-        &entry,
-        &Options::new(STYLE),
-        &Cancel::new(),
-    )
+    let mut options = Options::new(STYLE);
+    options.precision = precision;
+    call_graph(&project, "main.ts", &entry, &options, &Cancel::new())
+}
+
+fn scenario_graph(program: &Path) -> Option<Graph> {
+    scenario_graph_at(program, Precision::Default)
+}
+
+fn scenario_graph_precise(program: &Path) -> Option<Graph> {
+    scenario_graph_at(program, Precision::Precise)
 }
 
 #[test]
@@ -59,6 +64,17 @@ fn the_shared_scenarios_in_typescript_give_their_trees() {
     // every scenario has a TypeScript program: straight-line, recursion-direct, method-on-class, external-call, construct-marked-class and two-callers, which
     // at `Level::Default` is the tree a default resolver gives (`Writer.write` under both callers; the precise tree is Python's)
     assert_eq!(run(&subject, Level::Default), 6);
+}
+
+#[test]
+fn the_shared_scenarios_with_the_layer_on_give_their_trees() {
+    let subject = Subject {
+        folder: "typescript",
+        scenarios: "../../../../scenarios",
+        graph: scenario_graph_precise,
+    };
+    // the layer on and not yet precise for any scenario: every tree is the default one. TC2 step 5 adds `callback-argument` to the list
+    assert_eq!(run(&subject, Levels::PreciseFor(&[])), 6);
 }
 
 /// The scenario folders that have a TypeScript program, by name.
