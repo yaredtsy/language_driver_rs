@@ -8,13 +8,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use indexmap::IndexSet;
 use tsrs_ast::Symbol;
-use tsrs_checker::{Type, TypeFlags, astnav};
+use tsrs_checker::{Type, TypeFlags};
 
 use super::collect::{CallNode, SiteKind, unwrap_expression};
 use super::handed::HandOvers;
-use super::view::{
-    Binary, Conditional, Parameter, arguments_of, expression_of, parameters_of, spelled,
-};
+use super::view::{Binary, Conditional, Parameter, arguments_of, expression_of, parameters_of};
 use super::*;
 use crate::flow::{AnonFlow, Arg, DefId, Expr, Flow, FlowKind, HandedFlow, Param, SiteFlow};
 
@@ -151,12 +149,22 @@ struct Reader<'a, 'p> {
 
 impl Reader<'_, '_> {
     fn read(&mut self, body: &Body, hand_overs: &HandOvers<'_>) -> Flow {
-        let params = self
+        let (mut params, symbols): (Vec<Param>, Vec<Option<P<Symbol>>>) = self
             .params
             .clone()
             .into_iter()
             .map(|parameter| self.param(parameter))
-            .collect();
+            .unzip();
+        // one walk of the def for every parameter, and only when one can hold a function and has a name to be written under
+        if params.iter().any(|row| row.named && row.capable) {
+            let written = written_symbols(self.checker, self.def);
+            for (row, symbol) in params.iter_mut().zip(&symbols) {
+                if row.named && row.capable {
+                    row.assigned = symbol.is_some_and(|symbol| written.contains(&symbol));
+                }
+            }
+        }
+        let params: Box<[Param]> = params.into();
         let anons: Box<[AnonFlow]> = body.anons.iter().map(|&span| AnonFlow { span }).collect();
         let sites = body
             .sites
@@ -174,16 +182,20 @@ impl Reader<'_, '_> {
         }
     }
 
-    /// One row of `Flow::params`: what `06-tc2` §2 needs to know of the parameter `node`.
-    fn param(&mut self, node: P<Node>) -> Param {
+    /// One row of `Flow::params`: what `06-tc2` §2 needs to know of the parameter `node`, and the parameter's symbol (`None` when it is not named). The row's
+    /// `assigned` is left `false`: `read` says it for all the rows with one walk of the def.
+    fn param(&mut self, node: P<Node>) -> (Param, Option<P<Symbol>>) {
         let Some(parameter) = Parameter::cast(node) else {
-            return Param {
-                rest: false,
-                named: false,
-                default: None,
-                assigned: false,
-                capable: false,
-            };
+            return (
+                Param {
+                    rest: false,
+                    named: false,
+                    default: None,
+                    assigned: false,
+                    capable: false,
+                },
+                None,
+            );
         };
         let name = parameter.name();
         let named = name.kind() == Kind::Identifier;
@@ -199,19 +211,16 @@ impl Reader<'_, '_> {
             let ty = self.checker.get_type_of_symbol(symbol);
             !holds_only_data(self.checker, ty, 4)
         });
-        let assigned = capable
-            && symbol.is_some_and(|symbol| {
-                spelled(self.file.node.text(), name).is_some_and(|text| {
-                    !writes_of(self.checker, self.file.node, symbol, &text, self.def).is_empty()
-                })
-            });
-        Param {
-            rest: parameter.is_rest(),
-            named,
-            default,
-            assigned,
-            capable,
-        }
+        (
+            Param {
+                rest: parameter.is_rest(),
+                named,
+                default,
+                assigned: false,
+                capable,
+            },
+            symbol,
+        )
     }
 
     /// The hand-overs of the body: the defs `handed_over` found (it is the one place that knows how a name in a hand-over position stands for a def), then the
@@ -415,61 +424,29 @@ fn holds_only_data(checker: &mut Checker, ty: P<Type>, depth: u8) -> bool {
             .is_some_and(|element| holds_only_data(checker, element, depth - 1))
 }
 
-/// The nodes under `container` where the text `name` stands as a whole word, as the engine's `get_possible_symbol_reference_nodes` finds them (a private function
-/// of `tsrs_checker`, and its search takes the first hit's offset from the start of the container, not of the file: `ENGINE.md`), in order: the token each hit touches,
-/// when it is not the file itself. A candidate only: a word in a comment or a string, or another symbol of the same name, is in it too. The container's own
-/// leading trivia is searched with it. Used for a parameter's writes (TC2) and later a local's (TC3).
-fn names_in(file: P<SourceFile>, name: &str, container: P<Node>) -> Vec<P<Node>> {
-    let mut found = Vec::new();
-    let text = file.text();
-    let bytes = text.as_bytes();
-    let needle = name.as_bytes();
-    if needle.is_empty() {
-        return found;
-    }
-    let end = (container.end().source_offset().unwrap_or(0) as usize).min(bytes.len());
-    let mut at = container.pos().source_offset().unwrap_or(0) as usize;
-    while at < end {
-        let Some(offset) = tsrs_core::index_bytes(&bytes[at..end], needle) else {
-            break;
-        };
-        // the engine's bug, fixed: the hit is `offset` past `at`, not at `offset`
-        let hit = at + offset;
-        let after = hit + needle.len();
-        let word = |byte: &u8| tsrs_scanner::is_identifier_part(u32::from(*byte));
-        if !bytes[..hit].last().is_some_and(word) && !bytes.get(after).is_some_and(word) {
-            let node = astnav::get_touching_property_name(file, hit as u32);
-            if node != file.as_node() {
-                found.push(node);
-            }
+/// The symbols written somewhere under `container` (its parameters, its body, and the defs and anonymous functions written in it): each `Identifier` that
+/// `ast::is_write_access` says is written (`=`, a compound assignment, `++`, a destructuring or loop target), and its symbol. The write test is syntax only, so it
+/// comes first and the checker is asked only about writes. A declaration's own name is never one: `is_write_access` says `Read` for it. One walk per def
+/// (`06-tc2` §10, step 4d); TC3 starts from it for a local's writes.
+///
+/// The walk keeps its own stack of nodes still to visit instead of calling itself, so a deep tree cannot overflow the thread's stack.
+fn written_symbols(checker: &mut Checker, container: P<Node>) -> Vec<P<Symbol>> {
+    let mut written: Vec<P<Symbol>> = Vec::new();
+    let mut pending = vec![container];
+    while let Some(node) = pending.pop() {
+        if node.kind() == Kind::Identifier
+            && ast::is_write_access(node)
+            && let Some(symbol) = checker.get_symbol_at_location_exported(node)
+            && !written.contains(&symbol)
+        {
+            written.push(symbol);
         }
-        at = after;
+        node.for_each_child(&mut |child| {
+            pending.push(child);
+            false
+        });
     }
-    found
-}
-
-/// The identifiers under `container` that write `symbol`, whose name is written `name`: a candidate of `names_in` that is an identifier of that symbol and
-/// that `ast::is_write_access` says is written. Used for a parameter's writes (TC2) and later a local's (TC3). The declaration's own name is never one of
-/// them: `is_write_access` says `Read` for a name whose parent is a `Parameter`. The write test is asked before the checker, since it is syntax only.
-fn writes_of(
-    checker: &mut Checker,
-    file: P<SourceFile>,
-    symbol: P<Symbol>,
-    name: &str,
-    container: P<Node>,
-) -> Vec<P<Node>> {
-    let mut writes: Vec<P<Node>> = names_in(file, name, container)
-        .into_iter()
-        .filter(|node| {
-            node.kind() == Kind::Identifier
-                // syntax only, so it comes first: most places that spell the name read it
-                && ast::is_write_access(*node)
-                && checker.get_symbol_at_location_exported(*node) == Some(symbol)
-        })
-        .collect();
-    // a position in a comment can touch the token after it, which another hit of the same word touches too
-    writes.dedup();
-    writes
+    written
 }
 
 /// The only maker of `Expr::OneOf`, so that it is never nested, never lists a member twice and always has two or more. A member that is itself a `OneOf`
