@@ -101,7 +101,7 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
 |---|---|
 | `key.rs` | `KeyId` (a number), `KeyData` with the three fields of [03](03-design.md) §6, all empty, `Keys` (the interner, on `indexmap`), `KeyId::OPEN`, and the one function that puts a key in its normal form |
 | `walk.rs`, `calls.rs` | the five `()` become `KeyId::OPEN` ([01](01-where-we-start.md) §2) |
-| `calls.rs` | `Lang::digest`: zeros for the open key; for any other, the function S-TC3 settled. No other key can exist yet, and a unit test builds one by hand to pin the bytes |
+| `calls.rs` | `Lang::digest`: zeros for the open key, read from `Keys`. For any other, core's function, at TC2 step 1 (D57), with the test that pins its bytes (§8, step 1) |
 | `value.rs` | `Value`, `One` (no variant used yet), `Value::unknown()`, `Value::data()`, `Value::Wide`, `join`. No import from `sem` |
 | `env.rs` | `Env { flow: Arc<Flow>, key: KeyId }`, built in `Lang::walk` when the switch is on |
 | `eval.rs` | `eval(&Expr, &Env) -> Value`: unknown for every `Expr` |
@@ -141,12 +141,27 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
 | # | Do | Proof |
 |---|---|---|
 | 0 | **Built** (477c4bd, 5362028; vscode's sweep still to run). **H17 first** ([`../10-review-fixes.md`](../10-review-fixes.md) §6.3, revised 2026-11-23): every engine accessor and downcast that can panic on a kind is banned outside `sem/view/`. `sem/flow.rs` is then written against the views from its first line, and adds a view by kind for each kind it reads | clippy `-D warnings` with the ban; the four sweeps: `engine_kind_unhandled` 0, one hash per graph equal before and after |
-| 1 | `Precision`, the capability set, `Options::precision`, `--precise`; `KeyId`, `Keys`, the five literals | all tests green; `cargo tree`: `indexmap`, `smallvec`, `bitflags`, `rustc-hash` become direct dependencies, and no crate is new to the lockfile but `proptest` (tests only) |
+| 1 | `Precision`, `Options::precision`, `--precise`; `KeyId`, `KeyData` (no field yet), `Keys`, the five literals. **As decided for the build** below | all tests green, no snapshot touched; `--precise` prints byte for byte what no flag prints; `Cargo.lock` gains only the edge `typescript-analysis → indexmap` |
 | 2 | `flow.rs`; `sem/flow.rs` for sites and arguments | the `call_sites` equality; **S-TC2's cost, the gate** (moved from TC0): the tables of every def of the four projects built in at most the time of a depth-1 sweep of the same project and at most 25% more peak memory, measured in the release build. Over that, stop and report before step 3 |
 | 3 | `handed` in the table | the `handed_over` equality |
-| 4 | `value.rs`, `env.rs`, `eval.rs` (behind the `World` trait), `resolve_from_env` wired | equal graphs with the switch on; the laws |
+| 4 | `value.rs`, `env.rs`, `eval.rs` (behind the `World` trait), `resolve_from_env` wired; **the capability set** (`Caps`, [03](03-design.md) §15.2, moved here from step 1: the first step that reads it, to decide whether an `Env` is built); `KeyData`'s three fields | equal graphs with the switch on; the laws |
 | 5 | the harness, the tour, its default snapshot | the tour's "today" column of [03](03-design.md) §2 confirmed or corrected, cell by cell |
 | 6 | the sweep with the switch on | the numbers in `ENGINE.md` |
 | 7 | (mine) `ENGINE.md`: the engine items `sem/flow.rs` calls; `policy.md`: the second table's header | reviewed |
+
+**Step 1, as decided for the build (2026-11-24).** A type or a crate comes in the step that first uses it, so no code waits behind an
+`allow(dead_code)` and no dependency sits unused:
+
+- `Precision` (§4) lives in `calls.rs` beside `Options`, exported by name from `lib.rs`. `Options::new` sets `Precision::Default`.
+  **Nothing reads it in step 1**: step 4 is where `Precise` starts building an `Env`. So `--precise` changes nothing yet, and a CLI test
+  says so.
+- `key.rs`: `KeyId(u32)` with `KeyId::OPEN = KeyId(0)`; `KeyData`, **with no field** until step 4 (so every `KeyData` is the open one);
+  `KeyData::normal` (the one normal form, the identity while there is no field); `Keys { table: IndexSet<KeyData>, digests: Vec<[u8; 16]> }`
+  with `Keys::new()` (interns the open key, number 0, digest zeros), `intern` and `digest`. `type Key = KeyId`.
+- `TypeScript` holds `keys: RefCell<Keys>`, and `Lang::digest` reads it. The digest of a key that is not the open one is core's function,
+  **at TC2 step 1** (D57), with the test that pins its bytes: before `KeyData` has a field no such key can be built, so that row of §5
+  moves there.
+- `indexmap = "2"` (default features, as tsrs takes it: nothing is rebuilt). `smallvec` (it must take the feature `union`, as tsrs does,
+  or tsrs is rebuilt), `rustc-hash` and `bitflags` come in with their first use; `proptest` at step 4.
 
 Next: [`06-tc2-functions-through-parameters.md`](06-tc2-functions-through-parameters.md)
