@@ -8,7 +8,8 @@ RS5
 ├── 4. cancel
 ├── 5. the memo, and one thing core's token must not assume
 ├── 6. reload
-└── 7. steps, and the tag
+├── 7. steps, and the tag
+└── 8. after the tag: two checks  (proposed, not scheduled)
 ```
 
 The full design is TypeScript's ([`../../03-typescript/07-ts5-driver-needs.md`](../../03-typescript/07-ts5-driver-needs.md)); this file is
@@ -223,5 +224,23 @@ dropped first (§3 point 4). `refresh` does the same by itself when the stamp of
 (`tests/policy.rs`, 43 row snapshots); swept on terminusdb and ruff (ENGINE.md, "Sweeps of real projects"). Left, none of it code here:
 the tags `rust-v0.2.0` and `rust-v0.3.0` (the owner's; v0.3.0 after tier-3 conformance in the vnoc driver). Later, decided and written
 down: the user's choice of the `cfg` set (D48, RS3 §3), build-time code (D39), `expand` tokens (D31).
+
+## 8. After the tag: two checks (proposed 2026-11-24, not scheduled)
+
+Both come from reading [blaze](https://github.com/indexable-inc/blaze) (2026-11-24), a Rust build tool whose first version sat on
+rust-analyzer as we do. Its main proof of an incremental result is one sentence: *the result after an edit equals the result of
+starting from nothing*. Its list of what rust-analyzer's design costs a tool that is not an editor
+(`docs/v2/plan/design/frontend.md`) says where to look for the second.
+
+| # | Do | Proof |
+|---|---|---|
+| 7 | **`refresh` equals a new session.** `tests/refresh.rs` compares each case with a tree written for that case. Add one assertion to its helper, run by every case: after a `refresh`, the session's graph for the entry equals the graph of a **new** `Session::open` on the same disk. It catches both mistakes at once: something stale that was kept, and something fresh that was lost | every case of `tests/refresh.rs` and `sem/refresh.rs` passes with the assertion on; a mutation shows it bites (skip `set_roots`, as in step 3's review: the creation cases must fail on the new assertion too) |
+| 8 | **The cost of a saved file, by the kind of edit. [measure]** Step 3's table has one row, "one saved file". rust-analyzer resolves names for a whole crate at once (`crate_def_map`), so an edit that changes only a body should be cheap and one that adds an item, a `use` or an `impl` should cost the crate's name resolution again. Measure `refresh` and the next request for four edits of one file in a large crate (the ruff copy, `ruff_linter`): a body changed; a function added; a `use` added; an `impl` added | the four rows in `ENGINE.md` beside step 3's table. If the last three are seconds, RS5 §4's "about a second for the first request" needs a second sentence for the driver; if they are milliseconds, nothing changes |
+
+> **🦀 Rust note: why adding a function can cost more than changing one.** rust-analyzer is built on *salsa*, which remembers the answer
+> of each query and re-runs a query only when something it read has changed. The body of one function is read by few queries, so
+> changing it re-runs little. But "which names exist in this crate" is one query over all the crate's modules. Adding an item changes
+> its input, so it runs again, and everything that asked it is checked again. The check is cheap when the answer comes out the same,
+> but it is still a walk over the crate.
 
 Layer 1 ends here. Next: [`../05-context-layer/01-design.md`](../05-context-layer/01-design.md)

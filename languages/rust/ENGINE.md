@@ -812,3 +812,40 @@ What the sweeps found:
   sees the static only inside the attribute's expansion. No calls are lost (a path initializer); a small gap, written down, not scheduled.
 - **The first request after an open is the slow one** (0.8–1.9 s, the first body's inference), every later one tens of milliseconds:
   RS5 §4's "about a second" holds on these projects.
+
+## Read at the pin for the plan: cache sizes and MIR (reviewer, 2026-11-24)
+
+Read in the published source of `=0.0.358` while comparing with another tool built on rust-analyzer
+([blaze](https://github.com/indexable-inc/blaze)). **Nothing here was built or run**: each line is where the item is, so that the spike
+that depends on it (RC0's S-RC4) starts from the file and not from memory.
+
+**There is no cache-size setting to turn.** `RootDatabase::new(lru_capacity)` (`ra_ap_ide_db/src/lib.rs:193`) calls
+`update_base_query_lru_capacities`, and that function's body is commented out at this pin (`:219`–`:227`); `update_lru_capacities` beside
+it carries `FIXME(salsa-transition): bring this back`. So the capacity `load_workspace` is given changes nothing, and the session's
+footprint cannot be tuned from outside. If a later pin brings it back, it is one argument in `sem/load.rs`; re-check on a bump.
+
+**The engine's MIR is public, and what it would give RC3.** MIR is the body lowered to a control-flow graph: basic blocks of simple
+statements, each block ending in one jump, branch or call. rust-analyzer builds it for its const evaluator and its borrow checker.
+
+| Item | Where | What RC3–RC5 would read from it |
+|---|---|---|
+| `hir::mir` (a re-export of `hir_ty::mir`, under `// FIXME: Properly encapsulate mir`) | `ra_ap_hir/src/lib.rs:199` | the module is reachable from the crate we already depend on; the `FIXME` says its shape may move at a bump |
+| `HirDatabase::mir_body(def)`, `mir_body_for_closure(closure)` | `ra_ap_hir_ty/src/db.rs:56`, `:64` | one function's graph; a closure has a graph of its own |
+| `HirDatabase::monomorphized_mir_body(def, subst, env)` | `db.rs:72`; `mir/monomorphization.rs:239` | the same graph with the type arguments put in: a context of RC1 (the function plus its `types` slots) as the engine sees it |
+| `MirBody`, `BasicBlock`, `Statement`, `Terminator` | `mir.rs:1017`, `:995`, `:989`, `:383` | blocks and their edges: branches, loops, `?`, `let else`, labeled `break` are already jumps |
+| `TerminatorKind::Call { func, args, destination, target, .. }` | `mir.rs:505` | a call site: what is called, with what, and where the result goes |
+| `Rvalue`, `CastKind::PointerCoercion(PointerCast)` | `mir.rs:835`, `:824` | a birth: the `Unsize`, `ReifyFnPointer` and `ClosureFnPointer` coercions are explicit casts, each with its operand and its target type |
+| `Place`, `ProjectionElem` (`Deref`, `Field`, …), `BorrowKind` | `mir.rs:241`, `:165`, `:612` | "a `&mut` to the box" is a borrow of the local; "a borrow to reach the object behind it" is a borrow of a place with a `Deref` in it (RC3 §6's **[check]**); a field read or write is a place with a `Field` in it (RC5) |
+| `MirSpan` (`ExprId`, `PatId`, `BindingId`, `SelfParam`, `Unknown`) | `mir.rs:1142` | how a statement or a call is tied back to the expression it came from, and so to layer 1's site |
+
+**Two facts that limit it, read in the same source:**
+
+- **A body with any type error has no MIR.** `lower_to_mir_with_store` returns `MirLowerError::HasErrors` when the body's inference has
+  a type mismatch or an error type (`mir/lower.rs:2387`). With proc macros off (RS-M8) a body that calls something a macro would have
+  made has such an error, and it is refused whole. The other refusals are in `MirLowerError` (`mir/lower.rs:102`): `NotSupported`,
+  `UnresolvedName`, `UnresolvedMethod`, `TraitFunctionDefinition` (a trait's function with no body), and more.
+- **`mir_body` takes an `InferBodyId`**, an id of `hir_def` / `hir_ty`, not a `hir::Function`. Getting one from the `Function` we hold
+  may need `ra_ap_hir_def` named in `Cargo.toml` (it is in the lockfile already, so no new build). **[check]** in S-RC4.
+
+What decides whether we use it is a number we do not have: the share of real bodies that lower (S-RC4,
+`docs/04-rust/05-context-layer/02-rc0-spikes.md`).

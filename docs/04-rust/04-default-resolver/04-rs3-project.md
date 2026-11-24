@@ -9,7 +9,8 @@ RS3
 ├── 5. inside: the database, a request, the handles, the lockfile
 ├── 6. errors
 ├── 7. tests
-└── 8. steps
+├── 8. steps
+└── 9. after the tag: the reader against cargo  (proposed, not scheduled)
 ```
 
 ## 1. The public type
@@ -444,5 +445,31 @@ Loading is slow (seconds). The tests of this crate share loads: one `#[test]` pe
 Q-RS3 (`sem` as a folder) is answered before step 1: this is the phase where `sem` gets its second kind of work.
 
 **RS3 is complete (2026-11-17, last code commits f4cedf4 `CargoFailed`, f1a35de `files()` = the module tree, fd06501 the memory test), except the proof that needs CI: the `windows-latest` job has not run** (path comparison, drive-letter fold, the no-tools worker's `SystemRoot`/`TMP`/`TEMP`).
+
+## 9. After the tag: the reader against cargo (proposed 2026-11-24, not scheduled)
+
+Rung 3's reader (`manifest.rs`) is "written from Cargo's documented rules" (§6), and its fixtures were written from the same reading.
+So a rule we read wrongly is wrong in the reader **and** in its fixture, and both stay green. `layout_skipped` counts what the reader
+knows it cannot do; it cannot count what the reader gets wrong without knowing. Nothing compares the reader with cargo itself.
+
+The idea is from another project, [blaze](https://github.com/indexable-inc/blaze) (a Rust build tool that reads `Cargo.toml` itself; read
+2026-11-24, its `docs/resolve.md`). Its reader was held to the text of `cargo metadata --no-deps` on 300 crates and 72 repositories. That
+is its own claim, not ours to repeat; the method is what we take.
+
+| # | Do | Proof |
+|---|---|---|
+| 8 | a test, `#[ignore]` like the sweeps (it needs `cargo` and real workspaces): for each workspace given, run `cargo metadata --no-deps --format-version 1` and the reader on the same folder, and compare what both describe: the member packages (name, manifest path), each one's lib, bin and test targets (crate name, root file, edition), and the path dependencies between members (with their `package =` renames). What the reader skips on purpose (registry and git dependencies, examples, benches, build scripts) is left out on both sides, and its count printed | the workspaces of this repo, and the copies of terminusdb and ruff the sweeps used: no difference, or each difference is a reader bug fixed with a fixture, or a new row of §6's "skipped and counted" list. `--no-deps` resolves nothing and writes no lockfile (§5), so it is safe on a copy |
+
+> **🦀 Rust note: why `--no-deps` is the right thing to compare with.** `cargo metadata` normally also *resolves*: it picks a version for
+> every dependency, which needs the registry and writes `Cargo.lock`. `--no-deps` skips that and prints only what the manifests say: the
+> packages, their targets, and the dependencies each one **declares**. That is exactly the part our reader re-implements, so the two
+> outputs describe the same thing and can be compared field by field.
+
+**A crate for the field reading: `cargo-util-schemas`** (the owner's rule, 2026-11-23: an existing crate before hand-written code). It
+is the cargo team's own serde types for `Cargo.toml`, published apart from the `cargo` crate, and blaze reads manifests through it. It
+would replace the part of `manifest.rs` that picks fields out of a `toml::Table`. It would **not** replace the layout rules
+(`src/bin/*.rs`, `autobins`, the lib's name), which live in cargo itself and not in that crate, so most of the reader stays either way.
+It is a new dependency (not in `languages/rust/Cargo.lock` today), and its version follows cargo's. So: step 8 first; the crate only if
+step 8 finds bugs in how fields are read. **[check]** before proposing it: that it builds on 1.99.1 and what it adds to the lockfile.
 
 Next: [`05-rs4-calls.md`](05-rs4-calls.md)
