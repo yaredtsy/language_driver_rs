@@ -9,6 +9,7 @@ use typescript_syntax::MarkerStyle;
 
 use crate::calls::TypeScript;
 use crate::env::Env;
+use crate::key::{Key, KeyId};
 use crate::sem::{Func, Init, Resolved, Sem, UNHANDLED_KEY, Uncovered, Why, counted};
 
 /// The reason of an `Unresolved` edge, and the key of its counter in `Stats.language`, for a def whose node is missing from the program's tree: a bug
@@ -85,7 +86,7 @@ fn body_of<'p>(
         if let Some(at) = held.at {
             found.push(SiteCalls::passed(
                 Site::new(at.start.saturating_sub(start), at.end.saturating_sub(start)),
-                vec![Target::Call(held.func, ())],
+                vec![Target::Call(held.func, KeyId::OPEN)],
             ));
         }
     }
@@ -148,7 +149,7 @@ fn target<'p>(lang: &TypeScript<'p>, resolved: Resolved<'p>, jsx: bool) -> Targe
             let (class, init) = construction(lang, def, jsx);
             Target::Construct { class, init }
         }
-        Resolved::Def(def) => Target::Call(def, ()),
+        Resolved::Def(def) => Target::Call(def, KeyId::OPEN),
         Resolved::External { package, name, .. } => Target::External(External { package, name }),
         // D56: **the one place** that decides how a function a library made is drawn. Today an `External` named after the call that made it and the path to
         // the name (`useState()[1]`); a different display later is a change of these lines alone.
@@ -174,7 +175,7 @@ pub(crate) fn construction<'p>(
     lang: &TypeScript<'p>,
     class: Func<'p>,
     jsx: bool,
-) -> (Func<'p>, Option<(Func<'p>, ())>) {
+) -> (Func<'p>, Option<(Func<'p>, Key)>) {
     let (init, chain) = lang.sem.init_chain(class, lang.style);
     // what the construction runs and does not draw: the instance field initializers of each class it goes through, and a class component's `render`
     let undrawn: usize = chain
@@ -186,7 +187,7 @@ pub(crate) fn construction<'p>(
         lang.note_uncovered(&[Uncovered::ClassComponentRender]);
     }
     let init = match init {
-        Init::Enter(init) => Some((init, ())),
+        Init::Enter(init) => Some((init, KeyId::OPEN)),
         Init::Nothing => None,
         // no constructor to enter, and it is a limit rather than an answer: say so on the graph (rule 8)
         Init::External => {

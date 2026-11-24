@@ -3,7 +3,7 @@
 //! - `outline <file> [--label <label>]`: the defs of one file.
 //! - `files <dir> <file>`: which config owns `file` under `dir`, and what the loaded program holds. The tool for "why is this call unresolved":
 //!   the answer is often that the file is not in the program the config describes.
-//! - `calls <dir> <file> [--entry <qualname> [--id <marker>]] [--depth N] [--max-contexts N] [--max-nodes N] [--graph | --wire [--merged] [--function-prefix P] [--class-prefix P]] [--timing]`:
+//! - `calls <dir> <file> [--entry <qualname> [--id <marker>]] [--depth N] [--max-contexts N] [--max-nodes N] [--graph | --wire [--merged] [--function-prefix P] [--class-prefix P]] [--timing] [--precise]`:
 //!   the call tree under a def, then the breakdown of the graph (edges by kind, unresolved edges by reason). `--depth` and `--max-contexts` are a
 //!   [`Budget`] (whole numbers, 0 and up): a def past it is listed and not walked, drawn `[Cut]`, and counted in the `cuts in the graph` line of the breakdown; `--depth 0` is the
 //!   entry alone, on the frontier. Asking again for a cut def as the entry continues from there. `--max-nodes N` (1 and up) is the renderer's limit on the
@@ -17,16 +17,17 @@ use std::process::ExitCode;
 
 use analyzer_core::text::{Encoding, LineIndex};
 use typescript_analysis::{
-    Budget, Cancel, Entry, Graph, Mark, Node, Options, Project, RenderOptions, Session, Status,
-    WireOptions, WireStyle, breakdown, render, to_text, wire,
+    Budget, Cancel, Entry, Graph, Mark, Node, Options, Precision, Project, RenderOptions, Session,
+    Status, WireOptions, WireStyle, breakdown, render, to_text, wire,
 };
 use typescript_syntax::{Dialect, MarkerStyle, outline};
 
 const USAGE: &str = "usage: typescript-cli outline <file> [--label <label>]
        typescript-cli files <dir> <file>
-       typescript-cli calls <dir> <file> [--entry <qualname> [--id <marker>]] [--depth <n>] [--max-contexts <n>] [--max-nodes <n>] [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--timing] [--label <label>]
+       typescript-cli calls <dir> <file> [--entry <qualname> [--id <marker>]] [--depth <n>] [--max-contexts <n>] [--max-nodes <n>] [--graph | --wire [--merged] [--function-prefix <p>] [--class-prefix <p>]] [--timing] [--precise] [--label <label>]
   --depth and --max-contexts are the solver's budget: a def past it is listed and not walked, drawn [Cut] and counted in the breakdown's `cuts in the graph` line.
-  --max-nodes is the renderer's limit on the tree or the wire (default 100000): the graph is complete, and a line says when the drawing was cut.";
+  --max-nodes is the renderer's limit on the tree or the wire (default 100000): the graph is complete, and a line says when the drawing was cut.
+  --precise turns on the context layer (Precision::Precise); until the layer is built the output is the same.";
 
 /// Remove `--name value` from `args` and return the value.
 fn take_value(args: &mut Vec<String>, name: &str) -> Option<String> {
@@ -73,6 +74,7 @@ fn main() -> ExitCode {
     let function_prefix = take_value(&mut args, "--function-prefix");
     let class_prefix = take_value(&mut args, "--class-prefix");
     let timing = take_flag(&mut args, "--timing");
+    let precise = take_flag(&mut args, "--precise");
     let (depth, max_contexts, max_nodes) = match (
         take_count(&mut args, "--depth", 0),
         take_count(&mut args, "--max-contexts", 0),
@@ -127,6 +129,7 @@ fn main() -> ExitCode {
                 }),
                 merged,
                 timing,
+                precise,
                 budget: Budget::new(depth, max_contexts),
                 max_nodes,
             },
@@ -149,6 +152,8 @@ struct Calls<'a> {
     wire: Option<WireStyle>,
     merged: bool,
     timing: bool,
+    /// `--precise`: the context layer on (`Precision::Precise`).
+    precise: bool,
     /// `Budget::default()` (no limit) when neither `--depth` nor `--max-contexts` was given.
     budget: Budget,
     /// The renderer's limit on the tree and the wire; `None` keeps `RenderOptions`' default.
@@ -161,7 +166,11 @@ fn print_calls(dir: &Path, file: &str, ask: &Calls<'_>) -> ExitCode {
     let label: &'static str = Box::leak(ask.label.clone().into_boxed_str());
     let style = MarkerStyle::docstring(label);
     // A session even for one request: it is the call that takes a budget, and with none its graph is `call_graph`'s.
-    let session = match Session::open(dir, Path::new(file), Options::new(style)) {
+    let mut options = Options::new(style);
+    if ask.precise {
+        options.precision = Precision::Precise;
+    }
+    let session = match Session::open(dir, Path::new(file), options) {
         Ok(session) => session,
         Err(e) => {
             eprintln!("{file}: {e}");

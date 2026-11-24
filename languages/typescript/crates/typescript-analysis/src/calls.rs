@@ -1,7 +1,8 @@
 //! The call graph: `TypeScript` is the language the core's flat solver walks, and `call_graph` is the one public function that runs it.
 //!
-//! One context per function (`Key = ()`, digest zeros): TypeScript is not context sensitive yet (`docs/03-typescript/08-later-context-sensitive.md`). The seam
-//! is kept: a target is `Target::Call(func, ())`, and `walk` is the only place that would take a key.
+//! One context per function, every context under the open key `KeyId::OPEN` (digest zeros): TypeScript is not context sensitive yet
+//! (`docs/03-typescript/08-later-context-sensitive.md`). The seam is kept: a target is `Target::Call(func, KeyId::OPEN)`, and `walk` is the only place
+//! that will make another key.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -14,7 +15,7 @@ use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary}
 
 use crate::Project;
 use crate::env::Env;
-use crate::key::Key;
+use crate::key::{Key, KeyId, Keys};
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
 use crate::walk;
 
@@ -24,14 +25,28 @@ use crate::walk;
 pub struct Options {
     pub limits: Limits,
     pub marker: MarkerStyle<'static>,
+    /// Whether the context layer is on. `Precision::Default` unless set.
+    pub precision: Precision,
+}
+
+/// How much the analyzer may know about the values a function is given (`docs/03-typescript/12-context-layer/`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Precision {
+    /// The engine's resolver alone: what every release so far gives.
+    #[default]
+    Default,
+    /// The context layer on. It is not built yet: until TC1 step 4 and the phases after it, the graphs are `Default`'s.
+    Precise,
 }
 
 impl Options {
-    /// The default cost limits, and `marker` for reading markers.
+    /// The default cost limits and `Precision::Default`, and `marker` for reading markers.
     pub fn new(marker: MarkerStyle<'static>) -> Self {
         Options {
             limits: Limits::default(),
             marker,
+            precision: Precision::Default,
         }
     }
 }
@@ -49,6 +64,8 @@ pub(crate) struct TypeScript<'p> {
     /// The ids of the defs described that have a marker another def of their file owns (D34). Described more than once, so a set; `finish` counts the ones the
     /// graph holds.
     demoted: RefCell<HashSet<StableDef>>,
+    /// Every key of this request (`key.rs`); `digest` reads it, and the walk will intern into it from TC2 on.
+    keys: RefCell<Keys>,
 }
 
 impl<'p> TypeScript<'p> {
@@ -59,6 +76,7 @@ impl<'p> TypeScript<'p> {
             notes: RefCell::new(BTreeMap::new()),
             handed: RefCell::new(HashMap::new()),
             demoted: RefCell::new(HashSet::new()),
+            keys: RefCell::new(Keys::new()),
         }
     }
 
@@ -107,8 +125,8 @@ impl<'p> Lang for TypeScript<'p> {
         info
     }
 
-    fn digest(&self, _key: &Self::Key) -> [u8; 16] {
-        [0; 16]
+    fn digest(&self, key: &Self::Key) -> [u8; 16] {
+        self.keys.borrow().digest(*key)
     }
 
     fn walk(&mut self, f: Self::Func, _key: &Self::Key, cancel: &Cancel) -> Summary<Self> {
@@ -169,7 +187,7 @@ pub(crate) fn start_of<'p>(lang: &TypeScript<'p>, func: Func<'p>) -> Start<TypeS
         let (class, init) = walk::construction(lang, func, false);
         Start::Construct { class, init }
     } else {
-        Start::Call(func, ())
+        Start::Call(func, KeyId::OPEN)
     }
 }
 
@@ -745,7 +763,7 @@ mod tests {
             .entry("src/decorators.ts", "Decorated", 0, STYLE)
             .unwrap();
         let mut solver = Solver::new(TypeScript::new(sem, STYLE), Limits::default());
-        let graph = solver.graph(&[(class, ())], &Cancel::new());
+        let graph = solver.graph(&[(class, KeyId::OPEN)], &Cancel::new());
         let text = std::fs::read_to_string(root.join("src/decorators.ts")).unwrap();
         let name = |id: &StableDef| graph.def(id).unwrap().qname.clone();
         let from_the_class: Vec<String> = graph
