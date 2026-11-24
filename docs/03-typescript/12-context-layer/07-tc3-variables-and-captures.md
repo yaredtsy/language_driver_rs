@@ -21,13 +21,22 @@ Patterns A7–A10 of [02](02-patterns.md); line c of the tour, and the half of l
 | Code | Before | TC3 |
 |---|---|---|
 | `const h = handler; run(h)` | `run` empty | `run` → `handler` |
-| `const h = flag ? a : b; h()` | unresolved | `a` and `b` |
+| `const h = flag ? a : b; h()` | `a` alone (see below) | `a` and `b` |
 | `function start(onDone) { const finish = () => { onDone(); }; timer(finish); }` · `start(save)` | `finish` `[Passed]`, with `onDone()` unresolved inside | `finish` `[Passed]` → `save` |
 | two nested handlers, one calling the other, the second reading a parameter | unresolved in the second | resolved: the first carries what the second needs |
-| `const onSave = pick ? a : b;` at the top of a file, `onSave()` in a function | unresolved | `a` and `b` |
+| `const onSave = pick ? a : b;` at the top of a file, `onSave()` in a function | `a` alone (see below) | `a` and `b` |
 | `run(handler.bind(null))` | counted, no edge | `run` → `handler` |
-| `let h = a; h(); h = b; h();` | unresolved twice | both calls show `a` and `b` ([03](03-design.md) §11, "assigned twice") |
+| `let h = a; h(); h = b; h();` | `a` twice (see below) | both calls show `a` and `b` ([03](03-design.md) §11, "assigned twice") |
 
+
+**Checked 2026-11-24** (with the analyzer of `9530a7d`, `a` and `b` both `() => void`): the three rows marked "see below" are **not
+unresolved today: the default graph shows `a` alone**, with nothing that says `b` is missing. For a callee that is a name, the resolver
+takes the declaration of the checker's resolved signature (`sem/resolve.rs`, `is_named_callee`), and the type of `h` is the type of `a`:
+`const h = flag ? a : b` reduces to one type (it is not a union, so `is_union_callee` does not see it) and `let h = a` keeps `a`'s type
+after `h = b`. `const h = a; run(h)` is as the table says (`run` empty, `a` `[Passed]`). A written type (`const h: () => void = a; h()`) makes
+the call `function_typed_value`, which is the tour's line c now. **Whether TC3 may add `b` where the engine named `a` through a variable
+is Q-TC8** (`docs/07-decisions-and-questions.md`); §7's "where the layer may speak" says only "by name", and this is not a call the code
+fixes by name. The default graph keeps the engine's answer either way ("follow the engine").
 ## 2. `sem`: every variable, and everything assigned to it
 
 ```rust

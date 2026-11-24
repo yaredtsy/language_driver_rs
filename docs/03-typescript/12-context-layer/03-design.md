@@ -72,7 +72,7 @@ function twice(f: () => void) { return () => { f(); f(); }; }     // returns a f
 function main() {
   each(encode);                 // a
   relay(join);                  // b
-  const h = encode; h();        // c
+  const h: () => void = encode; h();   // c
   open({ onDone: encode });     // d
   <Panel onClose={join} />;     // e
   send(new Json());             // f
@@ -85,17 +85,23 @@ function main() {
 | Line | The default resolver shows | Changes in | Then shows |
 |---|---|---|---|
 | a | `each` (nothing under it); `encode` `[Passed]` | **TC2** | `each` → `encode`; the passed edge stays |
-| b | `relay` → `each` (nothing under it) | **TC2** | `relay` → `each` → `join` |
-| c | `h()` unresolved `[check]` | **TC3** | `encode`, called |
+| b | `relay` → `each` (nothing under it); `join` `[Passed]` | **TC2** | `relay` → `each` → `join` |
+| c | `encode` `[Passed]` (the initializer); `h()` unresolved, `function_typed_value` (other) | **TC3** | `encode`, called |
 | d | `open` (nothing under it); `encode` `[Passed]` | **TC4** | `open` → `encode` |
 | e | `Panel` → `back` `[Passed]` (nothing under it); `join` `[Passed]` | **TC4**, with TC3's captures | `Panel` → `back` `[Passed]` → `join` |
 | f | `send` (nothing under it); `Json`, a construction | **TC5** | `send` → `Json.write` → `encode` |
-| g | `pick`; `.write()` unresolved | **TC6** | `pick`, then `Csv.write` → `join` |
-| h | `twice` (nothing under it); `encode` `[Passed]`; the second call unresolved | **TC2** | `twice` → `encode`, `encode`: the arrow is written in `twice`, so its calls are `twice`'s, and `twice` now knows `f`. TC6 only changes the reason of the second call |
+| g | `pick` → `Csv`, a construction; `.write()` unresolved, `function_typed_value` (other) | **TC6** | `pick` → `Csv`, then `Csv.write` → `join` |
+| h | `twice` (nothing under it: its two `f()` are unresolved, `function_typed_value`); `encode` `[Passed]`; the second call unresolved, `no_declaration` | **TC2** | `twice` → `encode`, `encode`: the arrow is written in `twice`, so its calls are `twice`'s, and `twice` now knows `f`. TC6 only changes the reason of the second call |
 | i | `each` (nothing under it); `join` under `main` | **TC2**, then TC7 | TC2: the same tree; `f()` in `each` has the reason `anonymous_function_called`. TC7 (D54): `each` → `join` |
 
 This program is `tests/fixtures/context/tour/src/tour.tsx` from TC1 on, with the first column as its snapshot. Writing that snapshot
 is how every "today" cell of this plan gets checked.
+
+**Checked 2026-11-24** (TC1 step 5's design, with the analyzer of `9530a7d` on this program): lines a, d, e, f, i as written; b, g, h with
+more than the cell said (now written in); **c was wrong**: written `const h = encode; h();`, the call is already `encode` today, because the
+checker's type of `h` is `encode`'s and the resolver takes the declaration of the resolved signature. The line now writes the type,
+`const h: () => void = encode`, which makes it the unresolved call TC3 is for. The same rule hides a second function: see Q-TC8 and
+[07](07-tc3-variables-and-captures.md) §1.
 
 ## 3. Values
 

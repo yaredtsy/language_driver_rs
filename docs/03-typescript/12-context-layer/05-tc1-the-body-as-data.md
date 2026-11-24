@@ -115,7 +115,7 @@ called: the layer costs nothing when it is off. `Precise` stands for a private s
   default tree, the precise tree, and the edges of both in the form the policy snapshots use (`from | callee text | what it is`),
   with a context's digest printed as its first 8 hex digits when it is not zeros.
 - **The precise policy table**: `languages/typescript/docs/policy.md` gains a second table, "With the context layer", whose rows name a
-  context fixture. `tests/policy.rs` reads it as it reads the first: a row without a fixture, or a fixture without a row, fails.
+  context fixture. `tests/context.rs` reads it as `tests/policy.rs` reads the first (step 5): a row without a fixture, or a fixture without a row, fails.
   It is empty at the end of TC1 but for the tour.
 - **The three properties**, as functions any test can call on a pair of graphs: `off_is_identical`, `never_fewer_edges`,
   `a_context_is_a_function_of_its_key` (each context of the graph is walked again alone and gives the same sites; a context reached
@@ -270,5 +270,34 @@ once; it is two sittings. **4a**:
   a unit test in `calls.rs` shows that the table is read with the layer on and not with it off (`Sem::has_flow`, `cfg(test)`), and one that
   the switch maps as above. `eval.rs` tests every `Expr` against a `World` written by hand. The sweep gains `TS_SWEEP_PRECISE=1` (a
   test-file change), and the reviewer compares the three projects' depth-1 dumps with it against those of `137b4fa`.
+
+**Step 5, as decided for the build (2026-11-24).** The harness, built so that TC2 starts by flipping a snapshot:
+
+- **The tour checked first.** The reviewer ran the program of [03](03-design.md) §2 through the analyzer of `9530a7d`, line by line: the
+  "today" column held for a, d, e, f, i, said less than the graph for b, g, h (written in), and was wrong for c (the call was already
+  resolved; the line now writes the type, so it is the unresolved call TC3 is for). Found on the way: Q-TC8 (TC3 only). The fixture is that
+  program, plus one function per line (`lineA` … `lineI`) holding the line alone, so each line has its own tree.
+- **The table.** The reviewer wrote the section "With the context layer" of `policy.md`, with the row `tour`. The test files read it apart from the
+  first table: `tests/common` gains `split_policy(text) -> (String, String)` (the text without the section, the section: from its heading
+  `## With the context layer` to the next `## ` heading). `tests/policy.rs` and `common::cases()` read the first part, so the first table and
+  everything built from it are as before.
+- **The snapshot.** `tests/common` gains `render_graph(graph, root) -> String`: what `tests/policy.rs`'s `render_row` writes after an entry's
+  `== ` line (tree, edges sorted by the def they leave, the `uncovered:` line), moved, so `render_row` calls it and the policy snapshots stay
+  byte for byte. A context row's snapshot is, per entry, `== <entry>`, then `-- off` and `render_graph` of the `Default` graph, then `-- on`
+  and that of the `Precise` graph. `edges_as_text` writes ` @<8 hex>` (the digest's first four bytes) after a context's def name, the edge's
+  `from` and its target (a `call`, a `pass`, a construction's `init`), **only when the digest is not zeros**: every existing snapshot is
+  unchanged, which proves it.
+- **The three properties**, in `tests/common/context.rs`, each returning the problems it found (`Vec<String>`, empty when it holds), so a test
+  collects them: `off_is_identical(off, on, root)` (equal graphs; otherwise the edge lines only one has and whether the stats differ);
+  `never_fewer_edges(default, precise)` (every default edge that is not `Unresolved` has an edge in the precise graph from the same def, at the
+  same site, passed alike, to the same target with the key set aside; every site of a def with an edge in the default graph has one in the
+  precise graph); `a_context_is_a_function_of_its_key(graphs)` (a context id that is `Finished` in two or more of the graphs has the same
+  edges in each). TC1 runs them on the tour: on and off are equal, so they hold; a test breaks a copy of a graph by hand to show each
+  finds what it is for.
+- **`tests/context.rs`**: the table's checks (as `tests/policy.rs`'s, on `tests/fixtures/context/` and `tests/snapshots/context/`, where a
+  file ending `.flow.txt` is a table snapshot and not a row's), every row against its snapshot, every row twice the same, the properties
+  on every row (`never_fewer_edges` per entry; `a_context_is_a_function_of_its_key` over all the row's entries, off and on apart).
+- **The tour's tables**, `tests/snapshots/context/tour.flow.txt` (§7), written by an in-crate test with the text forms of
+  `sem/flow/tests.rs` (`show`, `show_handed`), read by the reviewer against the source.
 
 Next: [`06-tc2-functions-through-parameters.md`](06-tc2-functions-through-parameters.md)

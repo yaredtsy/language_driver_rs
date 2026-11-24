@@ -63,6 +63,20 @@ the checker answers, and where it differs) is in `ENGINE.md`.
 | `class-entry` | a **class as the entry** of a request | the same as a `new C()` site: a `Root::Construct`, drawn as a class callee (the class's row, no body), `init` is the constructor that runs (its own, else the nearest base class's in project code, else `None`), and **the same counters**, because the entry and the site share `walk::construction`. So the entry's tree is the subtree a `new C()` draws, and its counters are that construction's (an inherited constructor that cannot be entered is `inherited_constructor_external` / `_unknown`; the instance field initializers of the chain are `uncovered_construct_initializer_sites`). What runs when the class is defined (decorators, `extends`, static initializers and blocks, computed names) is not the construction's: the body that declares the class draws it (M step 4), so a class entry counts none of it (the row is new since v0.2.0). A function or method entry is a `Root::Context`, as before. Until TS5 step 3 a class entry walked the class def's body (D25 (1)) | `fixtures/class-entry` `src/main.ts` `NoConstructor` `WithConstructor` `Inherits` `Grandchild` `ExternalBase` `UnknownBase` `Fields` `Statics` `Decorated` `Computed` `Base` `Rich` |
 | `counter-class-definition` | the sites that run when a class is **defined** | **drawn by the body that declares the class** (M step 4; `09-module-def.md` §3.3): the module for a class at the top of a file, the function for one in a function (`newLocal ▸ make`, the static initializer of `Local`), the namespace for one in a namespace. They are the sites of its decorators (the class's, its members', its parameters'), its `extends` expression, its static field initializers and its static blocks, drawn at their source position among the body's other sites; an enum member's initializer is drawn the same way. A construction draws and counts none of it (`Statics`, `Decorated`, `Rich`, `UnknownBase` as entries: no counter but `Rich`'s instance initializer). Real projects have 0 such sites (V-NOC 0 of 5 classes, postcss 0 of 19 and 0 of 2). The row keeps its name from when they were counted: `uncovered_class_definition_sites`, added at TS5 step 3 and retired at M step 4 (the row is new since v0.2.0, and that counter was in no tag) | `fixtures/class-entry` `src/main.ts` `Statics` `Decorated` `Rich` `UnknownBase` `newLocal` |
 
+## With the context layer
+
+What the analyzer draws with `Precision::Precise` (`docs/03-typescript/12-context-layer/`). Every row names a project under
+`tests/fixtures/context/` and the entries built from it. Its snapshot, `crates/typescript-analysis/tests/snapshots/context/<row>.txt`, holds
+for each entry the tree, every edge and the counters of what no edge covers, as the table above writes them, **once with the layer off and
+once with it on**; a context whose digest is not zeros is written with ` @` and the digest's first 8 hex digits after its name. The test is
+`crates/typescript-analysis/tests/context.rs`: a row without a project, a project folder no row names, a row without a snapshot and a
+snapshot of no row each fail. A phase that changes what the layer draws flips the "on" half of a snapshot here; the "off" half never
+changes, and the table above is read without this section.
+
+| Row | What it shows | Phase that changes it | Fixture |
+|---|---|---|---|
+| `tour` | the program of `03-design.md` §2: `main`, and each of its lines alone (`lineA` … `lineI`) | TC2 (a, b, h, i), TC3 (c), TC4 (d, e), TC5 (f), TC6 (g) | `fixtures/context/tour` `src/tour.tsx` `main` `lineA` `lineB` `lineC` `lineD` `lineE` `lineF` `lineG` `lineH` `lineI` |
+
 ## Reasons and counters that have no row of their own
 
 Every `Unresolved` reason (`function_typed_value`, `any_or_untyped`, `union_receiver`, `computed_name`, `no_declaration`, `decorator_result`, `anonymous_function_called`) and every `uncovered_*` counter is named in a row above. Five more names exist in `Stats.language` and have no fixture, because no fixture can make them fire:
