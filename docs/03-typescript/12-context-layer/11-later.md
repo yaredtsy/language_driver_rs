@@ -127,6 +127,25 @@ const navigate = useNavigate();              navigate("/");
 | what changes | the **default** graph: so it is a policy row with its fixture, a line in the tag notes, and N8 (TC0) is its forecast. On `TaskDetailPanel` it is 43 of the 86 unresolved calls |
 | why now | it is the largest single group of "unresolved" in React code, no phase of the layer can ever reach it (the function is made inside the library), and it risks nothing the layer depends on |
 
+**As decided for the build (2026-11-24).** At a site whose answer holds `function_typed_value` and whose origin is a call's result:
+
+1. the callee, under `unwrap_expression`, is an `Identifier` (no member step: `setOpen()`, `setOpen?.()`);
+2. its symbol, through an import alias, has a first declaration that is a `VariableDeclaration` with a plain name (path `""`), or a
+   `BindingElement` that is not a rest element, of a pattern whose parent is that `VariableDeclaration` (one pattern only): in an array
+   pattern its path is `[i]`, `i` its index among the pattern's elements, holes counted; in an object pattern `.k`, `k` the property's name
+   (`property_name`, else the name), spelled by `spelled`;
+3. the `VariableDeclaration` is `const`;
+4. its initializer, under `unwrap_expression` and `await`, is a call `c`;
+5. `c`'s resolved signature has a declaration, in a file that is not project code; the package is named as `classify` names an external's
+   (`package_of`, else `place_of`);
+6. the maker is `c` spelled from the source: a call is its callee's spelling and `()`; a callee that is itself a call is spelled the same
+   way (`create<S>()(…)` is `create()()`); any other callee is its text as written, whitespace taken out, type arguments not part of it.
+
+Then `sem` answers `Resolved::LibraryMade { package, maker, path }` in place of each `Unknown(FunctionTypedValue)` of the site, and
+`walk::target` turns it into `External { package, name: maker + path }` and notes `library_made_function`. The site is then no longer
+counted in `function_typed_value` nor in `_from_call_result`. The breakdown prints the count when it is above 0. Policy row
+`library-made`; fixture `policy/src/library_made.tsx`, with a package of its own (`policy/node_modules/hooks/`).
+
 ### 4.2 TC10: a table of library functions
 
 **Needs Q-TC2.** Some of the most common unresolved calls go through a library function whose behaviour is fixed and simple, and
