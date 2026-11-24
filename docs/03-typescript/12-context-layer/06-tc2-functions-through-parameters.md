@@ -335,7 +335,7 @@ every public graph is unchanged, and the step's proofs run in the crate with `wi
   `relay` and directly (the guard of step 3, the key in `Env`, is reached here); each context of `keys` with its pinned digest; the layer with
   no bit equal to the layer off; and the no-reuse check of §9.
 
-**Step 4b, as decided for the build (2026-11-24).** N6 is a measurement the reviewer runs on the projects; the coder builds it and proves it
+**Step 4b, as decided for the build (2026-11-24); built as decided, `4c26e77`; measured, see [`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md): no per-function cut, relevance stays at step 8.** N6 is a measurement the reviewer runs on the projects; the coder builds it and proves it
 on a fixture. It is an ignored in-crate test, as `measure_flow` is, because the layer can only be turned on with `PARAMS` inside the crate
 (`Caps::BUILT` is empty until step 5).
 
@@ -360,5 +360,13 @@ on a fixture. It is an ignored in-crate test, as `measure_flow` is, because the 
 - **What the reviewer does with it:** the distribution goes to `engine/09-tc2.md`; the per-function cut (§7) is built in this phase only if the
   95th percentile comes near 64, and relevance (step 8) moves before step 5 if the count with it is much lower and the count without it is
   near the cut. The release gate (`measure_flow`, `engine/08-tc1.md`) is re-run in the same release build.
+
+**Step 4c, as decided for the build (2026-11-24): the cost of a table, before step 5.** The release gate failed at `4c26e77` on two
+projects (cold tables 107% and 113–190% of a depth-1 graph, swap noisy), and the parameter-write search of step 2 is about 100 ms of the
+compiler's. `writes_of` asks the checker for the symbol of every place the name is spelled and only then whether the place is a write; most
+places are reads. The fix keeps the result and reorders the test: `Kind::Identifier`, then `ast::is_write_access` (syntax only), then the
+symbol. No other change. Proof: every test and the tour unchanged, the layer-on dumps unchanged, and the gate run again by the reviewer on a
+quiet machine (`T_cold ≤ T_sweep`, peak ≤ +25%). If it still fails, the next candidate is `capable` (one `get_type_of_symbol` per named
+parameter), measured the same way before anything is decided.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
