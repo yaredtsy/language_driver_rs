@@ -308,4 +308,8 @@ Each step is one prompt; step 1 or 2 may split when its prompt is written.
   `walk::holds_name` false, `walk::reads_many_sources` none, and `needs::each_expr` does not enter them, written as a `match` with no
   `_` arm so step 2 cannot forget one. Step 2 gives them their real reading (§10 row 6) together with `eval`.
 
+**Step 1 built as decided, `9e64de5`** ([`engine/11-tc4.md`](../../../languages/typescript/engine/11-tc4.md)): 502 passed, 13 ignored;
+only the table snapshots moved. A shorthand is read through its value symbol; a def read through a member is not a hand-over; a rest
+parameter's pattern stays open.
+
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
