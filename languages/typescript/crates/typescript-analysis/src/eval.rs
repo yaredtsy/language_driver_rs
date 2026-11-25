@@ -117,6 +117,7 @@ fn eval_below(world: &dyn World, env: &Env, expr: &Expr, below: u32, vars: Vars)
     match expr {
         Expr::Unknown => Value::unknown(),
         Expr::Data => Value::data(),
+        Expr::Undefined => Value::of([One::Undefined], false),
         Expr::Def(def) => function(world, env, *def, vars),
         Expr::Param(index) if *index < below => param(world, env, *index, vars),
         Expr::Param(_) => Value::unknown(),

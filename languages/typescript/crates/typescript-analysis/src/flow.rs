@@ -167,6 +167,9 @@ pub(crate) enum Expr {
     Unknown,
     /// A literal and the other forms of `03-design.md` §3's table: nothing callable.
     Data,
+    /// Nothing: `void …` (always `undefined`), or the global `undefined`. A value that is **not passed**, as far as a default is concerned, which
+    /// `Data` is not (the review before TC3, §1.1).
+    Undefined,
     /// A name or a function the checker resolves to a project def with a body.
     Def(DefId),
     /// The i-th parameter of this def's own declaration (the place in `Flow::params`).

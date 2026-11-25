@@ -49,6 +49,7 @@ fn expr(sem: &Sem, own: DefId, text: &str, expr: &Expr) -> String {
     match expr {
         Expr::Unknown => "?".into(),
         Expr::Data => "data".into(),
+        Expr::Undefined => "undefined".into(),
         Expr::Def(id) => {
             let func = sem.func(*id).expect("a def of this program");
             format!("def {}", sem.describe(func, STYLE).qualname)
@@ -164,7 +165,12 @@ fn holds_a_def(expr: &Expr) -> bool {
     match expr {
         Expr::Def(_) => true,
         Expr::OneOf(members) => members.iter().any(holds_a_def),
-        Expr::Unknown | Expr::Data | Expr::Param(_) | Expr::Anon(_) | Expr::Var(_) => false,
+        Expr::Unknown
+        | Expr::Data
+        | Expr::Undefined
+        | Expr::Param(_)
+        | Expr::Anon(_)
+        | Expr::Var(_) => false,
     }
 }
 
@@ -566,6 +572,15 @@ fn the_variables_of_a_body_are_reviewed() {
     );
 }
 
+/// What each kind of expression is read as (the review before TC3, §1.1): sixteen kinds are data, `void 0` and the global `undefined` are nothing.
+#[test]
+fn the_kinds_of_data_and_nothing_are_reviewed() {
+    analyzer_testkit::expect_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/flow/data.flow.txt"),
+        &tables_of(&root(), "src/data.tsx"),
+    );
+}
+
 /// What each parameter's row says: rest, pattern, default, assigned, capable (`06-tc2` §2).
 #[test]
 fn the_parameter_rows_say_what_each_parameter_is() {
@@ -690,7 +705,12 @@ fn vars_in(expr: &Expr, out: &mut Vec<crate::flow::VarId>) {
     match expr {
         Expr::Var(id) => out.push(*id),
         Expr::OneOf(members) => members.iter().for_each(|member| vars_in(member, out)),
-        Expr::Unknown | Expr::Data | Expr::Def(_) | Expr::Param(_) | Expr::Anon(_) => {}
+        Expr::Unknown
+        | Expr::Data
+        | Expr::Undefined
+        | Expr::Def(_)
+        | Expr::Param(_)
+        | Expr::Anon(_) => {}
     }
 }
 

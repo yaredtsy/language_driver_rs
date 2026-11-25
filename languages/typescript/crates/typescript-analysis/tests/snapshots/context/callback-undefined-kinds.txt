@@ -1,0 +1,48 @@
+== viaVoid
+-- off
+viaVoid
+  run
+    fallback [Passed]
+  handler [Passed]
+edges:
+run | fallback | pass fallback
+run | cb | unresolved function_typed_value
+viaVoid | run | call run
+viaVoid | handler | pass handler
+-- on
+viaVoid
+  run
+    fallback [Passed]
+    fallback
+    handler
+  handler [Passed]
+edges:
+run @5f513228 | fallback | pass fallback
+run @5f513228 | cb | call fallback
+run @5f513228 | cb | call handler
+viaVoid | run | call run @5f513228
+viaVoid | handler | pass handler
+== viaUndefined
+-- off
+viaUndefined
+  run
+    fallback [Passed]
+  handler [Passed]
+edges:
+run | fallback | pass fallback
+run | cb | unresolved function_typed_value
+viaUndefined | run | call run
+viaUndefined | handler | pass handler
+-- on
+viaUndefined
+  run
+    fallback [Passed]
+    fallback
+    handler
+  handler [Passed]
+edges:
+run @5f513228 | fallback | pass fallback
+run @5f513228 | cb | call fallback
+run @5f513228 | cb | call handler
+viaUndefined | run | call run @5f513228
+viaUndefined | handler | pass handler

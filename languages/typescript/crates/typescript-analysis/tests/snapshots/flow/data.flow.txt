@@ -1,0 +1,25 @@
+== run
+params:
+  #0 rest capable
+vars:
+  values@1 param#0 capable
+sites: none
+anons: 0
+handed: none
+== kinds
+params: none
+vars: none
+sites:
+  call ? (data, data, data, data, data, data, data, data, data, data, data, data, undefined, data, data, data, data)
+  call ? (undefined)
+anons: 0
+handed:
+  undefined undefined
+== FILE
+params: none
+vars:
+  n@2
+  o@3 capable open
+sites: none
+anons: 0
+handed: none

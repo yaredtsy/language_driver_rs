@@ -720,6 +720,17 @@ impl Reader<'_, '_> {
         .then(|| expression_of(callee))?
     }
 
+    /// Whether the identifier is the name `undefined` and the checker's global one: its symbol has no declaration in any file (a local `const undefined = f`
+    /// has one, and is a variable like any other).
+    fn is_global_undefined(&mut self, node: P<Node>) -> bool {
+        if spelled(self.file.node.text(), node).as_deref() != Some("undefined") {
+            return false;
+        }
+        self.checker
+            .get_symbol_at_location_exported(node)
+            .is_some_and(|symbol| symbol.declarations().is_empty())
+    }
+
     /// What the expression is, as far as the code alone says (`crate::flow::Expr`).
     fn expr_of(&mut self, node: P<Node>) -> Expr {
         let node = unwrap_expression(node);
@@ -738,6 +749,9 @@ impl Reader<'_, '_> {
                     .map_or(Expr::Unknown, |&index| Expr::Anon(index))
             }
             Kind::Identifier | Kind::PropertyAccessExpression => {
+                if node.kind() == Kind::Identifier && self.is_global_undefined(node) {
+                    return Expr::Undefined;
+                }
                 if node.kind() == Kind::Identifier
                     && let Some(index) = self.param_index(node)
                 {
@@ -802,11 +816,12 @@ impl Reader<'_, '_> {
             | Kind::PrefixUnaryExpression
             | Kind::PostfixUnaryExpression
             | Kind::TypeOfExpression
-            | Kind::VoidExpression
             | Kind::DeleteExpression
             | Kind::JsxElement
             | Kind::JsxSelfClosingElement
             | Kind::JsxFragment => Expr::Data,
+            // `void x` is `undefined` whatever `x` is: nothing was passed, so a default applies (the review before TC3, §1.1)
+            Kind::VoidExpression => Expr::Undefined,
             _ => Expr::Unknown,
         }
     }

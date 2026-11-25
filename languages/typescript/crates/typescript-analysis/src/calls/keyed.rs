@@ -633,7 +633,7 @@ fn the_table_of_rows_is_read_whole() {
             "{row}"
         );
     }
-    assert_eq!(entries.len(), 94);
+    assert_eq!(entries.len(), 96);
 }
 
 /// Nine functions through one conditional are more than a set holds: the one context of `run` that the graph walked has a key of one slot, wide.

@@ -86,7 +86,12 @@ impl Marks<'_> {
                 }
             }
             Expr::OneOf(members) => members.iter().for_each(|member| self.atoms(member)),
-            Expr::Unknown | Expr::Data | Expr::Def(_) | Expr::Anon(_) | Expr::Var(_) => {}
+            Expr::Unknown
+            | Expr::Data
+            | Expr::Undefined
+            | Expr::Def(_)
+            | Expr::Anon(_)
+            | Expr::Var(_) => {}
         }
     }
 

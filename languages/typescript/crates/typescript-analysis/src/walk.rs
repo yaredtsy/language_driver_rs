@@ -363,7 +363,7 @@ fn holds_name(expr: &Expr) -> bool {
     match expr {
         Expr::Var(_) | Expr::Param(_) => true,
         Expr::OneOf(members) => members.iter().any(holds_name),
-        Expr::Unknown | Expr::Data | Expr::Def(_) | Expr::Anon(_) => false,
+        Expr::Unknown | Expr::Data | Expr::Undefined | Expr::Def(_) | Expr::Anon(_) => false,
     }
 }
 
@@ -381,7 +381,12 @@ fn reads_many_sources(env: &Env, expr: &Expr) -> bool {
         Expr::OneOf(members) => {
             return members.iter().any(|member| reads_many_sources(env, member));
         }
-        Expr::Var(_) | Expr::Unknown | Expr::Data | Expr::Def(_) | Expr::Anon(_) => None,
+        Expr::Var(_)
+        | Expr::Unknown
+        | Expr::Data
+        | Expr::Undefined
+        | Expr::Def(_)
+        | Expr::Anon(_) => None,
     };
     row.map(|row| &env.flow.vars[row]).is_some_and(|var| {
         var.capable && var.assigned.len() + usize::from(var.param.is_some()) >= 2
