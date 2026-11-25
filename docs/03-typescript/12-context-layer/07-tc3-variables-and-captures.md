@@ -137,9 +137,11 @@ would tie `env.rs` to the engine; it is not done.
 - **With `LOCALS` off** nothing above runs: `Expr::Var` is unknown, and a written parameter joins unknown, as in TC2. Proved by a snapshot of
   every entry's graph with `PARAMS` alone, written before the step's code changes and unchanged after.
 - **Where the engine named a function (D59).** `walk::resolve_from_env` spoke only when the engine's answer had an open entry. When it has
-  none and the callee holds an `Expr::Var`, the layer now evaluates it and **adds** each function of the value that the engine's answer does
-  not already call (with the tripwire, D61), an `anonymous_function_called` mark for an arrow, and keeps every target of the engine's.
-  A site where it added something counts `variable_added_to_engine`.
+  none and the callee holds an `Expr::Var` **or an `Expr::Param`** (a parameter is a variable too: `run(cb: typeof a)` called with `b`, row
+  `callback-named-by-type`, found by the coder's mutation d of part 2), the layer now evaluates it and **adds** each function of the value that
+  the engine's answer does not already call (with the tripwire, D61), an `anonymous_function_called` mark for an arrow, and keeps every target
+  of the engine's. It notes nothing unless it adds (no `callee_undefined`: the engine's answer stands). A def or an arrow as the callee is
+  not tracked by name and is left to the engine. A site where it added something counts `variable_added_to_engine`.
 - **Counters**, per walk with `LOCALS` on: `variable_write_unmodelled` (a body's `Flow::unmodelled`, counted as a body note);
   `variable_added_to_engine`; `variable_rounds_capped`; and **the ceiling of 2b**, `variable_assigned_more_than_once`: a site whose callee or
   an argument reads (directly or in a `OneOf`) this body's capable variable or written parameter with two or more sources (its assignments,
