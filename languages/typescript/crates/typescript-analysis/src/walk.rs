@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use analyzer_core::graph::{External, Reason, Site};
+use analyzer_core::graph::{External, Reason, Site, StableDef};
 use analyzer_core::outline::DefKind;
 use analyzer_core::solve::{Cancel, SiteCalls, Summary, Target};
 use typescript_syntax::MarkerStyle;
@@ -318,7 +318,13 @@ fn members<'p>(
         saw_undefined: false,
         mismatch: false,
     };
-    for one in value.known() {
+    // in the order of the stable ids the graph names the functions by, not of their numbers: a file's number is given the first time one of its defs is asked
+    // for, so it depends on what a project was asked before, and a limit on the contexts cuts at whichever target is made later (the review before TC3, §1.2)
+    let mut ordered: Vec<&One> = value.known().iter().collect();
+    if ordered.len() > 1 {
+        ordered.sort_by_cached_key(|one| member_order(lang, one));
+    }
+    for one in ordered {
         // no `_` arm: a kind of member a later phase adds is decided here before this compiles
         let (def, captures) = match one {
             One::Fn(def) => (Some(def), None),
@@ -355,6 +361,22 @@ fn members<'p>(
         }
     }
     found
+}
+
+/// Where a member goes among the others of a value: functions and closures by the stable id of the function, then anonymous functions by the stable id of the
+/// def they are written in and their number, then the rest. A tie (two closures of one function) keeps the value's own order (`sort_by_cached_key` is stable).
+fn member_order(lang: &TypeScript<'_>, one: &One) -> (u8, Option<StableDef>, u32) {
+    let id = |def: DefId| {
+        lang.sem
+            .func(def)
+            .map(|func| lang.sem.describe(func, lang.style).id)
+    };
+    match one {
+        One::Fn(def) | One::Closure(def, _) => (0, id(*def), 0),
+        One::Anon(def, number) => (1, id(*def), *number),
+        One::AnonAny => (2, None, 0),
+        One::Undefined => (3, None, 0),
+    }
 }
 
 /// Whether `expr` is a name the layer tracks (a variable, or a parameter: a parameter is a variable too, D59), or has one among the members of its `OneOf`. A def

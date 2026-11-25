@@ -10,7 +10,7 @@ use analyzer_testkit::expect_file;
 use analyzer_testkit::graph::check_invariants;
 use common::context::{a_context_is_a_function_of_its_key, never_fewer_edges};
 use common::{Row, STYLE, call_graph, edges_as_text, render_graph, rows, split_policy, tests_dir};
-use typescript_analysis::{Cancel, EdgeTo, Entry, Graph, Options, Precision, Project};
+use typescript_analysis::{Cancel, EdgeTo, Entry, Graph, Limits, Options, Precision, Project};
 
 const TABLE: &str = include_str!("../../../docs/policy.md");
 
@@ -500,4 +500,45 @@ fn the_tripwire_counts_where_a_function_does_not_fit() {
         }
     }
     assert_eq!(seen, 96, "every entry of every row");
+}
+
+/// The review before TC3, §1.2: the graph of `pick` under a limit on the number of contexts does not depend on what the project was asked before. A file gets
+/// its number the first time one of its defs is asked for, so what `touchA` asks first gives `a.ts` its number first; the order of the functions of
+/// `flag ? fb : fa` (and so which context a limit cuts) must not follow it.
+#[test]
+fn the_order_of_requests_does_not_change_a_graph_under_a_limit() {
+    let root = tests_dir().join("fixtures/order-under-limit");
+    let graph_of = |project: &Project, entry: &'static str, limit: u32| {
+        let mut options = precise();
+        options.limits = Limits::new(limit, None);
+        call_graph(
+            project,
+            "src/main.ts",
+            &Entry::Def {
+                qualname: entry,
+                occurrence: 0,
+            },
+            &options,
+            &Cancel::new(),
+        )
+        .unwrap_or_else(|| panic!("no def {entry}"))
+    };
+    let mut differing = Vec::new();
+    for limit in 1..=8 {
+        let fresh = Project::open(&root, Path::new("src/main.ts")).unwrap();
+        let after = Project::open(&root, Path::new("src/main.ts")).unwrap();
+        // `touchA` first: it gives `a.ts` its number before `b.ts`'s
+        let _ = graph_of(&after, "touchA", limit);
+        let (alone, second) = (
+            graph_of(&fresh, "pick", limit),
+            graph_of(&after, "pick", limit),
+        );
+        if alone != second {
+            differing.push(limit);
+        }
+    }
+    assert!(
+        differing.is_empty(),
+        "the graph of `pick` depends on what was asked before it, at limits {differing:?}"
+    );
 }
