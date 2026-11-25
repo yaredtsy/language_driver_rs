@@ -28,8 +28,12 @@ use crate::needs::needs_of_component;
 use crate::relevance::relevant;
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
 use crate::value::VALUE_WIDENED_SET;
-use crate::value::{Captures, Value};
+use crate::value::{Captures, One, Value};
 use crate::walk;
+
+/// The key of the counter in `Stats.language` for a key that named a def or a variable the program does not know: it is the open key then (`intern_key`). It
+/// should never be counted; a number above 0 is a bug to look for.
+pub(crate) const KEY_NAMES_UNKNOWN_DEF: &str = "key_names_unknown_def";
 
 /// How to build a graph. The marker style is how a def's marker is read (`ID: …` in its JSDoc).
 #[derive(Clone, Debug)]
@@ -134,20 +138,26 @@ impl<'p> TypeScript<'p> {
         self.layer.is_some_and(|layer| layer.contains(caps))
     }
 
-    /// The number of the key that holds `data`, interned in this request's `Keys`. A def in it is named by the id the graph gives it.
+    /// The number of the key that holds `data`, interned in this request's `Keys`. A def in it is named by the id the graph gives it. A key that names a def
+    /// or a variable this program does not know is the open key, and `key_names_unknown_def` is counted: an analysis step never fails (`CLAUDE.md` rule 8).
     pub(crate) fn intern_key(&self, data: KeyData) -> KeyId {
+        if !self.names_are_known(&data) {
+            self.note_walk(KEY_NAMES_UNKNOWN_DEF);
+            return KeyId::OPEN;
+        }
+        // `names_are_known` has said every def is known, so the placeholder is never written into a digest
+        let unknown = || StableDef::Path {
+            module: String::new(),
+            qname: String::new(),
+            nth: 0,
+        };
         let stable = |def: DefId| {
-            let func = self
-                .sem
+            self.sem
                 .func(def)
-                .expect("a value names a def of this request's program");
-            self.sem.describe(func, self.style).id
+                .map_or_else(unknown, |func| self.sem.describe(func, self.style).id)
         };
         let stable_var = |var: VarId| {
-            let (name, nth) = self
-                .sem
-                .var_name(var, self.style)
-                .expect("a captured variable of this program has a name");
+            let (name, nth) = self.sem.var_name(var, self.style).unwrap_or_default();
             CanonVar {
                 def: stable(var.def),
                 name,
@@ -158,6 +168,23 @@ impl<'p> TypeScript<'p> {
         self.keys
             .borrow_mut()
             .intern(data, stable, stable_var, list)
+    }
+
+    /// Whether every def `data` names is one of this program: the defs of its values (a closure's own def, not the lists it holds: they were made from this
+    /// program's values, and walking them again on every key would copy each list), and the def of each variable it captured.
+    fn names_are_known(&self, data: &KeyData) -> bool {
+        let known = |def: DefId| self.sem.func(def).is_some();
+        let value_is_known = |value: &Value| {
+            value.known().iter().all(|one| match one {
+                One::Fn(def) | One::Anon(def, _) | One::Closure(def, _) => known(*def),
+                One::AnonAny | One::Undefined => true,
+            })
+        };
+        data.params.iter().all(value_is_known)
+            && data
+                .captured
+                .iter()
+                .all(|(var, value)| known(var.def) && value_is_known(value))
     }
 
     /// The same, with the context layer as `layer` says.
@@ -724,6 +751,37 @@ mod tests {
         label: "ID",
         placement: analyzer_core::edit::Placement::Docstring,
     };
+
+    /// A key that names a def of no program this one knows is the open key, counted, and a key of known defs is interned as before (`intern_key` never fails).
+    #[test]
+    fn a_key_that_names_an_unknown_def_is_the_open_key() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/keys");
+        let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+        let lang = TypeScript::new(&sem, STYLE);
+        let known = sem.def_id(sem.entry("src/main.ts", "run", 0, STYLE).unwrap());
+        // a def number of another program
+        let unknown = DefId::new(u32::MAX, 0, Some(0));
+        let key = |def: DefId| KeyData {
+            params: vec![Value::of([One::Fn(def)], false)].into(),
+            ..KeyData::default()
+        };
+        let good = lang.intern_key(key(known));
+        assert_ne!(good, KeyId::OPEN);
+        assert!(lang.notes.borrow().get(KEY_NAMES_UNKNOWN_DEF).is_none());
+        assert_eq!(lang.intern_key(key(unknown)), KeyId::OPEN);
+        assert_eq!(lang.notes.borrow().get(KEY_NAMES_UNKNOWN_DEF), Some(&1));
+        // the same inside a captured variable
+        let var = VarId {
+            def: unknown,
+            at: 0,
+        };
+        let captured = KeyData {
+            captured: vec![(var, Value::data())].into(),
+            ..KeyData::default()
+        };
+        assert_eq!(lang.intern_key(captured), KeyId::OPEN);
+        assert_eq!(lang.notes.borrow().get(KEY_NAMES_UNKNOWN_DEF), Some(&2));
+    }
 
     #[test]
     fn the_switch_maps_to_the_layer() {
