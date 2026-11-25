@@ -301,6 +301,22 @@ A variable declared at the top of a file is not captured: every function of the 
 `this` is not followed (TC5). `call` and `apply` stay counted. **`uncovered_bind` stays as it is**: it is the default resolver's count
 (TS4), the same with the layer off and on; with the layer on the edge appears in the callee's context (`run`'s), not at the hand-over.
 
+### Relevance (step 6, as decided 2026-11-25; the rule of `06-tc2` §8, through variables)
+
+- **Which parameters are relevant** (`relevant(world, g) -> Box<[bool]>`, a new neutral file `relevance.rs`, asking only `World`): the
+  **sinks** of g's table are every site's callee and arguments, every hand-over's value, and the variables of g that a nested def g names
+  needs (`World::needs`: a captured parameter is relevant). From the sinks, a worklist marks: `Expr::Param(i)` marks parameter i; an own
+  `Expr::Var` marks its row; a marked row marks what its `assigned` expressions read, and a parameter's row marks the parameter; a marked
+  parameter marks what its default reads. Parameter i is relevant when marked. A parameter read only in a condition (`if (cb)`) is not in the
+  table, so it is not relevant, as in Python's `relevant.rs`. A `return` is not in the table until TC6: a parameter only returned is not
+  relevant now, and TC6 adds `return` to the sinks (written into `10-tc6` then).
+- **Kept with the program** (in the `Sem`, like `needs`): a fact of the code, never once per request.
+- **In a key, a parameter that is not relevant is unknown** (`key::bind` gets the flags; the trailing unknowns drop as today). Captured
+  variables are not masked: `needs` lists only variables a table reads.
+- **Its own bit, `Caps::RELEVANCE`** (128). Its proof: for every entry of every row, the edges with the bit on and off are the same once the
+  context digests are left out (`equal edges`), and the contexts are not more; on the projects, the comparison has no problem and the
+  contexts fall. The test-only approximation of TC2 step 4b (`Measure::relevance`, "a parameter the table never reads") is replaced by the bit.
+
 ## 7. Fixtures and tests
 
 `local-alias` · `local-either` · `local-assigned-twice` · `local-open` (a `for … of` target: `a` and the engine's answer) · `local-cycle` ·

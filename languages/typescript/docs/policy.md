@@ -125,6 +125,10 @@ changes, and the table above is read without this section.
 | `bind-variable` | `const bound = handler.bind(null); run(bound);`: the variable holds `handler`, and the context of `run` calls it | TC3 (step 5) | `fixtures/context/bind-variable` `src/main.ts` `main` |
 | `bind-partial` | `run(handler.bind(null, 1))`: a bind with an argument shifts the parameters (`run`'s first argument would be `handler`'s second), so it is not `handler`'s value: both halves keep `run`'s unresolved edge | TC3 (step 5: no change) | `fixtures/context/bind-partial` `src/main.ts` `main` |
 | `bind-own-method` | `handler` is a function merged with a namespace that exports its own `bind` (returning `other`); `run(handler.bind(null))` calls that `bind`, not `Function.prototype.bind`, so the argument is not `handler`: both halves keep `run`'s unresolved edge | TC3 (step 5: no change) | `fixtures/context/bind-own-method` `src/main.ts` `main` |
+| `relevance-ignored` | `log(cb)` never uses `cb`; `main` calls `log(a)` and `log(b)`: from TC3 step 6 `cb` is not relevant, so it is unknown in `log`'s key and both calls share **one** context of `log` (before, two) | TC3 (step 6) | `fixtures/context/relevance-ignored` `src/main.ts` `main` |
+| `relevance-condition` | `guard(cb)` reads `cb` only in `if (cb)` and calls `done()`: a parameter used only in a condition is not relevant (as Python's `relevant.rs`), so `guard(a)` and `guard(b)` share one context | TC3 (step 6) | `fixtures/context/relevance-condition` `src/main.ts` `main` |
+| `relevance-through-local` | `run(cb)` does `const h = cb; h();`: `cb` reaches a call through a local, so it is relevant, and `run(a)` and `run(b)` keep two contexts, one calling `a`, one `b` | TC3 (step 6: no change) | `fixtures/context/relevance-through-local` `src/main.ts` `main` |
+| `relevance-captured` | `wrap(cb)` nests `inner()` (calls `cb`) and hands it to a library: `cb` is captured, so it is relevant, and `wrap(a)` and `wrap(b)` keep two contexts | TC3 (step 6: no change) | `fixtures/context/relevance-captured` `src/main.ts` `main` |
 
 ## Reasons and counters that have no row of their own
 
