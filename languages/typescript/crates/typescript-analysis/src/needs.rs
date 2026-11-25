@@ -240,6 +240,10 @@ mod tests {
         fn captured(&self, _captures: Captures) -> CaptureList {
             unreachable!("these tests do not evaluate")
         }
+
+        fn module_value(&self, _var: VarId) -> Value {
+            unreachable!("these tests do not evaluate")
+        }
     }
 
     fn d(index: u32) -> DefId {

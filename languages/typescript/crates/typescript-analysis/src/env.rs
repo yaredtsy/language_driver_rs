@@ -25,6 +25,10 @@ pub(crate) const VARIABLE_ASSIGNED_MORE_THAN_ONCE: &str = "variable_assigned_mor
 /// each context that did it.
 pub(crate) const VARIABLE_ROUNDS_CAPPED: &str = "variable_rounds_capped";
 
+/// The key of the counter for a read, in the table of a file's own code, of a variable of another file: one module's value does not read another's (`07-tc3` §5),
+/// so it is unknown there. Counted in the walk that solves the file's table.
+pub(crate) const MODULE_READS_MODULE: &str = "module_reads_module";
+
 pub(crate) struct Env {
     /// The table of the body being walked (`Sem::flow`).
     pub(crate) flow: Arc<Flow>,

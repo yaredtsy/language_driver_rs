@@ -9,6 +9,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use analyzer_core::edit::MarkerStyle;
@@ -20,8 +21,8 @@ use crate::Project;
 use crate::caps::Caps;
 use crate::captures::{CaptureList, CaptureSets};
 use crate::env::{Env, VARIABLE_WRITE_UNMODELLED};
-use crate::eval::World;
-use crate::flow::{DefId, Flow, VarId};
+use crate::eval::{World, eval};
+use crate::flow::{DefId, Expr, Flow, VarId};
 use crate::key::{CanonVar, Key, KeyData, KeyId, Keys};
 use crate::needs::needs_of_component;
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
@@ -93,6 +94,9 @@ pub(crate) struct TypeScript<'p> {
     keys: RefCell<Keys>,
     /// Every list of captured variables of this request (`captures.rs`): a `One::Closure` is a number into it.
     captures: RefCell<CaptureSets>,
+    /// The env of each file's own code that a variable of it was asked of (`World::module_value`): made once per request, under the open key, and solved once.
+    /// Looked up, never iterated (rule 9). An `Rc`, so the map's borrow is released before the env is evaluated.
+    modules: RefCell<HashMap<DefId, Rc<Env>>>,
     /// Whether the context layer runs, and with which bits (`Precision::layer`). `None`: no table is read and no `Env` is built.
     layer: Option<Caps>,
     /// Every `(func, key)` `Lang::walk` was asked for, in order: `calls/keyed.rs` walks each again alone.
@@ -115,6 +119,7 @@ impl<'p> TypeScript<'p> {
             demoted: RefCell::new(HashSet::new()),
             keys: RefCell::new(Keys::new()),
             captures: RefCell::new(CaptureSets::new()),
+            modules: RefCell::new(HashMap::new()),
             layer: None,
             #[cfg(test)]
             walked: Vec::new(),
@@ -245,6 +250,22 @@ impl World for TypeScript<'_> {
 
     fn captured(&self, captures: Captures) -> CaptureList {
         self.captures.borrow().get(captures).into()
+    }
+
+    fn module_value(&self, var: VarId) -> Value {
+        let made = self.modules.borrow().get(&var.def).map(Rc::clone);
+        let env = match made {
+            Some(env) => env,
+            None => {
+                let Some(flow) = World::flow(self, var.def) else {
+                    return Value::unknown();
+                };
+                let env = Rc::new(Env::new(flow, var.def, KeyData::default()));
+                self.modules.borrow_mut().insert(var.def, Rc::clone(&env));
+                env
+            }
+        };
+        eval(self, &env, &Expr::Var(var))
     }
 }
 
@@ -697,7 +718,10 @@ mod tests {
     fn the_switch_maps_to_the_layer() {
         assert_eq!(Precision::Default.layer(), None);
         assert_eq!(Precision::Precise.layer(), Some(Caps::BUILT));
-        assert_eq!(Caps::BUILT, Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES);
+        assert_eq!(
+            Caps::BUILT,
+            Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES | Caps::MODULES
+        );
     }
 
     /// Body notes count in a def's first walk and in no later one (`note_body`); a context's own notes in every walk; and outside a walk everything counts,

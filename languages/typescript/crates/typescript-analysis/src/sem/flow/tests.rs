@@ -505,6 +505,10 @@ impl crate::eval::World for OfSem<'_> {
     fn captured(&self, _captures: crate::value::Captures) -> crate::captures::CaptureList {
         unreachable!("the tables are not evaluated here")
     }
+
+    fn module_value(&self, _var: crate::flow::VarId) -> crate::value::Value {
+        unreachable!("the tables are not evaluated here")
+    }
 }
 
 /// The tables of every def of `file` in `root`, in outline order, then the file's own code, as `== <qualname>` and `show_table`.

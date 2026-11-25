@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::caps::Caps;
 use crate::captures::{CaptureList, VALUE_WIDENED_DEPTH};
-use crate::env::{Env, VARIABLE_ROUNDS_CAPPED};
+use crate::env::{Env, MODULE_READS_MODULE, VARIABLE_ROUNDS_CAPPED};
 use crate::flow::{DefId, Expr, Flow, VarId};
 use crate::value::{Captures, One, Value};
 
@@ -37,6 +37,9 @@ pub(crate) trait World {
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32);
     /// A copy of the list `captures` stands for.
     fn captured(&self, captures: Captures) -> CaptureList;
+    /// The value of `var`, a variable of a file's own code (`DefId::index` is `None`): its row of that file's table, solved under the open key, kept for the
+    /// request. Unknown when the file has no table.
+    fn module_value(&self, var: VarId) -> Value;
 }
 
 /// A world that counts nothing: `solve` asks the same questions many times over while it settles, and the facts are said once, in its last round.
@@ -70,6 +73,10 @@ impl World for Quiet<'_> {
 
     fn captured(&self, captures: Captures) -> CaptureList {
         self.0.captured(captures)
+    }
+
+    fn module_value(&self, var: VarId) -> Value {
+        self.0.module_value(var)
     }
 }
 
@@ -160,8 +167,9 @@ fn function(world: &dyn World, env: &Env, def: DefId, vars: Vars) -> Value {
 }
 
 /// The value of a variable: of a row of this body's table when the layer knows `LOCALS`; of a variable of a def around, the key's entry for it when the layer
-/// knows `CAPTURES` (the file's own code is not captured: module variables are step 4); unknown otherwise (with the bit off the layer is the one before it, which
-/// had no value for that name).
+/// knows `CAPTURES`; of a variable at the top of a file, when the layer knows `MODULES`, the world's answer (`World::module_value`) from a function, and unknown
+/// from a file's own code (one module's value does not read another's: counted `module_reads_module`); unknown otherwise (with the bit off the layer is the
+/// one before it, which had no value for that name).
 fn variable(world: &dyn World, env: &Env, id: VarId, vars: Vars) -> Value {
     if id.def == env.def {
         if !world.knows(Caps::LOCALS) {
@@ -178,6 +186,12 @@ fn variable(world: &dyn World, env: &Env, id: VarId, vars: Vars) -> Value {
             .captured
             .binary_search_by_key(&id, |(var, _)| *var)
             .map_or_else(|_| Value::unknown(), |at| env.key.captured[at].1.clone());
+    }
+    if world.knows(Caps::MODULES) && id.def.index().is_none() {
+        if env.def.index().is_some() {
+            return world.module_value(id);
+        }
+        world.note(MODULE_READS_MODULE);
     }
     Value::unknown()
 }
@@ -323,6 +337,8 @@ mod tests {
         caps: Caps,
         notes: RefCell<BTreeMap<&'static str, u32>>,
         captures: RefCell<CaptureSets>,
+        /// What `module_value` answers, by variable; unknown for one not listed.
+        modules: HashMap<VarId, Value>,
     }
 
     impl World for ByHand {
@@ -356,6 +372,13 @@ mod tests {
 
         fn captured(&self, captures: Captures) -> CaptureList {
             self.captures.borrow().get(captures).into()
+        }
+
+        fn module_value(&self, var: VarId) -> Value {
+            self.modules
+                .get(&var)
+                .cloned()
+                .unwrap_or_else(Value::unknown)
         }
     }
 
@@ -420,6 +443,7 @@ mod tests {
             caps,
             notes: RefCell::new(BTreeMap::new()),
             captures: RefCell::new(CaptureSets::new()),
+            modules: HashMap::new(),
         };
         assert!(world.flow(env.def).is_some());
         assert!(world.flow(DefId::new(0, 0, None)).is_none());
@@ -801,6 +825,68 @@ mod tests {
         let elsewhere = VarId { def: d(8), at: 10 };
         assert_eq!(eval(&world, &env, &Expr::Var(elsewhere)), Value::unknown());
         assert_eq!(of_var(&world, &env, 10), func(1));
+    }
+
+    /// A variable of the file's own code (`DefId::index` is `None`), asked of a function (`d(9)`): `module_value`'s answer when the layer knows `MODULES`.
+    #[test]
+    fn a_variable_of_a_files_code_read_from_a_function_is_the_worlds_answer() {
+        let env = env(vec![], vec![]);
+        let top = VarId {
+            def: DefId::new(0, 0, None),
+            at: 10,
+        };
+        let mut world = world_knowing(&env, Caps::BUILT);
+        world
+            .modules
+            .insert(top, Value::of([One::Fn(d(1)), One::Fn(d(2))], false));
+        assert_eq!(
+            eval(&world, &env, &Expr::Var(top)),
+            Value::of([One::Fn(d(1)), One::Fn(d(2))], false)
+        );
+        assert!(world.notes.borrow().is_empty());
+        // a variable the world has no value for is unknown
+        let other = VarId { at: 11, ..top };
+        assert_eq!(eval(&world, &env, &Expr::Var(other)), Value::unknown());
+    }
+
+    /// Read from a file's own code the same variable of another file is unknown and counted once (one module's value does not read another's).
+    #[test]
+    fn a_variable_of_another_file_read_from_a_files_code_is_unknown_and_noted() {
+        let function = env(vec![], vec![]);
+        let file = DefId::new(0, 0, None);
+        let env = Env::new(
+            Arc::clone(&function.flow),
+            DefId::new(0, 1, None),
+            KeyData::default(),
+        );
+        let top = VarId { def: file, at: 10 };
+        let mut world = world_knowing(&env, Caps::BUILT);
+        world.modules.insert(top, func(1));
+        assert_eq!(eval(&world, &env, &Expr::Var(top)), Value::unknown());
+        assert_eq!(
+            *world.notes.borrow(),
+            BTreeMap::from([("module_reads_module", 1)])
+        );
+    }
+
+    /// With `MODULES` off the layer is step 3's: unknown, and nothing is noted, from a function and from a file's code.
+    #[test]
+    fn with_modules_off_a_variable_of_a_file_is_unknown_and_nothing_is_noted() {
+        let function = env(vec![], vec![]);
+        let file = DefId::new(0, 0, None);
+        let top = VarId { def: file, at: 10 };
+        let step_3 = Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES;
+        let from_file = Env::new(
+            Arc::clone(&function.flow),
+            DefId::new(0, 1, None),
+            KeyData::default(),
+        );
+        for env in [&function, &from_file] {
+            let mut world = world_knowing(env, step_3);
+            world.modules.insert(top, func(1));
+            assert_eq!(eval(&world, env, &Expr::Var(top)), Value::unknown());
+            assert!(world.notes.borrow().is_empty());
+        }
     }
 
     /// A table of `d(index)`, nested in `around`, that hands over each of `reads` (so `needs` finds them), and declares these rows.

@@ -7,7 +7,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use indexmap::IndexSet;
-use tsrs_ast::Symbol;
+use tsrs_ast::{Symbol, SymbolFlags};
 use tsrs_checker::{Type, TypeFlags};
 
 use super::collect::{CallNode, SiteKind, unwrap_expression};
@@ -267,6 +267,9 @@ impl Reader<'_, '_> {
     /// does not), in source order.
     fn declarations(&mut self) -> Vec<Declaration> {
         let mut found = Vec::new();
+        // the file's own code, in a file that is not a module: its top-level variables are globals
+        let in_script = self.def.kind() == Kind::SourceFile
+            && !ast::is_external_or_common_js_module(self.file.node);
         let mut pending = vec![self.def];
         while let Some(node) = pending.pop() {
             if node != self.def && self.defs.def_of.contains_key(&node) {
@@ -334,7 +337,8 @@ impl Reader<'_, '_> {
                         found.push(Declaration {
                             name,
                             param: None,
-                            open,
+                            // in a script, any other script may write the variable (`07-tc3` §5): open, with the initializer kept
+                            open: open || in_script,
                             initializer: if open { None } else { initializer_of(node) },
                         });
                     }
@@ -570,9 +574,14 @@ impl Reader<'_, '_> {
     }
 
     /// The variable `name` stands for: its symbol's value declaration is a variable, a parameter or a binding element of this file with a plain name, and the
-    /// def that declares it is this def or one around it. The symbol is not followed through an alias (an import is TC3 step 4's).
+    /// def that declares it is this def or one around it. An import (`SymbolFlags::Alias`, `export { x } from` too) is followed to what it names
+    /// (`imported_var`): the variable of another project file that is at the top of it.
     fn var_of(&mut self, name: P<Node>) -> Option<VarId> {
         let symbol = self.checker.get_symbol_at_location_exported(name)?;
+        if symbol.flags().intersects(SymbolFlags::Alias) {
+            let aliased = self.checker.get_aliased_symbol(symbol);
+            return self.imported_var(aliased);
+        }
         let declaration = symbol.value_declaration()?;
         if !matches!(
             declaration.kind(),
@@ -611,6 +620,44 @@ impl Reader<'_, '_> {
         Some(VarId {
             def: self.sem.def_id(func),
             at: own_span(self.file.node.text(), declared).start,
+        })
+    }
+
+    /// The variable an import names (`TC3 step 4`): `symbol` is what the alias resolves to. Accepted only when its value declaration is a `VariableDeclaration`
+    /// with a plain name, at the **top** of a project file (the first def of that file's outline, or the file, above it is the file), so the row is in that file's
+    /// own table (`Func::module`). A namespace import, a function, a class, a variable in a function or a namespace, and a variable of a file that is not project
+    /// code (a `.d.ts`, `node_modules`) are not.
+    fn imported_var(&mut self, symbol: P<Symbol>) -> Option<VarId> {
+        let declaration = symbol.value_declaration()?;
+        if declaration.kind() != Kind::VariableDeclaration {
+            return None;
+        }
+        let declared = declaration
+            .name()
+            .filter(|name| name.kind() == Kind::Identifier)?;
+        let file = File {
+            node: ast::get_source_file_of_node(declaration)?,
+            _sem: PhantomData,
+            _one_thread: PhantomData,
+        };
+        if !self.sem.is_project_code(file) {
+            return None;
+        }
+        let defs = self.sem.file_defs(file, self.style)?;
+        let mut up = declaration.parent();
+        loop {
+            let node = up?;
+            if node.kind() == Kind::SourceFile {
+                break;
+            }
+            if defs.def_of.contains_key(&node) {
+                return None;
+            }
+            up = node.parent();
+        }
+        Some(VarId {
+            def: self.sem.def_id(Func::module(file)),
+            at: own_span(file.node.text(), declared).start,
         })
     }
 

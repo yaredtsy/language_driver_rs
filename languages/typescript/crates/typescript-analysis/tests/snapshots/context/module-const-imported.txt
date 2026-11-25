@@ -1,0 +1,16 @@
+== main
+-- off
+main
+  run
+edges:
+main | run | call run
+run | cb | unresolved function_typed_value
+-- on
+main
+  run
+    a
+    b
+edges:
+main | run | call run @e682bfb8
+run @e682bfb8 | cb | call a
+run @e682bfb8 | cb | call b

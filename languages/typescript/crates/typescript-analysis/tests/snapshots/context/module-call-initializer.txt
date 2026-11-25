@@ -1,0 +1,9 @@
+== main
+-- off
+main
+edges:
+main | handler | unresolved function_typed_value
+-- on
+main
+edges:
+main | handler | unresolved function_typed_value

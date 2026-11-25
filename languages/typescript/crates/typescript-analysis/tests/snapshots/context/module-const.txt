@@ -1,0 +1,13 @@
+== main
+-- off
+main
+  a
+edges:
+main | onSave | call a
+-- on
+main
+  a
+  b
+edges:
+main | onSave | call a
+main | onSave | call b
