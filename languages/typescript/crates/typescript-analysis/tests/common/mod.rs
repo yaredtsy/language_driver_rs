@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use typescript_analysis::{
     Cancel, EdgeTo, Entry, Graph, MarkerStyle, Options, Placement, Project, RenderOptions, Session,
-    StableDef, breakdown, render, to_text,
+    Site, StableDef, breakdown, render, to_text,
 };
 
 pub(crate) mod context;
@@ -204,6 +204,21 @@ pub(crate) fn call_graph(
     checked(typescript_analysis::call_graph(
         project, file, entry, options, cancel,
     ))
+}
+
+/// `typescript_analysis::testing::call_graph_and_emptied`: the graph, put through the same `checked` as `call_graph`, and the sites the layer emptied in
+/// it (the list `never_fewer_edges` allows).
+pub(crate) fn call_graph_and_emptied(
+    project: &Project,
+    file: &str,
+    entry: &Entry<'_>,
+    options: &Options,
+    cancel: &Cancel,
+) -> Option<(Graph, Vec<(StableDef, Site)>)> {
+    let (graph, emptied) = typescript_analysis::testing::call_graph_and_emptied(
+        project, file, entry, options, cancel,
+    )?;
+    Some((checked(Some(graph))?, emptied))
 }
 
 /// A graph, as it came (`Session::graph` too), after the check of `call_graph` above.

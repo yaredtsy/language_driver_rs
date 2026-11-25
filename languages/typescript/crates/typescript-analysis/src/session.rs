@@ -125,6 +125,12 @@ impl Session {
         )
     }
 
+    /// The options the session was opened with. Only `testing` asks for it.
+    #[cfg(feature = "__testing")]
+    pub(crate) fn options(&self) -> &Options {
+        &self.options
+    }
+
     /// The loaded project, or `None` while the session has no program (see [`Refreshed::lost`]).
     pub fn project(&self) -> Option<&Project> {
         self.project.as_ref()

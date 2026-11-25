@@ -13,6 +13,9 @@ workspace = true
 # Without it rustdoc finds no such doctest and reports success, so `scripts/check-proofs.sh` runs them with it and counts them. Cargo unifies
 # features across a build: a crate that enables this exposes `Sem` to everything built alongside it. The name is a convention, not a wall.
 __proof = []
+# Not API. Turns on `typescript_analysis::testing`: what a graph's walk knew that the graph does not say (the sites the layer emptied), for
+# the crate's own tests (tests/common/context.rs). Its tests turn it on through the dev-dependency on the crate itself, below.
+__testing = []
 
 [dependencies]
 analyzer-core     = { workspace = true }
@@ -30,6 +33,7 @@ smallvec          = { workspace = true }
 serde             = { workspace = true }
 
 [dev-dependencies]
+typescript-analysis = { path = ".", features = ["__testing"] }
 analyzer-testkit = { workspace = true }
 memory-stats     = "1.2"
 serde_json       = { workspace = true }

@@ -13,7 +13,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use analyzer_core::edit::MarkerStyle;
-use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Entry, Graph, StableDef};
+use analyzer_core::graph::{Basis, DefInfo, EdgeTo, Entry, Graph, Site, StableDef};
 use analyzer_core::outline::DefKind;
 use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary};
 
@@ -108,6 +108,9 @@ pub(crate) struct TypeScript<'p> {
     /// The ids of the defs described that have a marker another def of their file owns (D34). Described more than once, so a set; `finish` counts the ones the
     /// graph holds.
     demoted: RefCell<HashSet<StableDef>>,
+    /// The sites a walk of this request left with no edge because the callee holds only `undefined` (`walk::resolve_from_env`), for the tests' "never
+    /// fewer edges" (`08-tc4` §0, step 0b).
+    emptied: RefCell<Vec<(Func<'p>, Site)>>,
     /// Every key of this request (`key.rs`); `digest` reads it, and the walk interns into it (`intern_key`).
     keys: RefCell<Keys>,
     /// Every list of captured variables of this request (`captures.rs`): a `One::Closure` is a number into it.
@@ -135,6 +138,7 @@ impl<'p> TypeScript<'p> {
             first_walk: Cell::new(true),
             handed: RefCell::new(HashMap::new()),
             demoted: RefCell::new(HashSet::new()),
+            emptied: RefCell::new(Vec::new()),
             keys: RefCell::new(Keys::new()),
             captures: RefCell::new(CaptureSets::new()),
             modules: RefCell::new(HashMap::new()),
@@ -223,6 +227,25 @@ impl<'p> TypeScript<'p> {
             let id = self.sem.describe(held.func, self.style).id;
             *known.entry(id).or_insert(false) |= held.written;
         }
+    }
+
+    /// Remember that the walk of `f` left `site` with no edge because its callee holds only `undefined` (`walk::resolve_from_env`).
+    pub(crate) fn note_emptied(&self, f: Func<'p>, site: Site) {
+        self.emptied.borrow_mut().push((f, site));
+    }
+
+    /// The sites `note_emptied` was told, each def as the id the graph's edges carry, sorted and without repeats (one def walked in two contexts can empty
+    /// the same site twice).
+    pub(crate) fn emptied_sites(&self) -> Vec<(StableDef, Site)> {
+        let mut sites: Vec<(StableDef, Site)> = self
+            .emptied
+            .borrow()
+            .iter()
+            .map(|(f, site)| (self.sem.describe(*f, self.style).id, *site))
+            .collect();
+        sites.sort();
+        sites.dedup();
+        sites
     }
 
     /// Count one more of `key`, a fact of **what the body has**: the same in every context of the def, so it is counted by the def's first walk in this request
@@ -384,6 +407,18 @@ pub(crate) fn graph_within(
     budget: &Budget,
     cancel: &Cancel,
 ) -> Option<Graph> {
+    graph_and_emptied(project, file, entry, opts, budget, cancel).map(|(graph, _)| graph)
+}
+
+/// `graph_within`, and the sites the walk emptied (`TypeScript::emptied_sites`), for `typescript_analysis::testing`.
+pub(crate) fn graph_and_emptied(
+    project: &Project,
+    file: &str,
+    entry: &Entry<'_>,
+    opts: &Options,
+    budget: &Budget,
+    cancel: &Cancel,
+) -> Option<(Graph, Vec<(StableDef, Site)>)> {
     let sem = &project.sem;
     let func = match *entry {
         Entry::Def {
@@ -404,7 +439,7 @@ pub(crate) fn graph_within(
     });
     solver.lang().note_body_n(UNHANDLED_KEY, unhandled);
     finish(&mut graph, solver.lang());
-    Some(graph)
+    Some((graph, solver.lang().emptied_sites()))
 }
 
 /// Where a request for `func` starts. A class is a construction, as at a `new C()` site (D25): its tree is its constructor's calls, not the class def's body,

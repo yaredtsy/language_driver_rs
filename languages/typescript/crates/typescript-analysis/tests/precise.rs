@@ -1,6 +1,6 @@
 //! The context layer on never has fewer edges than the layer off (`docs/03-typescript/12-context-layer/06-tc2-functions-through-parameters.md` §10, step 5a): for
 //! every entry of the shared cases and of the whole fixtures, the graph made with `Precision::Precise` loses no answer of `Precision::Default`'s and no site
-//! (bar the sites a callee that is only `undefined` empties, as many as `callee_undefined` counts); it is the same graph, stats included, when made twice; and
+//! (bar the sites a callee that is only `undefined` empties: the sites the walk lists as emptied, `typescript_analysis::testing`); it is the same graph, stats included, when made twice; and
 //! a context is a function of its key across the two. `Precise` runs twice, the second time on tables already kept.
 
 mod common;
@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use common::context::{a_context_is_a_function_of_its_key, never_fewer_edges};
-use common::{STYLE, call_graph, cases, open_project, tests_dir};
+use common::{STYLE, call_graph, call_graph_and_emptied, cases, open_project, tests_dir};
 use typescript_analysis::{Cancel, Entry, Options, Precision, Project};
 use typescript_syntax::Dialect;
 
@@ -91,11 +91,13 @@ fn precise_never_has_fewer_edges() {
             };
             let graph =
                 |options: &Options| call_graph(&plan.project, file, &entry, options, &cancel);
-            let (off, on, again) = (graph(&default), graph(&precise), graph(&precise));
+            // the first Precise graph comes with the sites the walk emptied
+            let listed = || call_graph_and_emptied(&plan.project, file, &entry, &precise, &cancel);
+            let (off, on, again) = (graph(&default), listed(), graph(&precise));
             compared += 1;
-            let (Some(off), Some(on), Some(again)) = (off, on, again) else {
+            let (Some(off), Some((on, emptied)), Some(again)) = (off, on, again) else {
                 // a graph that is not there must not be there under any precision
-                let (off, on, again) = (graph(&default), graph(&precise), graph(&precise));
+                let (off, on, again) = (graph(&default), listed(), graph(&precise));
                 if off.is_some() || on.is_some() || again.is_some() {
                     problems.push(format!("{name}: only some of the three have a graph"));
                 }
@@ -104,7 +106,7 @@ fn precise_never_has_fewer_edges() {
             if off.edges != on.edges {
                 differ += 1;
             }
-            for problem in never_fewer_edges(&off, &on) {
+            for problem in never_fewer_edges(&off, &on, &emptied) {
                 problems.push(format!("{name}: {problem}"));
             }
             if on != again {

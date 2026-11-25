@@ -778,6 +778,7 @@ dependencies = [
  "tsrs_scanner",
  "tsrs_tsoptions",
  "tsrs_vfs",
+ "typescript-analysis",
  "typescript-syntax",
 ]
 

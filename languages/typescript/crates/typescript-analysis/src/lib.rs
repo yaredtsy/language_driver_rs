@@ -165,6 +165,11 @@ impl Project {
     }
 }
 
+/// Not API: for this crate's tests (feature `__testing`).
+#[cfg(feature = "__testing")]
+#[doc(hidden)]
+pub mod testing;
+
 #[cfg(feature = "__proof")]
 #[doc(hidden)]
 pub mod proof {

@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use typescript_analysis::{EdgeTo, Graph, Status};
+use typescript_analysis::{EdgeTo, Graph, Site, StableDef, Status};
 
 /// A target with the key set aside: what the layer may not change of an answer that is not unresolved.
 fn shape(to: &EdgeTo) -> Option<String> {
@@ -27,11 +27,16 @@ fn shape(to: &EdgeTo) -> Option<String> {
 /// (a) every edge of `default` that is not `Unresolved` has an edge in `precise` with the same `from.func`, the same `site`, the same `passed`
 ///     and the same target with the key set aside (a context: its `func`; a construction: its `class` and its `init`'s `func`; an external: its
 ///     package and name);
-/// (b) every `(from.func, site)` that has an edge in `default` has at least one edge in `precise`, with one allowance (`06-tc2` §10, step 5a): a site
-///     whose callee the layer knows to be only `undefined` has none, and the layer says so (`Stats.language["callee_undefined"]`, per walk, so an upper
-///     bound). At most that many sites may have lost every edge, and only when each edge they had in `default` was `Unresolved`. A site that lost an
-///     edge that was an answer is always reported.
-pub(crate) fn never_fewer_edges(default: &Graph, precise: &Graph) -> Vec<String> {
+/// (b) every `(from.func, site)` that has an edge in `default` has at least one edge in `precise`, with one allowance (`06-tc2` §10, step 5a; step 0b of
+///     `08-tc4` §0): a site whose callee the layer knows to be only `undefined` has none. The walk lists such sites (`emptied`, of the graph `precise`:
+///     `typescript_analysis::testing`). A site with no edge in `precise` is allowed only when every edge it had in `default` was `Unresolved` **and**
+///     it is in `emptied`; otherwise it is reported;
+/// (c) a listed site where `default` has an edge that is not `Unresolved` is reported: the layer emptied a site the engine had an answer for.
+pub(crate) fn never_fewer_edges(
+    default: &Graph,
+    precise: &Graph,
+    emptied: &[(StableDef, Site)],
+) -> Vec<String> {
     let name = |graph: &Graph, id: &typescript_analysis::StableDef| {
         graph
             .def(id)
@@ -48,6 +53,10 @@ pub(crate) fn never_fewer_edges(default: &Graph, precise: &Graph) -> Vec<String>
             );
         }
     }
+    let listed: BTreeMap<String, ()> = emptied
+        .iter()
+        .map(|(func, site)| (format!("{func:?} {site:?}"), ()))
+        .collect();
     let mut found = Vec::new();
     // the sites of `default` with no edge in `precise`: each with the text to report, and whether every edge it had was unresolved
     let mut lost: BTreeMap<String, (String, bool)> = BTreeMap::new();
@@ -76,17 +85,23 @@ pub(crate) fn never_fewer_edges(default: &Graph, precise: &Graph) -> Vec<String>
             entry.1 &= matches!(edge.to, EdgeTo::Unresolved(_));
         }
     }
-    let mut allowed = precise
-        .stats
-        .language
-        .get("callee_undefined")
-        .copied()
-        .unwrap_or(0);
-    for (report, only_unresolved) in lost.into_values() {
-        if only_unresolved && allowed > 0 {
-            allowed -= 1;
-        } else {
+    for (at, (report, only_unresolved)) in lost {
+        if !(only_unresolved && listed.contains_key(&at)) {
             found.push(report);
+        }
+    }
+    // (c) each listed site where `default` has an answer
+    for (func, site) in emptied {
+        let answered = default.edges.iter().any(|edge| {
+            edge.from.func == *func
+                && edge.site == *site
+                && !matches!(edge.to, EdgeTo::Unresolved(_))
+        });
+        if answered {
+            found.push(format!(
+                "the layer emptied the site {site:?} of `{}`, where the graph with the layer off has an answer",
+                name(default, func)
+            ));
         }
     }
     found

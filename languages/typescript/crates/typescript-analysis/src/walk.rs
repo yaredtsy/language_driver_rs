@@ -95,7 +95,11 @@ fn body_of<'p>(
         if cancel.is_cancelled() {
             return Summary::cut(found);
         }
-        found.push(SiteCalls::new(site, resolve(lang, f, index, env)));
+        let (targets, emptied) = resolve(lang, f, index, env);
+        if emptied {
+            lang.note_emptied(f, site);
+        }
+        found.push(SiteCalls::new(site, targets));
     }
     // What the body hands over is a site too (D22): the def's context, at the name, marked passed. It is walked like a call, so what it calls is in the
     // graph, and the edge says it is not one. Placed among the calls by where the name is.
@@ -130,13 +134,14 @@ fn body_of<'p>(
 /// What the site at `site_index` of `f` can reach. In its final form already: the engine answers first, always; then, when the layer knows `PARAMS`, it
 /// may speak (`resolve_from_env`): where the engine's answer is a value (a function-typed parameter, an untyped one) and the layer knows which functions
 /// the value holds, those functions are the targets. Each call into project code then carries the key its arguments make (`key_of`), made here and
-/// nowhere else.
+/// nowhere else. The `bool` is `true` only when the layer spoke and left the site with no edge because its callee holds only `undefined`
+/// (`Spoken::emptied`): `body_of` lists such a site (`TypeScript::note_emptied`).
 fn resolve<'p>(
     lang: &TypeScript<'p>,
     f: Func<'p>,
     site_index: usize,
     env: Option<&Env>,
-) -> Vec<Target<TypeScript<'p>>> {
+) -> (Vec<Target<TypeScript<'p>>>, bool) {
     let (found, facts) = lang.sem.callee_with_facts(f, site_index, lang.style);
     if facts.getter_result {
         lang.note_uncovered(&[Uncovered::GetterResultCall]);
@@ -159,8 +164,8 @@ fn resolve<'p>(
     };
     // The split of `function_typed_value` by where the function comes from: one note for each such edge **that is drawn**, so the four add up to the
     // total. When the layer replaced an open entry by the functions it holds, the entry is not an edge and is not counted.
-    let (targets, open_drawn) = match spoken {
-        Some(answer) => (answer.targets, answer.open_drawn),
+    let (targets, open_drawn, emptied) = match spoken {
+        Some(answer) => (answer.targets, answer.open_drawn, answer.emptied),
         None => (
             found
                 .iter()
@@ -168,6 +173,7 @@ fn resolve<'p>(
                 .map(|resolved| (target(lang, resolved, facts.jsx), None))
                 .collect(),
             true,
+            false,
         ),
     };
     if open_drawn && let Some(origin) = facts.function_typed {
@@ -178,13 +184,14 @@ fn resolve<'p>(
             lang.note_walk(origin.counter());
         }
     }
-    match env {
+    let targets = match env {
         Some(env) if lang.knows(Caps::PARAMS) => targets
             .into_iter()
             .map(|(target, captures)| keyed(lang, env, site_index, target, captures))
             .collect(),
         _ => targets.into_iter().map(|(target, _)| target).collect(),
-    }
+    };
+    (targets, emptied)
 }
 
 /// `target` with the key its call passes (`06-tc2` §5): a call, and the constructor a construction runs, get `key_of`; anything else is as it was. `captures` is
@@ -272,6 +279,9 @@ fn key_of<'p>(
 struct Spoken<'p> {
     targets: Vec<Targeted<'p>>,
     open_drawn: bool,
+    /// The layer left the site with no edge because the callee holds only `undefined` (`Members::saw_undefined` and no target): the one way the layer turns
+    /// an engine answer into no edge.
+    emptied: bool,
 }
 
 /// A target and the capture list a closure member carried to it (`members`); `None` for every other target.
@@ -482,6 +492,7 @@ fn resolve_from_env<'p>(
         return Some(Spoken {
             targets,
             open_drawn: true,
+            emptied: false,
         });
     }
     let value = eval(lang, env, &site.callee);
@@ -514,9 +525,11 @@ fn resolve_from_env<'p>(
                 .map(|resolved| (target(lang, resolved, jsx), None)),
         );
     }
+    let emptied = made.saw_undefined && targets.is_empty();
     Some(Spoken {
         targets,
         open_drawn: open,
+        emptied,
     })
 }
 

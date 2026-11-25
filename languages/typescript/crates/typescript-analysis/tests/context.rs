@@ -9,9 +9,12 @@ use std::path::{Path, PathBuf};
 use analyzer_testkit::expect_file;
 use analyzer_testkit::graph::check_invariants;
 use common::context::{a_context_is_a_function_of_its_key, never_fewer_edges};
-use common::{Row, STYLE, call_graph, edges_as_text, render_graph, rows, split_policy, tests_dir};
+use common::{
+    Row, STYLE, call_graph, call_graph_and_emptied, edges_as_text, render_graph, rows,
+    split_policy, tests_dir,
+};
 use typescript_analysis::{
-    Cancel, Cut, EdgeTo, Entry, Graph, Limits, Options, Precision, Project, Status,
+    Cancel, Cut, EdgeTo, Entry, Graph, Limits, Options, Precision, Project, Site, StableDef, Status,
 };
 
 const TABLE: &str = include_str!("../../../docs/policy.md");
@@ -116,20 +119,23 @@ fn precise() -> Options {
     options
 }
 
-/// The graphs of one entry of a row, the layer off and on.
-fn graphs_of(project: &Project, row: &Row, entry: &str) -> (Graph, Graph) {
+/// The graphs of one entry of a row, the layer off and on, and the sites the layer emptied in the "on" graph.
+fn graphs_of(project: &Project, row: &Row, entry: &str) -> (Graph, Graph, Vec<(StableDef, Site)>) {
     let file = &row.words[1];
     let entry = Entry::Def {
         qualname: entry,
         occurrence: 0,
     };
     let make = |options: &Options| {
-        let graph = call_graph(project, file, &entry, options, &Cancel::new())
-            .unwrap_or_else(|| panic!("row `{}`: no def `{entry:?}` in {file}", row.id));
+        let (graph, emptied) =
+            call_graph_and_emptied(project, file, &entry, options, &Cancel::new())
+                .unwrap_or_else(|| panic!("row `{}`: no def `{entry:?}` in {file}", row.id));
         check_invariants(&graph);
-        graph
+        (graph, emptied)
     };
-    (make(&Options::new(STYLE)), make(&precise()))
+    let (off, _) = make(&Options::new(STYLE));
+    let (on, emptied) = make(&precise());
+    (off, on, emptied)
 }
 
 fn open_row(row: &Row) -> (PathBuf, Project) {
@@ -144,7 +150,7 @@ fn render(row: &Row) -> String {
     let (root, project) = open_row(row);
     let mut out = String::new();
     for entry in &row.words[2..] {
-        let (off, on) = graphs_of(&project, row, entry);
+        let (off, on, _) = graphs_of(&project, row, entry);
         out.push_str(&format!("== {entry}\n-- off\n"));
         out.push_str(&render_graph(&off, &root));
         out.push_str("-- on\n");
@@ -230,8 +236,8 @@ fn the_properties_hold_on_every_context_row() {
         let (_, project) = open_row(&row);
         let (mut offs, mut ons) = (Vec::new(), Vec::new());
         for entry in &row.words[2..] {
-            let (off, on) = graphs_of(&project, &row, entry);
-            for problem in never_fewer_edges(&off, &on) {
+            let (off, on, emptied) = graphs_of(&project, &row, entry);
+            for problem in never_fewer_edges(&off, &on, &emptied) {
                 found.push(format!("row `{}` `{entry}`: {problem}", row.id));
             }
             offs.push(off);
@@ -294,16 +300,16 @@ fn each_property_finds_what_it_is_for() {
     h.edges.remove(call);
 
     // never_fewer_edges
-    assert!(never_fewer_edges(&g, &g).is_empty());
-    assert!(!never_fewer_edges(&g, &h).is_empty());
+    assert!(never_fewer_edges(&g, &g, &[]).is_empty());
+    assert!(!never_fewer_edges(&g, &h, &[]).is_empty());
     // an unresolved answer replaced by a function
     let mut k = g.clone();
     k.edges[open].to = g.edges[pass].to.clone();
-    assert!(never_fewer_edges(&g, &k).is_empty());
+    assert!(never_fewer_edges(&g, &k, &[]).is_empty());
     // another function at the same site: the site still has an edge, so only check (a) can see it
     let mut m = g.clone();
     m.edges[call].to = g.edges[pass].to.clone();
-    let found = never_fewer_edges(&g, &m);
+    let found = never_fewer_edges(&g, &m, &[]);
     assert!(
         found
             .iter()
@@ -315,25 +321,32 @@ fn each_property_finds_what_it_is_for() {
         "{found:?}"
     );
 
-    // the one allowed loss: a site whose callee is only `undefined`, as many sites as the layer counted
+    // the one allowed loss: a site the walk lists as emptied (its callee is only `undefined`), and only when `default` had no answer there
+    let each_site = (g.edges[open].from.func.clone(), g.edges[open].site);
+    let call_site = (g.edges[call].from.func.clone(), g.edges[call].site);
     let mut lost = g.clone();
     lost.edges.remove(open);
-    lost.stats.language.insert("callee_undefined".to_owned(), 1);
-    assert!(never_fewer_edges(&g, &lost).is_empty());
-    lost.stats.language.insert("callee_undefined".to_owned(), 0);
-    let found = never_fewer_edges(&g, &lost);
+    assert!(never_fewer_edges(&g, &lost, &[each_site]).is_empty());
+    let found = never_fewer_edges(&g, &lost, &[]);
     assert!(found.iter().any(|p| p.contains("has no edge")), "{found:?}");
-    lost.stats.language.remove("callee_undefined");
-    assert!(!never_fewer_edges(&g, &lost).is_empty());
-    // a site that had an answer is reported even when the counter would allow one lost site
+    // another site is listed: the lost one is still reported, and so is the listed one, which had an answer
+    let found = never_fewer_edges(&g, &lost, std::slice::from_ref(&call_site));
+    assert!(found.iter().any(|p| p.contains("has no edge")), "{found:?}");
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("where the graph with the layer off has an answer")),
+        "{found:?}"
+    );
+    // a site that had an answer is reported even when it is listed
     let mut answered = g.clone();
     answered.edges.remove(call);
-    answered
-        .stats
-        .language
-        .insert("callee_undefined".to_owned(), 1);
-    let found = never_fewer_edges(&g, &answered);
+    let found = never_fewer_edges(&g, &answered, &[call_site]);
     assert!(found.iter().any(|p| p.contains("has no edge")), "{found:?}");
+    assert!(
+        found.iter().any(|p| p.contains("has an answer")),
+        "{found:?}"
+    );
 
     // a_context_is_a_function_of_its_key
     assert!(a_context_is_a_function_of_its_key(&[&g, &g]).is_empty());
@@ -376,6 +389,46 @@ fn a_digest_that_is_not_zeros_is_written_by_its_first_eight_hex_digits() {
     assert_eq!(lines, plain);
 }
 
+/// The walk lists the site it emptied (`08-tc4` §0, step 0b): `run`'s `cb?.()` in `callback-not-passed` when asked at `main` (nobody passes `cb`: it is only
+/// `undefined`), and no site when the callee is open (asked at `run`) or when the layer finds functions (`callback-either`).
+#[test]
+fn the_layer_lists_the_site_it_emptied() {
+    let row_of = |id: &str| {
+        context_rows()
+            .into_iter()
+            .find(|row| row.id == id)
+            .unwrap_or_else(|| panic!("no row `{id}`"))
+    };
+    let row = row_of("callback-not-passed");
+    let (_, project) = open_row(&row);
+    let (off, on, emptied) = graphs_of(&project, &row, "main");
+    let def_of_run = |graph: &Graph| {
+        graph
+            .defs
+            .iter()
+            .find(|def| def.qname == "run")
+            .expect("a def `run`")
+            .id
+            .clone()
+    };
+    let run = def_of_run(&on);
+    let site = {
+        let edges: Vec<_> = off.edges.iter().filter(|e| e.from.func == run).collect();
+        assert_eq!(edges.len(), 1, "run's only edge in the default graph");
+        assert!(matches!(edges[0].to, EdgeTo::Unresolved(_)));
+        edges[0].site
+    };
+    assert_eq!(emptied, [(run, site)]);
+    // the open key: the engine's answer stands, nothing is emptied
+    let (_, _, emptied) = graphs_of(&project, &row, "run");
+    assert!(emptied.is_empty(), "{emptied:?}");
+    // the layer finds the functions: nothing is emptied
+    let row = row_of("callback-either");
+    let (_, project) = open_row(&row);
+    let (_, _, emptied) = graphs_of(&project, &row, "pick");
+    assert!(emptied.is_empty(), "{emptied:?}");
+}
+
 /// The counters follow the edges (`06-tc2` §10, step 5a): a `function_typed_value` is counted only for an edge that is drawn, and the one site whose
 /// callee is only `undefined` is counted as `callee_undefined` since it has none.
 #[test]
@@ -397,7 +450,7 @@ fn the_counters_follow_the_edges() {
             .find(|row| row.id == id)
             .unwrap_or_else(|| panic!("no row `{id}`"));
         let (_, project) = open_row(&row);
-        let (off, on) = graphs_of(&project, &row, entry);
+        let (off, on, _) = graphs_of(&project, &row, entry);
         let said = |graph: &Graph, key: &str| graph.stats.language.get(key).copied();
         assert_eq!(
             said(&on, "function_typed_value"),
@@ -432,7 +485,7 @@ fn value_widened_set_is_counted_where_a_set_passes_the_cap() {
     for row in context_rows() {
         let (_, project) = open_row(&row);
         for entry in &row.words[2..] {
-            let (off, on) = graphs_of(&project, &row, entry);
+            let (off, on, _) = graphs_of(&project, &row, entry);
             let said = |graph: &Graph| graph.stats.language.get("value_widened_set").copied();
             // nine functions through one conditional: the argument is evaluated once, for the one target `run`
             let want = (row.id == "callback-wide" && entry == "pick").then_some(1);
@@ -453,7 +506,7 @@ fn the_tripwire_counts_where_a_function_does_not_fit() {
     for row in context_rows() {
         let (_, project) = open_row(&row);
         for entry in &row.words[2..] {
-            let (off, on) = graphs_of(&project, &row, entry);
+            let (off, on, _) = graphs_of(&project, &row, entry);
             let said = |graph: &Graph, key: &str| graph.stats.language.get(key).copied();
             let here = (row.id.as_str(), entry.as_str());
             // one count for each function that fails, so two where two fail at one site
@@ -561,7 +614,7 @@ fn the_cap_per_function_cuts_the_third_context_of_run() {
         .find(|row| row.id == "cap-per-function")
         .expect("the row `cap-per-function`");
     let (_, project) = open_row(&row);
-    let graph_with = |precision: Precision, cap: Option<u32>| {
+    let graph_and_list_with = |precision: Precision, cap: Option<u32>| {
         let mut options = Options::new(STYLE);
         options.precision = precision;
         options.limits.max_contexts_per_function = cap;
@@ -569,14 +622,16 @@ fn the_cap_per_function_cuts_the_third_context_of_run() {
             qualname: "main",
             occurrence: 0,
         };
-        let graph = call_graph(&project, &row.words[1], &entry, &options, &Cancel::new())
-            .expect("a def `main`");
+        let (graph, emptied) =
+            call_graph_and_emptied(&project, &row.words[1], &entry, &options, &Cancel::new())
+                .expect("a def `main`");
         check_invariants(&graph);
-        graph
+        (graph, emptied)
     };
+    let graph_with = |precision: Precision, cap: Option<u32>| graph_and_list_with(precision, cap).0;
     let off = graph_with(Precision::Default, Some(64));
     let uncapped = graph_with(Precision::Precise, None);
-    let capped = graph_with(Precision::Precise, Some(2));
+    let (capped, emptied) = graph_and_list_with(Precision::Precise, Some(2));
     let qname = |graph: &Graph, id: &typescript_analysis::ContextId| {
         graph.def(&id.func).unwrap().qname.clone()
     };
@@ -642,7 +697,7 @@ fn the_cap_per_function_cuts_the_third_context_of_run() {
     );
     assert_eq!(capped.stats.cuts.len(), 1, "{:?}", capped.stats.cuts);
 
-    assert!(never_fewer_edges(&off, &capped).is_empty());
+    assert!(never_fewer_edges(&off, &capped, &emptied).is_empty());
     assert!(a_context_is_a_function_of_its_key(&[&uncapped, &capped]).is_empty());
 
     // a cap of 3 is not reached

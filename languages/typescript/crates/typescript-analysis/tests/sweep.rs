@@ -45,9 +45,10 @@ use std::hash::Hasher;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use typescript_analysis::testing::session_graph_and_emptied;
 use typescript_analysis::{
     Budget, Cancel, ContextId, EdgeTo, Entry, Graph, MarkerStyle, Options, Placement, Precision,
-    Session,
+    Session, Site, StableDef,
 };
 use typescript_syntax::Dialect;
 
@@ -58,6 +59,20 @@ const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
     placement: Placement::Docstring,
 };
+
+/// `Session::graph`, and the sites the layer emptied in it (none when there is no graph): what `Comparison::entry` allows as lost.
+fn graph_and_emptied(
+    session: &Session,
+    file: &str,
+    entry: &Entry<'_>,
+    budget: &Budget,
+    cancel: &Cancel,
+) -> (Option<Graph>, Vec<(StableDef, Site)>) {
+    match session_graph_and_emptied(session, file, entry, budget, cancel) {
+        Some((graph, emptied)) => (Some(graph), emptied),
+        None => (None, Vec::new()),
+    }
+}
 
 fn rss_mb() -> f64 {
     let usage = memory_stats::memory_stats().expect("this platform reports memory");
@@ -442,6 +457,7 @@ impl Comparison {
         (qualname, occurrence): (&str, u16),
         (budget, cancel): (&Budget, &Cancel),
         precise: &Option<Graph>,
+        emptied: &[(StableDef, Site)],
     ) {
         self.entries += 1;
         let default = self.default.graph(file, entry, budget, cancel);
@@ -451,7 +467,7 @@ impl Comparison {
                 if default.edges != precise.edges {
                     self.with_other_edges += 1;
                 }
-                for problem in never_fewer_edges(default, precise) {
+                for problem in never_fewer_edges(default, precise, emptied) {
                     self.problems.push(format!("{at}: {problem}"));
                 }
             }
@@ -557,7 +573,8 @@ fn sweep_every_def_of_a_project() {
                 ),
             };
             let started = Instant::now();
-            let graph = session.graph(&line.file, &entry, &budget, &cancel);
+            let (graph, emptied) =
+                graph_and_emptied(&session, &line.file, &entry, &budget, &cancel);
             let time = started.elapsed();
             assert!(
                 graph.is_some(),
@@ -571,6 +588,7 @@ fn sweep_every_def_of_a_project() {
                     (qualname, occurrence),
                     (&budget, &cancel),
                     &graph,
+                    &emptied,
                 );
             }
             totals.add(&line.file, qualname, occurrence, graph, time);
@@ -606,7 +624,7 @@ fn sweep_every_def_of_a_project() {
                     continue;
                 }
                 let started = Instant::now();
-                let graph = session.graph(name, &entry, &budget, &cancel);
+                let (graph, emptied) = graph_and_emptied(&session, name, &entry, &budget, &cancel);
                 let time = started.elapsed();
                 if let Some(comparison) = &mut comparison {
                     comparison.entry(
@@ -615,16 +633,25 @@ fn sweep_every_def_of_a_project() {
                         (&def.qualname, this),
                         (&budget, &cancel),
                         &graph,
+                        &emptied,
                     );
                 }
                 totals.add(name, &def.qualname, this, graph, time);
             }
             if file_code {
                 let started = Instant::now();
-                let graph = session.graph(name, &Entry::File, &budget, &cancel);
+                let (graph, emptied) =
+                    graph_and_emptied(&session, name, &Entry::File, &budget, &cancel);
                 let time = started.elapsed();
                 if let Some(comparison) = &mut comparison {
-                    comparison.entry(name, &Entry::File, ("FILE", 0), (&budget, &cancel), &graph);
+                    comparison.entry(
+                        name,
+                        &Entry::File,
+                        ("FILE", 0),
+                        (&budget, &cancel),
+                        &graph,
+                        &emptied,
+                    );
                 }
                 totals.add(name, "FILE", 0, graph, time);
             }
