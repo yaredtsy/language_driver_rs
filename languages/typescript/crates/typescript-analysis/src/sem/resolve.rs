@@ -9,9 +9,20 @@ use super::hierarchy::{
     is_property_function_value, symbol_of_declaration,
 };
 use super::view::{
-    Binding, CallOrNew, TypeReference, elements_of, expression_of, initializer_of, spelled,
+    Binding, CallOrNew, Generic, TypeReference, elements_of, expression_of, initializer_of, spelled,
 };
 use super::*;
+
+/// Whether a function drawn at a call fits the type of the callee (`Sem::fits`). Plain words: no engine type crosses out of `sem` (rule 4).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Fits {
+    /// The function is assignable to the callee's type.
+    Yes,
+    /// It is not, and no type parameter is in scope at the call: a type error of the program, or a wrong binding of the layer.
+    No,
+    /// The check cannot say: it failed inside generic code, or a node it needs is missing.
+    Unchecked,
+}
 
 /// What one declaration the engine found for a site is.
 #[derive(Clone, PartialEq, Eq)]
@@ -298,6 +309,43 @@ impl Sem {
                 origin_of_declaration(*declaration)
             });
         Some(origin)
+    }
+
+    /// Whether the function `target`, drawn at the site `site_index` of `func` because a value that holds it is called there, fits the type the checker gives
+    /// the callee (`06-tc2` §10, step 5c): the type of `target` must be assignable to the type of the site's expression. Where it is not, the answer is `No`
+    /// only when no type parameter is in scope at the site: inside generic code a correct function is not assignable to a type that names a type
+    /// parameter (`engine/09-tc2.md`, "the probe"), so the answer is `Unchecked` there. A missing body, site, node or symbol is `Unchecked` too.
+    pub(crate) fn fits(
+        &self,
+        func: Func<'_>,
+        site_index: usize,
+        target: Func<'_>,
+        style: MarkerStyle<'_>,
+    ) -> Fits {
+        let Some(calls) = self.body(func, style) else {
+            return Fits::Unchecked;
+        };
+        let Some(site) = calls.sites.get(site_index) else {
+            return Fits::Unchecked;
+        };
+        let Some(target_node) = self.node_of(target, style) else {
+            return Fits::Unchecked;
+        };
+        let _scope = self.region.enter();
+        // one checker, so one handle at a time: it is dropped before this returns
+        let mut checker = self.checker();
+        let callee = checker.get_type_at_location(site.expr);
+        let Some(symbol) = checker.get_symbol_of_declaration_exported(target_node) else {
+            return Fits::Unchecked;
+        };
+        let target_type = checker.get_type_of_symbol(symbol);
+        if checker.is_type_assignable_to_exported(target_type, callee) {
+            Fits::Yes
+        } else if under_type_parameters(site.expr) {
+            Fits::Unchecked
+        } else {
+            Fits::No
+        }
     }
 
     fn callee_found(
@@ -1134,4 +1182,16 @@ fn is_union_callee(checker: &mut Checker, callee: P<Node>) -> bool {
             })
             .count()
             > 1
+}
+
+/// Whether `node` or any node above it, up to and including the file, is a declaration with type parameters.
+fn under_type_parameters(node: P<Node>) -> bool {
+    let mut at = Some(node);
+    while let Some(here) = at {
+        if Generic::cast(here).is_some_and(|generic| !generic.type_parameters().is_empty()) {
+            return true;
+        }
+        at = here.parent();
+    }
+    false
 }

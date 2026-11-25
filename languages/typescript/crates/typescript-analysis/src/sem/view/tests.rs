@@ -62,6 +62,9 @@ fn touch(node: P<Node>, text: &str) {
     if let Some(view) = FunctionLike::cast(node) {
         seen(view.parameters());
     }
+    if let Some(view) = Generic::cast(node) {
+        seen(view.type_parameters());
+    }
     if let Some(view) = Parameter::cast(node) {
         seen(view.is_rest());
     }
@@ -225,6 +228,7 @@ fn every_cast_and_every_accessor_of_every_view_is_total_on_the_libraries_and_the
         ("TypeReference", TypeReference::KINDS),
         ("StaticBlock", StaticBlock::KINDS),
         ("FunctionLike", FunctionLike::KINDS),
+        ("Generic", Generic::KINDS),
         ("Parameter", Parameter::KINDS),
     ] {
         let missing: Vec<&Kind> = listed

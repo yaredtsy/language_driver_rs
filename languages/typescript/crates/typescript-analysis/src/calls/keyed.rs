@@ -447,7 +447,9 @@ fn the_table_of_rows_is_read_whole() {
     assert_eq!(of("callback-reassigned"), 2);
     assert_eq!(of("callback-data"), 2);
     assert_eq!(of("callback-wide"), 2);
-    assert_eq!(entries.len(), 27);
+    assert_eq!(of("callback-mismatch"), 2);
+    assert_eq!(of("callback-generic"), 3);
+    assert_eq!(entries.len(), 32);
 }
 
 /// Nine functions through one conditional are more than a set holds: the one context of `run` that the graph walked has a key of one slot, wide.

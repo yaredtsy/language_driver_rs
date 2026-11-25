@@ -12,7 +12,7 @@ use crate::caps::Caps;
 use crate::env::Env;
 use crate::eval::{World, eval};
 use crate::key::{Key, KeyId, bind};
-use crate::sem::{Func, Init, Resolved, Sem, UNHANDLED_KEY, Uncovered, Why, counted};
+use crate::sem::{Fits, Func, Init, Resolved, Sem, UNHANDLED_KEY, Uncovered, Why, counted};
 use crate::value::One;
 
 /// The reason of an `Unresolved` edge, and the key of its counter in `Stats.language`, for a def whose node is missing from the program's tree: a bug
@@ -35,6 +35,15 @@ pub(crate) const OUTSIDE_ROOT: &str = "outside_root";
 /// The key of the counter, in `Stats.language`, for a call whose callee, in a context, is only `undefined` (a parameter nobody passed): no edge is drawn,
 /// and the counter says that is why the site has none (rule 8).
 pub(crate) const CALLEE_UNDEFINED: &str = "callee_undefined";
+
+/// The key of the counter, in `Stats.language`, for a function the layer drew at the call of a value (`06-tc2` §10, step 5c) that the checker says does **not** fit
+/// the callee's type, where no type parameter is in scope. On a project that compiles it must be 0: one there is a bug of the layer (a wrong binding). The
+/// engine's answer for the site stays beside the edge, so a wrong edge never stands alone.
+pub(crate) const VALUE_TYPE_MISMATCH: &str = "value_type_mismatch";
+
+/// The key of the counter, in `Stats.language`, for a function the layer drew at the call of a value that the checker could not check: inside generic code a
+/// correct function is not assignable to a type that names a type parameter, so there the layer is believed. The share the tripwire cannot see.
+pub(crate) const VALUE_TYPE_UNCHECKED: &str = "value_type_unchecked";
 
 /// The key of the counter, in `Stats.language`, for a def of the graph whose marker another def of its file owns (D34): named by where it is, counted once.
 pub(crate) const DUPLICATE_MARKER: &str = "duplicate_marker";
@@ -124,7 +133,7 @@ fn resolve<'p>(
     }
     let spoken = match env {
         Some(env) if lang.knows(Caps::PARAMS) => {
-            resolve_from_env(lang, env, site_index, &found, facts.jsx)
+            resolve_from_env(lang, env, f, site_index, &found, facts.jsx)
         }
         _ => None,
     };
@@ -217,10 +226,12 @@ fn is_open_entry(resolved: &Resolved<'_>) -> bool {
 /// What the context layer says the site at `site_index` calls, given the engine's answer `found`; `None` when it does not speak, and then the engine's
 /// answer stands as it was. It speaks only when `found` has an open entry **and** the callee's value has a known member (`06-tc2` §10, step 5a): a
 /// value that is only data, wide or unknown is not an answer. When it speaks, the targets are the engine's entries that are not open, then one for each
-/// member of the value, then the open entries again if the value is open (a write we cannot read, a way in we do not track).
+/// member of the value, then the open entries again if the value is open (a write we cannot read, a way in we do not track, a function the checker says
+/// does not fit the callee's type).
 fn resolve_from_env<'p>(
     lang: &TypeScript<'p>,
     env: &Env,
+    f: Func<'p>,
     site_index: usize,
     found: &[Resolved<'p>],
     jsx: bool,
@@ -245,7 +256,18 @@ fn resolve_from_env<'p>(
         // no `_` arm: a kind of member a later phase adds is decided here before this compiles
         match one {
             One::Fn(def) => match lang.sem.func(*def) {
-                Some(func) => targets.push(Target::Call(func, KeyId::OPEN)),
+                Some(func) => {
+                    // the tripwire: the checker agrees that the function fits the callee's type, or the layer says it could not ask (inside generic code)
+                    match lang.sem.fits(f, site_index, func, lang.style) {
+                        Fits::Yes => {}
+                        Fits::Unchecked => lang.note(VALUE_TYPE_UNCHECKED),
+                        Fits::No => {
+                            lang.note(VALUE_TYPE_MISMATCH);
+                            open = true;
+                        }
+                    }
+                    targets.push(Target::Call(func, KeyId::OPEN));
+                }
                 None => open = true,
             },
             // an arrow is `AnonAny` in the body of a callee, where its key holds it

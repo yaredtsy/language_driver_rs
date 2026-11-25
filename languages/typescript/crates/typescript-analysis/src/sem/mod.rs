@@ -58,7 +58,7 @@ use project::{
     INFERRED, Owner, find_owner, inferred_config, place_between, relative_to, to_engine_path,
     under_root,
 };
-pub(crate) use resolve::{FunctionOrigin, Init, Resolved, Why};
+pub(crate) use resolve::{Fits, FunctionOrigin, Init, Resolved, Why};
 pub(crate) use stamps::Stamps;
 pub(crate) use uncovered::Uncovered;
 pub(crate) use view::{UNHANDLED_KEY, counted};

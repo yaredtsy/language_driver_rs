@@ -209,7 +209,7 @@ fn every_context_row_gives_the_same_text_twice() {
 }
 
 #[test]
-fn the_three_properties_hold_on_every_context_row() {
+fn the_properties_hold_on_every_context_row() {
     let mut found = Vec::new();
     let mut compared = 0;
     for row in context_rows() {
@@ -427,5 +427,56 @@ fn value_widened_set_is_counted_where_a_set_passes_the_cap() {
             seen += 1;
         }
     }
-    assert_eq!(seen, 27, "every entry of every row");
+    assert_eq!(seen, 32, "every entry of every row");
+}
+
+/// The tripwire (`06-tc2` §10, step 5c): a function drawn at the call of a value that the checker says does not fit the callee's type is counted
+/// (`value_type_mismatch`), and inside generic code, where the checker cannot say, `value_type_unchecked`. Every other entry of every row says neither.
+#[test]
+fn the_tripwire_counts_where_a_function_does_not_fit() {
+    let mut seen = 0;
+    for row in context_rows() {
+        let (_, project) = open_row(&row);
+        for entry in &row.words[2..] {
+            let (off, on) = graphs_of(&project, &row, entry);
+            let said = |graph: &Graph, key: &str| graph.stats.language.get(key).copied();
+            let here = (row.id.as_str(), entry.as_str());
+            let mismatch = (here == ("callback-mismatch", "main")).then_some(1);
+            let unchecked = (here == ("callback-generic", "main")).then_some(2);
+            assert_eq!(
+                said(&on, "value_type_mismatch"),
+                mismatch,
+                "{} {entry}",
+                row.id
+            );
+            assert_eq!(
+                said(&on, "value_type_unchecked"),
+                unchecked,
+                "{} {entry}",
+                row.id
+            );
+            for key in ["value_type_mismatch", "value_type_unchecked"] {
+                assert_eq!(
+                    said(&off, key),
+                    None,
+                    "{} {entry}: the layer is off",
+                    row.id
+                );
+            }
+            if mismatch.is_some() {
+                // the open entry is drawn beside the function, so the split still adds up to the one `function_typed_value`
+                let split: u64 = on
+                    .stats
+                    .language
+                    .iter()
+                    .filter(|(key, _)| key.starts_with("function_typed_value_"))
+                    .map(|(_, count)| *count)
+                    .sum();
+                assert_eq!(said(&on, "function_typed_value"), Some(1));
+                assert_eq!(split, 1, "{} {entry}: the split", row.id);
+            }
+            seen += 1;
+        }
+    }
+    assert_eq!(seen, 32, "every entry of every row");
 }

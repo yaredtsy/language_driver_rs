@@ -303,6 +303,20 @@ impl FunctionLike {
 }
 
 view! {
+    /// A declaration that can hold a call site and can have type parameters: the kinds `Node::type_parameter_list` handles without panicking (an interface or a
+    /// type alias holds no code, so no call site is under one).
+    Generic: ClassDeclaration | ClassExpression | FunctionDeclaration | FunctionExpression | ArrowFunction | MethodDeclaration | GetAccessor | SetAccessor
+        | Constructor
+}
+
+impl Generic {
+    /// `<T, U>` of the declaration: empty when it has none.
+    pub(super) fn type_parameters(self) -> &'static [P<Node>] {
+        self.0.type_parameters()
+    }
+}
+
+view! {
     /// A parameter: `x`, `...rest`, `this: T`.
     Parameter: Parameter
 }
