@@ -40,6 +40,8 @@ fn eval_below(world: &impl World, env: &Env, expr: &Expr, below: u32) -> Value {
         Expr::Param(index) if *index < below => param(world, env, *index),
         Expr::Param(_) => Value::unknown(),
         Expr::Anon(index) => Value::of([One::Anon(env.def, *index)], false),
+        // TC3 step 2 gives a variable its value; until then it is what TC2 gave the same name
+        Expr::Var(_) => Value::unknown(),
         Expr::OneOf(members) => members
             .iter()
             .map(|member| eval_below(world, env, member, below))
@@ -139,6 +141,8 @@ mod tests {
                 anons: Box::new([]),
                 handed: Box::new([]),
                 unhandled: 0,
+                vars: Box::new([]),
+                unmodelled: 0,
             }),
             def: d(9),
             key: KeyData { params: key.into() },

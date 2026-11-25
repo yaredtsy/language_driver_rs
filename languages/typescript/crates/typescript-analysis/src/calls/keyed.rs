@@ -111,7 +111,7 @@ fn params_in(expr: &Expr, out: &mut [bool]) {
             }
         }
         Expr::OneOf(members) => members.iter().for_each(|member| params_in(member, out)),
-        Expr::Unknown | Expr::Data | Expr::Def(_) | Expr::Anon(_) => {}
+        Expr::Unknown | Expr::Data | Expr::Def(_) | Expr::Anon(_) | Expr::Var(_) => {}
     }
 }
 

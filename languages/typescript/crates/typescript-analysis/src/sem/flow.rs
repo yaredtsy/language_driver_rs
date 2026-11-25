@@ -12,9 +12,13 @@ use tsrs_checker::{Type, TypeFlags};
 
 use super::collect::{CallNode, SiteKind, unwrap_expression};
 use super::handed::HandOvers;
-use super::view::{Binary, Conditional, Parameter, arguments_of, expression_of, parameters_of};
+use super::view::{
+    Binary, Conditional, Parameter, arguments_of, expression_of, initializer_of, parameters_of,
+};
 use super::*;
-use crate::flow::{AnonFlow, Arg, DefId, Expr, Flow, FlowKind, HandedFlow, Param, SiteFlow};
+use crate::flow::{
+    AnonFlow, Arg, DefId, Expr, Flow, FlowKind, HandedFlow, Param, SiteFlow, Var, VarId,
+};
 
 /// The tables of one program, and the numbers they are written in.
 pub(super) struct Flows {
@@ -132,6 +136,25 @@ impl Sem {
     }
 }
 
+/// A declaration that has a row in `Flow::vars`, before its type and writes are looked at.
+struct Declaration {
+    /// The name, an `Identifier`.
+    name: P<Node>,
+    param: Option<u32>,
+    open: bool,
+    initializer: Option<P<Node>>,
+}
+
+/// What one write of a variable does to its row.
+enum Write {
+    /// `x = value` (and `||=`, `??=`, `&&=`): `value` is one more thing assigned.
+    Assigns(Expr),
+    /// A write the row models as "anything".
+    Open,
+    /// A write none of the rows covers: open, and counted.
+    Unmodelled,
+}
+
 /// What one reading of a body carries: the checker (one handle for the whole body), the file's defs, and where each anonymous function is.
 struct Reader<'a, 'p> {
     sem: &'p Sem,
@@ -155,15 +178,15 @@ impl Reader<'_, '_> {
             .into_iter()
             .map(|parameter| self.param(parameter))
             .unzip();
-        // one walk of the def for every parameter, and only when one can hold a function and has a name to be written under
-        if params.iter().any(|row| row.named && row.capable) {
-            let written = written_symbols(self.checker, self.def);
-            for (row, symbol) in params.iter_mut().zip(&symbols) {
-                if row.named && row.capable {
-                    row.assigned = symbol.is_some_and(|symbol| written.contains(&symbol));
-                }
+        // one walk of the whole def for every write: the parameters' `assigned` and the variables' rows both come from it
+        let writes = written_identifiers(self.checker, self.def, self.file.node.text());
+        for (row, symbol) in params.iter_mut().zip(&symbols) {
+            if row.named && row.capable {
+                row.assigned =
+                    symbol.is_some_and(|symbol| writes.iter().any(|(at, _)| *at == symbol));
             }
         }
+        let vars = self.vars(&params, &writes);
         let params: Box<[Param]> = params.into();
         let anons: Box<[AnonFlow]> = body.anons.iter().map(|&span| AnonFlow { span }).collect();
         let sites = body
@@ -179,6 +202,175 @@ impl Reader<'_, '_> {
             handed,
             // said by the caller, which counts the whole reading
             unhandled: 0,
+            vars: vars.0,
+            unmodelled: vars.1,
+        }
+    }
+
+    /// The declarations of the def that have a row (`07-tc3` §2), found by one walk of its own node that does not enter a def of the outline (as `Collector`
+    /// does not), in source order.
+    fn declarations(&mut self) -> Vec<Declaration> {
+        let mut found = Vec::new();
+        let mut pending = vec![self.def];
+        while let Some(node) = pending.pop() {
+            if node != self.def && self.defs.def_of.contains_key(&node) {
+                continue;
+            }
+            match node.kind() {
+                Kind::Parameter => {
+                    let own = self.params.iter().position(|&param| param == node);
+                    let parent_ok = own.is_some()
+                        || node.parent().is_some_and(|parent| {
+                            matches!(
+                                parent.kind(),
+                                Kind::ArrowFunction | Kind::FunctionExpression
+                            )
+                        });
+                    if !parent_ok {
+                        // a parameter of a signature or a function type: no variable, and nothing in it is read as code
+                        continue;
+                    }
+                    if let Some(parameter) = Parameter::cast(node)
+                        && !ast::is_this_parameter(node)
+                    {
+                        let name = parameter.name();
+                        if name.kind() == Kind::Identifier {
+                            found.push(Declaration {
+                                name,
+                                param: own.map(|index| index as u32),
+                                open: own.is_none(),
+                                initializer: None,
+                            });
+                        }
+                    }
+                }
+                Kind::BindingElement => {
+                    if let Some(name) = node.name()
+                        && name.kind() == Kind::Identifier
+                    {
+                        found.push(Declaration {
+                            name,
+                            param: None,
+                            open: true,
+                            initializer: None,
+                        });
+                    }
+                }
+                Kind::VariableDeclaration => {
+                    if let Some(name) = node.name()
+                        && name.kind() == Kind::Identifier
+                    {
+                        let parent = node.parent();
+                        let in_loop =
+                            parent
+                                .and_then(|list| list.parent())
+                                .is_some_and(|statement| {
+                                    matches!(
+                                        statement.kind(),
+                                        Kind::ForOfStatement | Kind::ForInStatement
+                                    )
+                                });
+                        let in_catch =
+                            parent.is_some_and(|parent| parent.kind() == Kind::CatchClause);
+                        let ambient =
+                            ast::get_combined_node_flags(node).intersects(NodeFlags::Ambient);
+                        let open = in_loop || in_catch || ambient;
+                        found.push(Declaration {
+                            name,
+                            param: None,
+                            open,
+                            initializer: if open { None } else { initializer_of(node) },
+                        });
+                    }
+                }
+                _ => {}
+            }
+            node.for_each_child(&mut |child| {
+                pending.push(child);
+                false
+            });
+        }
+        found
+    }
+
+    /// The `vars` of the table and the count of writes no row covers (`07-tc3` §2). `params` are the rows already read, for `capable` of an own parameter;
+    /// `writes` is every write of the def, sorted by place.
+    fn vars(&mut self, params: &[Param], writes: &[(P<Symbol>, P<Node>)]) -> (Box<[Var]>, u64) {
+        let text = self.file.node.text();
+        let mut unmodelled = 0;
+        let mut vars: Vec<Var> = Vec::new();
+        for declaration in self.declarations() {
+            let at = own_span(text, declaration.name).start;
+            let symbol = self
+                .checker
+                .get_symbol_at_location_exported(declaration.name);
+            let capable = match declaration.param {
+                Some(index) => params[index as usize].capable,
+                None => symbol.is_some_and(|symbol| {
+                    let ty = self.checker.get_type_of_symbol(symbol);
+                    !holds_only_data(self.checker, ty, 4)
+                }),
+            };
+            let mut open = declaration.open;
+            let mut assigned = Vec::new();
+            if capable {
+                if let Some(initializer) = declaration.initializer {
+                    assigned.push(self.expr_of(initializer));
+                }
+                for (_, write) in writes
+                    .iter()
+                    .filter(|(written, _)| Some(*written) == symbol)
+                {
+                    match self.write(*write) {
+                        Write::Assigns(value) => assigned.push(value),
+                        Write::Open => open = true,
+                        Write::Unmodelled => {
+                            open = true;
+                            unmodelled += 1;
+                        }
+                    }
+                }
+            }
+            vars.push(Var {
+                at,
+                param: declaration.param,
+                capable,
+                assigned: assigned.into(),
+                open: capable && open,
+            });
+        }
+        vars.sort_by_key(|var| var.at);
+        (vars.into(), unmodelled)
+    }
+
+    /// What one write of a variable is, by the node that holds the written name (`07-tc3` §2's table).
+    fn write(&mut self, write: P<Node>) -> Write {
+        let Some(parent) = write.parent() else {
+            return Write::Unmodelled;
+        };
+        match parent.kind() {
+            Kind::BinaryExpression => match Binary::cast(parent) {
+                Some(binary) if binary.left() == write => match binary.operator() {
+                    Kind::EqualsToken
+                    | Kind::BarBarEqualsToken
+                    | Kind::QuestionQuestionEqualsToken
+                    | Kind::AmpersandAmpersandEqualsToken => {
+                        Write::Assigns(self.expr_of(binary.right()))
+                    }
+                    _ => Write::Open,
+                },
+                _ => Write::Unmodelled,
+            },
+            Kind::PrefixUnaryExpression
+            | Kind::PostfixUnaryExpression
+            | Kind::ForOfStatement
+            | Kind::ForInStatement
+            | Kind::ArrayLiteralExpression
+            | Kind::ShorthandPropertyAssignment
+            | Kind::PropertyAssignment
+            | Kind::SpreadElement
+            | Kind::SpreadAssignment => Write::Open,
+            _ => Write::Unmodelled,
         }
     }
 
@@ -316,6 +508,51 @@ impl Reader<'_, '_> {
         Some(u32::try_from(index).expect("a def has fewer than 2^32 parameters"))
     }
 
+    /// The variable `name` stands for: its symbol's value declaration is a variable, a parameter or a binding element of this file with a plain name, and the
+    /// def that declares it is this def or one around it. The symbol is not followed through an alias (an import is TC3 step 4's).
+    fn var_of(&mut self, name: P<Node>) -> Option<VarId> {
+        let symbol = self.checker.get_symbol_at_location_exported(name)?;
+        let declaration = symbol.value_declaration()?;
+        if !matches!(
+            declaration.kind(),
+            Kind::VariableDeclaration | Kind::Parameter | Kind::BindingElement
+        ) {
+            return None;
+        }
+        let declared = declaration
+            .name()
+            .filter(|name| name.kind() == Kind::Identifier)?;
+        if ast::get_source_file_of_node(declaration)? != self.file.node {
+            return None;
+        }
+        // the first def of the outline (or the file) above the declaration
+        let mut up = declaration.parent();
+        let holder = loop {
+            let node = up?;
+            if node.kind() == Kind::SourceFile || self.defs.def_of.contains_key(&node) {
+                break node;
+            }
+            up = node.parent();
+        };
+        // it must be this def, or hold it
+        let mut around = Some(self.def);
+        loop {
+            let node = around?;
+            if node == holder {
+                break;
+            }
+            around = node.parent();
+        }
+        let func = match self.defs.def_of.get(&holder) {
+            Some(&index) => Func::def(self.file, index),
+            None => Func::module(self.file),
+        };
+        Some(VarId {
+            def: self.sem.def_id(func),
+            at: own_span(self.file.node.text(), declared).start,
+        })
+    }
+
     /// What the expression is, as far as the code alone says (`crate::flow::Expr`).
     fn expr_of(&mut self, node: P<Node>) -> Expr {
         let node = unwrap_expression(node);
@@ -343,7 +580,11 @@ impl Reader<'_, '_> {
                     self.sem
                         .functions_named(&mut *self.checker, node, self.style);
                 if classes > 0 || functions.is_empty() {
-                    return Expr::Unknown;
+                    return if node.kind() == Kind::Identifier {
+                        self.var_of(node).map_or(Expr::Unknown, Expr::Var)
+                    } else {
+                        Expr::Unknown
+                    };
                 }
                 // one symbol can stand for one function twice (a script's function merged with a library global of the same name, the DOM's `open`): `one_of` keeps it once
                 one_of(
@@ -424,28 +665,32 @@ fn holds_only_data(checker: &mut Checker, ty: P<Type>, depth: u8) -> bool {
             .is_some_and(|element| holds_only_data(checker, element, depth - 1))
 }
 
-/// The symbols written somewhere under `container` (its parameters, its body, and the defs and anonymous functions written in it): each `Identifier` that
-/// `ast::is_write_access` says is written (`=`, a compound assignment, `++`, a destructuring or loop target), and its symbol. The write test is syntax only, so it
-/// comes first and the checker is asked only about writes. A declaration's own name is never one: `is_write_access` says `Read` for it. One walk per def
-/// (`06-tc2` §10, step 4d); TC3 starts from it for a local's writes.
+/// Every write under `container` (its parameters, its body, and the defs and anonymous functions written in it): each `Identifier` that `ast::is_write_access`
+/// says is written (`=`, a compound assignment, `++`, a destructuring or loop target) and has a symbol, with that symbol, sorted by the identifier's place. The
+/// write test is syntax only, so it comes first and the checker is asked only about writes. A declaration's own name is never one: `is_write_access` says
+/// `Read` for it. One walk per def (`06-tc2` §10, step 4d; TC3 step 1).
 ///
 /// The walk keeps its own stack of nodes still to visit instead of calling itself, so a deep tree cannot overflow the thread's stack.
-fn written_symbols(checker: &mut Checker, container: P<Node>) -> Vec<P<Symbol>> {
-    let mut written: Vec<P<Symbol>> = Vec::new();
+fn written_identifiers(
+    checker: &mut Checker,
+    container: P<Node>,
+    text: &str,
+) -> Vec<(P<Symbol>, P<Node>)> {
+    let mut written: Vec<(P<Symbol>, P<Node>)> = Vec::new();
     let mut pending = vec![container];
     while let Some(node) = pending.pop() {
         if node.kind() == Kind::Identifier
             && ast::is_write_access(node)
             && let Some(symbol) = checker.get_symbol_at_location_exported(node)
-            && !written.contains(&symbol)
         {
-            written.push(symbol);
+            written.push((symbol, node));
         }
         node.for_each_child(&mut |child| {
             pending.push(child);
             false
         });
     }
+    written.sort_by_key(|(_, node)| own_span(text, *node).start);
     written
 }
 

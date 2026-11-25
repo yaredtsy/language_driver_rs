@@ -1,0 +1,226 @@
+== run
+params:
+  #0 rest capable
+vars:
+  values@2 param#0 capable
+sites: none
+anons: 0
+handed: none
+== a
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== b
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== alias
+params: none
+vars:
+  h@10 capable = def a
+sites:
+  call ? (var h@10)
+anons: 0
+handed:
+  a def a
+  h var h@10
+== either
+params: none
+vars:
+  h@15 capable = oneof(def a | def b)
+sites:
+  call var h@15 ()
+anons: 0
+handed:
+  a def a
+  b def b
+== twice
+params: none
+vars:
+  h@20 capable = def a; def b
+sites:
+  call var h@20 ()
+  call var h@20 ()
+anons: 0
+handed:
+  a def a
+  b def b
+== logical
+params: none
+vars:
+  h@27 capable = def a; def b; def a
+sites:
+  call var h@27 ()
+anons: 0
+handed: none
+== never
+params: none
+vars:
+  h@35 capable
+sites:
+  call ? (anon#0)
+  call var h@35 () in anon#0
+anons: 1
+handed: none
+== forms
+params: none
+vars:
+  f@40 capable open
+  e@41 capable open
+  first@42 capable open
+  length@44
+sites:
+  call var f@40 ()
+  call ? ()
+  call ? (var e@41)
+  call var first@42 ()
+  call ? (var length@44)
+anons: 0
+handed:
+  e var e@41
+  length var length@44
+== written
+params: none
+vars:
+  g@49 capable open = def a
+sites:
+  call var g@49 ()
+anons: 0
+handed:
+  a def a
+  g var g@49
+== unmodelled
+params: none
+vars:
+  g@58 capable open = def a
+sites:
+  call var g@58 ()
+anons: 0
+handed:
+  a def a
+  b def b
+unmodelled: 1
+== cycle
+params: none
+vars:
+  g@64 capable = def a; var h@65
+  h@65 capable = var g@64
+sites:
+  call var h@65 ()
+anons: 0
+handed:
+  a def a
+  g var g@64
+  h var h@65
+== data
+params: none
+vars:
+  n@71
+  s@72
+sites:
+  call ? (var n@71, var s@72)
+anons: 0
+handed:
+  n var n@71
+  s var s@72
+== params
+params:
+  #0 assigned capable
+  #1
+vars:
+  cb@76 param#0 capable = oneof(param#0 | def a)
+  n@76 param#1
+sites:
+  call param#0 ()
+anons: 0
+handed:
+  a def a
+== outer
+params:
+  #0 capable
+vars:
+  cb@82 param#0 capable
+  h@83 capable = def a; def b; param#0
+  arrow@89 capable = def outer.<locals>.arrow
+  f@91 capable open
+sites:
+  call ? (def outer.<locals>.inner, def outer.<locals>.arrow)
+  call ? (anon#0)
+  call var f@91 () in anon#0
+anons: 1
+handed:
+  a def a
+  inner def outer.<locals>.inner
+  arrow def outer.<locals>.arrow
+== outer.<locals>.inner
+params: none
+vars: none
+sites:
+  call var outer:h@83 ()
+  call var outer:cb@82 ()
+anons: 0
+handed:
+  b def b
+== outer.<locals>.arrow
+params: none
+vars: none
+sites: none
+anons: 0
+handed:
+  cb var outer:cb@82
+== shadow
+params: none
+vars:
+  h@95 capable = def a
+  h@97 capable = def b
+sites:
+  call var h@97 ()
+  call var h@95 ()
+anons: 0
+handed:
+  a def a
+  b def b
+== moduleRead
+params: none
+vars: none
+sites:
+  call ? (var FILE:handler@7)
+anons: 0
+handed:
+  handler var FILE:handler@7
+== N
+params: none
+vars:
+  h@108 capable = def a
+sites: none
+anons: 0
+handed:
+  a def a
+== N
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== N.use
+params: none
+vars: none
+sites:
+  call ? ()
+anons: 0
+handed: none
+== FILE
+params: none
+vars:
+  flag@3
+  items@4 capable open
+  handler@7 capable = oneof(def a | def b)
+sites: none
+anons: 0
+handed:
+  a def a
+  b def b

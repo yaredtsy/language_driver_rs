@@ -18,15 +18,34 @@ fn open() -> Sem {
 }
 
 fn flow_of(sem: &Sem, file: &str, qualname: &str, occurrence: u16) -> Arc<Flow> {
+    table_of(sem, file, qualname, occurrence).1
+}
+
+/// The def's number and its table.
+fn table_of(sem: &Sem, file: &str, qualname: &str, occurrence: u16) -> (DefId, Arc<Flow>) {
     let func = sem
         .entry(file, qualname, occurrence, STYLE)
         .unwrap_or_else(|| panic!("no def {qualname}#{occurrence} in {file}"));
-    sem.flow(sem.def_id(func), STYLE)
-        .unwrap_or_else(|| panic!("no table for {qualname}#{occurrence}"))
+    let id = sem.def_id(func);
+    let flow = sem
+        .flow(id, STYLE)
+        .unwrap_or_else(|| panic!("no table for {qualname}#{occurrence}"));
+    (id, flow)
 }
 
-/// An expression as the tests write it: `?`, `data`, `def <qualname>`, `param#<i>`, `anon#<i>`, `oneof(<a> | <b>)`.
-fn expr(sem: &Sem, expr: &Expr) -> String {
+/// The name at `at` in `text` and its 1-based line.
+fn name_at(text: &str, at: u32) -> (String, usize) {
+    let start = at as usize;
+    let name: String = text[start..]
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+        .collect();
+    (name, text[..start].matches('\n').count() + 1)
+}
+
+/// An expression as the tests write it: `?`, `data`, `def <qualname>`, `param#<i>`, `anon#<i>`, `var <name>@<line>` (`var <qualname>:<name>@<line>` for a
+/// variable of another def, `FILE` for the file's code), `oneof(<a> | <b>)`. `own` is the def of the table the expression is in, `text` the file's.
+fn expr(sem: &Sem, own: DefId, text: &str, expr: &Expr) -> String {
     match expr {
         Expr::Unknown => "?".into(),
         Expr::Data => "data".into(),
@@ -36,10 +55,22 @@ fn expr(sem: &Sem, expr: &Expr) -> String {
         }
         Expr::Param(index) => format!("param#{index}"),
         Expr::Anon(index) => format!("anon#{index}"),
+        Expr::Var(id) => {
+            let (name, line) = name_at(text, id.at);
+            if id.def == own {
+                format!("var {name}@{line}")
+            } else {
+                let owner = match sem.func(id.def).expect("a def of this program") {
+                    func if func.outline_index().is_none() => "FILE".to_owned(),
+                    func => sem.describe(func, STYLE).qualname,
+                };
+                format!("var {owner}:{name}@{line}")
+            }
+        }
         Expr::OneOf(members) => {
             let members: Vec<String> = members
                 .iter()
-                .map(|member| self::expr(sem, member))
+                .map(|member| self::expr(sem, own, text, member))
                 .collect();
             format!("oneof({})", members.join(" | "))
         }
@@ -47,7 +78,7 @@ fn expr(sem: &Sem, expr: &Expr) -> String {
 }
 
 /// A site as `<kind> <callee> (<args>)`, plus ` in anon#<i>`; `(-)` for arguments that were not read.
-fn show(sem: &Sem, site: &SiteFlow) -> String {
+fn show(sem: &Sem, own: DefId, text: &str, site: &SiteFlow) -> String {
     let kind = match site.kind {
         FlowKind::Call => "call",
         FlowKind::New => "new",
@@ -62,7 +93,7 @@ fn show(sem: &Sem, site: &SiteFlow) -> String {
             .iter()
             .map(|arg| {
                 let spread = if arg.spread { "..." } else { "" };
-                format!("{spread}{}", expr(sem, &arg.value))
+                format!("{spread}{}", expr(sem, own, text, &arg.value))
             })
             .collect::<Vec<_>>()
             .join(", "),
@@ -70,11 +101,14 @@ fn show(sem: &Sem, site: &SiteFlow) -> String {
     let anon = site
         .anon
         .map_or(String::new(), |index| format!(" in anon#{index}"));
-    format!("{kind} {} ({args}){anon}", expr(sem, &site.callee))
+    format!(
+        "{kind} {} ({args}){anon}",
+        expr(sem, own, text, &site.callee)
+    )
 }
 
 /// A parameter's row as `#<index>`, then ` rest`, ` pattern` (not named), ` default <expr>`, ` assigned`, ` capable`, each only when it holds.
-fn show_param(sem: &Sem, index: usize, param: &Param) -> String {
+fn show_param(sem: &Sem, own: DefId, text: &str, index: usize, param: &Param) -> String {
     let mut out = format!("#{index}");
     if param.rest {
         out.push_str(" rest");
@@ -83,7 +117,7 @@ fn show_param(sem: &Sem, index: usize, param: &Param) -> String {
         out.push_str(" pattern");
     }
     if let Some(default) = &param.default {
-        out.push_str(&format!(" default {}", expr(sem, default)));
+        out.push_str(&format!(" default {}", expr(sem, own, text, default)));
     }
     if param.assigned {
         out.push_str(" assigned");
@@ -96,31 +130,33 @@ fn show_param(sem: &Sem, index: usize, param: &Param) -> String {
 
 /// The parameter rows of a def, shown.
 fn rows(sem: &Sem, file: &str, qualname: &str, occurrence: u16) -> Vec<String> {
-    flow_of(sem, file, qualname, occurrence)
-        .params
+    let (own, flow) = table_of(sem, file, qualname, occurrence);
+    let text = sem.text_of(file).unwrap();
+    flow.params
         .iter()
         .enumerate()
-        .map(|(index, param)| show_param(sem, index, param))
+        .map(|(index, param)| show_param(sem, own, &text, index, param))
         .collect()
 }
 
 /// The sites of a def, shown.
 fn sites(sem: &Sem, file: &str, qualname: &str, occurrence: u16) -> Vec<String> {
-    flow_of(sem, file, qualname, occurrence)
-        .sites
+    let (own, flow) = table_of(sem, file, qualname, occurrence);
+    let text = sem.text_of(file).unwrap();
+    flow.sites
         .iter()
-        .map(|site| show(sem, site))
+        .map(|site| show(sem, own, &text, site))
         .collect()
 }
 
 /// A hand-over as `<text at its place> <expr>`, and ` written` for a def written inside an expression.
-fn show_handed(sem: &Sem, text: &str, handed: &HandedFlow) -> String {
+fn show_handed(sem: &Sem, own: DefId, text: &str, handed: &HandedFlow) -> String {
     let name = handed
         .at
         .and_then(|at| at.slice(text))
         .unwrap_or("(no place)");
     let written = if handed.written { " written" } else { "" };
-    format!("{name} {}{written}", expr(sem, &handed.value))
+    format!("{name} {}{written}", expr(sem, own, text, &handed.value))
 }
 
 /// Whether the expression holds a def, directly or inside a `OneOf`.
@@ -128,15 +164,20 @@ fn holds_a_def(expr: &Expr) -> bool {
     match expr {
         Expr::Def(_) => true,
         Expr::OneOf(members) => members.iter().any(holds_a_def),
-        Expr::Unknown | Expr::Data | Expr::Param(_) | Expr::Anon(_) => false,
+        Expr::Unknown | Expr::Data | Expr::Param(_) | Expr::Anon(_) | Expr::Var(_) => false,
     }
 }
 
 #[test]
 fn the_table_of_flow_reads_each_callee_and_argument() {
     let sem = open();
-    let flow = flow_of(&sem, "src/flow.tsx", "flow", 0);
-    let shown: Vec<String> = flow.sites.iter().map(|site| show(&sem, site)).collect();
+    let (own, flow) = table_of(&sem, "src/flow.tsx", "flow", 0);
+    let text = sem.text_of("src/flow.tsx").unwrap();
+    let shown: Vec<String> = flow
+        .sites
+        .iter()
+        .map(|site| show(&sem, own, &text, site))
+        .collect();
     assert_eq!(
         shown,
         [
@@ -307,11 +348,11 @@ fn a_number_of_one_program_is_not_read_through_another() {
 fn the_hand_overs_of_flow_are_handed_overs_defs_and_the_other_names() {
     let sem = open();
     let text = sem.text_of("src/flow.tsx").unwrap();
-    let flow = flow_of(&sem, "src/flow.tsx", "flow", 0);
+    let (own, flow) = table_of(&sem, "src/flow.tsx", "flow", 0);
     let all: Vec<String> = flow
         .handed
         .iter()
-        .map(|entry| show_handed(&sem, &text, entry))
+        .map(|entry| show_handed(&sem, own, &text, entry))
         .collect();
     eprintln!("{}", all.join("\n"));
     let known: Vec<&String> = flow
@@ -352,67 +393,124 @@ fn the_hand_overs_of_flow_are_handed_overs_defs_and_the_other_names() {
 #[test]
 fn a_one_of_never_repeats_a_member() {
     let sem = open();
-    let flow = flow_of(&sem, "src/overloads.ts", "callsOver", 0);
-    let shown: Vec<String> = flow.sites.iter().map(|site| show(&sem, site)).collect();
+    let shown = sites(&sem, "src/overloads.ts", "callsOver", 0);
     assert_eq!(shown, ["call def over (data)", "call def over (data)"]);
 }
 
-/// The tables of the tour (`tests/fixtures/context/tour`), written out for review: what every later phase of the layer starts from.
-#[test]
-fn the_tables_of_the_tour_are_reviewed() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/context/tour");
-    let sem = Sem::open(&root, Path::new("src/tour.tsx")).unwrap();
-    let text = std::fs::read_to_string(root.join("src/tour.tsx")).unwrap();
-    let outline = typescript_syntax::outline(&text, typescript_syntax::Dialect::Tsx, STYLE);
+/// One variable's row as `<name>@<line>`, then ` param#<i>`, ` capable`, ` open`, each only when it holds, then ` = <e1>; <e2>; …`.
+fn show_var(sem: &Sem, own: DefId, text: &str, var: &crate::flow::Var) -> String {
+    let (name, line) = name_at(text, var.at);
+    let mut out = format!("{name}@{line}");
+    if let Some(index) = var.param {
+        out.push_str(&format!(" param#{index}"));
+    }
+    if var.capable {
+        out.push_str(" capable");
+    }
+    if var.open {
+        out.push_str(" open");
+    }
+    if !var.assigned.is_empty() {
+        let all: Vec<String> = var
+            .assigned
+            .iter()
+            .map(|value| expr(sem, own, text, value))
+            .collect();
+        out.push_str(&format!(" = {}", all.join("; ")));
+    }
+    out
+}
+
+/// A table written out for review: params, vars, sites, anons, handed, and `unmodelled` when it is not 0.
+fn show_table(sem: &Sem, own: DefId, text: &str, flow: &Flow) -> String {
+    let mut out = String::new();
+    if flow.params.is_empty() {
+        out.push_str("params: none\n");
+    } else {
+        out.push_str("params:\n");
+        for (index, param) in flow.params.iter().enumerate() {
+            out.push_str(&format!("  {}\n", show_param(sem, own, text, index, param)));
+        }
+    }
+    if flow.vars.is_empty() {
+        out.push_str("vars: none\n");
+    } else {
+        out.push_str("vars:\n");
+        for var in &flow.vars {
+            out.push_str(&format!("  {}\n", show_var(sem, own, text, var)));
+        }
+    }
+    if flow.sites.is_empty() {
+        out.push_str("sites: none\n");
+    } else {
+        out.push_str("sites:\n");
+        for site in &flow.sites {
+            out.push_str(&format!("  {}\n", show(sem, own, text, site)));
+        }
+    }
+    out.push_str(&format!("anons: {}\n", flow.anons.len()));
+    if flow.handed.is_empty() {
+        out.push_str("handed: none\n");
+    } else {
+        out.push_str("handed:\n");
+        for held in &flow.handed {
+            out.push_str(&format!("  {}\n", show_handed(sem, own, text, held)));
+        }
+    }
+    if flow.unmodelled > 0 {
+        out.push_str(&format!("unmodelled: {}\n", flow.unmodelled));
+    }
+    out
+}
+
+/// The tables of every def of `file` in `root`, in outline order, then the file's own code, as `== <qualname>` and `show_table`.
+fn tables_of(root: &Path, file: &str) -> String {
+    let sem = Sem::open(root, Path::new(file)).unwrap();
+    let text = std::fs::read_to_string(root.join(file)).unwrap();
+    let dialect = typescript_syntax::Dialect::from_path(file).expect("a source file");
+    let outline = typescript_syntax::outline(&text, dialect, STYLE);
     let mut entries: Vec<(String, Func<'_>)> = Vec::new();
     let mut seen: HashMap<&str, u16> = HashMap::new();
     for def in &outline.defs {
         let occurrence = seen.entry(def.qualname.as_str()).or_default();
         let func = sem
-            .entry("src/tour.tsx", &def.qualname, *occurrence, STYLE)
+            .entry(file, &def.qualname, *occurrence, STYLE)
             .unwrap_or_else(|| panic!("no def {}#{occurrence}", def.qualname));
         entries.push((def.qualname.clone(), func));
         *occurrence += 1;
     }
     entries.push((
         "FILE".to_owned(),
-        sem.file_entry("src/tour.tsx").expect("the file's code"),
+        sem.file_entry(file).expect("the file's code"),
     ));
     let mut out = String::new();
     for (name, func) in &entries {
+        let id = sem.def_id(*func);
         let flow = sem
-            .flow(sem.def_id(*func), STYLE)
+            .flow(id, STYLE)
             .unwrap_or_else(|| panic!("no table for {name}"));
         out.push_str(&format!("== {name}\n"));
-        if flow.params.is_empty() {
-            out.push_str("params: none\n");
-        } else {
-            out.push_str("params:\n");
-            for (index, param) in flow.params.iter().enumerate() {
-                out.push_str(&format!("  {}\n", show_param(&sem, index, param)));
-            }
-        }
-        if flow.sites.is_empty() {
-            out.push_str("sites: none\n");
-        } else {
-            out.push_str("sites:\n");
-            for site in &flow.sites {
-                out.push_str(&format!("  {}\n", show(&sem, site)));
-            }
-        }
-        out.push_str(&format!("anons: {}\n", flow.anons.len()));
-        if flow.handed.is_empty() {
-            out.push_str("handed: none\n");
-        } else {
-            out.push_str("handed:\n");
-            for held in &flow.handed {
-                out.push_str(&format!("  {}\n", show_handed(&sem, &text, held)));
-            }
-        }
+        out.push_str(&show_table(&sem, id, &text, &flow));
     }
+    out
+}
+
+/// The tables of the tour (`tests/fixtures/context/tour`), written out for review: what every later phase of the layer starts from.
+#[test]
+fn the_tables_of_the_tour_are_reviewed() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/context/tour");
     analyzer_testkit::expect_file(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/context/tour.flow.txt"),
-        &out,
+        &tables_of(&root, "src/tour.tsx"),
+    );
+}
+
+/// The variables of a body (TC3 step 1): one row for each variable a def declares, what is assigned to it, and how a name of one reads.
+#[test]
+fn the_variables_of_a_body_are_reviewed() {
+    analyzer_testkit::expect_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/flow/vars.flow.txt"),
+        &tables_of(&root(), "src/vars.ts"),
     );
 }
 
@@ -493,17 +591,17 @@ fn a_name_of_a_parameter_is_its_place() {
         site("uses", 0),
         [
             "call param#0 ()",
-            "call ? ()",
+            "call var x@16 ()",
             "call ? ()",
             "call ? (anon#0)",
-            "call ? () in anon#0",
+            "call var cb@21 () in anon#0",
             "call ? (anon#1)",
             "call param#0 () in anon#1",
             "call ? (param#0)",
         ]
     );
-    // a parameter of the enclosing def: TC3
-    assert_eq!(site("uses.<locals>.inner", 0), ["call ? ()"]);
+    // a parameter of the enclosing def: a variable of that def (TC3 step 1)
+    assert_eq!(site("uses.<locals>.inner", 0), ["call var uses:cb@16 ()"]);
     assert_eq!(
         site("reassigned", 0),
         ["call param#0 ()", "call param#1 ()"]
@@ -533,4 +631,115 @@ fn an_untyped_parameter_is_capable() {
         ["#0 default anon#0 capable"]
     );
     assert_eq!(sites(&sem, p, "withDefault", 0), ["call param#0 ()"]);
+}
+
+/// Every `Expr::Var` in `expr`, `OneOf` members included.
+fn vars_in(expr: &Expr, out: &mut Vec<crate::flow::VarId>) {
+    match expr {
+        Expr::Var(id) => out.push(*id),
+        Expr::OneOf(members) => members.iter().for_each(|member| vars_in(member, out)),
+        Expr::Unknown | Expr::Data | Expr::Def(_) | Expr::Param(_) | Expr::Anon(_) => {}
+    }
+}
+
+/// The tables of every def of every fixture project, and of each file's own code, once each: `(project, def's name, def, table)`.
+fn every_table(mut each: impl FnMut(&Sem, &str, DefId, &Flow)) {
+    for root in fixture_roots() {
+        let mut files = Vec::new();
+        candidates(&root, &mut files);
+        let Some(sem) = files
+            .iter()
+            .take(5)
+            .find_map(|file| Sem::open(&root, file).ok())
+        else {
+            continue;
+        };
+        let mut seen = HashSet::new();
+        for func in sem.project_defs(STYLE) {
+            for func in [func, Func::module(func.file)] {
+                let id = sem.def_id(func);
+                if !seen.insert(id) {
+                    continue;
+                }
+                let name = format!(
+                    "{} in {}",
+                    sem.describe(func, STYLE).qualname,
+                    root.display()
+                );
+                if let Some(flow) = sem.flow(id, STYLE) {
+                    each(&sem, &name, id, &flow);
+                }
+            }
+        }
+    }
+}
+
+/// A name a table reads as a variable is a row of the def that declares it.
+#[test]
+fn every_variable_a_table_reads_has_its_row() {
+    let (mut tables, mut reads) = (0, 0);
+    every_table(|sem, name, _, flow| {
+        let mut found = Vec::new();
+        for site in &flow.sites {
+            vars_in(&site.callee, &mut found);
+            for arg in site.args.iter().flat_map(|args| args.iter()) {
+                vars_in(&arg.value, &mut found);
+            }
+        }
+        for held in &flow.handed {
+            vars_in(&held.value, &mut found);
+        }
+        for param in &flow.params {
+            if let Some(default) = &param.default {
+                vars_in(default, &mut found);
+            }
+        }
+        for var in &flow.vars {
+            for value in &var.assigned {
+                vars_in(value, &mut found);
+            }
+        }
+        for id in found {
+            let table = sem
+                .flow(id.def, STYLE)
+                .unwrap_or_else(|| panic!("no table for the def of {id:?}: {name}"));
+            assert!(
+                table.vars.iter().any(|var| var.at == id.at),
+                "no row for {id:?}: {name}"
+            );
+            reads += 1;
+        }
+        tables += 1;
+    });
+    eprintln!("checked {reads} variable reads in {tables} tables");
+    assert!(tables > 100 && reads > 10);
+}
+
+/// A parameter's `assigned` is its row's writes, and a named parameter has exactly one row.
+#[test]
+fn a_parameters_assigned_is_its_rows_writes() {
+    let (mut named, mut assigned) = (0, 0);
+    every_table(|_, name, _, flow| {
+        for (index, param) in flow.params.iter().enumerate() {
+            if !param.named {
+                continue;
+            }
+            let rows: Vec<_> = flow
+                .vars
+                .iter()
+                .filter(|var| var.param == Some(index as u32))
+                .collect();
+            assert_eq!(rows.len(), 1, "parameter {index} of {name}");
+            let row = rows[0];
+            assert_eq!(
+                param.assigned,
+                row.capable && (row.open || !row.assigned.is_empty()),
+                "parameter {index} of {name}"
+            );
+            named += 1;
+            assigned += usize::from(param.assigned);
+        }
+    });
+    eprintln!("checked {named} named parameters, {assigned} assigned");
+    assert!(named > 50 && assigned > 0);
 }

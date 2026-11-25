@@ -51,6 +51,35 @@ pub(crate) struct Flow {
     pub(crate) handed: Box<[HandedFlow]>,
     /// How many nodes reading the table met of a kind a view's `expect` did not handle (`view::counted`), kept with it as `Body` keeps its own.
     pub(crate) unhandled: u64,
+    /// The variables the def declares, one row each, sorted by `at` (`07-tc3` §2). Step 2 evaluates them.
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC3 step 2 on"))]
+    pub(crate) vars: Box<[Var]>,
+    /// Writes of a capable variable that none of `07-tc3` §2's rows covers (each also made its variable `open`).
+    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC3 step 2 on"))]
+    pub(crate) unmodelled: u64,
+}
+
+/// A variable as a number: the def that declares it (a def of the outline, or the file's own code: `DefId` with no index) and where its name starts in the
+/// file (the start of the name's own span). Good while the program is loaded, as `DefId` is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct VarId {
+    pub(crate) def: DefId,
+    pub(crate) at: u32,
+}
+
+/// One variable the def declares (`07-tc3` §2).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Var {
+    /// Where its name starts in the file: with the table's own def, its `VarId`.
+    pub(crate) at: u32,
+    /// `Some(i)`: the def's own parameter `i` (a place in `Flow::params`).
+    pub(crate) param: Option<u32>,
+    /// Its type can hold a function, an object or an instance (`holds_only_data` is false), as `Param::capable`.
+    pub(crate) capable: bool,
+    /// Every expression assigned to it, in source order, the initializer first. Read only when `capable`; empty otherwise.
+    pub(crate) assigned: Box<[Expr]>,
+    /// Assigned somewhere in a way the table does not model. Said only when `capable`; `false` otherwise.
+    pub(crate) open: bool,
 }
 
 /// A place where the body hands a function over without calling it (D22): a name in a hand-over position, or a def written there.
@@ -120,7 +149,7 @@ pub(crate) struct AnonFlow {
     pub(crate) span: Span,
 }
 
-/// What an expression is, as far as the code alone says. Later phases add variants (`Var`, `Member`, `Object`, `New`, `This`, `Call`).
+/// What an expression is, as far as the code alone says. Later phases add variants (`Member`, `Object`, `New`, `This`, `Call`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Expr {
     /// Anything not below.
@@ -133,6 +162,8 @@ pub(crate) enum Expr {
     Param(u32),
     /// The i-th anonymous function of this body.
     Anon(u32),
+    /// A name of a variable: of this def, or of a def around it (the file's code included).
+    Var(VarId),
     /// One of these: `c ? a : b`, `a || b`, `a ?? b`, `a && b`, a name with several functions. Never nested, never a member twice, always two or more.
     OneOf(Box<[Expr]>),
 }

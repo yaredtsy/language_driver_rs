@@ -1,48 +1,58 @@
 == Writer
 params: none
+vars: none
 sites: none
 anons: 0
 handed: none
 == Writer.write
 params: none
+vars: none
 sites: none
 anons: 0
 handed: none
 == Json
 params: none
+vars: none
 sites: none
 anons: 0
 handed: none
 == Json.write
 params: none
+vars: none
 sites:
   call def encode ()
 anons: 0
 handed: none
 == Csv
 params: none
+vars: none
 sites: none
 anons: 0
 handed: none
 == Csv.write
 params: none
+vars: none
 sites:
   call def join ()
 anons: 0
 handed: none
 == encode
 params: none
+vars: none
 sites: none
 anons: 0
 handed: none
 == join
 params: none
+vars: none
 sites: none
 anons: 0
 handed: none
 == each
 params:
   #0 capable
+vars:
+  f@10 param#0 capable
 sites:
   call param#0 ()
 anons: 0
@@ -50,6 +60,8 @@ handed: none
 == relay
 params:
   #0 capable
+vars:
+  f@11 param#0 capable
 sites:
   call def each (param#0)
 anons: 0
@@ -58,6 +70,8 @@ handed:
 == open
 params:
   #0 capable
+vars:
+  opts@12 param#0 capable
 sites:
   call ? ()
 anons: 0
@@ -65,25 +79,32 @@ handed: none
 == Panel
 params:
   #0 pattern
+vars:
+  onClose@13 capable open
+  back@14 capable = def Panel.<locals>.back
 sites: none
 anons: 0
 handed:
   back def Panel.<locals>.back
 == Panel.<locals>.back
 params: none
+vars: none
 sites:
-  call ? ()
+  call var Panel:onClose@13 ()
 anons: 0
 handed: none
 == send
 params:
   #0 capable
+vars:
+  w@17 param#0 capable
 sites:
   call ? ()
 anons: 0
 handed: none
 == pick
 params: none
+vars: none
 sites:
   new ? ()
 anons: 0
@@ -91,6 +112,8 @@ handed: none
 == twice
 params:
   #0 capable
+vars:
+  f@19 param#0 capable
 sites:
   call param#0 () in anon#0
   call param#0 () in anon#0
@@ -98,10 +121,12 @@ anons: 1
 handed: none
 == main
 params: none
+vars:
+  h@24 capable = def encode
 sites:
   call def each (def encode)
   call def relay (def join)
-  call ? ()
+  call var h@24 ()
   call def open (?)
   jsx def Panel (?)
   call def send (?)
@@ -122,6 +147,7 @@ handed:
   encode def encode
 == lineA
 params: none
+vars: none
 sites:
   call def each (def encode)
 anons: 0
@@ -129,6 +155,7 @@ handed:
   encode def encode
 == lineB
 params: none
+vars: none
 sites:
   call def relay (def join)
 anons: 0
@@ -136,13 +163,16 @@ handed:
   join def join
 == lineC
 params: none
+vars:
+  h@35 capable = def encode
 sites:
-  call ? ()
+  call var h@35 ()
 anons: 0
 handed:
   encode def encode
 == lineD
 params: none
+vars: none
 sites:
   call def open (?)
 anons: 0
@@ -150,6 +180,7 @@ handed:
   encode def encode
 == lineE
 params: none
+vars: none
 sites:
   jsx def Panel (?)
 anons: 0
@@ -157,6 +188,7 @@ handed:
   join def join
 == lineF
 params: none
+vars: none
 sites:
   call def send (?)
   new ? ()
@@ -164,6 +196,7 @@ anons: 0
 handed: none
 == lineG
 params: none
+vars: none
 sites:
   call def pick ()
   call ? ()
@@ -171,6 +204,7 @@ anons: 0
 handed: none
 == lineH
 params: none
+vars: none
 sites:
   call def twice (def encode)
   call ? ()
@@ -179,6 +213,7 @@ handed:
   encode def encode
 == lineI
 params: none
+vars: none
 sites:
   call def each (anon#0)
   call def join () in anon#0
@@ -186,6 +221,7 @@ anons: 1
 handed: none
 == FILE
 params: none
+vars: none
 sites: none
 anons: 0
 handed: none
