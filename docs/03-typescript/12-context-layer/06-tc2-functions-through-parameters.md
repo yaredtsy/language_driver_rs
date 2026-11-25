@@ -595,9 +595,16 @@ the same def is dropped. Every existing call is moved to one of the two by the l
 With the layer off every def has one context, so nothing changes. **Known gap, accepted:** the tripwire's own checker calls in a later
 context could meet a node kind a view does not handle, and that `engine_kind_unhandled` is dropped with the body's; the `Generic` view
 handles every kind it reads. Proof: a new fixture `tests/fixtures/two-keys` (not a context row), `run(cb)` called as `run(needs)` and
-`run(wants)` from `main`, neither fitting `cb: () => void`, and `helper.bind(null)` in `run`'s body: with the layer on `uncovered_bind` is
+`run(wants)` from `main`, neither fitting `cb: () => void`, and `const bound = helper.bind(null)` in `run`'s body (as built: a bare `helper.bind(null);` discards its
+value and hands nothing over, as `handed-over`'s `bindDiscarded`, so it counts nothing; this brief had it bare): with the layer on `uncovered_bind` is
 **1** (it was 2) and `value_type_mismatch` **2**; with it off, `uncovered_bind` 1 and no `value_type_mismatch`. Every snapshot unchanged
 (they hold no counters); the layer-off dumps (`137b4fa`) unchanged; on the projects (reviewer) the body counters fall with the layer on
 and the comparison stays 0 problems.
+
+**6 built as decided, `af3b252`** ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)): 449 passed, 13 ignored (the
+test of the plan in `tests/precise.rs`, and a unit test in `calls.rs` the coder added: the flag back to true after a walk is seen by no
+graph, since the only body note made after a walk is `call_graph`'s `engine_kind_unhandled`, 0 on every fixture); no snapshot moved.
+Mutations (a), (b), (d) caught by the plan's test, (c) by the unit test. The layer-off dumps equal `137b4fa`; the comparison is 0
+problems; with the layer on only two body counters move on the samples, and no edge, context or context counter does.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
