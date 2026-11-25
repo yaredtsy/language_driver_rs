@@ -229,6 +229,7 @@ every row of the context table.
 | 5d | the rest of §9's fixtures, one row each | each row's "on" half, written by hand |
 | 5e | `scenarios/callback-argument/typescript` and `PreciseFor(&["callback-argument"])` | the scenario's two trees |
 | 5f | `eval`: a parameter that cannot hold a function is data (found by 5d's `callback-or-data`); the pinned entry counts | `callback-or-data`'s "on" half; the comparison on the projects |
+| 5g | the tripwire's mark (D61): a site that fails the check gets `unresolved value_type_mismatch` beside the call | `callback-mismatch`'s "on" half; 16 marks on the compiler, the comparison on the projects |
 | 6 | counters per def | the two-keys counter test |
 | 7 | `Session::graph_from` | the cut-and-continue test |
 | 8 | relevance | equal edges, fewer contexts |
@@ -520,7 +521,7 @@ that reach a non-generic overload implementation (`visitNode`, `visitArrayWorker
 is a return type the engine infers wider than `tsc`. The public checker offers nothing looser than assignability. **Asked of the owner
 (2026-11-25):** keep the rule as built (a failure keeps the engine's answer beside the call, so no wrong edge ever stands alone; the count
 becomes a number to watch, each new site read by the reviewer, instead of 0), count only (the call alone, no unresolved edge beside), or
-remove the tripwire. Recommended: keep it as built.
+remove the tripwire. Recommended: keep it as built. **Answered (D61, 2026-11-25): kept, counted and marked**: step 5g below.
 
 **5e goes before 5d** (decided 2026-11-25): 5e needs no code of the analyzer (a program in `scenarios/callback-argument/typescript/` and the
 scenario lists of `tests/calls.rs`), and TC2's precise tree for it is the file already there (the arrow's call stays with `main`, D54 is
@@ -552,5 +553,14 @@ comparison on the projects still 0 problems.
 the block above and no other snapshot moved; the three count tests learned 56 and are green again; the comparison on the three projects is
 still 0 problems. A closed value reaches more callees, so the compiler sample walks 31 more contexts (9,149 → 9,180), and the counters, being
 sums over contexts, rise with them (`function_typed_value` 6,414 → 6,429).
+
+**Step 5g, as decided for the build (2026-11-25, D61).** In `walk::resolve_from_env`, `Fits::No` no longer opens the value: it still notes
+`value_type_mismatch` and still draws the call, and the site gets **one** `Target::Unresolved` whose reason is `VALUE_TYPE_MISMATCH` (however
+many of the value's functions fail; pushed after the loop over the members). The engine's open entries come back beside only when the value
+is open for its own reasons, as for any site. `Fits::Unchecked` is unchanged (counted only). `callback-mismatch`'s "on" half: `run @98a8cb88 |
+cb | unresolved function_typed_value` becomes `run @98a8cb88 | cb | unresolved value_type_mismatch`, and nothing else moves. Proof: the row,
+every other snapshot unchanged, the mutation (the push removed) caught by the row, and on the projects (reviewer) 16 `unresolved
+value_type_mismatch` edges on the compiler sample, `function_typed_value` falling by the sites that were opened only by a mismatch, the
+comparison still 0 problems.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
