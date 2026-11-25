@@ -16,7 +16,7 @@ edges:
 main | run | call run @98a8cb88
 main | needs | pass needs
 run @98a8cb88 | cb | call needs
-run @98a8cb88 | cb | unresolved function_typed_value
+run @98a8cb88 | cb | unresolved value_type_mismatch
 == run
 -- off
 run

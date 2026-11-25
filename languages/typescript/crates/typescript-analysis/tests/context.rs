@@ -10,7 +10,7 @@ use analyzer_testkit::expect_file;
 use analyzer_testkit::graph::check_invariants;
 use common::context::{a_context_is_a_function_of_its_key, never_fewer_edges};
 use common::{Row, STYLE, call_graph, edges_as_text, render_graph, rows, split_policy, tests_dir};
-use typescript_analysis::{Cancel, Entry, Graph, Options, Precision, Project};
+use typescript_analysis::{Cancel, EdgeTo, Entry, Graph, Options, Precision, Project};
 
 const TABLE: &str = include_str!("../../../docs/policy.md");
 
@@ -464,7 +464,8 @@ fn the_tripwire_counts_where_a_function_does_not_fit() {
                 );
             }
             if mismatch.is_some() {
-                // the open entry is drawn beside the function, so the split still adds up to the one `function_typed_value`
+                // D61: the mark replaces the open entry. The function is drawn, the site says `value_type_mismatch` once, and the engine's
+                // `function_typed_value` does not come back beside the call, so neither the counter nor its split has anything to count
                 let split: u64 = on
                     .stats
                     .language
@@ -472,8 +473,16 @@ fn the_tripwire_counts_where_a_function_does_not_fit() {
                     .filter(|(key, _)| key.starts_with("function_typed_value_"))
                     .map(|(_, count)| *count)
                     .sum();
-                assert_eq!(said(&on, "function_typed_value"), Some(1));
-                assert_eq!(split, 1, "{} {entry}: the split", row.id);
+                assert_eq!(said(&on, "function_typed_value"), None);
+                assert_eq!(split, 0, "{} {entry}: the split", row.id);
+                let marks = on
+                    .edges
+                    .iter()
+                    .filter(|edge| {
+                        matches!(&edge.to, EdgeTo::Unresolved(reason) if reason.as_str() == "value_type_mismatch")
+                    })
+                    .count();
+                assert_eq!(marks, 1, "{} {entry}: one mark for the site", row.id);
             }
             seen += 1;
         }

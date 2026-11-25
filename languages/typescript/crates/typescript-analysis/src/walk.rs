@@ -226,8 +226,8 @@ fn is_open_entry(resolved: &Resolved<'_>) -> bool {
 /// What the context layer says the site at `site_index` calls, given the engine's answer `found`; `None` when it does not speak, and then the engine's
 /// answer stands as it was. It speaks only when `found` has an open entry **and** the callee's value has a known member (`06-tc2` §10, step 5a): a
 /// value that is only data, wide or unknown is not an answer. When it speaks, the targets are the engine's entries that are not open, then one for each
-/// member of the value, then the open entries again if the value is open (a write we cannot read, a way in we do not track, a function the checker says
-/// does not fit the callee's type).
+/// member of the value, then one `value_type_mismatch` mark if the checker says a function does not fit the callee's type (D61), then the open entries
+/// again if the value is open (a write we cannot read, a way in we do not track).
 fn resolve_from_env<'p>(
     lang: &TypeScript<'p>,
     env: &Env,
@@ -252,18 +252,20 @@ fn resolve_from_env<'p>(
         .collect();
     // a member that cannot be turned into a function leaves the value open at this site
     let mut open = value.is_open();
+    let mut mismatch = false;
     for one in value.known() {
         // no `_` arm: a kind of member a later phase adds is decided here before this compiles
         match one {
             One::Fn(def) => match lang.sem.func(*def) {
                 Some(func) => {
-                    // the tripwire: the checker agrees that the function fits the callee's type, or the layer says it could not ask (inside generic code)
+                    // the tripwire: the checker agrees that the function fits the callee's type, or the layer says it could not ask (inside generic code).
+                    // A failure is drawn, counted, and marked at the site with its own reason (D61); it does not open the value.
                     match lang.sem.fits(f, site_index, func, lang.style) {
                         Fits::Yes => {}
                         Fits::Unchecked => lang.note(VALUE_TYPE_UNCHECKED),
                         Fits::No => {
                             lang.note(VALUE_TYPE_MISMATCH);
-                            open = true;
+                            mismatch = true;
                         }
                     }
                     targets.push(Target::Call(func, KeyId::OPEN));
@@ -276,6 +278,10 @@ fn resolve_from_env<'p>(
             ))),
             One::Undefined => lang.note(CALLEE_UNDEFINED),
         }
+    }
+    if mismatch {
+        // one mark for the site, however many of the value's functions failed
+        targets.push(Target::Unresolved(Reason::new(VALUE_TYPE_MISMATCH)));
     }
     if open {
         targets.extend(
