@@ -521,4 +521,9 @@ is a return type the engine infers wider than `tsc`. The public checker offers n
 becomes a number to watch, each new site read by the reviewer, instead of 0), count only (the call alone, no unresolved edge beside), or
 remove the tripwire. Recommended: keep it as built.
 
+**5e goes before 5d** (decided 2026-11-25): 5e needs no code of the analyzer (a program in `scenarios/callback-argument/typescript/` and the
+scenario lists of `tests/calls.rs`), and TC2's precise tree for it is the file already there (the arrow's call stays with `main`, D54 is
+TC7's). 5d changes no code either: its fixtures and rows are written by the reviewer, the "on" half of each read against the hand-written
+expectation; the two tests that pin the number of context entries follow in the next coder step.
+
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
