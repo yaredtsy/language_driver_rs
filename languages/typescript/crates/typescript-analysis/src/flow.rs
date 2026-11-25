@@ -145,7 +145,7 @@ pub(crate) struct SiteFlow {
     )]
     pub(crate) kind: FlowKind,
     pub(crate) callee: Expr,
-    /// `Some` for a call or a `new` (its arguments) and for JSX (one `Unknown`: the attributes, TC4). `None` for the other kinds: **not read**, which a
+    /// `Some` for a call or a `new` (its arguments) and for JSX (one `Expr::Object`: the attributes, TC4). `None` for the other kinds: **not read**, which a
     /// later phase takes as unknown, never as "no argument".
     pub(crate) args: Option<Box<[Arg]>>,
     /// The innermost anonymous function whose span holds the site.
@@ -184,7 +184,8 @@ pub(crate) struct AnonFlow {
     pub(crate) span: Span,
 }
 
-/// What an expression is, as far as the code alone says. Later phases add variants (`Member`, `Object`, `New`, `This`, `Call`).
+/// What an expression is, as far as the code alone says. `Member`, `Object`, `Omit` and `Default` are TC4's (`08-tc4` §2): the table reads them, and no reader
+/// gives them a value before step 2. Later phases add the others (`New`, `This`, `Call`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Expr {
     /// Anything not below.
@@ -204,4 +205,23 @@ pub(crate) enum Expr {
     Var(VarId),
     /// One of these: `c ? a : b`, `a || b`, `a ?? b`, `a && b`, a name with several functions. Never nested, never a member twice, always two or more.
     OneOf(Box<[Expr]>),
+    /// `x.k`, `x?.k`, `x["k"]` (a string literal): the member `k` of what `x` is. Never of `Unknown` (that is `Unknown`).
+    Member(Box<Expr>, Box<str>),
+    /// An object literal, or the attributes of a JSX element: its parts in source order (`08-tc4` §2).
+    Object(Box<[Part]>),
+    /// `...rest` in an object pattern: what `x` is without the members named before it in the pattern. Never of `Unknown`.
+    Omit(Box<Expr>, Box<[Box<str>]>),
+    /// A pattern element's `= d`: `x`, or `d` where `x` is nothing (`undefined`).
+    Default(Box<Expr>, Box<Expr>),
+}
+
+/// One part of an `Expr::Object`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Part {
+    /// `k: e`, a shorthand `k`, a method `k() {}` (its def), a JSX attribute.
+    Named(Box<str>, Expr),
+    /// `...e` in a literal, `{...e}` in JSX.
+    Spread(Expr),
+    /// A member the table cannot name: a computed key, a getter, a setter. The object is then not complete.
+    Unnamed,
 }

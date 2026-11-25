@@ -395,7 +395,16 @@ fn holds_name(expr: &Expr) -> bool {
     match expr {
         Expr::Var(_) | Expr::Param(_) => true,
         Expr::OneOf(members) => members.iter().any(holds_name),
-        Expr::Unknown | Expr::Data | Expr::Undefined | Expr::Def(_) | Expr::Anon(_) => false,
+        // TC4 step 2 decides a member, an object, an omission and a default
+        Expr::Unknown
+        | Expr::Data
+        | Expr::Undefined
+        | Expr::Def(_)
+        | Expr::Anon(_)
+        | Expr::Member(..)
+        | Expr::Object(_)
+        | Expr::Omit(..)
+        | Expr::Default(..) => false,
     }
 }
 
@@ -413,12 +422,17 @@ fn reads_many_sources(env: &Env, expr: &Expr) -> bool {
         Expr::OneOf(members) => {
             return members.iter().any(|member| reads_many_sources(env, member));
         }
+        // TC4 step 2 reads a row through a member, an object, an omission and a default
         Expr::Var(_)
         | Expr::Unknown
         | Expr::Data
         | Expr::Undefined
         | Expr::Def(_)
-        | Expr::Anon(_) => None,
+        | Expr::Anon(_)
+        | Expr::Member(..)
+        | Expr::Object(_)
+        | Expr::Omit(..)
+        | Expr::Default(..) => None,
     };
     row.map(|row| &env.flow.vars[row]).is_some_and(|var| {
         var.capable && var.assigned.len() + usize::from(var.param.is_some()) >= 2

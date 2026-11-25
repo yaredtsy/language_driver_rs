@@ -86,12 +86,17 @@ impl Marks<'_> {
                 }
             }
             Expr::OneOf(members) => members.iter().for_each(|member| self.atoms(member)),
+            // TC4 step 2 reads what is inside these
             Expr::Unknown
             | Expr::Data
             | Expr::Undefined
             | Expr::Def(_)
             | Expr::Anon(_)
-            | Expr::Var(_) => {}
+            | Expr::Var(_)
+            | Expr::Member(..)
+            | Expr::Object(_)
+            | Expr::Omit(..)
+            | Expr::Default(..) => {}
         }
     }
 

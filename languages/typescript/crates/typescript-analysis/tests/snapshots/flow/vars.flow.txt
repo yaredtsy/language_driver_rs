@@ -149,7 +149,7 @@ vars:
   f@91 capable open
 sites:
   call ? (def outer.<locals>.inner, def outer.<locals>.arrow)
-  call ? (anon#0)
+  call member(var FILE:items@4, forEach) (anon#0)
   call var f@91 () in anon#0
 anons: 1
 handed:

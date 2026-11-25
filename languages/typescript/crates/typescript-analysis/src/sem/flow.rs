@@ -13,12 +13,12 @@ use tsrs_checker::{Type, TypeFlags};
 use super::collect::{CallNode, SiteKind, unwrap_expression};
 use super::handed::HandOvers;
 use super::view::{
-    Binary, Conditional, Parameter, arguments_of, expression_of, initializer_of, parameters_of,
-    spelled,
+    Binary, Binding, Conditional, ElementAccess, NameToken, Parameter, arguments_of, elements_of,
+    expression_of, initializer_of, parameters_of, properties_of, spelled,
 };
 use super::*;
 use crate::flow::{
-    AnonFlow, Arg, DefId, Expr, Flow, FlowKind, HandedFlow, Param, SiteFlow, Var, VarId,
+    AnonFlow, Arg, DefId, Expr, Flow, FlowKind, HandedFlow, Param, Part, SiteFlow, Var, VarId,
 };
 
 /// The tables of one program, and the numbers they are written in.
@@ -198,7 +198,15 @@ struct Declaration {
     name: P<Node>,
     param: Option<u32>,
     open: bool,
-    initializer: Option<P<Node>>,
+    initial: Option<Initial>,
+}
+
+/// Where a declaration's first value comes from.
+enum Initial {
+    /// A variable declaration's initializer.
+    Node(P<Node>),
+    /// A binding element of an object pattern: its value is its path (`Reader::element_value`).
+    Element(P<Node>),
 }
 
 /// What one write of a variable does to its row.
@@ -281,9 +289,6 @@ impl Reader<'_, '_> {
     /// does not), in source order.
     fn declarations(&mut self) -> Vec<Declaration> {
         let mut found = Vec::new();
-        // the file's own code, in a file that is not a module: its top-level variables are globals
-        let in_script = self.def.kind() == Kind::SourceFile
-            && !ast::is_external_or_common_js_module(self.file.node);
         let mut pending = vec![self.def];
         while let Some(node) = pending.pop() {
             if node != self.def && self.defs.def_of.contains_key(&node) {
@@ -312,7 +317,7 @@ impl Reader<'_, '_> {
                                 name,
                                 param: own.map(|index| index as u32),
                                 open: own.is_none(),
-                                initializer: None,
+                                initial: None,
                             });
                         }
                     }
@@ -324,8 +329,8 @@ impl Reader<'_, '_> {
                         found.push(Declaration {
                             name,
                             param: None,
-                            open: true,
-                            initializer: None,
+                            open: false,
+                            initial: Some(Initial::Element(node)),
                         });
                     }
                 }
@@ -333,28 +338,16 @@ impl Reader<'_, '_> {
                     if let Some(name) = node.name()
                         && name.kind() == Kind::Identifier
                     {
-                        let parent = node.parent();
-                        let in_loop =
-                            parent
-                                .and_then(|list| list.parent())
-                                .is_some_and(|statement| {
-                                    matches!(
-                                        statement.kind(),
-                                        Kind::ForOfStatement | Kind::ForInStatement
-                                    )
-                                });
-                        let in_catch =
-                            parent.is_some_and(|parent| parent.kind() == Kind::CatchClause);
-                        let ambient =
-                            ast::get_combined_node_flags(node).intersects(NodeFlags::Ambient);
-                        let open = in_loop || in_catch || ambient;
                         found.push(Declaration {
                             name,
                             param: None,
-                            // in a script, any other script may write a variable of the file's top level (`07-tc3` §5): open, with the initializer kept. One
-                            // inside a function written in the file (an arrow, a function expression) is that function's own, not a global
-                            open: open || (in_script && !inside_a_function(node, self.def)),
-                            initializer: if open { None } else { initializer_of(node) },
+                            open: self.declaration_is_open(node),
+                            // a loop's, a catch's and an ambient declaration's initializer is not its value; a script's top-level one is still its first value
+                            initial: if is_open_by_form(node) {
+                                None
+                            } else {
+                                initializer_of(node).map(Initial::Node)
+                            },
                         });
                     }
                 }
@@ -366,6 +359,86 @@ impl Reader<'_, '_> {
             });
         }
         found
+    }
+
+    /// Whether a variable declaration is one the table keeps open: a loop's, a catch's, an ambient one, and in a script the top level's (any other script may
+    /// write a variable of the file's top level, `07-tc3` §5; one inside a function written in the file, an arrow or a function expression, is that function's own,
+    /// not a global). Both `declarations` and `element_value` ask it.
+    fn declaration_is_open(&self, declaration: P<Node>) -> bool {
+        let in_script = self.def.kind() == Kind::SourceFile
+            && !ast::is_external_or_common_js_module(self.file.node);
+        is_open_by_form(declaration) || (in_script && !inside_a_function(declaration, self.def))
+    }
+
+    /// The value of a binding element's name, **its own default included** (`08-tc4` §2): its path from the source of its pattern. `None` when the table cannot
+    /// say: an array pattern, a source that is not this def's own parameter, a declaration's initializer or an enclosing element, a declaration that is open
+    /// (`declaration_is_open`), a computed key.
+    fn element_value(&mut self, element: P<Node>) -> Option<Expr> {
+        let pattern = element
+            .parent()
+            .filter(|parent| parent.kind() == Kind::ObjectBindingPattern)?;
+        let holder = pattern.parent()?;
+        let source = match holder.kind() {
+            Kind::Parameter => {
+                // a rest parameter holds the list, not one value
+                if Parameter::cast(holder)?.is_rest() {
+                    return None;
+                }
+                let index = self.params.iter().position(|&param| param == holder)?;
+                Expr::Param(u32::try_from(index).expect("a def has fewer than 2^32 parameters"))
+            }
+            Kind::VariableDeclaration => {
+                if self.declaration_is_open(holder) {
+                    return None;
+                }
+                self.expr_of(initializer_of(holder)?)
+            }
+            Kind::BindingElement => self.element_value(holder)?,
+            _ => return None,
+        };
+        let value = if Binding::cast(element)?.is_rest() {
+            let mut before = Vec::new();
+            for &earlier in elements_of(pattern) {
+                if earlier == element {
+                    break;
+                }
+                before.push(self.element_key(earlier)?);
+            }
+            omit(source, before.into())
+        } else {
+            member(source, self.element_key(element)?)
+        };
+        Some(match initializer_of(element) {
+            Some(default) => {
+                let default = self.expr_of(default);
+                Expr::Default(Box::new(value), Box::new(default))
+            }
+            None => value,
+        })
+    }
+
+    /// The member of its source a binding element reads: its `propertyName` when it has one (`{ a: b }`), else its name, which must be an identifier.
+    fn element_key(&self, element: P<Node>) -> Option<Box<str>> {
+        let name = match element.property_name() {
+            Some(name) => name,
+            None => element
+                .name()
+                .filter(|name| name.kind() == Kind::Identifier)?,
+        };
+        self.property_name(name)
+    }
+
+    /// A property name (`08-tc4` §2): an identifier's text, a string literal's or a no-substitution template's value (unquoted), a numeric literal's text as
+    /// written. A computed name and a private name are no name.
+    fn property_name(&self, name: P<Node>) -> Option<Box<str>> {
+        let text = self.file.node.text();
+        match name.kind() {
+            Kind::Identifier | Kind::StringLiteral | Kind::NoSubstitutionTemplateLiteral => {
+                NameToken::cast(name).map(|token| token.value().into())
+            }
+            Kind::NumericLiteral => own_span(text, name).slice(text).map(Into::into),
+            _ => None,
+        }
     }
 
     /// The `vars` of the table and the count of writes no row covers (`07-tc3` §2). `params` are the rows already read, for `capable` of an own parameter;
@@ -389,8 +462,13 @@ impl Reader<'_, '_> {
             let mut open = declaration.open;
             let mut assigned = Vec::new();
             if capable {
-                if let Some(initializer) = declaration.initializer {
-                    assigned.push(self.expr_of(initializer));
+                match declaration.initial {
+                    Some(Initial::Node(initializer)) => assigned.push(self.expr_of(initializer)),
+                    Some(Initial::Element(element)) => match self.element_value(element) {
+                        Some(value) => assigned.push(value),
+                        None => open = true,
+                    },
+                    None => {}
                 }
                 for (_, write) in writes
                     .iter()
@@ -542,10 +620,9 @@ impl Reader<'_, '_> {
                     .map(|&argument| self.argument(argument))
                     .collect(),
             ),
-            // the attributes are read from TC4 on
             FlowKind::Jsx => Some(
                 vec![Arg {
-                    value: Expr::Unknown,
+                    value: self.jsx_attributes(call.call),
                     spread: false,
                 }]
                 .into(),
@@ -566,6 +643,74 @@ impl Reader<'_, '_> {
         }
     }
 
+    /// The one argument of a JSX site (`08-tc4` §2): an `Object` of the attributes of `tag`, a `JsxOpeningElement` or a `JsxSelfClosingElement`, and last
+    /// `children` when the element (the opening element's parent) has any child. The attributes are found by walking the tag's children, since the engine's
+    /// `attributes` is not asked outside `view`.
+    fn jsx_attributes(&mut self, tag: P<Node>) -> Expr {
+        let text = self.file.node.text();
+        let mut list = None;
+        tag.for_each_child(&mut |child| {
+            if child.kind() == Kind::JsxAttributes {
+                list = Some(child);
+            }
+            list.is_some()
+        });
+        let mut attributes = Vec::new();
+        if let Some(list) = list {
+            list.for_each_child(&mut |child| {
+                attributes.push(child);
+                false
+            });
+        }
+        let mut parts = Vec::new();
+        for attribute in attributes {
+            match attribute.kind() {
+                Kind::JsxAttribute => {
+                    let name = attribute
+                        .name()
+                        .and_then(|name| own_span(text, name).slice(text));
+                    let value = match initializer_of(attribute) {
+                        // `<P label />` is `true`, a string is a string, an element is an element
+                        None => Expr::Data,
+                        Some(value) => match value.kind() {
+                            Kind::JsxExpression => expression_of(value)
+                                .map_or(Expr::Unknown, |inner| self.expr_of(inner)),
+                            Kind::StringLiteral
+                            | Kind::JsxElement
+                            | Kind::JsxSelfClosingElement
+                            | Kind::JsxFragment => Expr::Data,
+                            _ => Expr::Unknown,
+                        },
+                    };
+                    parts.push(match name {
+                        Some(name) => Part::Named(name.into(), value),
+                        None => Part::Unnamed,
+                    });
+                }
+                Kind::JsxSpreadAttribute => parts.push(Part::Spread(
+                    expression_of(attribute).map_or(Expr::Unknown, |inner| self.expr_of(inner)),
+                )),
+                _ => parts.push(Part::Unnamed),
+            }
+        }
+        let mut has_children = false;
+        if tag.kind() == Kind::JsxOpeningElement
+            && let Some(element) = tag.parent()
+        {
+            element.for_each_child(&mut |child| {
+                has_children |= !matches!(
+                    child.kind(),
+                    Kind::JsxOpeningElement | Kind::JsxClosingElement
+                );
+                has_children
+            });
+        }
+        if has_children {
+            parts.push(Part::Named("children".into(), Expr::Unknown));
+        }
+        Expr::Object(parts.into())
+    }
+
     fn argument(&mut self, argument: P<Node>) -> Arg {
         if argument.kind() == Kind::SpreadElement {
             return Arg {
@@ -579,10 +724,20 @@ impl Reader<'_, '_> {
         }
     }
 
+    /// The symbol of a name. For a shorthand property (`{ f }`) the node's own symbol is the property, so the variable it names is asked for instead.
+    fn symbol_of(&mut self, name: P<Node>) -> Option<P<Symbol>> {
+        if name.kind() == Kind::ShorthandPropertyAssignment {
+            self.checker
+                .get_shorthand_assignment_value_symbol(Some(name))
+        } else {
+            self.checker.get_symbol_at_location_exported(name)
+        }
+    }
+
     /// The place in this def's parameters of the one `name` stands for: its symbol's value declaration is one of `self.params`. The symbol is not followed
     /// through an alias: a parameter is never an import.
     fn param_index(&mut self, name: P<Node>) -> Option<u32> {
-        let symbol = self.checker.get_symbol_at_location_exported(name)?;
+        let symbol = self.symbol_of(name)?;
         let declaration = symbol.value_declaration()?;
         let index = self.params.iter().position(|&param| param == declaration)?;
         Some(u32::try_from(index).expect("a def has fewer than 2^32 parameters"))
@@ -592,7 +747,7 @@ impl Reader<'_, '_> {
     /// def that declares it is this def or one around it. An import (`SymbolFlags::Alias`, `export { x } from` too) is followed to what it names
     /// (`imported_var`): the variable of another project file that is at the top of it.
     fn var_of(&mut self, name: P<Node>) -> Option<VarId> {
-        let symbol = self.checker.get_symbol_at_location_exported(name)?;
+        let symbol = self.symbol_of(name)?;
         if symbol.flags().intersects(SymbolFlags::Alias) {
             let aliased = self.checker.get_aliased_symbol(symbol);
             return self.imported_var(aliased);
@@ -727,9 +882,41 @@ impl Reader<'_, '_> {
         if spelled(self.file.node.text(), node).as_deref() != Some("undefined") {
             return false;
         }
-        self.checker
-            .get_symbol_at_location_exported(node)
+        self.symbol_of(node)
             .is_some_and(|symbol| symbol.declarations().is_empty())
+    }
+
+    /// `x.k` or `x?.k` as a member of what `x` is: `Unknown` for a private name (`x.#k`), which is no name.
+    fn member_of_access(&mut self, access: P<Node>) -> Expr {
+        let name = access.name().and_then(|name| self.property_name(name));
+        match (name, expression_of(access)) {
+            (Some(name), Some(object)) => member(self.expr_of(object), name),
+            _ => Expr::Unknown,
+        }
+    }
+
+    /// One property of an object literal, as a part (`08-tc4` §2). A getter, a setter and a computed key have no name the table can use: `Unnamed`.
+    fn part_of(&mut self, property: P<Node>) -> Part {
+        let named =
+            |reader: &Reader<'_, '_>| property.name().and_then(|name| reader.property_name(name));
+        match property.kind() {
+            Kind::PropertyAssignment => match named(self) {
+                Some(name) => Part::Named(
+                    name,
+                    initializer_of(property).map_or(Expr::Unknown, |value| self.expr_of(value)),
+                ),
+                None => Part::Unnamed,
+            },
+            // a method of a literal is a def of the outline (D9), so `expr_of` gives its `Def`
+            Kind::ShorthandPropertyAssignment | Kind::MethodDeclaration => match named(self) {
+                Some(name) => Part::Named(name, self.expr_of(property)),
+                None => Part::Unnamed,
+            },
+            Kind::SpreadAssignment => Part::Spread(
+                expression_of(property).map_or(Expr::Unknown, |inner| self.expr_of(inner)),
+            ),
+            _ => Part::Unnamed,
+        }
     }
 
     /// What the expression is, as far as the code alone says (`crate::flow::Expr`).
@@ -749,23 +936,26 @@ impl Reader<'_, '_> {
                     .get(&span)
                     .map_or(Expr::Unknown, |&index| Expr::Anon(index))
             }
-            Kind::Identifier | Kind::PropertyAccessExpression => {
-                if node.kind() == Kind::Identifier && self.is_global_undefined(node) {
+            // a shorthand property `{ f }` names a variable as an identifier does (`symbol_of`)
+            Kind::Identifier
+            | Kind::PropertyAccessExpression
+            | Kind::ShorthandPropertyAssignment => {
+                let is_access = node.kind() == Kind::PropertyAccessExpression;
+                if !is_access && self.is_global_undefined(node) {
                     return Expr::Undefined;
                 }
-                if node.kind() == Kind::Identifier
-                    && let Some(index) = self.param_index(node)
-                {
+                if !is_access && let Some(index) = self.param_index(node) {
                     return Expr::Param(index);
                 }
                 let (functions, classes) =
                     self.sem
                         .functions_named(&mut *self.checker, node, self.style);
                 if classes > 0 || functions.is_empty() {
-                    return if node.kind() == Kind::Identifier {
-                        self.var_of(node).map_or(Expr::Unknown, Expr::Var)
+                    // where no function is named, an access is a member of what its object is (`x.k`), a name a variable
+                    return if is_access {
+                        self.member_of_access(node)
                     } else {
-                        Expr::Unknown
+                        self.var_of(node).map_or(Expr::Unknown, Expr::Var)
                     };
                 }
                 // one symbol can stand for one function twice (a script's function merged with a library global of the same name, the DOM's `open`): `one_of` keeps it once
@@ -774,6 +964,29 @@ impl Reader<'_, '_> {
                         .into_iter()
                         .map(|function| Expr::Def(self.sem.def_id(function))),
                 )
+            }
+            // `x["k"]`: a member when the key is a string; `x[i]` is an index, and arrays are not modelled
+            Kind::ElementAccessExpression => {
+                let key = ElementAccess::cast(node)
+                    .map(ElementAccess::argument)
+                    .filter(|argument| {
+                        matches!(
+                            argument.kind(),
+                            Kind::StringLiteral | Kind::NoSubstitutionTemplateLiteral
+                        )
+                    })
+                    .and_then(|argument| self.property_name(argument));
+                match (key, expression_of(node)) {
+                    (Some(key), Some(object)) => member(self.expr_of(object), key),
+                    _ => Expr::Unknown,
+                }
+            }
+            Kind::ObjectLiteralExpression => {
+                let mut parts = Vec::new();
+                for &property in properties_of(node) {
+                    parts.push(self.part_of(property));
+                }
+                Expr::Object(parts.into())
             }
             // `f.bind(x)` with nothing or one argument that is `this`: the same function with `this` fixed, so `f`'s value (`07-tc3` §6). An argument after
             // `this` shifts the parameters, so it is not. Only `Function.prototype.bind`: a `bind` of a class or object of its own is a call like any other.
@@ -825,6 +1038,38 @@ impl Reader<'_, '_> {
             Kind::VoidExpression => Expr::Undefined,
             _ => Expr::Unknown,
         }
+    }
+}
+
+/// Whether a variable declaration is in a `for … of` or `for … in`, in a `catch`, or ambient: its initializer (if any) is not its value.
+fn is_open_by_form(declaration: P<Node>) -> bool {
+    let parent = declaration.parent();
+    let in_loop = parent
+        .and_then(|list| list.parent())
+        .is_some_and(|statement| {
+            matches!(
+                statement.kind(),
+                Kind::ForOfStatement | Kind::ForInStatement
+            )
+        });
+    let in_catch = parent.is_some_and(|parent| parent.kind() == Kind::CatchClause);
+    let ambient = ast::get_combined_node_flags(declaration).intersects(NodeFlags::Ambient);
+    in_loop || in_catch || ambient
+}
+
+/// The only maker of `Expr::Member`: `Unknown` when the object is (a member of nothing known is nothing known).
+fn member(object: Expr, name: Box<str>) -> Expr {
+    match object {
+        Expr::Unknown => Expr::Unknown,
+        object => Expr::Member(Box::new(object), name),
+    }
+}
+
+/// The only maker of `Expr::Omit`: `Unknown` when the object is.
+fn omit(object: Expr, names: Box<[Box<str>]>) -> Expr {
+    match object {
+        Expr::Unknown => Expr::Unknown,
+        object => Expr::Omit(Box::new(object), names),
     }
 }
 

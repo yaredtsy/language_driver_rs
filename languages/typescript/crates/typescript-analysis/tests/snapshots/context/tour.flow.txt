@@ -73,14 +73,14 @@ params:
 vars:
   opts@12 param#0 capable
 sites:
-  call ? ()
+  call member(param#0, onDone) ()
 anons: 0
 handed: none
 == Panel
 params:
   #0 pattern
 vars:
-  onClose@13 capable open
+  onClose@13 capable = member(param#0, onClose)
   back@14 capable = def Panel.<locals>.back
 sites: none
 anons: 0
@@ -100,7 +100,7 @@ params:
 vars:
   w@17 param#0 capable
 sites:
-  call ? ()
+  call member(param#0, write) ()
 anons: 0
 handed: none
 == pick
@@ -128,8 +128,8 @@ sites:
   call def each (def encode)
   call def relay (def join)
   call var h@24 ()
-  call def open (?)
-  jsx def Panel (?)
+  call def open ({onDone: def encode})
+  jsx def Panel ({onClose: def join})
   call def send (?)
   new ? ()
   call def pick ()
@@ -175,7 +175,7 @@ handed:
 params: none
 vars: none
 sites:
-  call def open (?)
+  call def open ({onDone: def encode})
 anons: 0
 handed:
   encode def encode
@@ -183,7 +183,7 @@ handed:
 params: none
 vars: none
 sites:
-  jsx def Panel (?)
+  jsx def Panel ({onClose: def join})
 anons: 0
 handed:
   join def join

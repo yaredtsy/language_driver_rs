@@ -1,0 +1,128 @@
+== getThing
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== save
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== other
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== open
+params:
+  #0 capable
+vars:
+  opts@4 param#0 capable
+sites:
+  call member(param#0, onDone) ()
+anons: 0
+handed: none
+== literals
+params:
+  #0 capable
+vars:
+  x@7 param#0 capable
+  k@8
+  short@10 capable = {save: def save, other: def other, m: def literals.<locals>.short.m, ...param#0, ?}
+sites:
+  call def open ({onDone: def save})
+  call def open (var short@10)
+anons: 0
+handed:
+  save def save
+  save def save
+  other def other
+  save def save
+  short def literals.<locals>.short.m written
+== literals.<locals>.short.m
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== members
+params:
+  #0 capable
+vars:
+  o@13 param#0 capable
+sites:
+  call member(member(param#0, a), b) ()
+  call member(member(param#0, a), b) ()
+  call member(member(param#0, a), b) ()
+  call ? ()
+  call ? ()
+anons: 0
+handed: none
+== Props
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== patterns
+params:
+  #0 pattern
+vars:
+  onClose@20 capable = member(param#0, onClose)
+  deep@20 capable = member(member(param#0, nested), deep)
+  opt@20 capable = default(member(param#0, opt), def save)
+  rest@20 capable = omit(param#0; onClose, nested, opt)
+sites:
+  call var onClose@20 ()
+  call var deep@20 ()
+  call var opt@20 ()
+  call def open (var rest@20)
+anons: 0
+handed:
+  save def save
+  rest var rest@20
+== locals
+params:
+  #0 capable
+vars:
+  p@26 param#0 capable
+  onClose@27 capable = member(param#0, onClose)
+  opt@27 capable = default(member(param#0, opt), def other)
+  first@28 capable open
+sites:
+  call var onClose@27 ()
+  call var opt@27 ()
+  call var first@28 ()
+anons: 0
+handed:
+  other def other
+  save def save
+== Panel
+params:
+  #0 capable
+vars:
+  props@33 param#0 capable
+sites:
+  call member(param#0, onClose) ()
+anons: 0
+handed: none
+== elements
+params:
+  #0 capable
+vars:
+  extra@37 param#0 capable
+sites:
+  jsx def Panel ({onClose: def save, label: data})
+  jsx def Panel ({...param#0, label: data, children: ?})
+anons: 0
+handed:
+  save def save
+== FILE
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none

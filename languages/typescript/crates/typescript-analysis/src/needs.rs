@@ -167,10 +167,21 @@ fn named(world: &dyn World, table: &Flow) -> Vec<DefId> {
 pub(crate) fn each_expr(table: &Flow, each: &mut dyn FnMut(&Expr)) {
     fn walk(expr: &Expr, each: &mut dyn FnMut(&Expr)) {
         each(expr);
-        if let Expr::OneOf(members) = expr {
-            for member in members {
-                walk(member, each);
+        match expr {
+            Expr::OneOf(members) => {
+                for member in members {
+                    walk(member, each);
+                }
             }
+            // entered from TC4 step 2
+            Expr::Member(..) | Expr::Object(_) | Expr::Omit(..) | Expr::Default(..) => {}
+            Expr::Unknown
+            | Expr::Data
+            | Expr::Undefined
+            | Expr::Def(_)
+            | Expr::Param(_)
+            | Expr::Anon(_)
+            | Expr::Var(_) => {}
         }
     }
     for site in &table.sites {

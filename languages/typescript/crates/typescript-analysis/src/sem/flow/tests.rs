@@ -2,7 +2,7 @@
 
 use super::super::view::tests::{candidates, fixture_roots};
 use super::*;
-use crate::flow::{AnonFlow, HandedFlow};
+use crate::flow::{AnonFlow, HandedFlow, Part};
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
@@ -75,6 +75,34 @@ fn expr(sem: &Sem, own: DefId, text: &str, expr: &Expr) -> String {
                 .collect();
             format!("oneof({})", members.join(" | "))
         }
+        Expr::Member(object, name) => {
+            format!("member({}, {name})", self::expr(sem, own, text, object))
+        }
+        Expr::Object(parts) => {
+            let parts: Vec<String> = parts
+                .iter()
+                .map(|part| match part {
+                    Part::Named(name, value) => {
+                        format!("{name}: {}", self::expr(sem, own, text, value))
+                    }
+                    Part::Spread(value) => format!("...{}", self::expr(sem, own, text, value)),
+                    Part::Unnamed => "?".to_owned(),
+                })
+                .collect();
+            format!("{{{}}}", parts.join(", "))
+        }
+        Expr::Omit(object, names) => {
+            format!(
+                "omit({}; {})",
+                self::expr(sem, own, text, object),
+                names.join(", ")
+            )
+        }
+        Expr::Default(value, default) => format!(
+            "default({}, {})",
+            self::expr(sem, own, text, value),
+            self::expr(sem, own, text, default)
+        ),
     }
 }
 
@@ -165,6 +193,13 @@ fn holds_a_def(expr: &Expr) -> bool {
     match expr {
         Expr::Def(_) => true,
         Expr::OneOf(members) => members.iter().any(holds_a_def),
+        // a member of a def (`handler.length`) is not the def: a name read that way is not a hand-over
+        Expr::Member(..) | Expr::Omit(..) => false,
+        Expr::Default(value, default) => holds_a_def(value) || holds_a_def(default),
+        Expr::Object(parts) => parts.iter().any(|part| match part {
+            Part::Named(_, value) | Part::Spread(value) => holds_a_def(value),
+            Part::Unnamed => false,
+        }),
         Expr::Unknown
         | Expr::Data
         | Expr::Undefined
@@ -194,9 +229,9 @@ fn the_table_of_flow_reads_each_callee_and_argument() {
             "call ? (anon#1, def flow.<locals>.named)",
             "call ? (oneof(def held | def target), oneof(param#0 | def held), oneof(param#0 | def held), oneof(param#0 | def held))",
             "call ? (data, data, data, data, data, data, data)",
-            "call ? (?, ?, ?, ?, ?, param#1)",
+            "call ? (?, ?, ?, {held: def held}, ?, param#1)",
             "new ? ()",
-            "jsx def Card (?)",
+            "jsx def Card ({title: data})",
             "call ? (anon#2)",
             "call ? (anon#3) in anon#2",
             "call def target (data) in anon#3",
@@ -572,6 +607,15 @@ fn the_variables_of_a_body_are_reviewed() {
     );
 }
 
+/// Object literals, member accesses, object patterns and JSX attributes (TC4 step 1): the table reads them, nothing evaluates them yet.
+#[test]
+fn the_objects_of_a_body_are_reviewed() {
+    analyzer_testkit::expect_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/flow/objects.flow.txt"),
+        &tables_of(&root(), "src/objects.tsx"),
+    );
+}
+
 /// What each kind of expression is read as (the review before TC3, §1.1): sixteen kinds are data, `void 0` and the global `undefined` are nothing.
 #[test]
 fn the_kinds_of_data_and_nothing_are_reviewed() {
@@ -714,6 +758,18 @@ fn vars_in(expr: &Expr, out: &mut Vec<crate::flow::VarId>) {
     match expr {
         Expr::Var(id) => out.push(*id),
         Expr::OneOf(members) => members.iter().for_each(|member| vars_in(member, out)),
+        Expr::Member(object, _) | Expr::Omit(object, _) => vars_in(object, out),
+        Expr::Default(value, default) => {
+            vars_in(value, out);
+            vars_in(default, out);
+        }
+        Expr::Object(parts) => {
+            for part in parts.iter() {
+                if let Part::Named(_, value) | Part::Spread(value) = part {
+                    vars_in(value, out);
+                }
+            }
+        }
         Expr::Unknown
         | Expr::Data
         | Expr::Undefined

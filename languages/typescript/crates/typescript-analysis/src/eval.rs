@@ -123,6 +123,8 @@ fn eval_below(world: &dyn World, env: &Env, expr: &Expr, below: u32, vars: Vars)
         Expr::Param(_) => Value::unknown(),
         Expr::Anon(index) => Value::of([One::Anon(env.def, *index)], false),
         Expr::Var(id) => variable(world, env, *id, vars),
+        // TC4 step 2 gives these their values; until then a member, an object and a default are not known
+        Expr::Member(..) | Expr::Object(_) | Expr::Omit(..) | Expr::Default(..) => Value::unknown(),
         Expr::OneOf(members) => members
             .iter()
             .map(|member| eval_below(world, env, member, below, vars))
