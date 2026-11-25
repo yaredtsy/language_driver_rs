@@ -168,7 +168,8 @@ edge. `call` and `apply` stay counted.
 | 3 | `needs`; `Fn` with captures; `Key.captured`; the canonical form | `capture-*`; TC2's digests unchanged |
 | 4 | module variables | `module-*` |
 | 5 | `bind` | `bind`; the counter drops where an edge appears |
-| 6 | the four projects | `ENGINE.md` |
-| 7 | (mine) `policy.md`, `ENGINE.md` | reviewed |
+| 6 | relevance (moved from TC2 step 8, [06](06-tc2-functions-through-parameters.md) §8), through locals | equal edges, fewer contexts |
+| 7 | the four projects; the cost (`scripts/ts-try.sh cost`, D62) | `ENGINE.md` |
+| 8 | (mine) `policy.md`, `ENGINE.md` | reviewed |
 
 Next: [`08-tc4-objects-and-props.md`](08-tc4-objects-and-props.md)

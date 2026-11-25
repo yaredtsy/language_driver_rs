@@ -232,7 +232,7 @@ every row of the context table.
 | 5g | the tripwire's mark (D61): a site that fails the check gets `unresolved value_type_mismatch` beside the call | `callback-mismatch`'s "on" half; the marks on the compiler (15 at 3 sites), the comparison on the projects |
 | 6 | counters per def | the two-keys counter test |
 | 7 | ~~`Session::graph_from`~~ not scheduled (D63: continuing from a context is postponed) | — |
-| 8 | relevance | equal edges, fewer contexts |
+| 8 | ~~relevance~~ moved to TC3 (owner, 2026-11-25: step 4b measured 1–2% fewer contexts, the tail untouched) | — |
 | 9 | the four projects; the command that measures the layer's cost (D62): the sweep off and on, release, time, peak and the two ratios | `ENGINE.md` |
 | 10 | (mine) `policy.md` rows, `ENGINE.md`, this folder's forecast corrected | reviewed |
 
@@ -606,5 +606,23 @@ test of the plan in `tests/precise.rs`, and a unit test in `calls.rs` the coder 
 graph, since the only body note made after a walk is `call_graph`'s `engine_kind_unhandled`, 0 on every fixture); no snapshot moved.
 Mutations (a), (b), (d) caught by the plan's test, (c) by the unit test. The layer-off dumps equal `137b4fa`; the comparison is 0
 problems; with the layer on only two body counters move on the samples, and no edge, context or context counter does.
+
+**Step 8 moves to TC3** (owner, 2026-11-25, on the reviewer's recommendation). Step 4b measured relevance, as approximated, at 1–2% fewer
+contexts and none off the functions with the most; through locals (TC3) it has more to see. §8 is unchanged and is TC3's step 6 now.
+
+**Step 9, as decided for the build (2026-11-25): the cost command, then the four projects.**
+
+- **The coder: `scripts/ts-try.sh cost <root> <file> [sample] [rounds]`** (D62). It builds the release sweep once (`cargo test -j2
+  --release -p typescript-analysis --test sweep --no-run`, the binary taken from cargo's `Executable` line) and runs it with the layer off
+  and on (`TS_SWEEP_PRECISE=1`), alternating, `rounds` times each (default 3), each run under `/usr/bin/time -l` on macOS (its "peak memory
+  footprint") or `/usr/bin/time -v` on Linux ("Maximum resident set size"). Without a sample it is every def and file at depth 1
+  (`TS_SWEEP_FILE_CODE=1`); with one (`TS_SWEEP_SAMPLE`), the sample's entries whole. It prints one table: for off and on the median wall
+  time and the median peak, then the two ratios, and a line `over the line to watch (2x time, +25% peak)` when a ratio passes it. It exits
+  0 then too (D62: a measure, not a gate); non-zero only when a sweep fails. It prints which memory it measured. No change to Rust code; the
+  usage text at the top of the script says the mode. Proof: run on `tests/fixtures/context/tour` (`src/main.ts`) with 1 round, the output
+  pasted; `scripts/check-all.sh --static`.
+- **The reviewer: the four projects**, in `languages/typescript/engine/09-tc2.md`: V-NOC, the private codebase, the compiler, and
+  **vscode** (re-cloned shallow and sparse, owed since H17): the cost (the command above, depth 1 and samples), contexts, the per-site
+  measure (answered in every context, in some, in none), the tripwire's counters, and the comparison still 0 problems.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
