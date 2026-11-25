@@ -272,21 +272,48 @@ literals often (26–36%), and "handed to a project function" is the large row (
 | 8 | the README's point 8: an off snapshot per bit | none for `OBJECTS` yet | `objects-off.txt` blessed at step 2, before any code reads the bit |
 | 9 | "After step 8 is where I would tag" | D64 | no tag (above) |
 
-**The steps, as they will be built:**
+**The steps, as they will be built** (re-ordered again at step 2's design, 2026-11-26: a destructured prop, `const { onClose } = props`,
+reads through the object as soon as `OBJECTS` is on, so the trust rule must exist **before** the bit is turned on, not only before member
+calls are answered):
 
 | # | Do | Proof |
 |---|---|---|
-| 1 | `sem/flow.rs`: `Object`, `Member`, `Omit`, patterns (a parameter's and a local's), JSX attributes as an `Object` argument; `relevance` and `needs` read them (row 6) | table snapshots (`tour.flow.txt`, a new `objects.flow.txt`); every graph unchanged (`eval` gives the new forms unknown) |
-| 2 | `objects.rs` and `One::Object` (rows 1–3); `eval`: literals, spread, member, defaults in patterns; the depth and member caps (row 4); `objects-off.txt` | unit tests on hand-written tables; `object-options`, `object-pattern-*`, `object-too-deep`; pinned digests unchanged |
-| 3 | the trust rule and `touches` (a fact per function and parameter, kept in `Sem` as relevance is) | `object-written-*`, `object-to-external`, `object-stored`, `object-second-name*`, `object-module-const*`, `object-in-array` |
-| 4 | member calls answered; a literal's method as a target | `object-method`, `object-implements` |
-| 5 | JSX attributes as the argument; a tag that is a value | `props-*` (`props-unread-member` with two contexts) |
-| 6 | `Class` | `class-as-value*`; `uncovered_class` drops where an edge appears |
-| 7 | the four projects; `TaskDetailPanel` from its parent; the ceiling of relevance by member | `engine/11-tc4.md` |
-| 7b | relevance by member, only if step 7 says it pays | `props-unread-member` flips |
-| 8 | (mine) `policy.md`, `ENGINE.md`; the README's phase rule | reviewed |
+| 1 | `sem/flow.rs`: `Object`, `Member`, `Omit`, `Default`, patterns, JSX attributes as an `Object` argument; every reader as `Unknown` | table snapshots; no graph moves (**built**, `9e64de5`) |
+| 2 | values, **off**: `One::Object` in the request's table of nested values (rows 1–3), `eval` of the four forms behind `Caps::OBJECTS`, the depth and member caps (row 4), the digest; `OBJECTS` not in `Caps::BUILT` | unit tests on hand-written tables; a pinned digest; no graph moves |
+| 3 | the trust rule and `touches`, **off** (a fact per function and parameter, kept in `Sem` as relevance is) | unit tests; table snapshots that print it |
+| 4 | **on**: `OBJECTS` in `Caps::BUILT`; `objects-off.txt` first; `relevance` and `needs` read the new forms (row 6); a pattern parameter is capable; a whitespace-only JSX child is no child | `object-options`, `object-pattern-*`, `object-too-deep`, `object-written-*`, `object-to-external`, `object-stored`, `object-second-name*`, `object-module-const*`, `object-in-array`, `props-function-component`, `props-destructured`, `props-nested-handler` |
+| 5 | member calls answered (`walk::holds_name` of a `Member`); a literal's method as a target | `object-method`, `object-implements`, `props-*` read through `props.x` |
+| 6 | a JSX tag that is a value | `props-component-as-prop`, `props-spread-through`, `props-children`, `props-unread-member` (two contexts) |
+| 7 | `Class` | `class-as-value*`, `props-class-component`; `uncovered_class` drops where an edge appears |
+| 8 | the four projects; `TaskDetailPanel` from its parent; the ceiling of relevance by member | `engine/11-tc4.md` |
+| 8b | relevance by member, only if step 8 says it pays | `props-unread-member` flips |
+| 9 | (mine) `policy.md`, `ENGINE.md`; the README's phase rule | reviewed |
 
 Each step is one prompt; step 1 or 2 may split when its prompt is written.
+
+**Step 2, as decided for the build (2026-11-26).** Values for objects, behind a bit that stays off.
+
+- **One table for values that hold values.** `captures.rs` becomes `nested.rs`, `CaptureSets` becomes `Nested`, and it holds the objects
+  too, so one depth covers both (row 3): `MAX_DEPTH` (2, was `MAX_CAPTURE_DEPTH`). An object is `One::Object(ObjectId)` (after
+  `Undefined`), its data `ObjectData { members: Box<[(Box<str>, Value)]>, complete: bool }`, members sorted by name. Interning: an
+  `Anon` in a member is `AnonAny`; an inner closure too deep is its `Fn` (as today); an inner object too deep is dropped from its value,
+  which becomes open; both counted `value_widened_depth`. More than `MAX_MEMBERS` (64) members: no object (the value is unknown),
+  counted `value_widened_members`. The depth of a list or an object is 1 plus the deepest list or object among its values.
+- **`eval`**, only when the world knows `OBJECTS` (else unknown, as in step 1):
+  - `Object(parts)`, in order: `Named(k, e)` sets `k` (a later one wins); `Unnamed` makes the object not complete and every member set
+    before it open; `Spread(e)`: `Undefined` adds nothing; a value that is exactly one object (not open) copies its members over, and if
+    that object is not complete, the object is not complete and the members set before it are open; anything else (data, a function,
+    several objects, open) makes the object not complete and the members set before it open.
+  - `Member(x, k)`, a join over the members of `x`'s value: an object that has `k`, its value; a complete one without `k`,
+    `{Undefined}`; one that is not complete, unknown; `Undefined`, `{Undefined}` (reading through nothing calls nothing); anything else
+    (a function, data), unknown; and open if `x`'s value is open.
+  - `Omit(x, names)`: one object (not open) without those members, complete as it was; anything else unknown.
+  - `Default(x, d)`: where `x`'s value may be nothing (it holds `Undefined`, or is open), `d`'s value takes `Undefined`'s place, the rule
+    `passed` already has for a parameter's default (one helper for both).
+- **The digest**: `Canon::Object { members: Vec<(String, Canon)>, complete: bool }`, the last variant, an object written by its members,
+  never by its number; `Keys::intern` is given the objects as it is given capture lists. A pinned test fixes its bytes; every pinned digest
+  of TC2 and TC3 is unchanged.
+- `World` gets `object` (intern) and `object_data` (read), as it has `capture` and `captured`.
 
 **Step 1, as decided for the build (2026-11-26).** The table reads the new forms; nothing evaluates them yet, so no graph moves.
 
