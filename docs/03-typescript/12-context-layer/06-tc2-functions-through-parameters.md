@@ -574,6 +574,8 @@ equal edges and no row had two failing functions at one site. By the counts the 
 `callback-mismatch-two` (`run(flag ? needs : wants)`): its "on" half came out as written, and with (c) applied
 `each_context_walked_alone_has_the_edges_of_the_graph` fails on it (the walk gives two marks, the graph one). Three tests are red from that
 commit until the next coder step: the two entry counts (56 → 58, the row's two entries) and `the_tripwire_counts_where_a_function_does_not_fit`,
-which must learn the row (`value_type_mismatch` 2 at its `main`, one mark).
+which must learn the row (`value_type_mismatch` 2 at its `main`, one mark). **Fixed in `0be4d45`** (447 passed, 13 ignored). "One mark
+per site" is guarded by the walk-alone test on `callback-mismatch-two` alone: the tripwire test's "exactly one mark edge" reads the graph,
+which has dropped equal edges (`Graph::new`), so it holds under (c) too and is not a proof of that rule.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
