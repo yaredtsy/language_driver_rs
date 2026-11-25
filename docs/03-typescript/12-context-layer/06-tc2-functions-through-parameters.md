@@ -578,4 +578,26 @@ which must learn the row (`value_type_mismatch` 2 at its `main`, one mark). **Fi
 per site" is guarded by the walk-alone test on `callback-mismatch-two` alone: the tripwire test's "exactly one mark edge" reads the graph,
 which has dropped equal edges (`Graph::new`), so it holds under (c) too and is not a proof of that rule.
 
+**Step 6, as decided for the build (2026-11-25): counters per def.** §6 said "`TypeScript::note*` … move to a map keyed by the def's
+id"; since step 5 not every note is a fact of the body, so each call site of a note says which kind it is:
+
+- **What a body has**, the same in every context of the def: `engine_kind_unhandled` (the body's read, its table's read), the hand-over
+  notes (`uncovered_*` from `handed_over`, `signature_passed`), `getter_result_call`, `outside_root`, `library_made_function`, and what a
+  construction runs and does not draw (`uncovered_construct_initializer_site`, `uncovered_class_component_render`, `inherited_*`). Counted
+  by the **first** walk of the def in a request, and by none after it.
+- **What this context did**: `value_type_mismatch`, `value_type_unchecked`, `callee_undefined`, `value_widened_set`, and the split
+  `function_typed_value_*` (it adds up to the `function_typed_value` edges, which are per context). Counted by every walk, as today.
+- **Outside any walk** (a class entry's construction in `start_of`, what the request itself met in `call_graph`): counted, as today.
+
+How: `TypeScript` keeps the defs walked in this request (a set of `DefId`, `TypeScript` is made per request) and, during a walk, whether it
+is that def's first; `note` becomes two methods named for the kind (`note_body`, `note_walk`), and a body note made during a later walk of
+the same def is dropped. Every existing call is moved to one of the two by the list above; a counter not in the list is a stop-and-ask.
+With the layer off every def has one context, so nothing changes. **Known gap, accepted:** the tripwire's own checker calls in a later
+context could meet a node kind a view does not handle, and that `engine_kind_unhandled` is dropped with the body's; the `Generic` view
+handles every kind it reads. Proof: a new fixture `tests/fixtures/two-keys` (not a context row), `run(cb)` called as `run(needs)` and
+`run(wants)` from `main`, neither fitting `cb: () => void`, and `helper.bind(null)` in `run`'s body: with the layer on `uncovered_bind` is
+**1** (it was 2) and `value_type_mismatch` **2**; with it off, `uncovered_bind` 1 and no `value_type_mismatch`. Every snapshot unchanged
+(they hold no counters); the layer-off dumps (`137b4fa`) unchanged; on the projects (reviewer) the body counters fall with the layer on
+and the comparison stays 0 problems.
+
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
