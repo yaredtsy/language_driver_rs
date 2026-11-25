@@ -204,7 +204,21 @@ impl Reader<'_, '_> {
             unhandled: 0,
             vars: vars.0,
             unmodelled: vars.1,
+            around: self.around(),
         }
+    }
+
+    /// The def of the outline whose node holds this def's node, the nearest one: the first node above that is in the file's `def_of`. `None` when the first
+    /// thing found is the `SourceFile` (a def at the top of its file), and for the file's own code, which has nothing above it.
+    fn around(&self) -> Option<DefId> {
+        let mut up = self.def.parent();
+        while let Some(node) = up {
+            if let Some(&index) = self.defs.def_of.get(&node) {
+                return Some(self.sem.def_id(Func::def(self.file, index)));
+            }
+            up = node.parent();
+        }
+        None
     }
 
     /// The declarations of the def that have a row (`07-tc3` §2), found by one walk of its own node that does not enter a def of the outline (as `Collector`

@@ -55,6 +55,12 @@ pub(crate) struct Flow {
     pub(crate) vars: Box<[Var]>,
     /// Writes of a capable variable that none of `07-tc3` §2's rows covers (each also made its variable `open`).
     pub(crate) unmodelled: u64,
+    /// The def this one is nested in; `None` at the top of its file (and for the file's own code). A method's is its class, as the outline says.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "read from TC3 step 3 part 2 on")
+    )]
+    pub(crate) around: Option<DefId>,
 }
 
 impl Flow {

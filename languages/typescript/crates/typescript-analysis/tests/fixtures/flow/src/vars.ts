@@ -115,3 +115,10 @@ export function destructuredDefault(arr: (() => void)[]) {
   ({ k: x = b } = { k: arr[0] });
   x();
 }
+
+// a nested def that calls its sibling by name carries what the sibling reads (`needs` through `named`)
+export function nest(cb: () => void) {
+  function inner() { cb(); }
+  function middle() { inner(); }
+  run(middle);
+}

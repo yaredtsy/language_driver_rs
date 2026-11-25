@@ -6,6 +6,7 @@ mod env;
 mod eval;
 mod flow;
 mod key;
+mod needs;
 #[cfg(test)]
 mod scratch;
 mod sem;

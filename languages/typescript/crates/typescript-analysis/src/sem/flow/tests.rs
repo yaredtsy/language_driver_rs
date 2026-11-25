@@ -421,7 +421,7 @@ fn show_var(sem: &Sem, own: DefId, text: &str, var: &crate::flow::Var) -> String
     out
 }
 
-/// A table written out for review: params, vars, sites, anons, handed, and `unmodelled` when it is not 0.
+/// A table written out for review: params, vars, sites, anons, handed, `unmodelled` when it is not 0, and `needs` when it is not empty.
 fn show_table(sem: &Sem, own: DefId, text: &str, flow: &Flow) -> String {
     let mut out = String::new();
     if flow.params.is_empty() {
@@ -460,7 +460,32 @@ fn show_table(sem: &Sem, own: DefId, text: &str, flow: &Flow) -> String {
     if flow.unmodelled > 0 {
         out.push_str(&format!("unmodelled: {}\n", flow.unmodelled));
     }
+    let needed = crate::needs::needs(&OfSem(sem), own);
+    if !needed.is_empty() {
+        let all: Vec<String> = needed
+            .iter()
+            .map(|var| expr(sem, own, text, &Expr::Var(*var)).replace("var ", ""))
+            .collect();
+        out.push_str(&format!("needs: {}\n", all.join(", ")));
+    }
     out
+}
+
+/// A `World` over the `Sem`: its tables, and nothing counted.
+struct OfSem<'a>(&'a Sem);
+
+impl crate::eval::World for OfSem<'_> {
+    fn flow(&self, def: DefId) -> Option<Arc<Flow>> {
+        self.0.flow(def, STYLE)
+    }
+
+    fn widened(&self) {}
+
+    fn knows(&self, _caps: crate::caps::Caps) -> bool {
+        true
+    }
+
+    fn note(&self, _key: &'static str) {}
 }
 
 /// The tables of every def of `file` in `root`, in outline order, then the file's own code, as `== <qualname>` and `show_table`.

@@ -93,6 +93,7 @@ sites:
   call var Panel:onClose@13 ()
 anons: 0
 handed: none
+needs: Panel:onClose@13
 == send
 params:
   #0 capable

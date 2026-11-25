@@ -293,6 +293,7 @@ mod tests {
                 unhandled: 0,
                 vars: vars.into(),
                 unmodelled: 0,
+                around: None,
             }),
             d(9),
             KeyData { params: key.into() },

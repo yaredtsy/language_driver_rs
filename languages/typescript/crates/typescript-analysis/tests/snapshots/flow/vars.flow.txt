@@ -165,6 +165,7 @@ sites:
 anons: 0
 handed:
   b def b
+needs: outer:cb@82, outer:h@83
 == outer.<locals>.arrow
 params: none
 vars: none
@@ -172,6 +173,7 @@ sites: none
 anons: 0
 handed:
   cb var outer:cb@82
+needs: outer:cb@82
 == shadow
 params: none
 vars:
@@ -226,6 +228,32 @@ handed:
   a def a
   b def b
   b def b
+== nest
+params:
+  #0 capable
+vars:
+  cb@120 param#0 capable
+sites:
+  call ? (def nest.<locals>.middle)
+anons: 0
+handed:
+  middle def nest.<locals>.middle
+== nest.<locals>.inner
+params: none
+vars: none
+sites:
+  call var nest:cb@120 ()
+anons: 0
+handed: none
+needs: nest:cb@120
+== nest.<locals>.middle
+params: none
+vars: none
+sites:
+  call def nest.<locals>.inner ()
+anons: 0
+handed: none
+needs: nest:cb@120
 == FILE
 params: none
 vars:
