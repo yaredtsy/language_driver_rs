@@ -48,16 +48,19 @@ fn eval_below(world: &impl World, env: &Env, expr: &Expr, below: u32) -> Value {
     }
 }
 
-/// The value of parameter `index` in this context: what the key holds for it, unknown for a rest parameter or a slot the key does not list; where nothing
-/// may have been passed (the key holds `Undefined`, or is open) and there is a default, the default's value takes `Undefined`'s place; joined with unknown
-/// when the body writes the parameter (TC3 reads the writes). Whether a slot may hold a value at all (`capable`) is the key's rule (`admit`, step 4), not
-/// this.
+/// The value of parameter `index` in this context: unknown for a rest parameter (checked first); data for a parameter that cannot hold a function
+/// (`capable` is false), whatever the key holds, since `admit` (step 4) never lists such a slot; otherwise what the key holds for it, unknown for a slot
+/// the key does not list. Where nothing may have been passed (the key holds `Undefined`, or is open) and there is a default, the default's value takes
+/// `Undefined`'s place; joined with unknown when the body writes the parameter (TC3 reads the writes).
 fn param(world: &impl World, env: &Env, index: u32) -> Value {
     let Some(row) = env.flow.params.get(index as usize) else {
         return Value::unknown();
     };
     if row.rest {
         return Value::unknown();
+    }
+    if !row.capable {
+        return Value::data();
     }
     // a key lists no trailing unknowns (`KeyData::normal`), so a slot it does not list is unknown
     let passed = env
@@ -204,6 +207,21 @@ mod tests {
         assert_eq!(at(&wide, &world_wide, 0), Value::wide());
         // no such row
         assert_eq!(at(&held, &world_held, 7), Value::unknown());
+    }
+
+    #[test]
+    fn a_parameter_that_cannot_hold_a_function_is_data() {
+        // struct update syntax (`..base`): every field not named is copied from `base`
+        let not_capable = Param {
+            capable: false,
+            ..row(false, None, false)
+        };
+        let env = env(vec![not_capable], vec![func(1)]);
+        let world = world(&env);
+        assert_eq!(eval(&world, &env, &Expr::Param(0)), Value::data());
+        // data joined with a function is that function, closed
+        let joined = Expr::OneOf([Expr::Param(0), Expr::Def(d(2))].into());
+        assert_eq!(eval(&world, &env, &joined), func(2));
     }
 
     #[test]
