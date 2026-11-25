@@ -12,6 +12,15 @@ use crate::value::Value;
 /// body's first walk.
 pub(crate) const VARIABLE_WRITE_UNMODELLED: &str = "variable_write_unmodelled";
 
+/// The key of the counter for a site where the engine named a function through a variable and the layer **added** others beside it (D59), once for each such
+/// site in each walk: the places where the engine's answer was not the whole value.
+pub(crate) const VARIABLE_ADDED_TO_ENGINE: &str = "variable_added_to_engine";
+
+/// The key of the counter for a site whose callee or an argument reads a variable of the body that has more than one source (two assignments, or what was
+/// passed and one assignment), once for each such site in each walk. What it counts is the ceiling of step 2b: the sites where the order of the code could
+/// make a value narrower than the whole-scope join.
+pub(crate) const VARIABLE_ASSIGNED_MORE_THAN_ONCE: &str = "variable_assigned_more_than_once";
+
 /// The key of the counter for a body whose variables did not settle within `eval::MAX_ROUNDS` rounds: they are then all open, and this counts the body once for
 /// each context that did it.
 pub(crate) const VARIABLE_ROUNDS_CAPPED: &str = "variable_rounds_capped";

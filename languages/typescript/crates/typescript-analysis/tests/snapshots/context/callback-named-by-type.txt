@@ -1,0 +1,34 @@
+== main
+-- off
+main
+  run
+    a
+  b [Passed]
+edges:
+main | run | call run
+main | b | pass b
+main | (() => {}) | unresolved anonymous_function_called
+run | cb | call a
+-- on
+main
+  run
+    a
+    b
+  b [Passed]
+edges:
+main | run | call run @ac15243e
+main | b | pass b
+main | (() => {}) | unresolved anonymous_function_called
+run @ac15243e | cb | call a
+run @ac15243e | cb | call b
+== run
+-- off
+run
+  a
+edges:
+run | cb | call a
+-- on
+run
+  a
+edges:
+run | cb | call a

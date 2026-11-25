@@ -13,7 +13,9 @@ main
   a [Passed]
   b [Passed]
   a
+  b
 edges:
 main | a | pass a
 main | b | pass b
 main | h | call a
+main | h | call b

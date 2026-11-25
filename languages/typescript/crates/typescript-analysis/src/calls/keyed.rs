@@ -11,7 +11,10 @@ use analyzer_core::graph::{ContextId, EdgeTo, Graph};
 use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Target};
 
 use super::*;
-use crate::env::{VARIABLE_ROUNDS_CAPPED, VARIABLE_WRITE_UNMODELLED};
+use crate::env::{
+    VARIABLE_ADDED_TO_ENGINE, VARIABLE_ASSIGNED_MORE_THAN_ONCE, VARIABLE_ROUNDS_CAPPED,
+    VARIABLE_WRITE_UNMODELLED,
+};
 use crate::flow::Expr;
 use crate::value::Value;
 
@@ -411,8 +414,9 @@ fn the_locals_bit_off_is_tc2() {
     );
 }
 
-/// The counters of the variables (`07-tc3` §3): a write the table has no row for is counted once by the body that has it (`local-write-unmodelled`'s `main`),
-/// and a body whose variables did not settle within the rounds' cap is counted too (no row of the table has one). Every other entry counts neither, and with
+/// The counters of the variables (`07-tc3` §3), per entry of every row, `(added to the engine, assigned more than once)`; an entry not listed counts 0 of
+/// each, and a counter that is 0 is absent from the notes. Also: a write the table has no row for is counted once by the body that has it
+/// (`local-write-unmodelled`'s `main`), and a body whose variables did not settle within the rounds' cap is counted too (no row of the table has one). With
 /// `LOCALS` off nothing is counted at all.
 #[test]
 fn the_variable_counters_count_where_the_table_says() {
@@ -424,18 +428,30 @@ fn the_variable_counters_count_where_the_table_says() {
             .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
         let unmodelled =
             (fixture.ends_with("/local-write-unmodelled") && entry == "main").then_some(1);
-        for (layer, want) in [(Caps::BUILT, unmodelled), (Caps::PARAMS, None)] {
+        // what the engine named and the layer added to: `h()` under `const h = flag ? a : b`, and both calls of `let h = a; h(); h = b; h();`
+        let (added, more_than_once) = match (fixture.rsplit('/').next().unwrap(), entry.as_str()) {
+            ("local-either", "main") => (Some(1), None),
+            ("local-assigned-twice", "main") => (Some(2), Some(2)),
+            // `cb()` in the one context of `run` that `main` reaches, and in `run` itself: what was passed and one assignment
+            ("callback-reassigned", "main" | "run") => (None, Some(1)),
+            // `run(cb: typeof a)` called with `b`: the engine names `a`, the key holds `b`, so `main` adds `b`; asked at `run` the key is open and nothing is added
+            ("callback-named-by-type", "main") => (Some(1), None),
+            _ => (None, None),
+        };
+        for (layer, unmodelled, added, more_than_once) in [
+            (Caps::BUILT, unmodelled, added, more_than_once),
+            (Caps::PARAMS, None, None, None),
+        ] {
             let (solver, _) = solve_from(&sem, start, Some(layer), false);
             let said = |key: &str| solver.lang().notes.borrow().get(key).copied();
+            let at = format!("{fixture} {entry} {layer:?}");
+            assert_eq!(said(VARIABLE_WRITE_UNMODELLED), unmodelled, "{at}");
+            assert_eq!(said(VARIABLE_ROUNDS_CAPPED), None, "{at}");
+            assert_eq!(said(VARIABLE_ADDED_TO_ENGINE), added, "{at}");
             assert_eq!(
-                said(VARIABLE_WRITE_UNMODELLED),
-                want,
-                "{fixture} {entry} {layer:?}"
-            );
-            assert_eq!(
-                said(VARIABLE_ROUNDS_CAPPED),
-                None,
-                "{fixture} {entry} {layer:?}"
+                said(VARIABLE_ASSIGNED_MORE_THAN_ONCE),
+                more_than_once,
+                "{at}"
             );
         }
     }
@@ -514,7 +530,7 @@ fn the_table_of_rows_is_read_whole() {
     assert_eq!(of("callback-or-data"), 2);
     assert_eq!(of("callback-two-arrows"), 2);
     assert_eq!(of("callback-method-value"), 2);
-    assert_eq!(entries.len(), 69);
+    assert_eq!(entries.len(), 71);
 }
 
 /// Nine functions through one conditional are more than a set holds: the one context of `run` that the graph walked has a key of one slot, wide.
@@ -535,14 +551,15 @@ fn nine_functions_make_a_wide_slot() {
 }
 
 /// A context of `graph` walked alone, by a language that remembers nothing, has exactly the edges the graph has leaving it: what the solver kept for a context
-/// is not what an earlier walk left in a cache. `fixture` is opened on `file` and the graph is the one under `entry`.
+/// is not what an earlier walk left in a cache. Run with the layer as `Precise` runs it (`Caps::BUILT`), so what the walk adds beside the engine is in the
+/// comparison too: the graph drops an edge that is there twice, a walk alone does not. `fixture` is opened on `file` and the graph is the one under `entry`.
 fn each_context_walked_alone(fixture: &str, file: &str, entry: &str) -> usize {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(fixture);
     let sem = Sem::open(&root, Path::new(file)).unwrap();
     let start = sem
         .entry(file, entry, 0, STYLE)
         .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
-    let (solver, graph) = solve_from(&sem, start, on(), false);
+    let (solver, graph) = solve_from(&sem, start, Some(Caps::BUILT), false);
     let walked = &solver.lang().walked;
     assert_eq!(walked.len(), graph.contexts.len(), "{fixture} {entry}");
     for (func, key) in walked {
@@ -557,7 +574,7 @@ fn each_context_walked_alone(fixture: &str, file: &str, entry: &str) -> usize {
         in_graph.sort();
 
         // a fresh language: nothing it remembers is the solver's
-        let mut fresh = TypeScript::new(&sem, STYLE).with_layer(on());
+        let mut fresh = TypeScript::new(&sem, STYLE).with_layer(Some(Caps::BUILT));
         let data = solver.lang().keys.borrow().data(*key).clone();
         let again = fresh.intern_key(data);
         assert_eq!(fresh.digest(&again), digest, "{fixture} {entry}");

@@ -9,11 +9,12 @@ use typescript_syntax::MarkerStyle;
 
 use crate::calls::TypeScript;
 use crate::caps::Caps;
-use crate::env::Env;
+use crate::env::{Env, VARIABLE_ADDED_TO_ENGINE, VARIABLE_ASSIGNED_MORE_THAN_ONCE};
 use crate::eval::{World, eval};
+use crate::flow::Expr;
 use crate::key::{Key, KeyId, bind};
 use crate::sem::{Fits, Func, Init, Resolved, Sem, UNHANDLED_KEY, Uncovered, Why, counted};
-use crate::value::One;
+use crate::value::{One, Value};
 
 /// The reason of an `Unresolved` edge, and the key of its counter in `Stats.language`, for a def whose node is missing from the program's tree: a bug
 /// in one of the two parses, which must show on the graph and not as a body with no calls.
@@ -131,6 +132,13 @@ fn resolve<'p>(
     for _ in 0..facts.outside_root {
         lang.note_body(OUTSIDE_ROOT);
     }
+    // the ceiling of step 2b: a site that reads a variable with more than one source
+    if let Some(env) = env
+        && lang.knows(Caps::LOCALS)
+        && site_reads_many_sources(env, site_index)
+    {
+        lang.note_walk(VARIABLE_ASSIGNED_MORE_THAN_ONCE);
+    }
     let spoken = match env {
         Some(env) if lang.knows(Caps::PARAMS) => {
             resolve_from_env(lang, env, f, site_index, &found, facts.jsx)
@@ -223,11 +231,117 @@ fn is_open_entry(resolved: &Resolved<'_>) -> bool {
     )
 }
 
+/// What the targets for the members of a value are (`members`), and what they leave to the caller.
+struct Members<'p> {
+    targets: Vec<Target<TypeScript<'p>>>,
+    /// A member could not be turned into a function: the value stays open at the site.
+    open: bool,
+    /// `Undefined` was a member (a parameter nobody passed): the caller says whether that is a note (`callee_undefined`), since only a site that has no callee
+    /// because of it can say so.
+    saw_undefined: bool,
+    /// The checker says a function of the value does not fit the callee's type: one mark is due for the site (D61).
+    mismatch: bool,
+}
+
+/// The targets for each member of `value` at the site `site_index` of `f`, **the one place** that makes them, so the two ways the layer speaks (replacing an
+/// open entry, adding beside a named function) cannot drift apart: a function is a call (the tripwire is asked first: the checker agrees it fits the callee's
+/// type, or could not be asked inside generic code, or it does not fit and the mark is due), an anonymous function is `anonymous_function_called`, `undefined`
+/// is reported, not noted (`Members::saw_undefined`: only the open-entry path notes `callee_undefined`, the new path never). A function in `already` (what the engine calls at this site) is skipped before the tripwire is asked.
+fn members<'p>(
+    lang: &TypeScript<'p>,
+    f: Func<'p>,
+    site_index: usize,
+    value: &Value,
+    already: &[Func<'p>],
+) -> Members<'p> {
+    let mut found = Members {
+        targets: Vec::new(),
+        open: false,
+        saw_undefined: false,
+        mismatch: false,
+    };
+    for one in value.known() {
+        // no `_` arm: a kind of member a later phase adds is decided here before this compiles
+        match one {
+            One::Fn(def) => match lang.sem.func(*def) {
+                Some(func) if already.contains(&func) => {}
+                Some(func) => {
+                    // the tripwire: the checker agrees that the function fits the callee's type, or the layer says it could not ask (inside generic code).
+                    // A failure is drawn, counted, and marked at the site with its own reason (D61); it does not open the value.
+                    match lang.sem.fits(f, site_index, func, lang.style) {
+                        Fits::Yes => {}
+                        Fits::Unchecked => lang.note_walk(VALUE_TYPE_UNCHECKED),
+                        Fits::No => {
+                            lang.note_walk(VALUE_TYPE_MISMATCH);
+                            found.mismatch = true;
+                        }
+                    }
+                    found.targets.push(Target::Call(func, KeyId::OPEN));
+                }
+                None => found.open = true,
+            },
+            // an arrow is `AnonAny` in the body of a callee, where its key holds it
+            One::Anon(..) | One::AnonAny => found.targets.push(Target::Unresolved(Reason::new(
+                Why::AnonymousFunctionCalled.counter(),
+            ))),
+            One::Undefined => found.saw_undefined = true,
+        }
+    }
+    found
+}
+
+/// Whether `expr` is a name the layer tracks (a variable, or a parameter: a parameter is a variable too, D59), or has one among the members of its `OneOf`. A def
+/// or an anonymous function written as the callee is not a name: the engine's answer for it is the whole answer.
+fn holds_name(expr: &Expr) -> bool {
+    match expr {
+        Expr::Var(_) | Expr::Param(_) => true,
+        Expr::OneOf(members) => members.iter().any(holds_name),
+        Expr::Unknown | Expr::Data | Expr::Def(_) | Expr::Anon(_) => false,
+    }
+}
+
+/// Whether `expr` reads a row of this body's variables that has two or more sources: its assignments, and what was passed when it is a parameter. A read is a
+/// `Var` of this def, or a parameter the body writes. Only a capable row counts.
+fn reads_many_sources(env: &Env, expr: &Expr) -> bool {
+    let row = match expr {
+        Expr::Var(id) if id.def == env.def => env.flow.var_index(id.at),
+        Expr::Param(index) => env
+            .flow
+            .params
+            .get(*index as usize)
+            .filter(|param| param.assigned)
+            .and_then(|_| env.flow.param_var(*index)),
+        Expr::OneOf(members) => {
+            return members.iter().any(|member| reads_many_sources(env, member));
+        }
+        Expr::Var(_) | Expr::Unknown | Expr::Data | Expr::Def(_) | Expr::Anon(_) => None,
+    };
+    row.map(|row| &env.flow.vars[row]).is_some_and(|var| {
+        var.capable && var.assigned.len() + usize::from(var.param.is_some()) >= 2
+    })
+}
+
+/// Whether the callee or an argument of the site reads a variable with more than one source (`reads_many_sources`).
+fn site_reads_many_sources(env: &Env, site_index: usize) -> bool {
+    let Some(site) = env.flow.sites.get(site_index) else {
+        return false;
+    };
+    reads_many_sources(env, &site.callee)
+        || site
+            .args
+            .iter()
+            .flat_map(|args| args.iter())
+            .any(|arg| reads_many_sources(env, &arg.value))
+}
+
 /// What the context layer says the site at `site_index` calls, given the engine's answer `found`; `None` when it does not speak, and then the engine's
-/// answer stands as it was. It speaks only when `found` has an open entry **and** the callee's value has a known member (`06-tc2` §10, step 5a): a
-/// value that is only data, wide or unknown is not an answer. When it speaks, the targets are the engine's entries that are not open, then one for each
-/// member of the value, then one `value_type_mismatch` mark if the checker says a function does not fit the callee's type (D61), then the open entries
-/// again if the value is open (a write we cannot read, a way in we do not track).
+/// answer stands as it was. Two ways to speak, both only where the callee's value has a known member (`06-tc2` §10, step 5a):
+///
+/// - **`found` has an open entry**: the targets are the engine's entries that are not open, then one for each member of the value (`members`), then one
+///   `value_type_mismatch` mark if due (D61), then the open entries again if the value is open (a write we cannot read, a way in we do not track).
+/// - **`found` has none, and the layer knows `LOCALS`, and the callee is a variable or a parameter** (`07-tc3` §3, D59): the engine named a function through its
+///   type and the value may hold more. The targets are **all** the engine's, then one for each member it does not already call, then the mark if due. The
+///   layer adds and never removes; if nothing is added, the engine's answer stands.
 fn resolve_from_env<'p>(
     lang: &TypeScript<'p>,
     env: &Env,
@@ -236,10 +350,45 @@ fn resolve_from_env<'p>(
     found: &[Resolved<'p>],
     jsx: bool,
 ) -> Option<Spoken<'p>> {
-    if !found.iter().any(is_open_entry) {
-        return None;
-    }
     let site = env.flow.sites.get(site_index)?;
+    if !found.iter().any(is_open_entry) {
+        if !lang.knows(Caps::LOCALS) || !holds_name(&site.callee) {
+            return None;
+        }
+        let value = eval(lang, env, &site.callee);
+        if value.known().is_empty() {
+            return None;
+        }
+        // the functions the engine already calls here (a class is a construction, not a call)
+        let already: Vec<Func<'p>> = found
+            .iter()
+            .filter_map(|resolved| match resolved {
+                Resolved::Def(def) if lang.sem.kind_of(*def, lang.style) != DefKind::Class => {
+                    Some(*def)
+                }
+                _ => None,
+            })
+            .collect();
+        let added = members(lang, f, site_index, &value, &already);
+        if added.targets.is_empty() && !added.mismatch {
+            return None;
+        }
+        lang.note_walk(VARIABLE_ADDED_TO_ENGINE);
+        // the engine's answer first, all of it; `target` is asked only now, since it counts what it draws
+        let mut targets: Vec<Target<TypeScript<'p>>> = found
+            .iter()
+            .cloned()
+            .map(|resolved| target(lang, resolved, jsx))
+            .collect();
+        targets.extend(added.targets);
+        if added.mismatch {
+            targets.push(Target::Unresolved(Reason::new(VALUE_TYPE_MISMATCH)));
+        }
+        return Some(Spoken {
+            targets,
+            open_drawn: true,
+        });
+    }
     let value = eval(lang, env, &site.callee);
     if value.known().is_empty() {
         return None;
@@ -251,35 +400,13 @@ fn resolve_from_env<'p>(
         .map(|resolved| target(lang, resolved, jsx))
         .collect();
     // a member that cannot be turned into a function leaves the value open at this site
-    let mut open = value.is_open();
-    let mut mismatch = false;
-    for one in value.known() {
-        // no `_` arm: a kind of member a later phase adds is decided here before this compiles
-        match one {
-            One::Fn(def) => match lang.sem.func(*def) {
-                Some(func) => {
-                    // the tripwire: the checker agrees that the function fits the callee's type, or the layer says it could not ask (inside generic code).
-                    // A failure is drawn, counted, and marked at the site with its own reason (D61); it does not open the value.
-                    match lang.sem.fits(f, site_index, func, lang.style) {
-                        Fits::Yes => {}
-                        Fits::Unchecked => lang.note_walk(VALUE_TYPE_UNCHECKED),
-                        Fits::No => {
-                            lang.note_walk(VALUE_TYPE_MISMATCH);
-                            mismatch = true;
-                        }
-                    }
-                    targets.push(Target::Call(func, KeyId::OPEN));
-                }
-                None => open = true,
-            },
-            // an arrow is `AnonAny` in the body of a callee, where its key holds it
-            One::Anon(..) | One::AnonAny => targets.push(Target::Unresolved(Reason::new(
-                Why::AnonymousFunctionCalled.counter(),
-            ))),
-            One::Undefined => lang.note_walk(CALLEE_UNDEFINED),
-        }
+    let made = members(lang, f, site_index, &value, &[]);
+    let open = value.is_open() || made.open;
+    if made.saw_undefined {
+        lang.note_walk(CALLEE_UNDEFINED);
     }
-    if mismatch {
+    targets.extend(made.targets);
+    if made.mismatch {
         // one mark for the site, however many of the value's functions failed
         targets.push(Target::Unresolved(Reason::new(VALUE_TYPE_MISMATCH)));
     }

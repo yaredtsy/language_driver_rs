@@ -14,10 +14,14 @@ main | h | call a
 main
   a [Passed]
   a
+  b
   b [Passed]
   a
+  b
 edges:
 main | a | pass a
 main | h | call a
+main | h | call b
 main | b | pass b
 main | h | call a
+main | h | call b
