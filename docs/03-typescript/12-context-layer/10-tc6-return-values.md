@@ -30,6 +30,10 @@ Patterns D1–D7 of [02](02-patterns.md); line g of the tour.
 | `const [open, setOpen] = useState(false); setOpen(true)` | unresolved | **unresolved**: the function is made inside a library ([02](02-patterns.md) F1) |
 | a recursive function's own result (`build(n)` returns `leaf` or `build(n - 1)`) | unresolved | `leaf`: the value of a cycle is worked out by rounds (§3.1) |
 
+> **From TC3 step 6 (2026-11-25):** relevance (`relevance.rs`) has no `return` among its sinks, because the table has none before this
+> phase. When TC6 reads returns into the table, a returned expression becomes a sink, or a parameter that is only returned would stay
+> unknown in every key and a caller would lose what the return carries.
+
 ## 2. What a context returns
 
 `flow.returns`: the expression of every `return e` of the def's **own** body (not of the functions written inside it), and the body of
