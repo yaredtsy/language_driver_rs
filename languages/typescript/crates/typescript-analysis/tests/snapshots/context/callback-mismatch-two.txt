@@ -1,0 +1,34 @@
+== main
+-- off
+main
+  run
+  needs [Passed]
+  wants [Passed]
+edges:
+main | run | call run
+main | needs | pass needs
+main | wants | pass wants
+run | cb | unresolved function_typed_value
+-- on
+main
+  run
+    needs
+    wants
+  needs [Passed]
+  wants [Passed]
+edges:
+main | run | call run @68313a36
+main | needs | pass needs
+main | wants | pass wants
+run @68313a36 | cb | call needs
+run @68313a36 | cb | call wants
+run @68313a36 | cb | unresolved value_type_mismatch
+== run
+-- off
+run
+edges:
+run | cb | unresolved function_typed_value
+-- on
+run
+edges:
+run | cb | unresolved function_typed_value

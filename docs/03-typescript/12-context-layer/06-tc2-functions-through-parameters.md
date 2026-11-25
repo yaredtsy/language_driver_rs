@@ -229,7 +229,7 @@ every row of the context table.
 | 5d | the rest of §9's fixtures, one row each | each row's "on" half, written by hand |
 | 5e | `scenarios/callback-argument/typescript` and `PreciseFor(&["callback-argument"])` | the scenario's two trees |
 | 5f | `eval`: a parameter that cannot hold a function is data (found by 5d's `callback-or-data`); the pinned entry counts | `callback-or-data`'s "on" half; the comparison on the projects |
-| 5g | the tripwire's mark (D61): a site that fails the check gets `unresolved value_type_mismatch` beside the call | `callback-mismatch`'s "on" half; 16 marks on the compiler, the comparison on the projects |
+| 5g | the tripwire's mark (D61): a site that fails the check gets `unresolved value_type_mismatch` beside the call | `callback-mismatch`'s "on" half; the marks on the compiler (15 at 3 sites), the comparison on the projects |
 | 6 | counters per def | the two-keys counter test |
 | 7 | `Session::graph_from` | the cut-and-continue test |
 | 8 | relevance | equal edges, fewer contexts |
@@ -565,5 +565,15 @@ test `the_tripwire_counts_where_a_function_does_not_fit` (`tests/context.rs`) as
 every other snapshot unchanged, the mutation (the push removed) caught by the row, and on the projects (reviewer) 16 `unresolved
 value_type_mismatch` edges on the compiler sample, `function_typed_value` falling by the sites that were opened only by a mismatch, the
 comparison still 0 problems.
+
+**5g built as decided, `6641e42`** ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)): 447 passed, 13 ignored; only
+`callback-mismatch.txt` moved; the comparison on the three projects is still 0 problems. The proof as written above ("16 marks") counted
+the wrong thing: the counter is one per function per context, the mark one per site per context, so the compiler sample has **15 marks
+for 16 mismatches**, at 3 sites. The coder's mutation (c), a mark per failing function, was caught by nothing, because the graph drops
+equal edges and no row had two failing functions at one site. By the counts the compiler has one (16 counted, 15 marked), so the reviewer added the row
+`callback-mismatch-two` (`run(flag ? needs : wants)`): its "on" half came out as written, and with (c) applied
+`each_context_walked_alone_has_the_edges_of_the_graph` fails on it (the walk gives two marks, the graph one). Three tests are red from that
+commit until the next coder step: the two entry counts (56 → 58, the row's two entries) and `the_tripwire_counts_where_a_function_does_not_fit`,
+which must learn the row (`value_type_mismatch` 2 at its `main`, one mark).
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
