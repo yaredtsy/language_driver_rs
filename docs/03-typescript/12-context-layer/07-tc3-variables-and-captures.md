@@ -237,8 +237,12 @@ none: every TC2 value is `Fn(def, 0)`, and the digest writes the list, never the
   another and stay `Copy`".)
 - **The depth limit is kept by the table**: a list's depth is 1 plus the deepest list of a closure among its values; when interning a list
   whose inner closure would make it deeper than 2 (`MAX_CAPTURE_DEPTH`, Python's `fp_depth`), that inner closure is written as its bare
-  `Fn` (Python's `closure_at_limit`: the function kept, what it captured unknown) and `value_widened_depth` is counted. That also makes
-  `solve`'s rounds settle when a def captures a variable that holds itself.
+  `Fn` (Python's `closure_at_limit`: the function kept, what it captured unknown) and `value_widened_depth` is counted (once per cut
+  made while evaluating, so a sum over evaluations, not sites).
+- **`solve` keeps what it had (as built, `8710c09`, found by the coder):** the cut makes a row's value shrink back (a deeper closure
+  written as its bare `Fn`), so `capture-self`'s rounds swapped between two values for ever. Each round, the last one included, joins the
+  row's new value with its value of the round before, so values only grow and the rounds end (they are capped). The answer is then at least
+  the least one, never less: sound. For a row with no cut nothing changes (every snapshot of step 2 is unchanged).
 - **Evaluating `Expr::Def(g)`** with `CAPTURES` on: each variable of `needs(g)` is read from this env (an own row; else this key's capture;
   else unknown), and the list is interned: `Closure(g, c)`, or `Fn(g)` when the list is empty.
 - **`KeyData::captured`**: what a call passes for the callee's captured variables. A target that comes from a `Closure` member carries its
