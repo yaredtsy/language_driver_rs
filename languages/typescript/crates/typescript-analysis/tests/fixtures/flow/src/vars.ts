@@ -107,3 +107,11 @@ export function moduleRead() {
 // a namespace merged from two blocks: the second reads the first's `h` by its bare name, from a def that does not hold the reader
 namespace N { export let h = a; }
 namespace N { export function use() { h(); } }
+
+// a destructuring assignment with a default: `x` is the element, or the default when the element is undefined, so it is open
+export function destructuredDefault(arr: (() => void)[]) {
+  let x: () => void = a;
+  [x = b] = arr;
+  ({ k: x = b } = { k: arr[0] });
+  x();
+}

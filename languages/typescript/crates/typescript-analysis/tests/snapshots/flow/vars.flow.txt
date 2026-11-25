@@ -213,6 +213,19 @@ sites:
   call ? ()
 anons: 0
 handed: none
+== destructuredDefault
+params:
+  #0 capable
+vars:
+  arr@112 param#0 capable
+  x@113 capable open = def a
+sites:
+  call var x@113 ()
+anons: 0
+handed:
+  a def a
+  b def b
+  b def b
 == FILE
 params: none
 vars:

@@ -355,7 +355,12 @@ impl Reader<'_, '_> {
                     | Kind::BarBarEqualsToken
                     | Kind::QuestionQuestionEqualsToken
                     | Kind::AmpersandAmpersandEqualsToken => {
-                        Write::Assigns(self.expr_of(binary.right()))
+                        // `[x = b] = arr`: the binary is itself an element of a destructuring assignment, so `x` is the element or the default
+                        if ast::is_assignment_target(parent) {
+                            Write::Open
+                        } else {
+                            Write::Assigns(self.expr_of(binary.right()))
+                        }
                     }
                     _ => Write::Open,
                 },
