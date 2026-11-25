@@ -181,6 +181,10 @@ pub struct Limits {
     pub max_contexts: u32,
     /// Steps from an entry. A context at this distance is listed but not walked.
     pub max_depth: Option<u32>,
+    /// Contexts of one function read in one `graph` call: walked, or taken from the memo (the unit of `Budget::max_contexts`, so a warm memo
+    /// cuts the same context). The next context of that function is listed and not walked: `Cut::MaxContextsPerFunction`. A context on the
+    /// frontier or cut by another limit is not counted. `None`: no limit; a language with one context per function needs none.
+    pub max_contexts_per_function: Option<u32>,
 }
 
 impl Default for Limits {
@@ -188,6 +192,7 @@ impl Default for Limits {
         Limits {
             max_contexts: 100_000,
             max_depth: Some(1_000),
+            max_contexts_per_function: None,
         }
     }
 }
@@ -197,6 +202,7 @@ impl Limits {
         Limits {
             max_contexts,
             max_depth,
+            max_contexts_per_function: None,
         }
     }
 }
@@ -299,6 +305,7 @@ impl<L: Lang> Solver<L> {
             seen: HashSet::new(),
             queue: VecDeque::new(),
             infos: HashMap::new(),
+            per_function: HashMap::new(),
         };
         let mut defs = Vec::new();
         let mut contexts = Vec::new();
@@ -350,6 +357,12 @@ impl<L: Lang> Solver<L> {
                 Some(Cut::MaxContexts)
             } else if self.limits.max_depth.is_some_and(|d| depth >= d) {
                 Some(Cut::MaxDepth)
+            } else if self
+                .limits
+                .max_contexts_per_function
+                .is_some_and(|m| run.per_function.get(&node.0).is_some_and(|n| *n >= m))
+            {
+                Some(Cut::MaxContextsPerFunction)
             } else {
                 cancel.reason()
             };
@@ -360,6 +373,7 @@ impl<L: Lang> Solver<L> {
                 continue;
             }
             read += 1;
+            *run.per_function.entry(node.0).or_insert(0) += 1;
 
             let hit = self.ensure(&node, cancel);
             stats.walks += u64::from(!hit);
@@ -431,6 +445,8 @@ struct Run<L: Lang> {
     queue: VecDeque<(Node<L>, u32)>,
     /// `describe` can be expensive in an engine; ask once per function per call.
     infos: HashMap<L::Func, DefInfo>,
+    /// Contexts of each function read in this call (`Limits::max_contexts_per_function`). Only counted into, never iterated (rule 9).
+    per_function: HashMap<L::Func, u32>,
 }
 
 impl<L: Lang> Run<L> {
@@ -685,6 +701,109 @@ pub(crate) mod tests {
         assert_eq!(g.stats.cuts.get(&Cut::MaxContexts), Some(&1));
         assert!(g.edges_from(&g.contexts[2].id).is_empty());
         assert_eq!(solver.lang().walks, ["a", "b"]);
+    }
+
+    /// A language with several contexts of one function: `main` calls `f` under keys 1, 2 and 3 (one site each); `f` calls `g`; `g` calls nothing.
+    struct Fan;
+
+    impl Lang for Fan {
+        const BASIS: Basis = Basis::Type;
+        type Func = &'static str;
+        type Key = u8;
+
+        fn describe(&self, f: &'static str) -> DefInfo {
+            toy_info(f)
+        }
+
+        fn digest(&self, k: &u8) -> [u8; 16] {
+            [*k; 16]
+        }
+
+        fn walk(&mut self, f: &'static str, _: &u8, _: &Cancel) -> Summary<Self> {
+            let sites = match f {
+                "main" => (1..=3u8)
+                    .map(|k| SiteCalls::new(Site::at(u32::from(k)), vec![Target::Call("f", k)]))
+                    .collect(),
+                "f" => vec![SiteCalls::new(Site::at(0), vec![Target::Call("g", 0)])],
+                _ => Vec::new(),
+            };
+            Summary::complete(sites)
+        }
+    }
+
+    fn capped(per_function: u32) -> Limits {
+        Limits {
+            max_contexts_per_function: Some(per_function),
+            ..Limits::default()
+        }
+    }
+
+    fn fan_context(g: &Graph, f: &str, key: u8) -> Context {
+        let id = ContextId {
+            func: StableDef::Marked(f.to_owned()),
+            digest: [key; 16],
+        };
+        g.context(&id).expect("the context is listed").clone()
+    }
+
+    #[test]
+    fn max_contexts_per_function_cuts_the_next_context_of_that_function() {
+        let limits = capped(2);
+        let mut solver = Solver::new(Fan, limits);
+        let g = solver.graph(&[("main", 0)], &Cancel::new());
+        no_dangling(&g);
+        assert_eq!(fan_context(&g, "f", 1).status, Status::Finished);
+        assert_eq!(fan_context(&g, "f", 2).status, Status::Finished);
+        let third = fan_context(&g, "f", 3);
+        assert_eq!(
+            third.status,
+            Status::Incomplete(Cut::MaxContextsPerFunction)
+        );
+        assert!(g.edges_from(&third.id).is_empty());
+        let into_third = g
+            .edges
+            .iter()
+            .filter(|e| matches!(&e.to, EdgeTo::Context(c, _) if *c == third.id))
+            .count();
+        assert_eq!(
+            into_third, 1,
+            "the edge from main to the cut context is there"
+        );
+        assert_eq!(fan_context(&g, "g", 0).status, Status::Finished);
+        assert_eq!(g.stats.cuts.len(), 1);
+        assert_eq!(g.stats.cuts.get(&Cut::MaxContextsPerFunction), Some(&1));
+    }
+
+    #[test]
+    fn max_contexts_per_function_none_or_one_context_never_cuts() {
+        let g = Solver::new(Fan, Limits::default()).graph(&[("main", 0)], &Cancel::new());
+        assert!(g.contexts.iter().all(|c| c.status == Status::Finished));
+        assert!(g.stats.cuts.is_empty());
+
+        let program: &[(&str, &[&str])] =
+            &[("a", &["b", "c"]), ("b", &["d"]), ("c", &["d"]), ("d", &[])];
+        let limits = capped(1);
+        let g = Solver::new(Toy::new(program), limits).graph(&[("a", ())], &Cancel::new());
+        assert_eq!(g.contexts.len(), 4);
+        assert!(g.contexts.iter().all(|c| c.status == Status::Finished));
+        assert!(g.stats.cuts.is_empty());
+    }
+
+    #[test]
+    fn max_contexts_per_function_counts_reads_so_a_warm_memo_cuts_the_same() {
+        let limits = capped(2);
+        let mut solver = Solver::new(Fan, limits);
+        let first = solver.graph(&[("main", 0)], &Cancel::new());
+        let second = solver.graph(&[("main", 0)], &Cancel::new());
+        // Whole graphs differ only in `stats.walks` and `stats.reuse_hits` (the first walked, the second read the memo): compare the rest.
+        assert_eq!(first.entries, second.entries);
+        assert_eq!(first.defs, second.defs);
+        assert_eq!(first.contexts, second.contexts);
+        assert_eq!(first.edges, second.edges);
+        assert_eq!(first.stats.cuts, second.stats.cuts);
+        assert_eq!(first.stats.cuts.get(&Cut::MaxContextsPerFunction), Some(&1));
+        assert_eq!(first.stats.walks, 4);
+        assert_eq!(second.stats.walks, 0, "everything came from the memo");
     }
 
     #[test]

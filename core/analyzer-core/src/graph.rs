@@ -88,6 +88,8 @@ pub enum Cut {
     Cancelled,
     Deadline,
     MaxContexts,
+    /// More contexts of one function than `Limits::max_contexts_per_function` allows: a cost limit.
+    MaxContextsPerFunction,
     MaxDepth,
     MaxNodes,
     /// A fixpoint over a group of recursive functions stopped at its round limit: a precision limit, not a cost one. The summary may
@@ -101,6 +103,7 @@ impl Cut {
             Cut::Cancelled => "cancelled",
             Cut::Deadline => "deadline",
             Cut::MaxContexts => "max_contexts",
+            Cut::MaxContextsPerFunction => "max_contexts_per_function",
             Cut::MaxDepth => "max_depth",
             Cut::MaxNodes => "max_nodes",
             Cut::MaxRounds => "max_rounds",
@@ -629,6 +632,7 @@ pub(crate) mod tests {
             Cut::Cancelled,
             Cut::Deadline,
             Cut::MaxContexts,
+            Cut::MaxContextsPerFunction,
             Cut::MaxDepth,
             Cut::MaxNodes,
             Cut::MaxRounds,
@@ -640,6 +644,7 @@ pub(crate) mod tests {
                 "cancelled",
                 "deadline",
                 "max_contexts",
+                "max_contexts_per_function",
                 "max_depth",
                 "max_nodes",
                 "max_rounds"
