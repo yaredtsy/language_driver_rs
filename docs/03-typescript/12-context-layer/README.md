@@ -12,7 +12,8 @@ the context layer
 ├── TC4  objects and props ──────── options bags, JSX attributes, destructuring ──── 08-tc4-objects-and-props.md
 ├── TC5  instances ──────────────── which class is behind an interface ──────────── 09-tc5-instances.md
 ├── TC6  return values ──────────── factories, custom hooks, curry ──────────────── 10-tc6-return-values.md
-└── later: TC7–TC10 ─────────────── anonymous functions · fields · recursion · library models ─ 11-later.md
+├── later: TC7–TC10 ─────────────── anonymous functions · fields · recursion · library models ─ 11-later.md
+└── a review before TC3 ─────────── what is built through TC2: findings, nothing fixed ──── 12-review-before-tc3.md
 ```
 
 Written 2026-11-20, after reading Python's `interp/` (the layer that exists), TypeScript's `typescript-analysis` as built through TS5,
