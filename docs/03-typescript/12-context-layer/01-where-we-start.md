@@ -66,8 +66,9 @@ take is its **machine**.
 
 ### 3.1 Why not Python's executing walk
 
-> **Superseded for the reads inside a body by D67** (owner, 2026-11-25): a variable's value follows the order of the code, as in Python;
-> the order is read from tsrs's binder flow graph (07-tc3 §3). The reasons below stand for a variable read from inside a nested function.
+> **D67** (owner, 2026-11-25): a variable's value is to follow the order of the code, as in Python. TC3 builds this one value per
+> variable first (step 2), as the permanent fallback, and the order (step 2b, from tsrs's binder flow graph) only if a count says it
+> pays (07-tc3 §3). The reasons below stand for a variable read or written inside a nested function.
 
 Three reasons, each from something read, not from taste:
 

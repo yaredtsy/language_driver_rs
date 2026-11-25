@@ -26,7 +26,7 @@ Patterns A7–A10 of [02](02-patterns.md); line c of the tour, and the half of l
 | two nested handlers, one calling the other, the second reading a parameter | unresolved in the second | resolved: the first carries what the second needs |
 | `const onSave = pick ? a : b;` at the top of a file, `onSave()` in a function | `a` alone (see below) | `a` and `b` |
 | `run(handler.bind(null))` | counted, no edge | `run` → `handler` |
-| `let h = a; h(); h = b; h();` | `a` twice (see below) | `a`, then `b`: the order of the code (D67, as in Python) |
+| `let h = a; h(); h = b; h();` | `a` twice (see below) | step 2: `a` and `b` at both calls; step 2b, if built: `a`, then `b` (D67, as in Python) |
 
 
 **Checked 2026-11-24** (with the analyzer of `9530a7d`, `a` and `b` both `() => void`): the three rows marked "see below" are **not
@@ -125,24 +125,46 @@ holds, checked at run time). It is indexed by the row's place, never iterated, s
 With `LOCALS` off, `Expr::Var` stays unknown and a parameter's writes join with unknown, as in TC2, so the bit off is TC2's graph (the
 README's point 8).
 
-**In order (D67, owner, 2026-11-25).** The paragraph above is the first design; D67 changes what a read sees. A read of a variable
-inside the body that declares it sees the assignments that **reach** it: going back from the read, the first write of the variable on each
-path, with the paths joined where they meet. Python does this by walking the statements with a map per path (`interp/walk.rs`:
-`Env::join` after an `if`'s arms, a `try`, a `match`). Here the paths are already drawn by tsrs's binder: each identifier read has a flow
-node (`Node::flow_node`), and from it the antecedents lead back through `Assignment` nodes (whose `node` is the written name or the
-declaration), `BranchLabel` / `LoopLabel` nodes (where paths meet: every antecedent), conditions and calls (passed through), to the
-function's `Start`. So `sem` records, for each `Expr::Var` read, **which of the row's assignments reach it** (and whether the def's start
-does: the parameter's slot, or nothing for a local), and `eval` joins only those: the env stays plain data, and the memo is per
-(variable, set of assignments). What reaches the `Start` of a nested function or an anonymous one is not in this body's order: the first
-draft's whole-scope join until the owner decides (below). Step 2 starts with a spike that the flow nodes are where this says, at the pin.
+**In order (D67, owner, 2026-11-25), built in two steps.** The paragraph above is step 2: the **whole-scope join**, the value of every
+assignment of the variable. It is built first and stays as the permanent fallback, because the in-order walk needs it anyway (a read or a
+write inside a nested function, a flow node kind the walk does not know). **Step 2b** makes a read see only the assignments that **reach**
+it, as Python's statement walk does (`interp/walk.rs`: `Env::join` after an `if`'s arms, a `try`, a `match`), and is built **only if it pays**.
 
-Two points to confirm with the owner before step 2 is written:
-- **A loop.** Python walks a loop's body once (`Stmt::While`, `Stmt::For`: the body from the state before it, joined with that state), so
-  in `let h = a; while (c) { h(); h = b; }` the call sees `a` only, though the second turn calls `b`: an edge missed. The flow graph's
-  `LoopLabel` gives both. Recommended: both, and Python's one pass written down as a gap of Python's.
-- **A nested function's read** (`const f = () => h();`). Python reads it from the run of the body around it at the time the closure runs
-  (`activations`, `lookup`). Here a nested function can run at any later time (handed to a library), so the sound answer is every
-  assignment from where it is made on; recommended: the whole-scope join for now (a superset of Python's), fixtures beside Python's.
+*What 2b reads.* Not the checker's flow analysis: it tracks types, and a type forgets which function it was (`let h: () => void = a; h = b;`
+keeps `() => void`; an assignment only filters a union's members). It has one public entry, caches per type inside the checker, and cannot
+be changed. 2b reads the **binder's flow graph** as data (public at the pin: `Node::flow_node`, `FlowNode::flags` / `node` /
+`antecedent(s)`): from each read's flow node, back through `Assignment` nodes (the first write of the variable on each path), labels
+(`BranchLabel`, `LoopLabel`: every antecedent, with a visited set), conditions and calls (passed through: a condition's value is ignored,
+as in Python), to the function's `Start` (the parameter's slot, or nothing for a local). The answer does not depend on the context, so
+`sem` stores it in the table once (`Expr::Var` gets which of the row's assignments reach it, and whether the start does), and `eval` joins
+only those, per context, with no engine. An assignment that reads itself through a loop (`h = h || cb`) is evaluated until its value stops
+growing (values only grow, and are capped).
+
+*What the graph does not give, so 2b writes it* (the spike that opens 2b checks each at the pin):
+- **A write inside a nested function** (`let h = a; run(() => { h = b; }); h();`): the arrow has its own graph, and the walk back from
+  `h()` never meets `h = b`. Rule: a variable (a parameter included) written inside a nested function, def or anonymous, gets those writes
+  at **every** read. This rule is ours and does not lean on the checker, which keeps a narrowed type across such a call.
+- **A read inside a nested function**: it runs at a time the order does not say (handed to a library, stored, returned). The
+  whole-scope join (a superset of Python's answer, which reads the run around it when the closure is walked).
+- **A loop**: both paths (`LoopLabel`), not Python's one pass over the body, which misses the second turn (`let h = a; while (c) { h(); h = b; }`
+  calls `b` too). Python's one pass is a gap of Python's, to be written down there.
+- **`try` / `finally`**: the `ReduceLabel` node's data is reached only through `as_flow_reduce_label_data_p`, an engine downcast banned
+  by `clippy.toml` (H17): it needs a guarded view in `sem/view/`.
+- **Unreachable code**: no flow node, so the value is unknown (the engine's answer stays).
+- **Cost on huge functions**: a memo per (flow node, variable), and a step cap that is marked and counted when it cuts (rule 8).
+- **Which write is to this variable**: for a plain name, the symbol (step 1's rows). A path (`a.b`, `this.x`) is TC4's and TC8's, with
+  the rule that a field read is open once its object is copied, passed or stored (written through another name or by a callee).
+
+*How 2b is kept honest.* `never_fewer_edges` does **not** guard it: it compares the layer off with the layer on, and a read that wrongly
+loses one of its two assignments still has an edge. So:
+- **Fail open**: a flow node kind the walk does not know gives the whole-scope join for that read, counted (`order_unknown_node`).
+- **One fixture per flow node kind**, with the reaching assignments written by hand.
+- **Its own capability bit** (`Caps::ORDER`): the same sweep with the bit off and on lists every site where 2b removed a member, and a
+  sample of them is read by hand on the private codebase and the compiler.
+
+*Whether 2b is built.* Step 2 counts the ceiling: the open sites whose callee or an argument reads a variable with more than one
+assignment (`variable_assigned_more_than_once`, by site). If it is near zero on the private codebase and the compiler, 2b is not built, and
+the join is the answer.
 
 ## 4. Captures
 
@@ -223,7 +245,8 @@ edge. `call` and `apply` stay counted.
 | # | Do | Proof |
 |---|---|---|
 | 1 | `sem/flow.rs`: `Var`, `VarId`, assignments, `Expr::Var`, writes from nested functions; `eval` gives `Var` unknown | the table of `flow/src/vars.ts` and the tour's (line c: `call var h@35 ()`, `h@35 capable = def encode`) as written by hand; every `Expr::Var` has its row in the declaring def's table; `Param.assigned` equals its row's writes; no graph, digest or other snapshot moves |
-| 2 | **in order (D67)**: a spike on the binder's flow nodes, then for each `Expr::Var` read the assignments that reach it (`sem`); `env.rs`: `value_of`, the memo; parameters joined with what reaches them | `local-*` (`local-assigned-twice`: `a` then `b`; branches; a loop), `param-reassigned` |
+| 2 | the whole-scope join (§3): `env.rs` `value_of`, the memo; parameters joined with their assignments; the counter of the ceiling of 2b | `local-*` (`local-assigned-twice`: `a` and `b` at both calls), `param-reassigned`; the ceiling on the four projects |
+| 2b | **only if step 2's ceiling is not near zero** on the private codebase and the compiler: in order (D67, §3), opening with the spike (flow nodes at the pin, the `ReduceLabel` view, the nested-write rule, loops, unreachable code, the memo and the counted cap), behind `Caps::ORDER` | one fixture per flow node kind, by hand; fail-open counted; the sweep bit off/on with the removed members read by hand on two projects; the cost (D62) |
 | 3 | `needs`; `Fn` with captures; `Key.captured`; the canonical form | `capture-*`; TC2's digests unchanged |
 | 4 | module variables | `module-*` |
 | 5 | `bind` | `bind`; the counter drops where an edge appears |

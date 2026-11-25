@@ -95,7 +95,7 @@ part of the solver's handle from the day return values exist, as they are in Pyt
 `push` a write-through (open). `handlers.forEach(h => h())` needs that **and** a library model (who calls the arrow, with what):
 TC10. A `Map` or a `Set` keyed by run-time values stays unknown.
 
-**A value per place: moved into TC3 by D67 (owner, 2026-11-25),** for the reads inside the declaring body. What follows is the first plan.
+**A value per place: moved into TC3 by D67 (owner, 2026-11-25),** as step 2b, built only if step 2's count says it pays (07-tc3 §3, §8). What follows is the first plan.
 **Planned (TC0 N4, 2026-11-23):** 16% of the private codebase's capable locals and 9% of the compiler's are written more
 than once (V-NOC 1%), over 04 §4's "a few percent". Before it is designed, a count says how many of those variables reach a call (a callee
 or an argument): only those cost an edge. Then `Env::value_of(variable)` becomes
