@@ -25,7 +25,7 @@ fn snapshot_path(id: &str) -> PathBuf {
 }
 
 /// What is wrong with a table, one sentence for each: a row with no fixture, a fixture that is not there, no snapshot, a fixture no row names, a snapshot
-/// no row builds. `tour.flow.txt` is not a row's snapshot (`src/sem/flow/tests.rs` writes it).
+/// no row builds. `tour.flow.txt` is not a row's snapshot (`src/sem/flow/tests.rs` writes it), nor is `locals-off.txt` (`calls/keyed.rs` writes it: every entry with `LOCALS` off).
 fn problems(table: &str, tests: &Path) -> Vec<String> {
     let rows = rows(table);
     let mut found = Vec::new();
@@ -88,7 +88,9 @@ fn problems(table: &str, tests: &Path) -> Vec<String> {
         let mut names: Vec<String> = dir
             .flatten()
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
-            .filter(|name| name.ends_with(".txt") && !name.ends_with(".flow.txt"))
+            .filter(|name| {
+                name.ends_with(".txt") && !name.ends_with(".flow.txt") && name != "locals-off.txt"
+            })
             .collect();
         names.sort();
         for name in names {
@@ -372,8 +374,8 @@ fn the_counters_follow_the_edges() {
         ("callback-either", "pick", None, None),
         // `undefined` alone: no edge, one note
         ("callback-not-passed", "main", None, Some(1)),
-        // the layer cannot read the write: the open entry is kept beside `handler`, and counted
-        ("callback-reassigned", "main", Some(1), None),
+        // TC3 step 2 reads the write (`cb = cb || fallback`): `handler` and `fallback`, a complete set, so no open entry is left to count
+        ("callback-reassigned", "main", None, None),
         // an entry with the open key: the engine's answer stands, counted as before
         ("callback-either", "run", Some(1), None),
     ];
@@ -427,7 +429,7 @@ fn value_widened_set_is_counted_where_a_set_passes_the_cap() {
             seen += 1;
         }
     }
-    assert_eq!(seen, 60, "every entry of every row");
+    assert_eq!(seen, 69, "every entry of every row");
 }
 
 /// The tripwire (`06-tc2` §10, step 5c): a function drawn at the call of a value that the checker says does not fit the callee's type is counted
@@ -492,5 +494,5 @@ fn the_tripwire_counts_where_a_function_does_not_fit() {
             seen += 1;
         }
     }
-    assert_eq!(seen, 60, "every entry of every row");
+    assert_eq!(seen, 69, "every entry of every row");
 }

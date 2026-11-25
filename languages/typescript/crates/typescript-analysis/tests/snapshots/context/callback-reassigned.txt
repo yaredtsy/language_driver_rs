@@ -14,13 +14,14 @@ main
   run
     fallback [Passed]
     handler
+    fallback
   handler [Passed]
 edges:
 main | run | call run @3fa907f4
 main | handler | pass handler
 run @3fa907f4 | fallback | pass fallback
+run @3fa907f4 | cb | call fallback
 run @3fa907f4 | cb | call handler
-run @3fa907f4 | cb | unresolved function_typed_value
 == run
 -- off
 run
@@ -31,6 +32,8 @@ run | cb | unresolved function_typed_value
 -- on
 run
   fallback [Passed]
+  fallback
 edges:
 run | fallback | pass fallback
+run | cb | call fallback
 run | cb | unresolved function_typed_value

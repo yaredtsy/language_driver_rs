@@ -11,6 +11,7 @@ use analyzer_core::graph::{ContextId, EdgeTo, Graph};
 use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Target};
 
 use super::*;
+use crate::env::{VARIABLE_ROUNDS_CAPPED, VARIABLE_WRITE_UNMODELLED};
 use crate::flow::Expr;
 use crate::value::Value;
 
@@ -390,6 +391,56 @@ fn the_bit_off_is_the_layer_that_knows_nothing() {
     }
 }
 
+/// With `LOCALS` off the layer is TC2 exactly (`Caps::PARAMS`): every entry of every row, written out whole, in `snapshots/context/locals-off.txt`. Blessed
+/// before TC3 step 2 changed any code and never changed since: the proof that the bit off is the layer of TC2.
+#[test]
+fn the_locals_bit_off_is_tc2() {
+    let mut text = String::new();
+    for (fixture, file, entry) in every_entry() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(&fixture);
+        let sem = Sem::open(&root, Path::new(&file)).unwrap();
+        let start = sem
+            .entry(&file, &entry, 0, STYLE)
+            .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
+        let (_, graph) = solve_from(&sem, start, Some(Caps::PARAMS), false);
+        text.push_str(&format!("== {fixture} {entry}\n{graph:?}\n"));
+    }
+    analyzer_testkit::expect_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/context/locals-off.txt"),
+        &text,
+    );
+}
+
+/// The counters of the variables (`07-tc3` §3): a write the table has no row for is counted once by the body that has it (`local-write-unmodelled`'s `main`),
+/// and a body whose variables did not settle within the rounds' cap is counted too (no row of the table has one). Every other entry counts neither, and with
+/// `LOCALS` off nothing is counted at all.
+#[test]
+fn the_variable_counters_count_where_the_table_says() {
+    for (fixture, file, entry) in every_entry() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(&fixture);
+        let sem = Sem::open(&root, Path::new(&file)).unwrap();
+        let start = sem
+            .entry(&file, &entry, 0, STYLE)
+            .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
+        let unmodelled =
+            (fixture.ends_with("/local-write-unmodelled") && entry == "main").then_some(1);
+        for (layer, want) in [(Caps::BUILT, unmodelled), (Caps::PARAMS, None)] {
+            let (solver, _) = solve_from(&sem, start, Some(layer), false);
+            let said = |key: &str| solver.lang().notes.borrow().get(key).copied();
+            assert_eq!(
+                said(VARIABLE_WRITE_UNMODELLED),
+                want,
+                "{fixture} {entry} {layer:?}"
+            );
+            assert_eq!(
+                said(VARIABLE_ROUNDS_CAPPED),
+                None,
+                "{fixture} {entry} {layer:?}"
+            );
+        }
+    }
+}
+
 /// A target of the graph, written so that a graph's and a summary's can be compared.
 fn written_edge(to: &EdgeTo) -> String {
     match to {
@@ -463,7 +514,7 @@ fn the_table_of_rows_is_read_whole() {
     assert_eq!(of("callback-or-data"), 2);
     assert_eq!(of("callback-two-arrows"), 2);
     assert_eq!(of("callback-method-value"), 2);
-    assert_eq!(entries.len(), 60);
+    assert_eq!(entries.len(), 69);
 }
 
 /// Nine functions through one conditional are more than a set holds: the one context of `run` that the graph walked has a key of one slot, wide.

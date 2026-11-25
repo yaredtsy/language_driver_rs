@@ -18,7 +18,7 @@ use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary}
 
 use crate::Project;
 use crate::caps::Caps;
-use crate::env::Env;
+use crate::env::{Env, VARIABLE_WRITE_UNMODELLED};
 use crate::eval::World;
 use crate::flow::{DefId, Flow};
 use crate::key::{Key, KeyData, KeyId, Keys};
@@ -193,6 +193,14 @@ impl World for TypeScript<'_> {
     fn widened(&self) {
         self.note_walk(VALUE_WIDENED_SET);
     }
+
+    fn knows(&self, caps: Caps) -> bool {
+        TypeScript::knows(self, caps)
+    }
+
+    fn note(&self, key: &'static str) {
+        self.note_walk(key);
+    }
 }
 
 impl<'p> Lang for TypeScript<'p> {
@@ -224,11 +232,10 @@ impl<'p> Lang for TypeScript<'p> {
         let env = self.layer.and_then(|_| World::flow(self, def)).map(|flow| {
             // what reading the table met of a kind the views do not handle, said at every walk as `walk::body` says the body's own
             self.note_body_n(UNHANDLED_KEY, flow.unhandled);
-            Env {
-                flow,
-                def,
-                key: self.keys.borrow().data(*key).clone(),
+            if self.knows(Caps::LOCALS) {
+                self.note_body_n(VARIABLE_WRITE_UNMODELLED, flow.unmodelled);
             }
+            Env::new(flow, def, self.keys.borrow().data(*key).clone())
         });
         let summary = walk::body(self, f, env.as_ref(), cancel);
         // outside a walk again
@@ -645,7 +652,7 @@ mod tests {
     fn the_switch_maps_to_the_layer() {
         assert_eq!(Precision::Default.layer(), None);
         assert_eq!(Precision::Precise.layer(), Some(Caps::BUILT));
-        assert_eq!(Caps::BUILT, Caps::PARAMS);
+        assert_eq!(Caps::BUILT, Caps::PARAMS | Caps::LOCALS);
     }
 
     /// Body notes count in a def's first walk and in no later one (`note_body`); a context's own notes in every walk; and outside a walk everything counts,

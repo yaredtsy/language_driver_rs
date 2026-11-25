@@ -1,0 +1,23 @@
+== main
+-- off
+main
+  a [Passed]
+  a
+  b [Passed]
+  a
+edges:
+main | a | pass a
+main | h | call a
+main | b | pass b
+main | h | call a
+-- on
+main
+  a [Passed]
+  a
+  b [Passed]
+  a
+edges:
+main | a | pass a
+main | h | call a
+main | b | pass b
+main | h | call a

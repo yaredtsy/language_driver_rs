@@ -1,0 +1,19 @@
+== main
+-- off
+main
+  a [Passed]
+  b [Passed]
+edges:
+main | a | pass a
+main | b | pass b
+main | h | unresolved function_typed_value
+-- on
+main
+  a [Passed]
+  b [Passed]
+  a
+edges:
+main | a | pass a
+main | b | pass b
+main | h | call a
+main | h | unresolved function_typed_value

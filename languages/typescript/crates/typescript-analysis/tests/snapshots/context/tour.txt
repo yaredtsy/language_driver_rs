@@ -59,6 +59,7 @@ main
       join
   join [Passed]
   encode [Passed]
+  encode
   open
   encode [Passed]
   Panel
@@ -85,7 +86,7 @@ main | encode | pass encode
 main | relay | call relay @725b147a
 main | join | pass join
 main | encode | pass encode
-main | h | unresolved function_typed_value
+main | h | call encode
 main | open | call open
 main | encode | pass encode
 main | Panel | call Panel
@@ -155,9 +156,10 @@ lineC | h | unresolved function_typed_value
 -- on
 lineC
   encode [Passed]
+  encode
 edges:
 lineC | encode | pass encode
-lineC | h | unresolved function_typed_value
+lineC | h | call encode
 == lineD
 -- off
 lineD

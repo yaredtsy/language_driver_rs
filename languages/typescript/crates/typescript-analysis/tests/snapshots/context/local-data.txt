@@ -1,0 +1,26 @@
+== main
+-- off
+main
+  run
+edges:
+main | run | call run
+run | cb | unresolved any_or_untyped
+-- on
+main
+  run
+edges:
+main | run | call run @6eee0fda
+run @6eee0fda | cb | unresolved any_or_untyped
+== literal
+-- off
+literal
+  run
+edges:
+literal | run | call run
+run | cb | unresolved any_or_untyped
+-- on
+literal
+  run
+edges:
+literal | run | call run @6eee0fda
+run @6eee0fda | cb | unresolved any_or_untyped

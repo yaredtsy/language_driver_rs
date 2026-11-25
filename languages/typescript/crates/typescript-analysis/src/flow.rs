@@ -51,12 +51,22 @@ pub(crate) struct Flow {
     pub(crate) handed: Box<[HandedFlow]>,
     /// How many nodes reading the table met of a kind a view's `expect` did not handle (`view::counted`), kept with it as `Body` keeps its own.
     pub(crate) unhandled: u64,
-    /// The variables the def declares, one row each, sorted by `at` (`07-tc3` §2). Step 2 evaluates them.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC3 step 2 on"))]
+    /// The variables the def declares, one row each, sorted by `at` (`07-tc3` §2). `eval::solve` gives each its value.
     pub(crate) vars: Box<[Var]>,
     /// Writes of a capable variable that none of `07-tc3` §2's rows covers (each also made its variable `open`).
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC3 step 2 on"))]
     pub(crate) unmodelled: u64,
+}
+
+impl Flow {
+    /// The row of the variable whose name starts at `at` (`vars` is sorted by `at`, so a binary search).
+    pub(crate) fn var_index(&self, at: u32) -> Option<usize> {
+        self.vars.binary_search_by_key(&at, |var| var.at).ok()
+    }
+
+    /// The row of the def's own parameter `index`.
+    pub(crate) fn param_var(&self, index: u32) -> Option<usize> {
+        self.vars.iter().position(|var| var.param == Some(index))
+    }
 }
 
 /// A variable as a number: the def that declares it (a def of the outline, or the file's own code: `DefId` with no index) and where its name starts in the
