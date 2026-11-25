@@ -526,4 +526,7 @@ scenario lists of `tests/calls.rs`), and TC2's precise tree for it is the file a
 TC7's). 5d changes no code either: its fixtures and rows are written by the reviewer, the "on" half of each read against the hand-written
 expectation; the two tests that pin the number of context entries follow in the next coder step.
 
+**5e built as decided, `2d0a616`**: both trees as the shared files say, with the layer off and on; a third pinned count (the number of
+scenario programs, `each_scenario_gives_the_same_graph_the_same_tree_and_the_same_wire_every_time`) went from 6 to 7 with it.
+
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)

@@ -18,8 +18,11 @@ lambda's calls stay with their writer (BC-D6).
 second `each` will draw `work`, and `main` will no longer list it. The file here is the tree of Bend's first layer (the anonymous function known,
 its calls with its writer) and is replaced in the step that builds the rule (`docs/08-bend/07-value-layer-design.md` §12, step V4).
 
-**TypeScript** and **Rust** give the default tree today; D54 answers their Q-TC1 and Q-RC1 too, so the shared precise tree is theirs to match when
-their layers reach it.
+**TypeScript** (`typescript/`, added at its context layer's TC2 step 5e, 2026-11-25) gives **both** files as they are: with the layer on, the
+first `each` is the context whose `f` is `work`, and the arrow is held as "an anonymous function" (`AnonAny`), whose call is
+`unresolved anonymous_function_called` and whose own call of `work` stays with `main`. TypeScript builds D54 at TC7, which is not scheduled
+(D58): if this file is replaced for D54, TypeScript keeps today's tree as a file of its own until then. **Rust** gives the default tree today;
+D54 answers its Q-RC1 too, so the shared precise tree is its to match when its layer reaches it.
 
 **Python** evaluates a `lambda` to unknown (it follows nested `def`s, which have a node of their own), so its precise tree for this program will
 be a file of its own when its folder is added.
