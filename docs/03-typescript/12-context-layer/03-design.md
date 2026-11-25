@@ -385,7 +385,9 @@ JSX element the component's (one parameter, named `__0` when it is destructured)
 
 **A tripwire for a wrong binding.** Where the layer says a site calls exactly these functions, each of them must be assignable to the
 callee's static type (`is_type_assignable_to`, public). One that is not is a bug in the binding or in the table, not a fact about the
-program: it is counted `value_type_mismatch`, the engine's answer is kept beside it, and the count must be 0 on the four projects.
+program: it is counted `value_type_mismatch`, the engine's answer is kept beside it, and the count must be 0 on the four projects. (Corrected at TC2 step 5c's design, 2026-11-25: inside a generic function or class a correct function is not
+assignable to a callee type that names a type parameter, and the checker's erasure is not public, so a failure under a type parameter is
+counted `value_type_unchecked` and believed; [06](06-tc2-functions-through-parameters.md) §10, step 5c.)
 
 **A nested def is a value with its captures.** Where the name of a nested def is evaluated (called, or handed over), the variables it
 reads from the functions around it (`flow(g).needs`) are read from the env of that place and travel with the value. So the key is

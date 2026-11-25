@@ -1,0 +1,62 @@
+== main
+-- off
+main
+  each
+  encode [Passed]
+  narrow
+  encode [Passed]
+  Box.run
+  Box
+  encode [Passed]
+edges:
+Box.run | f | unresolved function_typed_value
+each | f | unresolved function_typed_value
+main | each | call each
+main | encode | pass encode
+main | narrow | call narrow
+main | encode | pass encode
+main | new Box<string>().run | call Box.run
+main | Box | construct Box no init
+main | encode | pass encode
+narrow | f | unresolved function_typed_value
+-- on
+main
+  each
+    encode
+  encode [Passed]
+  narrow
+    encode
+  encode [Passed]
+  Box.run
+    encode
+  Box
+  encode [Passed]
+edges:
+Box.run @035855fd | f | call encode
+each @035855fd | f | call encode
+main | each | call each @035855fd
+main | encode | pass encode
+main | narrow | call narrow @035855fd
+main | encode | pass encode
+main | new Box<string>().run | call Box.run @035855fd
+main | Box | construct Box no init
+main | encode | pass encode
+narrow @035855fd | f | call encode
+== each
+-- off
+each
+edges:
+each | f | unresolved function_typed_value
+-- on
+each
+edges:
+each | f | unresolved function_typed_value
+== narrow
+-- off
+narrow
+edges:
+narrow | f | unresolved function_typed_value
+-- on
+narrow
+edges:
+narrow | f | unresolved function_typed_value

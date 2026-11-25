@@ -482,15 +482,35 @@ dumps. (2) The allowance case of `never_fewer_edges` is three cases inside `each
   cases in `each_property_finds_what_it_is_for`. `the_table_of_rows_is_read_whole` learns the two new rows (27 entries). A test pins that
   the key of `run` under `pick` in `callback-wide` holds one slot, `Value::wide()`.
 
-**Step 5c, to design: the tripwire.** 03 §7 says each function the layer draws must be assignable to the callee's static type
-(`is_type_assignable_to`), else it is counted `value_type_mismatch` and the engine's answer is kept beside it, 0 on the projects. Found
-designing 5b: inside a generic function the callee's static type names the type parameter (`f: (x: T) => void`), and a correct argument
-(`encode: (x: string) => void`) is then **not** assignable to it by TypeScript's rules (`[check]` by a probe at 5c), so the check as written
-would fire on correct bindings in every generic callee (the compiler is full of them). The checker's way out, erasure
-(`get_erased_signature`, `get_permissive_instantiation`, `could_contain_type_variables`), is `pub(crate)` at the pin; only
-`is_type_assignable_to` (an inherent `pub fn` of `Checker`, `relater_1.rs:146`, and `is_type_assignable_to_exported`) and the type readers
-are public. The options for 5c's design: skip the check where the site's def or a declaration around it has type parameters (counted, so
-the coverage shows); check at the caller against the checker's instantiated parameter type instead (catches less: not a table bug in the
-callee); or drop the tripwire and lean on the no-reuse check and the rows.
+**5b built as decided, `78d4d3f`** ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)): the comparison on the three
+projects found no entry with fewer edges, at depth 1 over every def and on the samples whole; `value_widened_set` is 0 on all of them.
+
+**Step 5c, as decided for the build (2026-11-25): the tripwire.** 03 §7 asks that each function the layer draws be assignable to the
+callee's static type. The probe (`engine/09-tc2.md`, "TC2 step 5c, the probe") shows that inside a generic function or class a correct
+function is **not** assignable to a type that names a type parameter, and that the checker's erasure is not public. So the check runs as
+written and a failure is believed only where no type parameter is in scope:
+
+- **`sem`**: `pub(crate) enum Fits { Yes, No, Unchecked }` and `Sem::fits(func, site_index, target, style) -> Fits` (in `sem/resolve.rs`).
+  The callee is the site's expression (`body(func).sites[site_index].expr`), the target the def's node (`node_of`); its type is
+  `get_type_of_symbol(get_symbol_of_declaration_exported(node))`. `is_type_assignable_to_exported(target, callee)` true → `Yes`. False →
+  `Unchecked` when the callee's node or any node above it (`parent()` up to the file) is a declaration whose type parameters are not empty,
+  else `No`. A missing body, site, node or symbol is `Unchecked`. The type parameters are read through a new view, `Generic`
+  (`ClassDeclaration | ClassExpression | InterfaceDeclaration | TypeAliasDeclaration | JSTypeAliasDeclaration | FunctionDeclaration |
+  FunctionExpression | ArrowFunction | MethodDeclaration | GetAccessor | SetAccessor | Constructor`, the kinds `Node::type_parameter_list`
+  handles without panicking that can hold code; its accessor `type_parameters`), proven total by `sem/view/tests.rs` as every view is.
+  No engine type leaves `sem`.
+- **`walk`**: `resolve_from_env` takes the body `f`; for each `One::Fn` member with a `Func`: `Yes` → the call; `Unchecked` → the call and
+  one note `value_type_unchecked`; `No` → the call, one note `value_type_mismatch`, and the value is treated as open at this site (the
+  engine's open entries come back beside it, so the split counters count them). An anonymous function is not checked (its type is TC7's
+  business). Constants beside `CALLEE_UNDEFINED`.
+- **Rows** (written by the reviewer with this decision, snapshots as 5a/5b draw them): `callback-mismatch` (a type error on purpose:
+  `run(needs)` with `needs(a, b)`; its "on" half flips: `run @d | cb | unresolved function_typed_value` comes back beside `call needs`,
+  `value_type_mismatch` 1) and `callback-generic` (`each<T>`, `narrow<T extends string>`, `Box<T>.run`, each passed `encode`: no edge
+  moves; `value_type_unchecked` 2 under `main`, `narrow` counts nothing). On every other row both counters are absent.
+- **Riders**: the two tests that pin the number of context entries (`the_table_of_rows_is_read_whole` in the crate,
+  `value_widened_set_is_counted_where_a_set_passes_the_cap` in `tests/context.rs`) learn 32; `the_three_properties_hold_on_every_context_row`
+  becomes `the_properties_hold_on_every_context_row` (it checks two since 5b).
+- **Proof**: the rows; `value_type_mismatch` 0 on the three projects (the reviewer's sweep), with `value_type_unchecked` reported beside it
+  so the share the tripwire cannot see is known; the comparison still 0 problems.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
