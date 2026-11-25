@@ -288,4 +288,24 @@ literals often (26–36%), and "handed to a project function" is the large row (
 
 Each step is one prompt; step 1 or 2 may split when its prompt is written.
 
+**Step 1, as decided for the build (2026-11-26).** The table reads the new forms; nothing evaluates them yet, so no graph moves.
+
+- `Expr` gains four variants: `Member(Box<Expr>, Box<str>)` (`x.k`, `x?.k`, `x["k"]` with a string literal), `Object(Box<[Part]>)`
+  (an object literal, a JSX element's attributes; parts in source order), `Omit(Box<Expr>, Box<[Box<str>]>)` (an object pattern's
+  `...rest`: the source without the names listed before it) and `Default(Box<Expr>, Box<Expr>)` (a pattern element's `= d`). `Part` is
+  `Named(Box<str>, Expr)` (`k: e`, shorthand `k`, a method `k() {}` = its def, a JSX attribute), `Spread(Expr)` or `Unnamed` (a
+  computed key, a getter, a setter: the object is not complete). Normal form: a `Member` or `Omit` of `Unknown` is `Unknown`.
+- A property access first asks `functions_named` as today (a function of a namespace, an import, stays a `Def`); only where that
+  gives no function is it a `Member`. An element access with a numeric literal stays `Unknown` (arrays are not modelled).
+- **Patterns**: a binding element of an object pattern gets its value from its path (`Member` of the source by its property name,
+  `Default` for its `= d`, `Omit` for `...rest`); the source is the def's own parameter (`Param(i)`), a declaration's initializer, or the
+  enclosing element. An array pattern, a parameter of a nested function, a declaration that is open (loop, catch, ambient, a script's
+  top) and a computed key keep the variable open, as today. A pattern parameter's row (`named: false`, `capable: false`) is unchanged:
+  step 2 makes it capable.
+- **JSX**: the site's one argument is an `Object` of the attributes (an attribute with no value is `Data`, a string `Data`, `{e}`
+  `e`, `{...e}` a `Spread`), with `Named("children", Unknown)` last when the element has children.
+- Every reader of `Expr` gives the new variants the reading of `Unknown` for now: `eval` unknown, `relevance` reads nothing,
+  `walk::holds_name` false, `walk::reads_many_sources` none, and `needs::each_expr` does not enter them, written as a `match` with no
+  `_` arm so step 2 cannot forget one. Step 2 gives them their real reading (§10 row 6) together with `eval`.
+
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
