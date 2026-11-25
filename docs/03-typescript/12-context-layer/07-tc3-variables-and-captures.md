@@ -209,6 +209,32 @@ per-walk table (`interp/value.rs`, `ValueId`, "so a value can hold another and s
 (`KeyId` into `Keys`). So `One::Fn(DefId, Captures)`, where `Captures` is a number into a per-request table of capture lists, `0` for
 none: every TC2 value is `Fn(def, 0)`, and the digest writes the list, never the number.
 
+**Step 3, part 1, as decided (2026-11-25): `needs`, computed and printed, no graph change.**
+
+- `Flow::around: Option<DefId>` (`sem`): the def of the outline whose node holds this def's node, the nearest one; `None` for a def at the
+  top of its file and for the file's own code. It is what `var_of` already walks up to, kept.
+- `needs(world, g) -> Box<[VarId]>`, in a new neutral file `needs.rs` (it asks only `World::flow`, so a test answers it by hand):
+  - **reads(g)**: every `Expr::Var(id)` anywhere in g's table (a site's callee and arguments, a hand-over, a default, a row's assigned
+    expressions, `OneOf` members included) with `id.def != g`, `id.def` not the file's code (module variables are step 4, and are not
+    captured), and the row capable (`world.flow(id.def)`'s row at `id.at`).
+  - **named(g)**: every `Expr::Def(h)` anywhere in g's table whose `h` is nested (`around` is `Some`): a def at the top of a file captures
+    nothing, so it is skipped.
+  - **needs(g)** = the least sets with `needs(g) ⊇ reads(g)` and `needs(g) ⊇ { v ∈ needs(h) : v.def ≠ g }` for each `h ∈ named(g)`: what a
+    nested def that g names reads from around it, except g's own variables, which g reads from its own env when it makes that def's value.
+    Solved over the defs reachable from g through `named`, repeated until nothing grows; sorted by `VarId`.
+  - Why `v.def ≠ g` is enough: a def g can name is in scope at g, so it is g's own nested def, a sibling, or a def around g, and what it reads
+    from around itself is g's or around g.
+- Python's `free_variables` (`sem/scope.rs`) is the same idea read from the scope tree; ours reads the table, because a read that no callee,
+  argument, hand-over, default or assignment holds cannot reach a call. Python needs no `named` part: a closure value there carries the run
+  of the body around it (`activations`). Here a key carries values, so a def that calls a sibling by name must carry what the sibling reads.
+
+**Step 3, part 2, recommended (decided at its prompt):** `One::Fn(DefId, Captures)`, `Captures` a number into a per-request table of
+capture lists (`0` for none), as `KeyId` is; `KeyData::captured` (sorted by `VarId`, unknown entries dropped, arrows written `AnonAny`);
+evaluating `Expr::Def(g)` with `CAPTURES` on reads each of `needs(g)` from this env (an own row, or this key's capture); in g's walk a variable
+of a def around it is the key's capture or unknown; the canonical form gains a closure variant and a `captured` list skipped when empty, a
+variable written as (the declaring def's `StableDef`, its name, which declaration of that name); a depth limit of 2, as Python's
+`fp_depth`, past which captures are unknown and `value_widened_depth` is counted (it also ends a def that captures itself).
+
 **The value of a nested def carries them** ([03](03-design.md) §7): evaluating `Expr::Def(g)` for a nested `g` reads each variable of
 `needs(g)` from the env of that place. `One::Fn` becomes `Fn(func, captures)`, with `captures` empty for a def that is not nested. In
 `key_of`, `Key.captured` is those captures. In the walk of `g`, an `Enclosing` variable's value is the key's entry for it, or unknown
@@ -270,7 +296,7 @@ the row `callback-reassigned` flipping: the handler **and** `fallback`, complete
 | 1 | `sem/flow.rs`: `Var`, `VarId`, assignments, `Expr::Var`, writes from nested functions; `eval` gives `Var` unknown | the table of `flow/src/vars.ts` and the tour's (line c: `call var h@35 ()`, `h@35 capable = def encode`) as written by hand; every `Expr::Var` has its row in the declaring def's table; `Param.assigned` equals its row's writes; no graph, digest or other snapshot moves |
 | 2 | the whole-scope join (§3): `env.rs` `value_of`, the memo; parameters joined with their assignments; the counter of the ceiling of 2b | `local-*` (`local-assigned-twice`: `a` and `b` at both calls), `param-reassigned`; the ceiling on the four projects |
 | 2b | **not built (owner, 2026-11-25, on the measure in `engine/10-tc3.md`: no edge at a callee would change); re-measured at TC6's close.** Was: only if step 2's ceiling is not near zero on the private codebase and the compiler: in order (D67, §3), opening with the spike (flow nodes at the pin, the `ReduceLabel` view, the nested-write rule, loops, unreachable code, the memo and the counted cap), behind `Caps::ORDER` | one fixture per flow node kind, by hand; fail-open counted; the sweep bit off/on with the removed members read by hand on two projects; the cost (D62) |
-| 3 | `needs`; `Fn` with captures; `Key.captured`; the canonical form | `capture-*`; TC2's digests unchanged |
+| 3 | part 1: `Flow::around`, `needs` (printed in the table snapshots, tested by hand); part 2: `Fn` with captures, `Key.captured`, the canonical form, the depth limit | part 1: needs as written by hand, no graph moves; part 2: `capture-*`; TC2's digests unchanged |
 | 4 | module variables | `module-*` |
 | 5 | `bind` | `bind`; the counter drops where an edge appears |
 | 6 | relevance (moved from TC2 step 8, [06](06-tc2-functions-through-parameters.md) §8), through locals | equal edges, fewer contexts |
