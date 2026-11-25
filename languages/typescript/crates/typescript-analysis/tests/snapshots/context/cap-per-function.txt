@@ -1,0 +1,50 @@
+== main
+-- off
+main
+  first
+    run
+    a [Passed]
+  second
+    run
+    b [Passed]
+  third
+    run
+    c [Passed]
+edges:
+first | run | call run
+first | a | pass a
+main | first | call first
+main | second | call second
+main | third | call third
+run | cb | unresolved function_typed_value
+second | run | call run
+second | b | pass b
+third | run | call run
+third | c | pass c
+-- on
+main
+  first
+    run
+      a
+    a [Passed]
+  second
+    run
+      b
+    b [Passed]
+  third
+    run
+      c
+    c [Passed]
+edges:
+first | run | call run @5d2e5760
+first | a | pass a
+main | first | call first
+main | second | call second
+main | third | call third
+run @50ba5c53 | cb | call c
+run @5d2e5760 | cb | call a
+run @ac15243e | cb | call b
+second | run | call run @ac15243e
+second | b | pass b
+third | run | call run @50ba5c53
+third | c | pass c

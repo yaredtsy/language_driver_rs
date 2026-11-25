@@ -10,7 +10,9 @@ use analyzer_testkit::expect_file;
 use analyzer_testkit::graph::check_invariants;
 use common::context::{a_context_is_a_function_of_its_key, never_fewer_edges};
 use common::{Row, STYLE, call_graph, edges_as_text, render_graph, rows, split_policy, tests_dir};
-use typescript_analysis::{Cancel, EdgeTo, Entry, Graph, Limits, Options, Precision, Project};
+use typescript_analysis::{
+    Cancel, Cut, EdgeTo, Entry, Graph, Limits, Options, Precision, Project, Status,
+};
 
 const TABLE: &str = include_str!("../../../docs/policy.md");
 
@@ -548,4 +550,102 @@ fn the_order_of_requests_does_not_change_a_graph_under_a_limit() {
         differing.is_empty(),
         "the graph of `pick` depends on what was asked before it, at limits {differing:?}"
     );
+}
+
+/// The cap on the contexts of one function (`cap-per-function`): `run` has three contexts, one for each of `first`, `second` and `third`. At a cap of 2 the third one
+/// the breadth-first walk reads is listed, `Incomplete`, counted, and not walked, so `c` is handed over (that edge is `third`'s own) and never called.
+#[test]
+fn the_cap_per_function_cuts_the_third_context_of_run() {
+    let row = context_rows()
+        .into_iter()
+        .find(|row| row.id == "cap-per-function")
+        .expect("the row `cap-per-function`");
+    let (_, project) = open_row(&row);
+    let graph_with = |precision: Precision, cap: Option<u32>| {
+        let mut options = Options::new(STYLE);
+        options.precision = precision;
+        options.limits.max_contexts_per_function = cap;
+        let entry = Entry::Def {
+            qualname: "main",
+            occurrence: 0,
+        };
+        let graph = call_graph(&project, &row.words[1], &entry, &options, &Cancel::new())
+            .expect("a def `main`");
+        check_invariants(&graph);
+        graph
+    };
+    let off = graph_with(Precision::Default, Some(64));
+    let uncapped = graph_with(Precision::Precise, None);
+    let capped = graph_with(Precision::Precise, Some(2));
+    let qname = |graph: &Graph, id: &typescript_analysis::ContextId| {
+        graph.def(&id.func).unwrap().qname.clone()
+    };
+
+    // the default graph has one context of `run`, so the cap (64 in `Options::new`) never cut it
+    assert!(off.stats.cuts.is_empty(), "{:?}", off.stats.cuts);
+    assert!(uncapped.stats.cuts.is_empty(), "{:?}", uncapped.stats.cuts);
+
+    let runs: Vec<_> = capped
+        .contexts
+        .iter()
+        .filter(|c| qname(&capped, &c.id) == "run")
+        .collect();
+    assert_eq!(runs.len(), 3, "three contexts of `run`");
+    let cut: Vec<_> = runs
+        .iter()
+        .filter(|c| c.status == Status::Incomplete(Cut::MaxContextsPerFunction))
+        .collect();
+    assert_eq!(cut.len(), 1, "exactly one context of `run` is cut");
+    assert!(
+        runs.iter()
+            .filter(|c| c.status != Status::Incomplete(Cut::MaxContextsPerFunction))
+            .all(|c| c.status == Status::Finished)
+    );
+    assert!(
+        capped.edges_from(&cut[0].id).is_empty(),
+        "a cut context is not walked"
+    );
+
+    // the cut one is the one `third` calls
+    let third = capped
+        .contexts
+        .iter()
+        .find(|c| qname(&capped, &c.id) == "third")
+        .expect("a context of `third`");
+    let third_calls_run: Vec<_> = capped
+        .edges_from(&third.id)
+        .iter()
+        .filter_map(|e| match &e.to {
+            EdgeTo::Context(c, _) if qname(&capped, c) == "run" => Some(c.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(third_calls_run, [cut[0].id.clone()]);
+
+    // `c` is handed over by `third` (a passed edge) and no call reaches it: the walk of `run` under `third` would have made it
+    let calls_to = |graph: &Graph, name: &str| {
+        graph
+            .edges
+            .iter()
+            .filter(|e| !e.passed)
+            .filter(|e| matches!(&e.to, EdgeTo::Context(c, _) if qname(graph, c) == name))
+            .count()
+    };
+    assert_eq!(calls_to(&uncapped, "c"), 1, "uncapped, `run` calls `c`");
+    assert_eq!(calls_to(&capped, "c"), 0, "capped, nothing calls `c`");
+    assert_eq!(calls_to(&capped, "a"), 1);
+    assert_eq!(calls_to(&capped, "b"), 1);
+
+    assert_eq!(
+        capped.stats.cuts.get(&Cut::MaxContextsPerFunction),
+        Some(&1)
+    );
+    assert_eq!(capped.stats.cuts.len(), 1, "{:?}", capped.stats.cuts);
+
+    assert!(never_fewer_edges(&off, &capped).is_empty());
+    assert!(a_context_is_a_function_of_its_key(&[&uncapped, &capped]).is_empty());
+
+    // a cap of 3 is not reached
+    let roomy = graph_with(Precision::Precise, Some(3));
+    assert_eq!(roomy, uncapped);
 }

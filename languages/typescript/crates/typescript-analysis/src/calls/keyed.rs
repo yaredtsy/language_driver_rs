@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use analyzer_core::graph::{ContextId, EdgeTo, Graph};
-use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Target};
+use analyzer_core::solve::{Budget, Cancel, Lang, Solver, Target};
 
 use super::*;
 use crate::captures::VALUE_WIDENED_DEPTH;
@@ -93,7 +93,7 @@ fn solve_timed<'p>(
 ) -> (Solver<TypeScript<'p>>, Graph, Duration) {
     let lang = TypeScript::new(sem, STYLE).with_layer(layer);
     let start = start_of(&lang, func);
-    let mut solver = Solver::new(lang, Limits::default());
+    let mut solver = Solver::new(lang, limits());
     let began = Instant::now();
     let graph = solver.graph_within(&[start], &Budget::default(), &Cancel::new());
     (solver, graph, began.elapsed())

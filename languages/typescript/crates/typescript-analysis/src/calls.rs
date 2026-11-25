@@ -39,6 +39,8 @@ pub(crate) const KEY_NAMES_UNKNOWN_DEF: &str = "key_names_unknown_def";
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct Options {
+    /// The cost limits of the request: core's defaults and the cap on contexts per function ([`CONTEXTS_PER_FUNCTION`]). With `Precision::Default` a function has
+    /// one context, so the cap never cuts there.
     pub limits: Limits,
     pub marker: MarkerStyle<'static>,
     /// Whether the context layer is on. `Precision::Default` unless set.
@@ -66,11 +68,22 @@ impl Precision {
     }
 }
 
+/// The cap on contexts per function (`docs/03-typescript/12-context-layer/03-design.md` §12): Python's `contexts_per_func`.
+pub(crate) const CONTEXTS_PER_FUNCTION: u32 = 64;
+
+/// The cost limits of a request: core's defaults, and the cap on contexts per function.
+pub(crate) fn limits() -> Limits {
+    let mut limits = Limits::default();
+    limits.max_contexts_per_function = Some(CONTEXTS_PER_FUNCTION);
+    limits
+}
+
 impl Options {
-    /// The default cost limits and `Precision::Default`, and `marker` for reading markers.
+    /// The default cost limits with the cap on contexts per function (it never cuts under `Precision::Default`, where a function has one context), and
+    /// `Precision::Default`, and `marker` for reading markers.
     pub fn new(marker: MarkerStyle<'static>) -> Self {
         Options {
-            limits: Limits::default(),
+            limits: limits(),
             marker,
             precision: Precision::Default,
         }
