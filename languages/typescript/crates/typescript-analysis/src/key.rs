@@ -8,8 +8,9 @@ use serde::Serialize;
 
 use analyzer_core::graph::{StableDef, digest};
 
-use crate::flow::{Arg, DefId, Expr, Param};
-use crate::value::{One, Value};
+use crate::captures::CaptureList;
+use crate::flow::{Arg, DefId, Expr, Param, VarId};
+use crate::value::{Captures, One, Value};
 
 /// The version of a context's digest under `Precision::Precise`: the digest is core's `digest` of the canonical form of the key, and this says which
 /// form. It goes up when the digest of a key that already exists must change; a new variant, or a field that is skipped when empty, does not change the
@@ -32,14 +33,17 @@ pub(crate) type Key = KeyId;
 /// What a key holds, in its normal form.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct KeyData {
-    /// One per parameter, in order (`Flow::params`): what the caller passes. TC2 fills it; the receiver (TC5) and the captured variables (TC3) come with their
-    /// phases.
+    /// One per parameter, in order (`Flow::params`): what the caller passes. TC2 fills it; the receiver comes with TC5.
     pub(crate) params: Box<[Value]>,
+    /// What the context has for the variables of the functions around the callee (`07-tc3` §4), sorted by `VarId`, no unknown entry: a variable not listed is
+    /// unknown. TC3 step 3 fills it.
+    pub(crate) captured: Box<[(VarId, Value)]>,
 }
 
 impl KeyData {
-    /// The one normal form (`03-design.md` §6), made by `Keys::intern` and nowhere else: every `One::Anon(..)` of every slot is written as `One::AnonAny`, then
-    /// the trailing parameters that are `Value::unknown()` are dropped, so the open key of a function with three parameters equals that of one with none.
+    /// The one normal form (`03-design.md` §6), made by `Keys::intern` and nowhere else: every `One::Anon(..)` of every slot and of every captured value is
+    /// written as `One::AnonAny`, then the trailing parameters that are `Value::unknown()` are dropped, so the open key of a function with three parameters
+    /// equals that of one with none; the captured entries are sorted by variable and the unknown ones dropped.
     fn normal(mut self) -> KeyData {
         // an anonymous function is one member, whichever it is: callers that pass different arrows share a context
         for slot in self.params.iter_mut() {
@@ -51,6 +55,25 @@ impl KeyData {
             }
         }
         let unknown = Value::unknown();
+        if self.captured.iter().any(|(_, value)| {
+            *value == unknown || value.known().iter().any(|one| matches!(one, One::Anon(..)))
+        }) || !self.captured.windows(2).all(|pair| pair[0].0 < pair[1].0)
+        {
+            let mut kept: Vec<(VarId, Value)> = self
+                .captured
+                .iter()
+                .filter(|(_, value)| *value != unknown)
+                .map(|(var, value)| {
+                    let value = value.map(|one| match one {
+                        One::Anon(..) => One::AnonAny,
+                        other => other,
+                    });
+                    (*var, value)
+                })
+                .collect();
+            kept.sort_by_key(|(var, _)| *var);
+            self.captured = kept.into();
+        }
         let keep = self
             .params
             .iter()
@@ -90,7 +113,10 @@ pub(crate) fn bind(
             }
         })
         .collect();
-    KeyData { params }
+    KeyData {
+        params,
+        captured: Box::new([]),
+    }
 }
 
 /// A key written with stable ids only, for its digest (`03-design.md` §6). The canonical form only grows: a later phase adds a variant, or a field of
@@ -108,24 +134,77 @@ enum Canon {
         known: Vec<Canon>,
         open: bool,
     },
+    /// A nested def and what it captured (`07-tc3` §4): each variable with its value, sorted by the variable's canonical form.
+    Closure {
+        func: StableDef,
+        captured: Vec<(CanonVar, Canon)>,
+    },
+}
+
+/// A captured variable written with stable ids only: the def that declares it, its name, and which row of that name it is among the rows of that def (by
+/// place), so two variables of one name in one def are told apart, and an edit above them moves neither.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub(crate) struct CanonVar {
+    pub(crate) def: StableDef,
+    pub(crate) name: String,
+    pub(crate) nth: u16,
 }
 
 #[derive(Debug, Serialize)]
 struct CanonKey {
     params: Vec<Canon>,
+    /// What the context has for the variables around the callee; skipped when empty, so every key without one keeps the digest it had.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    captured: Vec<(CanonVar, Canon)>,
+}
+
+/// What a key's canonical form asks of the world: the stable id of a def, the canonical form of a variable, and the list a closure holds.
+struct Names<'a, S, V, L> {
+    stable: &'a S,
+    stable_var: &'a V,
+    list: &'a L,
 }
 
 impl CanonKey {
-    fn of(data: &KeyData, stable: &impl Fn(DefId) -> StableDef) -> CanonKey {
+    fn of<S, V, L>(data: &KeyData, names: &Names<'_, S, V, L>) -> CanonKey
+    where
+        S: Fn(DefId) -> StableDef,
+        V: Fn(VarId) -> CanonVar,
+        L: Fn(Captures) -> CaptureList,
+    {
         CanonKey {
-            params: data.params.iter().map(|slot| canon(slot, stable)).collect(),
+            params: data.params.iter().map(|slot| canon(slot, names)).collect(),
+            captured: captured_canon(&data.captured, names),
         }
     }
 }
 
+/// `list` in its canonical form: sorted by the variable's canonical form, not by `VarId`, whose order follows the order files were first asked for.
+fn captured_canon<S, V, L>(
+    list: &[(VarId, Value)],
+    names: &Names<'_, S, V, L>,
+) -> Vec<(CanonVar, Canon)>
+where
+    S: Fn(DefId) -> StableDef,
+    V: Fn(VarId) -> CanonVar,
+    L: Fn(Captures) -> CaptureList,
+{
+    let mut written: Vec<(CanonVar, Canon)> = list
+        .iter()
+        .map(|(var, value)| ((names.stable_var)(*var), canon(value, names)))
+        .collect();
+    written.sort();
+    written
+}
+
 /// A slot in its canonical form: `stable` names each def it holds. 🦀 `Canon` derives `Ord`, so `sort()` orders the members by variant and then by
 /// `StableDef`: the order does not depend on `DefId`, whose file numbers follow the order files were first asked for.
-fn canon(value: &Value, stable: &impl Fn(DefId) -> StableDef) -> Canon {
+fn canon<S, V, L>(value: &Value, names: &Names<'_, S, V, L>) -> Canon
+where
+    S: Fn(DefId) -> StableDef,
+    V: Fn(VarId) -> CanonVar,
+    L: Fn(Captures) -> CaptureList,
+{
     if value.is_wide() {
         return Canon::Wide;
     }
@@ -133,7 +212,11 @@ fn canon(value: &Value, stable: &impl Fn(DefId) -> StableDef) -> Canon {
         .known()
         .iter()
         .map(|one| match one {
-            One::Fn(def) => Canon::Fn(stable(*def)),
+            One::Fn(def) => Canon::Fn((names.stable)(*def)),
+            One::Closure(def, captures) => Canon::Closure {
+                func: (names.stable)(*def),
+                captured: captured_canon(&(names.list)(*captures), names),
+            },
             One::AnonAny => Canon::AnonAny,
             One::Undefined => Canon::Undefined,
             One::Anon(..) => {
@@ -183,11 +266,23 @@ impl Keys {
     }
 
     /// The number of `data`, in its normal form: the one it already has, or the next one, whose digest is made here, once: core's `digest` of its
-    /// canonical form, `stable` naming each def a slot holds. Never zeros for a key that is not the open one.
-    pub(crate) fn intern(&mut self, data: KeyData, stable: impl Fn(DefId) -> StableDef) -> KeyId {
+    /// canonical form, `stable` naming each def a slot holds, `stable_var` each variable a closure or the key captured, and `list` the list a closure holds.
+    /// Never zeros for a key that is not the open one.
+    pub(crate) fn intern(
+        &mut self,
+        data: KeyData,
+        stable: impl Fn(DefId) -> StableDef,
+        stable_var: impl Fn(VarId) -> CanonVar,
+        list: impl Fn(Captures) -> CaptureList,
+    ) -> KeyId {
         let (index, new) = self.table.insert_full(data.normal());
         if new {
-            let made = digest(&CanonKey::of(&self.table[index], &stable));
+            let names = Names {
+                stable: &stable,
+                stable_var: &stable_var,
+                list: &list,
+            };
+            let made = digest(&CanonKey::of(&self.table[index], &names));
             debug_assert!(
                 !self.digests.contains(&made),
                 "two keys of one request with one digest: the canonical form lost a difference, and Graph::new would merge their contexts"
@@ -214,6 +309,22 @@ impl Keys {
 mod tests {
     use super::*;
 
+    /// `Keys::intern` for keys that hold no captured variable and no closure: the two resolvers are never asked.
+    trait Plain {
+        fn plain(&mut self, data: KeyData, stable: impl Fn(DefId) -> StableDef) -> KeyId;
+    }
+
+    impl Plain for Keys {
+        fn plain(&mut self, data: KeyData, stable: impl Fn(DefId) -> StableDef) -> KeyId {
+            self.intern(
+                data,
+                stable,
+                |_| unreachable!("no variable is in these keys"),
+                |_| unreachable!("no closure is in these keys"),
+            )
+        }
+    }
+
     const ZEROS: [u8; 16] = [0; 16];
     const A: [u8; 16] = [
         93, 46, 87, 96, 216, 61, 155, 17, 211, 86, 34, 118, 74, 224, 161, 128,
@@ -223,6 +334,12 @@ mod tests {
     ];
     const ANON: [u8; 16] = [
         227, 59, 111, 114, 81, 178, 31, 219, 156, 77, 31, 52, 186, 66, 183, 107,
+    ];
+    const CAPTURED: [u8; 16] = [
+        148, 73, 235, 153, 58, 143, 27, 84, 69, 245, 212, 247, 104, 160, 122, 132,
+    ];
+    const CLOSURE: [u8; 16] = [
+        206, 187, 220, 17, 90, 187, 122, 94, 215, 140, 199, 16, 16, 246, 50, 226,
     ];
     const A_OR_B: [u8; 16] = [
         55, 225, 1, 109, 241, 243, 47, 117, 120, 129, 24, 217, 191, 92, 235, 3,
@@ -295,8 +412,8 @@ mod tests {
     fn interning_the_open_key_again_gives_its_number_and_adds_nothing() {
         let mut keys = Keys::new();
         let none = |_| unreachable!("no def is in the open key");
-        assert_eq!(keys.intern(KeyData::default(), none), KeyId::OPEN);
-        assert_eq!(keys.intern(KeyData::default(), none), KeyId::OPEN);
+        assert_eq!(keys.plain(KeyData::default(), none), KeyId::OPEN);
+        assert_eq!(keys.plain(KeyData::default(), none), KeyId::OPEN);
         assert_eq!(keys.table.len(), 1);
         assert_eq!(keys.digests.len(), 1);
     }
@@ -306,6 +423,7 @@ mod tests {
         let normal = |params: Vec<Value>| {
             KeyData {
                 params: params.into(),
+                ..KeyData::default()
             }
             .normal()
             .params
@@ -327,9 +445,10 @@ mod tests {
     #[test]
     fn a_key_of_unknown_parameters_is_the_open_key() {
         let mut keys = Keys::new();
-        let key = keys.intern(
+        let key = keys.plain(
             KeyData {
                 params: vec![Value::unknown(), Value::unknown()].into(),
+                ..KeyData::default()
             },
             |_| unreachable!(),
         );
@@ -339,7 +458,10 @@ mod tests {
 
     /// `[params]` as a `CanonKey`: its JSON and its digest.
     fn written(params: Vec<Canon>) -> (String, [u8; 16]) {
-        let key = CanonKey { params };
+        let key = CanonKey {
+            params,
+            captured: vec![],
+        };
         (serde_json::to_string(&key).unwrap(), digest(&key))
     }
 
@@ -472,7 +594,12 @@ mod tests {
 
     #[test]
     fn a_value_is_written_in_one_canonical_form() {
-        let c = |value: Value| canon(&value, &by_name);
+        let names = Names {
+            stable: &by_name,
+            stable_var: &|_| unreachable!("no variable"),
+            list: &|_| unreachable!("no closure"),
+        };
+        let c = |value: Value| canon(&value, &names);
         let set = |known: Vec<Canon>, open| Canon::Set { known, open };
         assert_eq!(c(Value::unknown()), Canon::Unknown);
         assert_eq!(c(Value::data()), Canon::Data);
@@ -499,9 +626,10 @@ mod tests {
             other => panic!("no name for {other:?}"),
         };
         let mut keys = Keys::new();
-        let key = keys.intern(
+        let key = keys.plain(
             KeyData {
                 params: vec![Value::of([One::Fn(d(0)), One::Fn(d(1))], false)].into(),
+                ..KeyData::default()
             },
             swapped,
         );
@@ -513,15 +641,17 @@ mod tests {
         let mut keys = Keys::new();
         let none = |_| unreachable!("no def is in these keys");
         let anon = |def, n| One::Anon(d(def), n);
-        let one = keys.intern(
+        let one = keys.plain(
             KeyData {
                 params: vec![Value::of([anon(0, 0), anon(0, 1)], false)].into(),
+                ..KeyData::default()
             },
             none,
         );
-        let other = keys.intern(
+        let other = keys.plain(
             KeyData {
                 params: vec![Value::of([anon(1, 3)], false)].into(),
+                ..KeyData::default()
             },
             none,
         );
@@ -529,6 +659,7 @@ mod tests {
         assert_eq!(keys.digest(one), ANON);
         let mixed = KeyData {
             params: vec![Value::of([anon(0, 0), One::Fn(d(1))], false)].into(),
+            ..KeyData::default()
         }
         .normal();
         assert_eq!(
@@ -600,15 +731,129 @@ mod tests {
         assert_eq!(keys.digest(KeyId::OPEN), ZEROS);
         let key = |def: u32| KeyData {
             params: vec![f(def)].into(),
+            ..KeyData::default()
         };
-        let a = keys.intern(key(0), by_name);
+        let a = keys.plain(key(0), by_name);
         assert_eq!(a, KeyId(1));
         assert_eq!(keys.digest(a), A);
-        assert_eq!(keys.intern(key(0), by_name), a);
-        let b = keys.intern(key(1), by_name);
+        assert_eq!(keys.plain(key(0), by_name), a);
+        let b = keys.plain(key(1), by_name);
         assert_eq!(b, KeyId(2));
         assert_eq!(keys.digest(b), B);
         assert_eq!(keys.table.len(), 3);
         assert_eq!(keys.digests.len(), 3);
+    }
+
+    /// A captured variable of `start`'s, named by hand.
+    fn on_done() -> CanonVar {
+        CanonVar {
+            def: m("start"),
+            name: "onDone".into(),
+            nth: 0,
+        }
+    }
+
+    fn written_with(params: Vec<Canon>, captured: Vec<(CanonVar, Canon)>) -> (String, [u8; 16]) {
+        let key = CanonKey { params, captured };
+        (serde_json::to_string(&key).unwrap(), digest(&key))
+    }
+
+    fn var(def: u32, at: u32) -> VarId {
+        VarId { def: d(def), at }
+    }
+
+    #[test]
+    fn a_captured_variable_and_a_closure_have_their_pinned_bytes() {
+        let var_json = format!(r#"{{"def":{},"name":"onDone","nth":0}}"#, path("start"));
+        // a key that holds a captured variable and no parameter
+        let (json, got) = written_with(vec![], vec![(on_done(), Canon::Fn(m("save")))]);
+        assert_eq!(
+            json,
+            format!(
+                r#"{{"params":[],"captured":[[{var_json},{{"Fn":{}}}]]}}"#,
+                path("save")
+            )
+        );
+        assert_eq!(got, CAPTURED, "{got:?}");
+        // a slot that holds a closure: the function and what it captured
+        let closure = Canon::Closure {
+            func: m("finish"),
+            captured: vec![(on_done(), Canon::Fn(m("save")))],
+        };
+        let (json, got) = written_with(vec![closure], vec![]);
+        assert_eq!(
+            json,
+            format!(
+                r#"{{"params":[{{"Closure":{{"func":{},"captured":[[{var_json},{{"Fn":{}}}]]}}}}]}}"#,
+                path("finish"),
+                path("save")
+            )
+        );
+        assert_eq!(got, CLOSURE, "{got:?}");
+        // a key with no captured variable is written without the field, so its digest is the one it had
+        assert_eq!(written_with(vec![Canon::Fn(m("a"))], vec![]).1, A);
+    }
+
+    #[test]
+    fn the_captured_entries_are_in_their_normal_form() {
+        let normal = |captured: Vec<(VarId, Value)>| {
+            KeyData {
+                params: Box::new([]),
+                captured: captured.into(),
+            }
+            .normal()
+            .captured
+        };
+        let arrow = Value::of([One::Anon(d(4), 1), One::Fn(d(1))], false);
+        assert_eq!(
+            *normal(vec![
+                (var(2, 9), f(0)),
+                (var(1, 5), Value::unknown()),
+                (var(1, 3), arrow),
+            ]),
+            [
+                (var(1, 3), Value::of([One::Fn(d(1)), One::AnonAny], false)),
+                (var(2, 9), f(0)),
+            ]
+        );
+        // a key whose only content was unknown is the open key
+        let mut keys = Keys::new();
+        let open = keys.plain(
+            KeyData {
+                params: Box::new([]),
+                captured: vec![(var(1, 5), Value::unknown())].into(),
+            },
+            |_| unreachable!(),
+        );
+        assert_eq!(open, KeyId::OPEN);
+    }
+
+    #[test]
+    fn a_captured_variable_makes_a_key_of_its_own_and_its_digest_does_not_follow_the_order_of_defs()
+    {
+        let captured_name = |var: VarId| CanonVar {
+            def: m("start"),
+            name: format!("v{}", var.at),
+            nth: 0,
+        };
+        let none = |_: Captures| -> CaptureList { unreachable!() };
+        let mut keys = Keys::new();
+        let one = KeyData {
+            params: Box::new([]),
+            captured: vec![(var(1, 3), f(0)), (var(2, 9), f(1))].into(),
+        };
+        let a = keys.intern(one.clone(), by_name, captured_name, none);
+        assert_ne!(a, KeyId::OPEN);
+        assert_eq!(keys.intern(one, by_name, captured_name, none), a);
+        // the same two variables under another numbering of defs: `v9`'s def now comes before `v3`'s, so the list is in the other order, and the digest is
+        // the same, since the list is written in the order of its canonical form
+        let mut other = Keys::new();
+        let swapped = KeyData {
+            params: Box::new([]),
+            captured: vec![(var(1, 9), f(1)), (var(2, 3), f(0))].into(),
+        };
+        let b = other.intern(swapped, by_name, captured_name, none);
+        assert_eq!(keys.digest(a), other.digest(b));
+        assert_ne!(keys.digest(a), ZEROS);
     }
 }

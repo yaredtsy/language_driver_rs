@@ -4,9 +4,10 @@
 use std::sync::Arc;
 
 use crate::caps::Caps;
+use crate::captures::{CaptureList, VALUE_WIDENED_DEPTH};
 use crate::env::{Env, VARIABLE_ROUNDS_CAPPED};
 use crate::flow::{DefId, Expr, Flow, VarId};
-use crate::value::{One, Value};
+use crate::value::{Captures, One, Value};
 
 /// How many rounds `solve` repeats before it gives up and opens every variable of the body (`07-tc3` §3). A chain of rows each reading the next settles in as
 /// many rounds as it is long, so this is also the longest chain that is read exactly.
@@ -25,6 +26,14 @@ pub(crate) trait World {
     fn knows(&self, caps: Caps) -> bool;
     /// Count one more of `key`, a fact of what this context did.
     fn note(&self, key: &'static str);
+    /// The variables of the functions around `def` that `def` needs to be given (`needs::needs_of_component`), sorted by `VarId`: kept by the world for the
+    /// request, so each def is asked once.
+    fn needs(&self, def: DefId) -> Arc<[VarId]>;
+    /// `list` interned (`CaptureSets::intern`): the number of its normal form, `None` when nothing is left, and how many inner closures were cut. It counts
+    /// nothing: the caller notes the cuts, so a quiet world stays quiet.
+    fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32);
+    /// A copy of the list `captures` stands for.
+    fn captured(&self, captures: Captures) -> CaptureList;
 }
 
 /// A world that counts nothing: `solve` asks the same questions many times over while it settles, and the facts are said once, in its last round.
@@ -43,6 +52,18 @@ impl World for Quiet<'_> {
     }
 
     fn note(&self, _key: &'static str) {}
+
+    fn needs(&self, def: DefId) -> Arc<[VarId]> {
+        self.0.needs(def)
+    }
+
+    fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
+        self.0.capture(list)
+    }
+
+    fn captured(&self, captures: Captures) -> CaptureList {
+        self.0.captured(captures)
+    }
 }
 
 /// Where the value of a variable comes from while an expression is evaluated.
@@ -75,7 +96,7 @@ fn eval_below(world: &dyn World, env: &Env, expr: &Expr, below: u32, vars: Vars)
     match expr {
         Expr::Unknown => Value::unknown(),
         Expr::Data => Value::data(),
-        Expr::Def(def) => Value::of([One::Fn(*def)], false),
+        Expr::Def(def) => function(world, env, *def, vars),
         Expr::Param(index) if *index < below => param(world, env, *index, vars),
         Expr::Param(_) => Value::unknown(),
         Expr::Anon(index) => Value::of([One::Anon(env.def, *index)], false),
@@ -88,16 +109,49 @@ fn eval_below(world: &dyn World, env: &Env, expr: &Expr, below: u32, vars: Vars)
     }
 }
 
-/// The value of a variable: of a row of this body's table when the layer knows `LOCALS`; unknown otherwise (a variable of another def is TC3 steps 3 and 4,
-/// and with the bit off the layer is TC2's, which had no value for a name).
+/// The value of a def named in a body (`07-tc3` §4): the function itself, or, when the layer knows `CAPTURES` and the def is nested and needs variables from
+/// around it, the function with the value each of them has **here** (`capture_value`). Nothing captured, or nothing known of it, is the bare function.
+fn function(world: &dyn World, env: &Env, def: DefId, vars: Vars) -> Value {
+    if world.knows(Caps::CAPTURES) {
+        let needed = world.needs(def);
+        if !needed.is_empty() {
+            let list: Vec<(VarId, Value)> = needed
+                .iter()
+                .map(|&var| (var, variable(world, env, var, vars)))
+                .collect();
+            let (made, cut) = world.capture(list);
+            for _ in 0..cut {
+                world.note(VALUE_WIDENED_DEPTH);
+            }
+            if let Some(captures) = made {
+                return Value::of([One::Closure(def, captures)], false);
+            }
+        }
+    }
+    Value::of([One::Fn(def)], false)
+}
+
+/// The value of a variable: of a row of this body's table when the layer knows `LOCALS`; of a variable of a def around, the key's entry for it when the layer
+/// knows `CAPTURES` (the file's own code is not captured: module variables are step 4); unknown otherwise (with the bit off the layer is the one before it, which
+/// had no value for that name).
 fn variable(world: &dyn World, env: &Env, id: VarId, vars: Vars) -> Value {
-    if !world.knows(Caps::LOCALS) || id.def != env.def {
-        return Value::unknown();
+    if id.def == env.def {
+        if !world.knows(Caps::LOCALS) {
+            return Value::unknown();
+        }
+        return match env.flow.var_index(id.at) {
+            Some(row) => row_of(world, env, row, vars),
+            None => Value::unknown(),
+        };
     }
-    match env.flow.var_index(id.at) {
-        Some(row) => row_of(world, env, row, vars),
-        None => Value::unknown(),
+    if world.knows(Caps::CAPTURES) && id.def.index().is_some() {
+        return env
+            .key
+            .captured
+            .binary_search_by_key(&id, |(var, _)| *var)
+            .map_or_else(|_| Value::unknown(), |at| env.key.captured[at].1.clone());
     }
+    Value::unknown()
 }
 
 /// The value of row `row` of the table: the settled one, or the current round's.
@@ -181,6 +235,8 @@ fn row_value(world: &dyn World, env: &Env, i: usize, current: &[Value]) -> Value
 /// from the last round's values until a round changes nothing: values only grow, so this ends, and what it ends at is the least value that satisfies every row.
 /// Past `MAX_ROUNDS` the rows are opened instead, and `variable_rounds_capped` says so.
 ///
+/// Each round joins the last round's value in, so the rounds grow whatever the rows do (see the comment in the loop).
+///
 /// The rounds are quiet. One last round with the real world, from the values the rounds ended on, gives the answer and says what there is to say once
 /// (`value_widened_set`), however many rounds it took.
 fn solve(world: &dyn World, env: &Env) -> Box<[Value]> {
@@ -189,8 +245,11 @@ fn solve(world: &dyn World, env: &Env) -> Box<[Value]> {
     let mut current: Vec<Value> = vec![Value::data(); rows];
     let mut capped = true;
     for _ in 0..MAX_ROUNDS {
+        // each round keeps what the last had: every row of TC2 and TC3 step 2 only grows from round to round, so this changes none of them, but the depth cut of
+        // a closure (`captures`) writes a deeper one as its bare function, which is not growth, and a def that captures a variable that holds itself would
+        // then swap between two values for ever
         let next: Vec<Value> = (0..rows)
-            .map(|i| row_value(&quiet, env, i, &current))
+            .map(|i| join(&quiet, &current[i], &row_value(&quiet, env, i, &current)))
             .collect();
         if next == current {
             capped = false;
@@ -206,7 +265,7 @@ fn solve(world: &dyn World, env: &Env) -> Box<[Value]> {
     }
     (0..rows)
         .map(|i| {
-            let value = row_value(world, env, i, &current);
+            let value = join(world, &current[i], &row_value(world, env, i, &current));
             // a body that did not settle is open in every row, whatever the last round says
             if capped {
                 value.join(&Value::unknown())
@@ -223,6 +282,7 @@ mod tests {
     use std::collections::{BTreeMap, HashMap};
 
     use super::*;
+    use crate::captures::CaptureSets;
     use crate::flow::{Param, Var};
     use crate::key::KeyData;
     use crate::value::MAX_SET;
@@ -234,6 +294,7 @@ mod tests {
         widened: Cell<u32>,
         caps: Caps,
         notes: RefCell<BTreeMap<&'static str, u32>>,
+        captures: RefCell<CaptureSets>,
     }
 
     impl World for ByHand {
@@ -251,6 +312,18 @@ mod tests {
 
         fn note(&self, key: &'static str) {
             *self.notes.borrow_mut().entry(key).or_default() += 1;
+        }
+
+        fn needs(&self, def: DefId) -> Arc<[VarId]> {
+            Arc::from(crate::needs::needs(self, def))
+        }
+
+        fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
+            self.captures.borrow_mut().intern(list)
+        }
+
+        fn captured(&self, captures: Captures) -> CaptureList {
+            self.captures.borrow().get(captures).into()
         }
     }
 
@@ -296,7 +369,10 @@ mod tests {
                 around: None,
             }),
             d(9),
-            KeyData { params: key.into() },
+            KeyData {
+                params: key.into(),
+                captured: Box::new([]),
+            },
         )
     }
 
@@ -311,6 +387,7 @@ mod tests {
             widened: Cell::new(0),
             caps,
             notes: RefCell::new(BTreeMap::new()),
+            captures: RefCell::new(CaptureSets::new()),
         };
         assert!(world.flow(env.def).is_some());
         assert!(world.flow(DefId::new(0, 0, None)).is_none());
@@ -577,7 +654,7 @@ mod tests {
         );
         // the open key passes nothing known
         let mut open = written_parameter();
-        open.key = KeyData { params: [].into() };
+        open.key = KeyData::default();
         let world_open = world(&open);
         assert_eq!(
             eval(&world_open, &open, &Expr::Param(0)),
@@ -692,5 +769,151 @@ mod tests {
         let elsewhere = VarId { def: d(8), at: 10 };
         assert_eq!(eval(&world, &env, &Expr::Var(elsewhere)), Value::unknown());
         assert_eq!(of_var(&world, &env, 10), func(1));
+    }
+
+    /// A table of `d(index)`, nested in `around`, that hands over each of `reads` (so `needs` finds them), and declares these rows.
+    fn nested(around: Option<DefId>, vars: Vec<Var>, reads: Vec<Expr>) -> Arc<Flow> {
+        Arc::new(Flow {
+            params: Box::new([]),
+            sites: Box::new([]),
+            anons: Box::new([]),
+            handed: reads
+                .into_iter()
+                .map(|value| crate::flow::HandedFlow {
+                    at: None,
+                    value,
+                    written: false,
+                })
+                .collect(),
+            unhandled: 0,
+            vars: vars.into(),
+            unmodelled: 0,
+            around,
+        })
+    }
+
+    /// `env`'s world, with these tables more and the layer knowing every built bit.
+    fn world_with(env: &Env, tables: Vec<(DefId, Arc<Flow>)>, caps: Caps) -> ByHand {
+        let mut world = world_knowing(env, caps);
+        world.flows.extend(tables);
+        world
+    }
+
+    /// The variable of `d(8)` at `at`: a def around `d(9)`.
+    fn outer(at: u32) -> VarId {
+        VarId { def: d(8), at }
+    }
+
+    fn all_caps() -> Caps {
+        Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES
+    }
+
+    /// The list a closure holds, through the world.
+    fn list_of(world: &ByHand, value: &Value) -> (DefId, Vec<(VarId, Value)>) {
+        match value.known() {
+            [One::Closure(def, captures)] => (*def, world.captured(*captures).into_vec()),
+            other => panic!("not one closure: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_nested_def_is_a_closure_of_what_it_needs_here() {
+        // `d(9)` declares `v` (at 10, holds `a`) and names `g` = `d(5)`, which reads `v` and `w`, a variable of `d(8)` that `d(9)` was given in its key
+        let mut env = env_with_vars(vec![], vec![], vec![local(10, vec![Expr::Def(d(1))])]);
+        env.key = KeyData {
+            params: Box::new([]),
+            captured: vec![(outer(77), func(3))].into(),
+        };
+        let tables = vec![
+            (d(8), nested(None, vec![local(77, vec![])], vec![])),
+            (
+                d(5),
+                nested(
+                    Some(d(9)),
+                    vec![],
+                    vec![Expr::Var(vid(10)), Expr::Var(outer(77))],
+                ),
+            ),
+        ];
+        let on = world_with(&env, tables.clone(), all_caps());
+        let value = eval(&on, &env, &Expr::Def(d(5)));
+        let (def, list) = list_of(&on, &value);
+        assert_eq!(def, d(5));
+        assert_eq!(list, [(outer(77), func(3)), (vid(10), func(1))]);
+        // a def that is not nested, or captures nothing, is the function
+        assert_eq!(eval(&on, &env, &Expr::Def(d(1))), func(1));
+        // with `CAPTURES` off the layer is step 2: the function, nothing captured
+        let off = world_with(&env, tables, Caps::PARAMS | Caps::LOCALS);
+        assert_eq!(eval(&off, &env, &Expr::Def(d(5))), func(5));
+        assert!(on.notes.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_variable_of_a_def_around_is_what_the_key_captured() {
+        let mut env = env_with_vars(vec![], vec![], vec![]);
+        env.key = KeyData {
+            params: Box::new([]),
+            // sorted by `VarId`, as a key's list is
+            captured: vec![
+                // the file's own code is never captured, even if a key says so
+                (
+                    VarId {
+                        def: DefId::new(0, 0, None),
+                        at: 5,
+                    },
+                    func(4),
+                ),
+                (outer(77), func(3)),
+            ]
+            .into(),
+        };
+        let on = world_with(&env, vec![], all_caps());
+        let of = |world: &ByHand, id: VarId| eval(world, &env, &Expr::Var(id));
+        assert_eq!(of(&on, outer(77)), func(3));
+        assert_eq!(of(&on, outer(78)), Value::unknown(), "the key has none");
+        assert_eq!(
+            of(
+                &on,
+                VarId {
+                    def: DefId::new(0, 0, None),
+                    at: 5
+                }
+            ),
+            Value::unknown()
+        );
+        let off = world_with(&env, vec![], Caps::PARAMS | Caps::LOCALS);
+        assert_eq!(of(&off, outer(77)), Value::unknown());
+    }
+
+    #[test]
+    fn a_def_that_captures_a_variable_that_holds_itself_settles_without_the_cap() {
+        // `let next = () => {}; function tick() { later(next) } next = tick;`: `next` holds an arrow and `tick`, which captures `next`
+        let env = env_with_vars(
+            vec![],
+            vec![],
+            vec![local(10, vec![Expr::Anon(0), Expr::Def(d(5))])],
+        );
+        let tables = vec![(d(5), nested(Some(d(9)), vec![], vec![Expr::Var(vid(10))]))];
+        let world = world_with(&env, tables, all_caps());
+        let value = of_var(&world, &env, 10);
+        let notes = world.notes.borrow().clone();
+        assert!(
+            !notes.contains_key(VARIABLE_ROUNDS_CAPPED),
+            "it settled: {notes:?}"
+        );
+        // every closure of `tick` it holds, and the arrow
+        assert!(value.known().contains(&One::Anon(d(9), 0)));
+        assert!(
+            value
+                .known()
+                .iter()
+                .any(|one| matches!(one, One::Closure(def, _) if *def == d(5)))
+        );
+        assert!(!value.is_open());
+        // the cuts are said once each, by the last round alone: the rounds before it are quiet
+        assert_eq!(notes, BTreeMap::from([(VALUE_WIDENED_DEPTH, 2)]));
+        // read again, it is the same value and says nothing more
+        assert_eq!(of_var(&world, &env, 10), value);
+        assert_eq!(*world.notes.borrow(), notes);
     }
 }

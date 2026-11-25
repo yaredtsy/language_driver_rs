@@ -1,0 +1,25 @@
+== main
+-- off
+main
+  main.<locals>.tick [Passed]
+    later
+  later
+  main.<locals>.tick [Passed]
+    later
+edges:
+main | tick | pass main.<locals>.tick
+main | later | call later
+main | tick | pass main.<locals>.tick
+main.<locals>.tick | later | call later
+-- on
+main
+  main.<locals>.tick [Passed]
+    later
+  later
+  main.<locals>.tick [Passed]
+    later
+edges:
+main | tick | pass main.<locals>.tick @a91450c0
+main | later | call later @fb06bb92
+main | tick | pass main.<locals>.tick @a91450c0
+main.<locals>.tick @a91450c0 | later | call later @5fe545e5

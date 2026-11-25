@@ -1,0 +1,34 @@
+== main
+-- off
+main
+  outer
+    later
+    outer.<locals>.middle [Passed]
+      later
+      outer.<locals>.middle.<locals>.inner [Passed]
+  done [Passed]
+edges:
+main | outer | call outer
+main | done | pass done
+outer | later | call later
+outer | middle | pass outer.<locals>.middle
+outer.<locals>.middle | later | call later
+outer.<locals>.middle | inner | pass outer.<locals>.middle.<locals>.inner
+outer.<locals>.middle.<locals>.inner | cb | unresolved function_typed_value
+-- on
+main
+  outer
+    later
+    outer.<locals>.middle [Passed]
+      later
+      outer.<locals>.middle.<locals>.inner [Passed]
+        done
+  done [Passed]
+edges:
+main | outer | call outer @75081fcf
+main | done | pass done
+outer @75081fcf | later | call later @22d0518f
+outer @75081fcf | middle | pass outer.<locals>.middle @f2641867
+outer.<locals>.middle @f2641867 | later | call later @d9efa58a
+outer.<locals>.middle @f2641867 | inner | pass outer.<locals>.middle.<locals>.inner @f2641867
+outer.<locals>.middle.<locals>.inner @f2641867 | cb | call done

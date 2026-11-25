@@ -1,0 +1,52 @@
+== main
+-- off
+main
+  start
+    timer
+    start.<locals>.finish [Passed]
+  save [Passed]
+edges:
+main | start | call start
+main | save | pass save
+start | timer | call timer
+start | finish | pass start.<locals>.finish
+start.<locals>.finish | onDone | unresolved function_typed_value
+-- on
+main
+  start
+    timer
+    start.<locals>.finish [Passed]
+      save
+  save [Passed]
+edges:
+main | start | call start @2374a60c
+main | save | pass save
+start @2374a60c | timer | call timer @a22498e9
+start @2374a60c | finish | pass start.<locals>.finish @9449eb99
+start.<locals>.finish @9449eb99 | onDone | call save
+== start
+-- off
+start
+  timer
+  start.<locals>.finish [Passed]
+edges:
+start | timer | call timer
+start | finish | pass start.<locals>.finish
+start.<locals>.finish | onDone | unresolved function_typed_value
+-- on
+start
+  timer
+  start.<locals>.finish [Passed]
+edges:
+start | timer | call timer @47a8db60
+start | finish | pass start.<locals>.finish
+start.<locals>.finish | onDone | unresolved function_typed_value
+== start.<locals>.finish
+-- off
+start.<locals>.finish
+edges:
+start.<locals>.finish | onDone | unresolved function_typed_value
+-- on
+start.<locals>.finish
+edges:
+start.<locals>.finish | onDone | unresolved function_typed_value

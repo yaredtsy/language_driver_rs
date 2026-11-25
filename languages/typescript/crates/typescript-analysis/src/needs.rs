@@ -3,7 +3,7 @@
 //! Neutral, as `eval` is: it imports nothing from `sem` and asks only `World::flow`, so a test answers it with tables made by hand. Nothing reads the result
 //! yet; part 2 gives a nested def's value the variables it lists.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use crate::eval::World;
@@ -11,19 +11,24 @@ use crate::flow::{DefId, Expr, Flow, VarId};
 
 /// The variables of the functions around `def` that `def` needs to be given (`07-tc3` §4), sorted by `VarId`. Empty for a def at the top of its file, and for
 /// a def whose table the world does not have.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "read from TC3 step 3 part 2 on")
-)]
+#[cfg(test)]
 pub(crate) fn needs(world: &dyn World, def: DefId) -> Box<[VarId]> {
+    needs_of_component(world, def).swap_remove(0).1
+}
+
+/// `needs` of every def reachable from `def` through `named`, `def` first, each with its exact set: they are solved together, so the others come free
+/// (`World::needs` keeps them all). One entry `(def, [])` when `def`'s `around` is `None` or the world has no table for it.
+pub(crate) fn needs_of_component(world: &dyn World, def: DefId) -> Vec<(DefId, Box<[VarId]>)> {
     let Some(flow) = world.flow(def) else {
-        return Box::new([]);
+        return vec![(def, Box::new([]))];
     };
     if flow.around.is_none() {
-        return Box::new([]);
+        return vec![(def, Box::new([]))];
     }
-    // the defs reachable from `def` through `named`, `def` first, in the order found: a `Vec` and a position, so no hash map is iterated (rule 9)
+    // the defs reachable from `def` through `named`, `def` first, in the order found: a `Vec` and a position found by a map that is only looked up, never
+    // iterated (rule 9)
     let mut defs: Vec<DefId> = vec![def];
+    let mut place_of: HashMap<DefId, usize> = HashMap::from([(def, 0)]);
     let mut named_of: Vec<Vec<usize>> = Vec::new();
     let mut sets: Vec<BTreeSet<VarId>> = Vec::new();
     let mut next = 0;
@@ -39,13 +44,10 @@ pub(crate) fn needs(world: &dyn World, def: DefId) -> Box<[VarId]> {
         if let Some(table) = table {
             set.extend(reads(world, at, &table));
             for handle in named(world, &table) {
-                let place = match defs.iter().position(|&known| known == handle) {
-                    Some(place) => place,
-                    None => {
-                        defs.push(handle);
-                        defs.len() - 1
-                    }
-                };
+                let place = *place_of.entry(handle).or_insert_with(|| {
+                    defs.push(handle);
+                    defs.len() - 1
+                });
                 if !places.contains(&place) {
                     places.push(place);
                 }
@@ -74,7 +76,10 @@ pub(crate) fn needs(world: &dyn World, def: DefId) -> Box<[VarId]> {
             break;
         }
     }
-    sets.swap_remove(0).into_iter().collect()
+    defs.into_iter()
+        .zip(sets)
+        .map(|(def, set)| (def, set.into_iter().collect()))
+        .collect()
 }
 
 /// The variables `table` (the table of `own`) reads that belong to a def around it: an `Expr::Var` of another def of the outline (not the file's code) whose
@@ -150,7 +155,9 @@ mod tests {
 
     use super::*;
     use crate::caps::Caps;
+    use crate::captures::CaptureList;
     use crate::flow::{Arg, FlowKind, SiteFlow, Var};
+    use crate::value::{Captures, Value};
     use typescript_syntax::Span;
 
     /// A world of hand-made tables.
@@ -168,6 +175,18 @@ mod tests {
         }
 
         fn note(&self, _key: &'static str) {}
+
+        fn needs(&self, def: DefId) -> Arc<[VarId]> {
+            Arc::from(needs(self, def))
+        }
+
+        fn capture(&self, _list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
+            unreachable!("these tests do not evaluate")
+        }
+
+        fn captured(&self, _captures: Captures) -> CaptureList {
+            unreachable!("these tests do not evaluate")
+        }
     }
 
     fn d(index: u32) -> DefId {

@@ -18,12 +18,15 @@ use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary}
 
 use crate::Project;
 use crate::caps::Caps;
+use crate::captures::{CaptureList, CaptureSets};
 use crate::env::{Env, VARIABLE_WRITE_UNMODELLED};
 use crate::eval::World;
-use crate::flow::{DefId, Flow};
-use crate::key::{Key, KeyData, KeyId, Keys};
+use crate::flow::{DefId, Flow, VarId};
+use crate::key::{CanonVar, Key, KeyData, KeyId, Keys};
+use crate::needs::needs_of_component;
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
 use crate::value::VALUE_WIDENED_SET;
+use crate::value::{Captures, Value};
 use crate::walk;
 
 /// How to build a graph. The marker style is how a def's marker is read (`ID: …` in its JSDoc).
@@ -88,6 +91,10 @@ pub(crate) struct TypeScript<'p> {
     demoted: RefCell<HashSet<StableDef>>,
     /// Every key of this request (`key.rs`); `digest` reads it, and the walk interns into it (`intern_key`).
     keys: RefCell<Keys>,
+    /// Every list of captured variables of this request (`captures.rs`): a `One::Closure` is a number into it.
+    captures: RefCell<CaptureSets>,
+    /// `needs` of the defs asked so far in this request (`World::needs`): a whole component is stored at once.
+    needs: RefCell<HashMap<DefId, Arc<[VarId]>>>,
     /// Whether the context layer runs, and with which bits (`Precision::layer`). `None`: no table is read and no `Env` is built.
     layer: Option<Caps>,
     /// Every `(func, key)` `Lang::walk` was asked for, in order: `calls/keyed.rs` walks each again alone.
@@ -109,6 +116,8 @@ impl<'p> TypeScript<'p> {
             handed: RefCell::new(HashMap::new()),
             demoted: RefCell::new(HashSet::new()),
             keys: RefCell::new(Keys::new()),
+            captures: RefCell::new(CaptureSets::new()),
+            needs: RefCell::new(HashMap::new()),
             layer: None,
             #[cfg(test)]
             walked: Vec::new(),
@@ -124,13 +133,28 @@ impl<'p> TypeScript<'p> {
 
     /// The number of the key that holds `data`, interned in this request's `Keys`. A def in it is named by the id the graph gives it.
     pub(crate) fn intern_key(&self, data: KeyData) -> KeyId {
-        self.keys.borrow_mut().intern(data, |def| {
+        let stable = |def: DefId| {
             let func = self
                 .sem
                 .func(def)
                 .expect("a value names a def of this request's program");
             self.sem.describe(func, self.style).id
-        })
+        };
+        let stable_var = |var: VarId| {
+            let (name, nth) = self
+                .sem
+                .var_name(var, self.style)
+                .expect("a captured variable of this program has a name");
+            CanonVar {
+                def: stable(var.def),
+                name,
+                nth,
+            }
+        };
+        let list = |captures: Captures| World::captured(self, captures);
+        self.keys
+            .borrow_mut()
+            .intern(data, stable, stable_var, list)
     }
 
     /// The same, with the context layer as `layer` says.
@@ -200,6 +224,27 @@ impl World for TypeScript<'_> {
 
     fn note(&self, key: &'static str) {
         self.note_walk(key);
+    }
+
+    fn needs(&self, def: DefId) -> Arc<[VarId]> {
+        if let Some(found) = self.needs.borrow().get(&def) {
+            return Arc::clone(found);
+        }
+        // every borrow is released before the component is computed: it asks for tables, and a table may be read for the first time
+        let component = needs_of_component(self, def);
+        let mut memo = self.needs.borrow_mut();
+        for (found, set) in component {
+            memo.insert(found, Arc::from(set));
+        }
+        Arc::clone(&memo[&def])
+    }
+
+    fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
+        self.captures.borrow_mut().intern(list)
+    }
+
+    fn captured(&self, captures: Captures) -> CaptureList {
+        self.captures.borrow().get(captures).into()
     }
 }
 
@@ -652,7 +697,7 @@ mod tests {
     fn the_switch_maps_to_the_layer() {
         assert_eq!(Precision::Default.layer(), None);
         assert_eq!(Precision::Precise.layer(), Some(Caps::BUILT));
-        assert_eq!(Caps::BUILT, Caps::PARAMS | Caps::LOCALS);
+        assert_eq!(Caps::BUILT, Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES);
     }
 
     /// Body notes count in a def's first walk and in no later one (`note_body`); a context's own notes in every walk; and outside a walk everything counts,

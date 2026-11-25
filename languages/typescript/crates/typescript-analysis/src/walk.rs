@@ -11,10 +11,10 @@ use crate::calls::TypeScript;
 use crate::caps::Caps;
 use crate::env::{Env, VARIABLE_ADDED_TO_ENGINE, VARIABLE_ASSIGNED_MORE_THAN_ONCE};
 use crate::eval::{World, eval};
-use crate::flow::Expr;
-use crate::key::{Key, KeyId, bind};
+use crate::flow::{DefId, Expr, VarId};
+use crate::key::{Key, KeyData, KeyId, bind};
 use crate::sem::{Fits, Func, Init, Resolved, Sem, UNHANDLED_KEY, Uncovered, Why, counted};
-use crate::value::{One, Value};
+use crate::value::{Captures, One, Value};
 
 /// The reason of an `Unresolved` edge, and the key of its counter in `Stats.language`, for a def whose node is missing from the program's tree: a bug
 /// in one of the two parses, which must show on the graph and not as a body with no calls.
@@ -101,10 +101,20 @@ fn body_of<'p>(
     let start = lang.sem.range_of(f, lang.style).start;
     for held in &hand_overs.handed {
         if let Some(at) = held.at {
+            // a hand-over passes what the def captures, as this body has it (`07-tc3` §4); without an env, or with `CAPTURES` off, it passes nothing
+            let key = match env {
+                Some(env) if lang.knows(Caps::CAPTURES) => {
+                    let captured = captured_of(lang, env, lang.sem.def_id(held.func));
+                    lang.intern_key(KeyData {
+                        params: Box::new([]),
+                        captured,
+                    })
+                }
+                _ => KeyId::OPEN,
+            };
             found.push(SiteCalls::passed(
                 Site::new(at.start.saturating_sub(start), at.end.saturating_sub(start)),
-                // a hand-over passes nothing it knows yet: TC3 gives it what the def captures
-                vec![Target::Call(held.func, KeyId::OPEN)],
+                vec![Target::Call(held.func, key)],
             ));
         }
     }
@@ -153,7 +163,7 @@ fn resolve<'p>(
             found
                 .iter()
                 .cloned()
-                .map(|resolved| target(lang, resolved, facts.jsx))
+                .map(|resolved| (target(lang, resolved, facts.jsx), None))
                 .collect(),
             true,
         ),
@@ -169,58 +179,95 @@ fn resolve<'p>(
     match env {
         Some(env) if lang.knows(Caps::PARAMS) => targets
             .into_iter()
-            .map(|target| keyed(lang, env, site_index, target))
+            .map(|(target, captures)| keyed(lang, env, site_index, target, captures))
             .collect(),
-        _ => targets,
+        _ => targets.into_iter().map(|(target, _)| target).collect(),
     }
 }
 
-/// `target` with the key its call passes (`06-tc2` §5): a call, and the constructor a construction runs, get `key_of`; anything else is as it was.
+/// `target` with the key its call passes (`06-tc2` §5): a call, and the constructor a construction runs, get `key_of`; anything else is as it was. `captures` is
+/// the list a closure member carried to a call (`members`); a construction never has one.
 fn keyed<'p>(
     lang: &TypeScript<'p>,
     env: &Env,
     site_index: usize,
     target: Target<TypeScript<'p>>,
+    captures: Option<Captures>,
 ) -> Target<TypeScript<'p>> {
     match target {
-        Target::Call(func, _) => Target::Call(func, key_of(lang, env, site_index, func)),
+        Target::Call(func, _) => Target::Call(func, key_of(lang, env, site_index, func, captures)),
         Target::Construct {
             class,
             init: Some((init, _)),
         } => Target::Construct {
             class,
-            init: Some((init, key_of(lang, env, site_index, init))),
+            init: Some((init, key_of(lang, env, site_index, init, None))),
         },
         other => other,
     }
 }
 
-/// The key the site at `site_index` passes to `callee`: its arguments, evaluated in this body's env, bound to the callee's parameters (`key::bind`). The
-/// open key when the site's arguments were not read (`args: None`: a tagged template, a decorator, an accessor) or the callee has no table. A JSX
-/// element's one argument is `Unknown` until TC4, so it passes the open key with no rule of its own.
-fn key_of<'p>(lang: &TypeScript<'p>, env: &Env, site_index: usize, callee: Func<'p>) -> KeyId {
-    let Some(args) = env
+/// What a call or a hand-over of `callee` from this body passes for the variables of the functions around it (`07-tc3` §4): what evaluating `Expr::Def(callee)`
+/// here says it captures (sound: a variable this env does not have is unknown, and dropped). Empty for a def that captures nothing, and when the layer does
+/// not know `CAPTURES`.
+fn captured_of(lang: &TypeScript<'_>, env: &Env, callee: DefId) -> Box<[(VarId, Value)]> {
+    if !lang.knows(Caps::CAPTURES) {
+        return Box::new([]);
+    }
+    eval(lang, env, &Expr::Def(callee))
+        .known()
+        .iter()
+        .find_map(|one| match one {
+            One::Closure(def, captures) if *def == callee => Some(World::captured(lang, *captures)),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// The key the site at `site_index` passes to `callee`: its arguments, evaluated in this body's env, bound to the callee's parameters (`key::bind`), and what
+/// the callee captures: `captures` when a closure member carried the list, else what this body says (`captured_of`). The open key when the callee has no table,
+/// or when the site's arguments were not read (`args: None`: a tagged template, a decorator, an accessor) and nothing is captured. A JSX element's one
+/// argument is `Unknown` until TC4, so it passes the open key with no rule of its own.
+fn key_of<'p>(
+    lang: &TypeScript<'p>,
+    env: &Env,
+    site_index: usize,
+    callee: Func<'p>,
+    captures: Option<Captures>,
+) -> KeyId {
+    let args = env
         .flow
         .sites
         .get(site_index)
-        .and_then(|site| site.args.as_deref())
-    else {
+        .and_then(|site| site.args.as_deref());
+    let id = lang.sem.def_id(callee);
+    let Some(flow) = World::flow(lang, id) else {
         return KeyId::OPEN;
     };
-    let Some(flow) = World::flow(lang, lang.sem.def_id(callee)) else {
-        return KeyId::OPEN;
+    let captured = match captures {
+        Some(captures) => World::captured(lang, captures),
+        None => captured_of(lang, env, id),
     };
-    let data = bind(&flow.params, args, |expr| eval(lang, env, expr));
-    #[cfg(test)]
-    let data = lang.measured(lang.sem.def_id(callee), &flow, data);
-    lang.intern_key(data)
+    let params = match args {
+        Some(args) => {
+            let data = bind(&flow.params, args, |expr| eval(lang, env, expr));
+            #[cfg(test)]
+            let data = lang.measured(id, &flow, data);
+            data.params
+        }
+        None => Box::new([]),
+    };
+    lang.intern_key(KeyData { params, captured })
 }
 
 /// What the layer says a site calls: the targets, and whether the engine's open entries are among them (so `resolve` counts them).
 struct Spoken<'p> {
-    targets: Vec<Target<TypeScript<'p>>>,
+    targets: Vec<Targeted<'p>>,
     open_drawn: bool,
 }
+
+/// A target and the capture list a closure member carried to it (`members`); `None` for every other target.
+type Targeted<'p> = (Target<TypeScript<'p>>, Option<Captures>);
 
 /// Whether the engine's answer for one declaration depends on a value: a function-typed value or an untyped one. The only answers a value can replace
 /// (`03-design.md` §7); a `NoDeclaration` on a call's result has no value before TC6.
@@ -233,7 +280,7 @@ fn is_open_entry(resolved: &Resolved<'_>) -> bool {
 
 /// What the targets for the members of a value are (`members`), and what they leave to the caller.
 struct Members<'p> {
-    targets: Vec<Target<TypeScript<'p>>>,
+    targets: Vec<Targeted<'p>>,
     /// A member could not be turned into a function: the value stays open at the site.
     open: bool,
     /// `Undefined` was a member (a parameter nobody passed): the caller says whether that is a note (`callee_undefined`), since only a site that has no callee
@@ -246,13 +293,16 @@ struct Members<'p> {
 /// The targets for each member of `value` at the site `site_index` of `f`, **the one place** that makes them, so the two ways the layer speaks (replacing an
 /// open entry, adding beside a named function) cannot drift apart: a function is a call (the tripwire is asked first: the checker agrees it fits the callee's
 /// type, or could not be asked inside generic code, or it does not fit and the mark is due), an anonymous function is `anonymous_function_called`, `undefined`
-/// is reported, not noted (`Members::saw_undefined`: only the open-entry path notes `callee_undefined`, the new path never). A function in `already` (what the engine calls at this site) is skipped before the tripwire is asked.
+/// is reported, not noted (`Members::saw_undefined`: only the open-entry path notes `callee_undefined`, the new path never). A function in `already` (what the engine calls at this site) is skipped before the tripwire is asked, and an
+/// anonymous function is skipped when `anon_already` (the engine's answer already has its mark: drawing it again would add the same edge and count it as added).
+/// A closure is the function it names, a call that carries the list it captured (`07-tc3` §4), and the tripwire and the skip see it as that function.
 fn members<'p>(
     lang: &TypeScript<'p>,
     f: Func<'p>,
     site_index: usize,
     value: &Value,
     already: &[Func<'p>],
+    anon_already: bool,
 ) -> Members<'p> {
     let mut found = Members {
         targets: Vec::new(),
@@ -262,8 +312,13 @@ fn members<'p>(
     };
     for one in value.known() {
         // no `_` arm: a kind of member a later phase adds is decided here before this compiles
+        let (def, captures) = match one {
+            One::Fn(def) => (Some(def), None),
+            One::Closure(def, captures) => (Some(def), Some(*captures)),
+            One::Anon(..) | One::AnonAny | One::Undefined => (None, None),
+        };
         match one {
-            One::Fn(def) => match lang.sem.func(*def) {
+            One::Fn(_) | One::Closure(..) => match lang.sem.func(*def.expect("a function")) {
                 Some(func) if already.contains(&func) => {}
                 Some(func) => {
                     // the tripwire: the checker agrees that the function fits the callee's type, or the layer says it could not ask (inside generic code).
@@ -276,14 +331,18 @@ fn members<'p>(
                             found.mismatch = true;
                         }
                     }
-                    found.targets.push(Target::Call(func, KeyId::OPEN));
+                    found
+                        .targets
+                        .push((Target::Call(func, KeyId::OPEN), captures));
                 }
                 None => found.open = true,
             },
             // an arrow is `AnonAny` in the body of a callee, where its key holds it
-            One::Anon(..) | One::AnonAny => found.targets.push(Target::Unresolved(Reason::new(
-                Why::AnonymousFunctionCalled.counter(),
-            ))),
+            One::Anon(..) | One::AnonAny if anon_already => {}
+            One::Anon(..) | One::AnonAny => found.targets.push((
+                Target::Unresolved(Reason::new(Why::AnonymousFunctionCalled.counter())),
+                None,
+            )),
             One::Undefined => found.saw_undefined = true,
         }
     }
@@ -369,20 +428,21 @@ fn resolve_from_env<'p>(
                 _ => None,
             })
             .collect();
-        let added = members(lang, f, site_index, &value, &already);
+        let anon_already = found.contains(&Resolved::Unknown(Why::AnonymousFunctionCalled));
+        let added = members(lang, f, site_index, &value, &already, anon_already);
         if added.targets.is_empty() && !added.mismatch {
             return None;
         }
         lang.note_walk(VARIABLE_ADDED_TO_ENGINE);
         // the engine's answer first, all of it; `target` is asked only now, since it counts what it draws
-        let mut targets: Vec<Target<TypeScript<'p>>> = found
+        let mut targets: Vec<Targeted<'p>> = found
             .iter()
             .cloned()
-            .map(|resolved| target(lang, resolved, jsx))
+            .map(|resolved| (target(lang, resolved, jsx), None))
             .collect();
         targets.extend(added.targets);
         if added.mismatch {
-            targets.push(Target::Unresolved(Reason::new(VALUE_TYPE_MISMATCH)));
+            targets.push((Target::Unresolved(Reason::new(VALUE_TYPE_MISMATCH)), None));
         }
         return Some(Spoken {
             targets,
@@ -393,14 +453,14 @@ fn resolve_from_env<'p>(
     if value.known().is_empty() {
         return None;
     }
-    let mut targets: Vec<Target<TypeScript<'p>>> = found
+    let mut targets: Vec<Targeted<'p>> = found
         .iter()
         .filter(|resolved| !is_open_entry(resolved))
         .cloned()
-        .map(|resolved| target(lang, resolved, jsx))
+        .map(|resolved| (target(lang, resolved, jsx), None))
         .collect();
     // a member that cannot be turned into a function leaves the value open at this site
-    let made = members(lang, f, site_index, &value, &[]);
+    let made = members(lang, f, site_index, &value, &[], false);
     let open = value.is_open() || made.open;
     if made.saw_undefined {
         lang.note_walk(CALLEE_UNDEFINED);
@@ -408,7 +468,7 @@ fn resolve_from_env<'p>(
     targets.extend(made.targets);
     if made.mismatch {
         // one mark for the site, however many of the value's functions failed
-        targets.push(Target::Unresolved(Reason::new(VALUE_TYPE_MISMATCH)));
+        targets.push((Target::Unresolved(Reason::new(VALUE_TYPE_MISMATCH)), None));
     }
     if open {
         targets.extend(
@@ -416,7 +476,7 @@ fn resolve_from_env<'p>(
                 .iter()
                 .filter(|resolved| is_open_entry(resolved))
                 .cloned()
-                .map(|resolved| target(lang, resolved, jsx)),
+                .map(|resolved| (target(lang, resolved, jsx), None)),
         );
     }
     Some(Spoken {

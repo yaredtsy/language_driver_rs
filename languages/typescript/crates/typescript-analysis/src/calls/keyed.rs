@@ -11,6 +11,7 @@ use analyzer_core::graph::{ContextId, EdgeTo, Graph};
 use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Target};
 
 use super::*;
+use crate::captures::VALUE_WIDENED_DEPTH;
 use crate::env::{
     VARIABLE_ADDED_TO_ENGINE, VARIABLE_ASSIGNED_MORE_THAN_ONCE, VARIABLE_ROUNDS_CAPPED,
     VARIABLE_WRITE_UNMODELLED,
@@ -414,10 +415,32 @@ fn the_locals_bit_off_is_tc2() {
     );
 }
 
+/// With `CAPTURES` off the layer is step 2 exactly (`Caps::PARAMS | Caps::LOCALS`): every entry of every row, written out whole, in
+/// `snapshots/context/captures-off.txt`. Blessed before TC3 step 3 part 2 changed any code and never changed since: the proof that the bit off is the layer of
+/// step 2.
+#[test]
+fn the_captures_bit_off_is_step_2() {
+    let mut text = String::new();
+    for (fixture, file, entry) in every_entry() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(&fixture);
+        let sem = Sem::open(&root, Path::new(&file)).unwrap();
+        let start = sem
+            .entry(&file, &entry, 0, STYLE)
+            .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
+        let (_, graph) = solve_from(&sem, start, Some(Caps::PARAMS | Caps::LOCALS), false);
+        text.push_str(&format!("== {fixture} {entry}\n{graph:?}\n"));
+    }
+    analyzer_testkit::expect_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/context/captures-off.txt"),
+        &text,
+    );
+}
+
 /// The counters of the variables (`07-tc3` §3), per entry of every row, `(added to the engine, assigned more than once)`; an entry not listed counts 0 of
 /// each, and a counter that is 0 is absent from the notes. Also: a write the table has no row for is counted once by the body that has it
 /// (`local-write-unmodelled`'s `main`), and a body whose variables did not settle within the rounds' cap is counted too (no row of the table has one). With
-/// `LOCALS` off nothing is counted at all.
+/// `LOCALS` off nothing is counted at all. `value_widened_depth` (TC3 step 3) is counted where a closure nests past the depth limit: `capture-self`'s `main`
+/// only, and with `CAPTURES` off nowhere.
 #[test]
 fn the_variable_counters_count_where_the_table_says() {
     for (fixture, file, entry) in every_entry() {
@@ -447,6 +470,11 @@ fn the_variable_counters_count_where_the_table_says() {
             let at = format!("{fixture} {entry} {layer:?}");
             assert_eq!(said(VARIABLE_WRITE_UNMODELLED), unmodelled, "{at}");
             assert_eq!(said(VARIABLE_ROUNDS_CAPPED), None, "{at}");
+            let widened_depth = (layer.contains(Caps::CAPTURES)
+                && fixture.ends_with("/capture-self")
+                && entry == "main")
+                .then_some(8);
+            assert_eq!(said(VALUE_WIDENED_DEPTH), widened_depth, "{at}");
             assert_eq!(said(VARIABLE_ADDED_TO_ENGINE), added, "{at}");
             assert_eq!(
                 said(VARIABLE_ASSIGNED_MORE_THAN_ONCE),
@@ -530,7 +558,15 @@ fn the_table_of_rows_is_read_whole() {
     assert_eq!(of("callback-or-data"), 2);
     assert_eq!(of("callback-two-arrows"), 2);
     assert_eq!(of("callback-method-value"), 2);
-    assert_eq!(entries.len(), 71);
+    // TC3 step 3: `capture-handler` has `main`, `start` and `start.<locals>.finish`; the others one entry, `main`
+    assert_eq!(of("capture-handler"), 3);
+    assert_eq!(of("capture-sibling"), 1);
+    assert_eq!(of("capture-two-levels"), 1);
+    assert_eq!(of("capture-through-parameter"), 1);
+    assert_eq!(of("capture-written-in-nested"), 1);
+    assert_eq!(of("capture-anonymous"), 1);
+    assert_eq!(of("capture-self"), 1);
+    assert_eq!(entries.len(), 80);
 }
 
 /// Nine functions through one conditional are more than a set holds: the one context of `run` that the graph walked has a key of one slot, wide.
@@ -576,6 +612,8 @@ fn each_context_walked_alone(fixture: &str, file: &str, entry: &str) -> usize {
         // a fresh language: nothing it remembers is the solver's
         let mut fresh = TypeScript::new(&sem, STYLE).with_layer(Some(Caps::BUILT));
         let data = solver.lang().keys.borrow().data(*key).clone();
+        // a closure in the key is a number into the solver's table of capture lists: the fresh language starts with a copy of it
+        *fresh.captures.borrow_mut() = solver.lang().captures.borrow().clone();
         let again = fresh.intern_key(data);
         assert_eq!(fresh.digest(&again), digest, "{fixture} {entry}");
         let summary = Lang::walk(&mut fresh, *func, &again, &Cancel::new());

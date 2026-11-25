@@ -11,12 +11,30 @@ pub(crate) const MAX_SET: usize = 8;
 /// The key of the counter in `Stats.language` for a value set that passes `MAX_SET`: counted at the join that makes it wide, when neither side was.
 pub(crate) const VALUE_WIDENED_SET: &str = "value_widened_set";
 
-/// One thing a value can hold: a function, an anonymous function, an anonymous function of which one is not said (how a key holds one), or "nothing was
-/// passed". TC4 adds classes and objects, TC5 instances. The derived order is `Fn` by def, then `Anon` by def and number, then `AnonAny`, then `Undefined`.
+/// A list of captured variables as a number: its place in the request's table of lists (`captures::CaptureSets`), so that a value that holds other values
+/// stays `Copy` (`KeyId` does the same for keys). Never 0-for-empty here: a def that captures nothing is `One::Fn`, not a closure with no list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct Captures(u32);
+
+impl Captures {
+    pub(crate) fn new(index: u32) -> Captures {
+        Captures(index)
+    }
+
+    pub(crate) fn index(self) -> u32 {
+        self.0
+    }
+}
+
+/// One thing a value can hold: a function, a nested function with what it captured, an anonymous function, an anonymous function of which one is not said (how
+/// a key holds one), or "nothing was passed". TC4 adds classes and objects, TC5 instances. The derived order is `Fn` by def, then `Closure` by def and list,
+/// then `Anon` by def and number, then `AnonAny`, then `Undefined`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum One {
     /// A def with a body.
     Fn(DefId),
+    /// A nested def with the values of the variables around it it captured (`07-tc3` §4); never with an empty list (that is `Fn`).
+    Closure(DefId, Captures),
     /// An anonymous function: the def it is written in, and its number among that body's anonymous functions (`Flow::anons`).
     Anon(DefId, u32),
     /// An anonymous function, which one not said: how a key holds one (`KeyData::normal` writes every `Anon` of a slot as this), so callers that pass

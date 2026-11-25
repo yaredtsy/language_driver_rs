@@ -47,7 +47,6 @@ pub(crate) struct Flow {
     pub(crate) anons: Box<[AnonFlow]>,
     /// The hand-overs, sorted by `at` (start, then end), ties in the order made: every def `Sem::handed_over` finds, then the names of a hand-over position it
     /// found no def for, through `expr_of`.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
     pub(crate) handed: Box<[HandedFlow]>,
     /// How many nodes reading the table met of a kind a view's `expect` did not handle (`view::counted`), kept with it as `Body` keeps its own.
     pub(crate) unhandled: u64,
@@ -56,10 +55,6 @@ pub(crate) struct Flow {
     /// Writes of a capable variable that none of `07-tc3` §2's rows covers (each also made its variable `open`).
     pub(crate) unmodelled: u64,
     /// The def this one is nested in; `None` at the top of its file (and for the file's own code). A method's is its class, as the outline says.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "read from TC3 step 3 part 2 on")
-    )]
     pub(crate) around: Option<DefId>,
 }
 

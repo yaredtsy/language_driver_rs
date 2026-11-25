@@ -1,0 +1,36 @@
+== main
+-- off
+main
+  a [Passed]
+  later
+  main.<locals>.swap [Passed]
+    b [Passed]
+  later
+  main.<locals>.fire [Passed]
+edges:
+main | a | pass a
+main | later | call later
+main | swap | pass main.<locals>.swap
+main | later | call later
+main | fire | pass main.<locals>.fire
+main.<locals>.fire | h | unresolved function_typed_value
+main.<locals>.swap | b | pass b
+-- on
+main
+  a [Passed]
+  later
+  main.<locals>.swap [Passed]
+    b [Passed]
+  later
+  main.<locals>.fire [Passed]
+    a
+    b
+edges:
+main | a | pass a
+main | later | call later @179b88e8
+main | swap | pass main.<locals>.swap
+main | later | call later @977ab74d
+main | fire | pass main.<locals>.fire @63eb1820
+main.<locals>.fire @63eb1820 | h | call a
+main.<locals>.fire @63eb1820 | h | call b
+main.<locals>.swap | b | pass b

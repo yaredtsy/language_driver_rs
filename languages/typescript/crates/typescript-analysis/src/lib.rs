@@ -2,6 +2,7 @@
 
 mod calls;
 mod caps;
+mod captures;
 mod env;
 mod eval;
 mod flow;

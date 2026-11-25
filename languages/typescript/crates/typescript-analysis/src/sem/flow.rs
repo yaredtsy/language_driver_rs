@@ -84,6 +84,31 @@ impl Sem {
         })
     }
 
+    /// The name of the variable `id` and which row of that name it is among the rows of its def (by place): what a captured variable is written as in a digest.
+    /// `None` for a number of another program, or a place that holds no name.
+    pub(crate) fn var_name(&self, id: VarId, style: MarkerStyle<'_>) -> Option<(String, u16)> {
+        let func = self.func(id.def)?;
+        let flow = self.flow(id.def, style)?;
+        let text = func.file.node.text();
+        let name_at = |at: u32| -> String {
+            text.get(at as usize..)
+                .unwrap_or("")
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+                .collect()
+        };
+        let name = name_at(id.at);
+        if name.is_empty() {
+            return None;
+        }
+        let nth = flow
+            .vars
+            .iter()
+            .filter(|var| var.at < id.at && name_at(var.at) == name)
+            .count();
+        Some((name, u16::try_from(nth).unwrap_or(u16::MAX)))
+    }
+
     /// The table of `def`'s body. `None` when `func` is `None` or the def has no body to read (as `body`). Read once and kept.
     pub(crate) fn flow(&self, def: DefId, style: MarkerStyle<'_>) -> Option<Arc<Flow>> {
         if let Some(found) = self.flows.memo.borrow().get(&def) {

@@ -22,6 +22,7 @@ bitflags::bitflags! {
 
 impl Caps {
     /// The bits that are built: what `Precision::Precise` turns on. `PARAMS` (TC2, step 5a): a callee that is a parameter is answered from the functions the key
-    /// holds for it. `LOCALS` (TC3 step 2): a variable of the body holds the join of what is assigned to it.
-    pub(crate) const BUILT: Caps = Caps::PARAMS.union(Caps::LOCALS);
+    /// holds for it. `LOCALS` (TC3 step 2): a variable of the body holds the join of what is assigned to it. `CAPTURES` (TC3 step 3): a nested def's value
+    /// carries the values of the variables it reads from around it.
+    pub(crate) const BUILT: Caps = Caps::PARAMS.union(Caps::LOCALS).union(Caps::CAPTURES);
 }

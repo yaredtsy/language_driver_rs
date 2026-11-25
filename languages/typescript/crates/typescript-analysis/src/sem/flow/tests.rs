@@ -486,6 +486,21 @@ impl crate::eval::World for OfSem<'_> {
     }
 
     fn note(&self, _key: &'static str) {}
+
+    fn needs(&self, def: DefId) -> Arc<[crate::flow::VarId]> {
+        Arc::from(crate::needs::needs(self, def))
+    }
+
+    fn capture(
+        &self,
+        _list: Vec<(crate::flow::VarId, crate::value::Value)>,
+    ) -> (Option<crate::value::Captures>, u32) {
+        unreachable!("the tables are not evaluated here")
+    }
+
+    fn captured(&self, _captures: crate::value::Captures) -> crate::captures::CaptureList {
+        unreachable!("the tables are not evaluated here")
+    }
 }
 
 /// The tables of every def of `file` in `root`, in outline order, then the file's own code, as `== <qualname>` and `show_table`.
