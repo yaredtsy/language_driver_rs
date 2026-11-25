@@ -1,10 +1,10 @@
 //! The call graph: `TypeScript` is the language the core's flat solver walks, and `call_graph` is the one public function that runs it.
 //!
-//! One context per function, every context under the open key `KeyId::OPEN` (digest zeros): TypeScript is not context sensitive yet
-//! (`docs/03-typescript/08-later-context-sensitive.md`). The seam is kept: a target is `Target::Call(func, KeyId::OPEN)`, and `walk` is the only place
-//! that makes another key (`walk::key_of`, when the layer knows `Caps::PARAMS`: each call into project code passes the key its arguments make). With
-//! `Precision::Precise` the layer reads each walked body's table (`Lang::walk`) and asks `eval` about each callee that the engine could only call "a function-typed value"; where the key says which functions that is, the site draws
-//! a call to each (`walk::resolve_from_env`), and every other edge is the engine's.
+//! One context per function **and key** (`Lang::Key`): the solver walks each `(function, key)` once. The key is the layer's when `Precision::Precise`
+//! (`walk::key_of`, the only place that makes one: each call into project code passes the key its arguments, and the variables a nested function captures,
+//! make, with the parameters that cannot reach a call left out) and the open key `KeyId::OPEN` (digest zeros) otherwise. With the layer on, it reads each walked
+//! body's table (`Lang::walk`) and asks `eval` about each callee that the engine could only call "a function-typed value"; where the key says which functions
+//! that is, the site draws a call to each (`walk::resolve_from_env`), and every other edge is the engine's.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
