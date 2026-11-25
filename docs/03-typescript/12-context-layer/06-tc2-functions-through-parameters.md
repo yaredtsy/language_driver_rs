@@ -231,12 +231,12 @@ every row of the context table.
 | 5f | `eval`: a parameter that cannot hold a function is data (found by 5d's `callback-or-data`); the pinned entry counts | `callback-or-data`'s "on" half; the comparison on the projects |
 | 5g | the tripwire's mark (D61): a site that fails the check gets `unresolved value_type_mismatch` beside the call | `callback-mismatch`'s "on" half; the marks on the compiler (15 at 3 sites), the comparison on the projects |
 | 6 | counters per def | the two-keys counter test |
-| 7 | `Session::graph_from` | the cut-and-continue test |
+| 7 | ~~`Session::graph_from`~~ not scheduled (D63: continuing from a context is postponed) | — |
 | 8 | relevance | equal edges, fewer contexts |
-| 9 | the four projects | `ENGINE.md` |
+| 9 | the four projects; the command that measures the layer's cost (D62): the sweep off and on, release, time, peak and the two ratios | `ENGINE.md` |
 | 10 | (mine) `policy.md` rows, `ENGINE.md`, this folder's forecast corrected | reviewed |
 
-After step 9 the layer can be tagged for the first time, off by default.
+No tag at TC2 (D64): the first tag that carries the layer is TC5's, with the layer on by default.
 
 **Step 1, as decided for the build (2026-11-24); built as decided, `d36d7b9` ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)).** A core step; the shape is the note
 [`02-tree-rules/08`](../../02-tree-rules/08-the-digest-and-scenario-levels.md), with the pinned bytes in it.

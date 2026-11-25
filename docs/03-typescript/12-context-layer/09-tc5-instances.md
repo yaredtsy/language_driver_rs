@@ -149,6 +149,7 @@ both digests).
 | 4 | `Key.this`, `Expr::This`, the constructor's `this`, `this` in `needs` | `instance-this-*` |
 | 5 | the precise tree of `two-callers` | the scenario passes |
 | 6 | the four projects | `ENGINE.md` |
-| 7 | (mine) `policy.md`, `ENGINE.md`; Q-TC4 put to you with the numbers | reviewed |
+| 7 | (mine) `policy.md`, `ENGINE.md` | reviewed |
+| 8 | the layer on by default (D64): `Options::new` gives `Precision::Precise`; what asks for the default options moves (the CLI without a precision, a driver's request), what names its precision does not (the context table's two halves, the scenarios' default trees); the tag notes say the default trees changed | the list of what moved, each read; then the first tag that carries the layer (the owner's) |
 
 Next: [`10-tc6-return-values.md`](10-tc6-return-values.md)
