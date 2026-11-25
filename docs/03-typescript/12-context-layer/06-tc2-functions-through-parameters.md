@@ -495,9 +495,9 @@ written and a failure is believed only where no type parameter is in scope:
   `get_type_of_symbol(get_symbol_of_declaration_exported(node))`. `is_type_assignable_to_exported(target, callee)` true → `Yes`. False →
   `Unchecked` when the callee's node or any node above it (`parent()` up to the file) is a declaration whose type parameters are not empty,
   else `No`. A missing body, site, node or symbol is `Unchecked`. The type parameters are read through a new view, `Generic`
-  (`ClassDeclaration | ClassExpression | InterfaceDeclaration | TypeAliasDeclaration | JSTypeAliasDeclaration | FunctionDeclaration |
-  FunctionExpression | ArrowFunction | MethodDeclaration | GetAccessor | SetAccessor | Constructor`, the kinds `Node::type_parameter_list`
-  handles without panicking that can hold code; its accessor `type_parameters`), proven total by `sem/view/tests.rs` as every view is.
+  (`ClassDeclaration | ClassExpression | FunctionDeclaration | FunctionExpression | ArrowFunction | MethodDeclaration | GetAccessor |
+  SetAccessor | Constructor`: the kinds `Node::type_parameter_list` handles without panicking that can hold a call site; an interface or a
+  type alias holds no code, so no site is under one; its accessor `type_parameters`), proven total by `sem/view/tests.rs` as every view is.
   No engine type leaves `sem`.
 - **`walk`**: `resolve_from_env` takes the body `f`; for each `One::Fn` member with a `Func`: `Yes` → the call; `Unchecked` → the call and
   one note `value_type_unchecked`; `No` → the call, one note `value_type_mismatch`, and the value is treated as open at this site (the
