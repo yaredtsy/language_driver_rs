@@ -147,6 +147,10 @@ pylspt's invariant 5: "every limit is counted. A missing edge should be explaina
 
 A default resolver has no precision limits (it has no values). It has all the cost limits.
 
+The contexts of **one function** are a cost limit too (`Limits::max_contexts_per_function`, `Cut::MaxContextsPerFunction`, `None` by
+default): a language whose keys can split a function many ways sets it (TypeScript: 64, Python's number). It counts the contexts a request
+reads, walked or taken from the memo, so a warm memo cuts the same one. A language with one context per function never reaches it.
+
 ### Rule 11: same input, same output
 
 Ten runs, ten identical outputs. What threatens it, and the answer:

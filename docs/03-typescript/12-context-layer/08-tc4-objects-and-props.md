@@ -2,6 +2,7 @@
 
 ```
 TC4
+├── 0. before TC4: the cap per function, the allowance by site
 ├── 1. what the user sees
 ├── 2. `sem`: literals, members, patterns, JSX attributes
 ├── 3. values: `Object`, `Class`
@@ -13,8 +14,37 @@ TC4
 └── 9. steps
 ```
 
-Depends on TC3. No core change. With TC3 this is the phase React code shows: a parent's tree says what its children do with the
-handlers it gave them.
+Depends on TC3. With TC3 this is the phase React code shows: a parent's tree says what its children do with the
+handlers it gave them. TC4 itself changes nothing in core; the cap of §0 does, and it comes first.
+
+## 0. Before TC4: the cap per function and the allowance by site
+
+Scheduled by the review before TC3 ([12](12-review-before-tc3.md) §7: §2.3 and §3.4). Two steps, each one prompt, before step 1.
+
+**Step 0a, the cap on the contexts of one function** ([03](03-design.md) §12, the shape of [06](06-tc2-functions-through-parameters.md) §7;
+decided 2026-11-26). TC2's N6 put it off (no function near 64 at the 95th percentile); TC4 adds objects to a key, TC5 receivers, and
+each multiplies. As built:
+
+- **core** (`solve.rs`): `Limits::max_contexts_per_function: Option<u32>`, `None` by default, so Rust, Bend and Python (which keeps its
+  own `contexts_per_func`) do not change; `Limits::new` sets `None`. `Cut::MaxContextsPerFunction` (`"max_contexts_per_function"`).
+  `graph_within` counts, per function, the contexts it **reads** in this request (walked, or taken from the memo: the same unit as
+  `Budget::max_contexts`, so a warm memo cuts the same context, rule 11); a context past the cap is listed, `Incomplete`, counted in
+  `Stats.cuts`, and not walked. A context on the frontier or cut by another limit is not counted. The checks run in this order:
+  `max_contexts`, `max_depth`, the cap, the cancel.
+- **TypeScript** (`calls.rs`): `Options::new` sets the cap to **64** (Python's number) for both precisions. With `Precision::Default`
+  a function has one context, so it never fires; the in-crate measure (`measure_contexts`) uses the same limits, so it prints the cut.
+- **Which context is cut** is the one the breadth-first walk reads 65th: it depends on the entry, as every cost limit does, and is
+  marked. A cut can make a precise tree lose a subtree the default tree has ([03](03-design.md) §12): the sweep's comparison counts it.
+- **Python's mapping** (`interp/core_graph.rs`, `ContextsPerFunc → MaxContexts`) is not changed here; it can name the new cut later, as
+  a Python step of its own.
+
+Proof: core's tests (a keyed toy: the third context of a function is cut at cap 2, the first two whole; `None` and a one-context
+language never cut; the same graph twice on one solver); the row `cap-per-function` (under 64, every context) and a test of the same
+fixture at cap 2 (`run`'s third context `Incomplete`, `c` not reached, the properties hold); every language's tests green (Python's on
+CI); the compiler's `createProgram`, whole graph: how many contexts are cut, and the comparison with the default graph.
+
+**Step 0b, the allowance by site** (§3.4): `never_fewer_edges` allows exactly the sites the layer emptied (a callee that is only
+`undefined`), not as many sites as `callee_undefined` counts. Designed after 0a.
 
 ## 1. What the user sees
 
