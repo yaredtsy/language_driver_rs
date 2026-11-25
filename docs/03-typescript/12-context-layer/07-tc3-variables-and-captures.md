@@ -290,9 +290,16 @@ A variable declared at the top of a file is not captured: every function of the 
 
 ## 6. `bind`
 
-`f.bind(x, …)` in any expression is `f`'s value (extra arguments are dropped: the bound parameters are unknown in the key, and the
-positions shift by their number). `this` is not followed. The counter `uncovered_bind` stops counting the places that now have an
-edge. `call` and `apply` stay counted.
+**As decided for step 5 (2026-11-25), corrected.** `f.bind(thisArg)` is `f`'s value (`expr_of` of the call is `expr_of(f)`), when:
+
+- **it binds no argument**: `f.bind(x)` or `f.bind()`. The first draft said "extra arguments are dropped", but `f.bind(x, a)` is a function
+  whose first parameter is `f`'s **second**: taken as `f`, a call of it would put its arguments in the wrong slots of `f`'s key, a guess.
+  A bind with an argument (or a spread) stays `Unknown`;
+- **it is `Function.prototype.bind`**: the call's resolved signature is a `bind` declared in an interface `Function`, `CallableFunction` or
+  `NewableFunction` of code that is not the project's. A function merged with a namespace that exports its own `bind` is not.
+
+`this` is not followed (TC5). `call` and `apply` stay counted. **`uncovered_bind` stays as it is**: it is the default resolver's count
+(TS4), the same with the layer off and on; with the layer on the edge appears in the callee's context (`run`'s), not at the hand-over.
 
 ## 7. Fixtures and tests
 
@@ -322,7 +329,7 @@ the row `callback-reassigned` flipping: the handler **and** `fallback`, complete
 | 2b | **not built (owner, 2026-11-25, on the measure in `engine/10-tc3.md`: no edge at a callee would change); re-measured at TC6's close.** Was: only if step 2's ceiling is not near zero on the private codebase and the compiler: in order (D67, §3), opening with the spike (flow nodes at the pin, the `ReduceLabel` view, the nested-write rule, loops, unreachable code, the memo and the counted cap), behind `Caps::ORDER` | one fixture per flow node kind, by hand; fail-open counted; the sweep bit off/on with the removed members read by hand on two projects; the cost (D62) |
 | 3 | part 1: `Flow::around`, `needs` (printed in the table snapshots, tested by hand); part 2: `Fn` with captures, `Key.captured`, the canonical form, the depth limit | part 1: needs as written by hand, no graph moves; part 2: `capture-*`; TC2's digests unchanged |
 | 4 | module variables (§5 as decided): `var_of` through imports, script files open, `World::module_value`, `Caps::MODULES` | `module-*`; `modules-off.txt` unchanged |
-| 5 | `bind` | `bind`; the counter drops where an edge appears |
+| 5 | `bind` (§6 as decided): no bound argument, `Function.prototype.bind` only | `bind-*`; `uncovered_bind` unchanged |
 | 6 | relevance (moved from TC2 step 8, [06](06-tc2-functions-through-parameters.md) §8), through locals | equal edges, fewer contexts |
 | 7 | the four projects; the cost (`scripts/ts-try.sh cost`, D62) | `ENGINE.md` |
 | 8 | (mine) `policy.md`, `ENGINE.md` | reviewed |
