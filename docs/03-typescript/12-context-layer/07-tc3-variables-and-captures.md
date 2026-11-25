@@ -228,12 +228,27 @@ none: every TC2 value is `Fn(def, 0)`, and the digest writes the list, never the
   argument, hand-over, default or assignment holds cannot reach a call. Python needs no `named` part: a closure value there carries the run
   of the body around it (`activations`). Here a key carries values, so a def that calls a sibling by name must carry what the sibling reads.
 
-**Step 3, part 2, recommended (decided at its prompt):** `One::Fn(DefId, Captures)`, `Captures` a number into a per-request table of
-capture lists (`0` for none), as `KeyId` is; `KeyData::captured` (sorted by `VarId`, unknown entries dropped, arrows written `AnonAny`);
-evaluating `Expr::Def(g)` with `CAPTURES` on reads each of `needs(g)` from this env (an own row, or this key's capture); in g's walk a variable
-of a def around it is the key's capture or unknown; the canonical form gains a closure variant and a `captured` list skipped when empty, a
-variable written as (the declaring def's `StableDef`, its name, which declaration of that name); a depth limit of 2, as Python's
-`fp_depth`, past which captures are unknown and `value_widened_depth` is counted (it also ends a def that captures itself).
+**Step 3, part 2, as decided (2026-11-25).**
+
+- **A new member, not a changed one**: `One::Closure(DefId, Captures)` for a nested def whose captured list is not empty; a def that
+  captures nothing stays `One::Fn(DefId)`. So every TC2 value, digest and test is unchanged by construction, and the canonical form only
+  gains a variant (`Canon::Closure`). `Captures` is a number into the request's table of capture lists (`CaptureSets`, as `Keys` is for keys):
+  a list is sorted by `VarId`, has no unknown entry, and writes an arrow as `AnonAny`. (Python interns too: `ValueId`, "so a value can hold
+  another and stay `Copy`".)
+- **The depth limit is kept by the table**: a list's depth is 1 plus the deepest list of a closure among its values; when interning a list
+  whose inner closure would make it deeper than 2 (`MAX_CAPTURE_DEPTH`, Python's `fp_depth`), that inner closure is written as its bare
+  `Fn` (Python's `closure_at_limit`: the function kept, what it captured unknown) and `value_widened_depth` is counted. That also makes
+  `solve`'s rounds settle when a def captures a variable that holds itself.
+- **Evaluating `Expr::Def(g)`** with `CAPTURES` on: each variable of `needs(g)` is read from this env (an own row; else this key's capture;
+  else unknown), and the list is interned: `Closure(g, c)`, or `Fn(g)` when the list is empty.
+- **`KeyData::captured`**: what a call passes for the callee's captured variables. A target that comes from a `Closure` member carries its
+  list; any other call of, or hand-over of, a nested def takes the list from evaluating `Expr::Def(g)` here (sound: a variable this env does
+  not have is unknown). In g's walk, a variable of a def around g is the key's capture, or unknown.
+- **`needs` is memoized** for the request, the whole reachable component at once (each member's set is exact), with an index rather than a
+  scan (the compiler's `createTypeChecker` holds thousands of nested defs).
+- **Canonical form**: `CanonKey` gains `captured`, skipped when empty; `Canon::Closure { func, captured }`; a variable is written as
+  (the declaring def's `StableDef`, its name, which declaration of that name among the def's rows).
+- **With `CAPTURES` off** the layer is step 2: proved by a snapshot of every entry with `PARAMS | LOCALS`, written before the code changes.
 
 **The value of a nested def carries them** ([03](03-design.md) §7): evaluating `Expr::Def(g)` for a nested `g` reads each variable of
 `needs(g)` from the env of that place. `One::Fn` becomes `Fn(func, captures)`, with `captures` empty for a def that is not nested. In
