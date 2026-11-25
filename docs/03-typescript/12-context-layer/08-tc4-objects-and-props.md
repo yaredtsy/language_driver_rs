@@ -68,6 +68,10 @@ Proof: the row `callback-not-passed` (`main`) lists exactly `run`'s site `cb?.()
 (the right site allowed, no list or another site reported, a listed answered site reported); a walk that does not record fails the
 rows' property test; every snapshot unchanged.
 
+**0b built as decided, `d581079`** ([`engine/11-tc4.md`](../../../languages/typescript/engine/11-tc4.md)): 501 passed, 13 ignored, no
+snapshot moved. Of the 97 context-row entries one lists a site (`callback-not-passed` `main`); on the compiler's `createProgram` the
+list covers exactly the 3 sites the precise graph loses (the counter said 92). **Both steps of §0 are done; TC4 step 1 is next.**
+
 ## 1. What the user sees
 
 Patterns B1–B8 of [02](02-patterns.md); lines d and e of the tour.

@@ -97,6 +97,8 @@ Each phase ends with these, and is not done without them:
    graph, and no site that had a call target has none. **And on the four projects**: the sites the default graph draws and the precise
    graph does not are counted in the sweep, and the count is 0 (a cut is the one way to lose a subtree, and no fixture reaches a cap), with
    one allowance: a site whose callee the layer knows is only `undefined` has no edge, counted `callee_undefined` ([06](06-tc2-functions-through-parameters.md) §3).
+   Since step 0b of [08](08-tc4-objects-and-props.md) §0 the allowance is by site: the walk lists the sites it emptied and only those may
+   lose every edge (a count would let any other site pass).
 3. **No-reuse mode agrees.** Solving with the memo off gives the same edge set (a summary is a function of its key); for core's flat solver, which walks a context once per request, the check is each context walked alone in a fresh request, [06](06-tc2-functions-through-parameters.md) §9).
 4. **Same twice.** `assert_deterministic` on the precise graphs; digests equal across two processes.
 5. **Its fixtures flip on purpose.** Each row the phase adds to the precise policy table has a fixture and a reviewed snapshot.

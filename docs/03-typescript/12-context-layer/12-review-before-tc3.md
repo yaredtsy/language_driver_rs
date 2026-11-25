@@ -460,6 +460,6 @@ finding was checked again against the code of `9fc7a50`.
 | §3.1 literal pins | yes (94, raised at every TC3 step) | **8b**: the count read from the table |
 | §3.2 two row parsers, duplicated digest pins | yes | later, with the tools of §3.3 |
 | §3.3 the relevance prototype in shipped code | **fixed** in TC3 step 6 (`Measure`, `reads`, the hook are gone) | tools as tests: later |
-| §3.4 the allowance by count | yes | scheduled **before TC4** |
+| §3.4 the allowance by count | yes | scheduled **before TC4**; **built** as 08-tc4 step 0b (`d581079`) |
 | §4 `expect` in `intern_key`; the quadratic `debug_assert`; the stale module doc | yes | **8b** |
 | §4 `written_symbols`' linear search | **gone**: step 1's `written_identifiers` keeps a sorted list | — |
