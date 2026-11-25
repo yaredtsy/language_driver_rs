@@ -235,6 +235,10 @@ impl World for TypeScript<'_> {
             .expect("the component holds the def asked")
     }
 
+    fn needs_known(&self, def: DefId) -> Option<Arc<[VarId]>> {
+        self.sem.needs_memo(def)
+    }
+
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
         self.captures.borrow_mut().intern(list)
     }

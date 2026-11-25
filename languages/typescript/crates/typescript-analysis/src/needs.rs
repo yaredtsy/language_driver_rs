@@ -25,13 +25,24 @@ pub(crate) fn needs_of_component(world: &dyn World, def: DefId) -> Component {
     component(world, def).0
 }
 
-/// `needs_of_component`, and how many times the solve tried to put a variable into a set (what the cost of the solve is made of).
-fn component(world: &dyn World, def: DefId) -> (Component, usize) {
+/// What a solve did, for the tests: how many variables it tried to put into a set (what the cost of the solve is made of), and how many defs it expanded
+/// (read the table of, and looked for the names in).
+#[derive(Default)]
+struct Work {
+    attempts: usize,
+    expanded: usize,
+}
+
+/// `needs_of_component`, and what it cost. A def the world already knows (`World::needs_known`) is not expanded: it is a fixed node of the solve with its known
+/// set (which covers everything it reaches, because a component is remembered whole), it passes that set on to the defs that name it, and nothing is put into it.
+/// Only the new defs are returned. `def` itself is always solved: it is what the caller is asking for.
+fn component(world: &dyn World, def: DefId) -> (Component, Work) {
+    let mut work = Work::default();
     let Some(flow) = world.flow(def) else {
-        return (vec![(def, Box::new([]))], 0);
+        return (vec![(def, Box::new([]))], work);
     };
     if flow.around.is_none() {
-        return (vec![(def, Box::new([]))], 0);
+        return (vec![(def, Box::new([]))], work);
     }
     // the defs reachable from `def` through `named`, `def` first, in the order found: a `Vec` and a position found by a map that is only looked up, never
     // iterated (rule 9)
@@ -40,9 +51,23 @@ fn component(world: &dyn World, def: DefId) -> (Component, usize) {
     // for each def, the defs that name it: where a set that grew has to go
     let mut named_by: Vec<Vec<usize>> = vec![Vec::new()];
     let mut sets: Vec<BTreeSet<VarId>> = Vec::new();
+    // whether a def is a fixed node: known already, so its set is exact and nothing goes into it
+    let mut fixed: Vec<bool> = Vec::new();
     let mut next = 0;
     while next < defs.len() {
         let at = defs[next];
+        let known = if next == 0 {
+            None
+        } else {
+            world.needs_known(at)
+        };
+        if let Some(known) = known {
+            fixed.push(true);
+            sets.push(known.iter().copied().collect());
+            next += 1;
+            continue;
+        }
+        fixed.push(false);
         let table = if next == 0 {
             Some(Arc::clone(&flow))
         } else {
@@ -50,6 +75,7 @@ fn component(world: &dyn World, def: DefId) -> (Component, usize) {
         };
         let mut set = BTreeSet::new();
         if let Some(table) = table {
+            work.expanded += 1;
             set.extend(reads(world, at, &table));
             for handle in named(world, &table) {
                 let place = *place_of.entry(handle).or_insert_with(|| {
@@ -67,21 +93,21 @@ fn component(world: &dyn World, def: DefId) -> (Component, usize) {
         next += 1;
     }
     // what a def names carries into the def that names it, except the variables of that def, until nothing grows. A worklist: a set is carried onward only when
-    // it grew, and only to the defs that name it
+    // it grew, and only to the defs that name it. A fixed node is never a `to`: it names nothing here
     let mut queue: VecDeque<usize> = (0..defs.len()).collect();
     let mut queued = vec![true; defs.len()];
-    let mut attempts = 0;
     while let Some(from) = queue.pop_front() {
         queued[from] = false;
         // taken out while it is read, so the set of the def that names it can be changed; `from` is never in `named_by[from]`
         let source = std::mem::take(&mut sets[from]);
         for &to in &named_by[from] {
+            debug_assert!(!fixed[to], "a fixed node names nothing");
             let mut grew = false;
             for &var in &source {
                 if var.def == defs[to] {
                     continue;
                 }
-                attempts += 1;
+                work.attempts += 1;
                 grew |= sets[to].insert(var);
             }
             if grew && !queued[to] {
@@ -94,9 +120,11 @@ fn component(world: &dyn World, def: DefId) -> (Component, usize) {
     let found = defs
         .into_iter()
         .zip(sets)
-        .map(|(def, set)| (def, set.into_iter().collect()))
+        .zip(fixed)
+        .filter(|(_, fixed)| !fixed)
+        .map(|((def, set), _)| (def, set.into_iter().collect()))
         .collect();
-    (found, attempts)
+    (found, work)
 }
 
 /// The variables `table` (the table of `own`) reads that belong to a def around it: an `Expr::Var` of another def of the outline (not the file's code) whose
@@ -168,6 +196,7 @@ fn each_expr(table: &Flow, each: &mut dyn FnMut(&Expr)) {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
     use std::collections::HashMap;
 
     use super::*;
@@ -177,8 +206,11 @@ mod tests {
     use crate::value::{Captures, Value};
     use typescript_syntax::Span;
 
-    /// A world of hand-made tables.
-    struct Tables(HashMap<DefId, Arc<Flow>>);
+    /// A world of hand-made tables, and what its requests have worked out (the memo of the `Sem`).
+    struct Tables(
+        HashMap<DefId, Arc<Flow>>,
+        RefCell<HashMap<DefId, Arc<[VarId]>>>,
+    );
 
     impl World for Tables {
         fn flow(&self, def: DefId) -> Option<Arc<Flow>> {
@@ -195,6 +227,10 @@ mod tests {
 
         fn needs(&self, def: DefId) -> Arc<[VarId]> {
             Arc::from(needs(self, def))
+        }
+
+        fn needs_known(&self, def: DefId) -> Option<Arc<[VarId]>> {
+            self.1.borrow().get(&def).map(Arc::clone)
         }
 
         fn capture(&self, _list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
@@ -254,7 +290,7 @@ mod tests {
     }
 
     fn world(tables: Vec<(DefId, Arc<Flow>)>) -> Tables {
-        Tables(tables.into_iter().collect())
+        Tables(tables.into_iter().collect(), RefCell::default())
     }
 
     #[test]
@@ -373,7 +409,9 @@ mod tests {
             tables.push((d(k), table(Some(dd), vec![], calls)));
         }
         let world = world(tables);
-        let (found, attempts) = component(&world, d(1));
+        let (found, work) = component(&world, d(1));
+        let attempts = work.attempts;
+        assert_eq!(work.expanded, 50);
         assert_eq!(found.len(), 50);
         for (def, set) in &found {
             assert_eq!(**set, [var(dd, 1)], "{def:?}");
@@ -387,5 +425,68 @@ mod tests {
         eprintln!("{attempts} attempts for {edges} edges");
         // and what a def in the middle of the chain needs is the same through the `needs` that tests use
         assert_eq!(*needs(&world, d(25)), [var(dd, 1)]);
+    }
+
+    /// Ask the way a request does: solve, and remember every def the component returns.
+    fn ask(world: &Tables, def: DefId) -> (Component, Work) {
+        let (found, work) = component(world, def);
+        let mut memo = world.1.borrow_mut();
+        for (def, set) in &found {
+            memo.insert(*def, Arc::from(set.clone()));
+        }
+        (found, work)
+    }
+
+    #[test]
+    fn a_def_that_is_already_solved_is_not_solved_again() {
+        // as the chain above, with a second variable `y` read by d(30) and a def `e` = d(60) nested in d(5) that names d(40): fifty-odd defs, two components
+        let dd = d(0);
+        let build = || {
+            let mut tables = vec![(dd, table(None, vec![row(1, true), row(2, true)], vec![]))];
+            for k in 1..=50u32 {
+                let mut calls = if k == 50 {
+                    vec![Expr::Var(var(dd, 1))]
+                } else {
+                    vec![Expr::Def(d(k + 1))]
+                };
+                if k == 30 {
+                    calls.push(Expr::Var(var(dd, 2)));
+                }
+                tables.push((d(k), table(Some(dd), vec![], calls)));
+            }
+            tables.push((
+                d(60),
+                table(Some(d(5)), vec![], vec![Expr::Def(d(40)), Expr::Def(d(3))]),
+            ));
+            world(tables)
+        };
+        // asked one after the other: d(25) first (it reaches d(26)..d(50)), then d(60), which reaches the first component and the defs of its own
+        let world = build();
+        let (first, first_work) = ask(&world, d(25));
+        assert_eq!(first.len(), 26);
+        assert_eq!(first_work.expanded, 26);
+        let (second, second_work) = ask(&world, d(60));
+        // d(60) names d(40) (known) and d(3), which names d(4)..d(24) and then d(25) (known): the new defs are d(60), d(3)..d(24), and nothing of the first
+        // component is read again
+        assert_eq!(second.len(), 23);
+        assert_eq!(second_work.expanded, 23);
+        assert!(
+            second
+                .iter()
+                .all(|(def, _)| *def == d(60) || (3..25).any(|k| *def == d(k)))
+        );
+        // and every set equals what one solve of everything gives
+        let all = build();
+        let (whole, _) = component(&all, d(1));
+        let one_solve: HashMap<DefId, Box<[VarId]>> = whole.into_iter().collect();
+        let (everything, _) = component(&all, d(60));
+        let one_solve_60 = &everything[0].1;
+        for (def, set) in first.iter().chain(&second) {
+            if *def == d(60) {
+                assert_eq!(set, one_solve_60);
+            } else {
+                assert_eq!(set, &one_solve[def], "{def:?}");
+            }
+        }
     }
 }

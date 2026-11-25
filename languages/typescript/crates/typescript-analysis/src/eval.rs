@@ -29,6 +29,9 @@ pub(crate) trait World {
     /// The variables of the functions around `def` that `def` needs to be given (`needs::needs_of_component`), sorted by `VarId`: kept by the world for the
     /// request, so each def is asked once.
     fn needs(&self, def: DefId) -> Arc<[VarId]>;
+    /// What `def` needs when the world has already worked it out, without working anything out: `needs::needs_of_component` does not solve such a def again
+    /// (its set covers everything it reaches).
+    fn needs_known(&self, def: DefId) -> Option<Arc<[VarId]>>;
     /// `list` interned (`CaptureSets::intern`): the number of its normal form, `None` when nothing is left, and how many inner closures were cut. It counts
     /// nothing: the caller notes the cuts, so a quiet world stays quiet.
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32);
@@ -55,6 +58,10 @@ impl World for Quiet<'_> {
 
     fn needs(&self, def: DefId) -> Arc<[VarId]> {
         self.0.needs(def)
+    }
+
+    fn needs_known(&self, def: DefId) -> Option<Arc<[VarId]>> {
+        self.0.needs_known(def)
     }
 
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
@@ -337,6 +344,10 @@ mod tests {
 
         fn needs(&self, def: DefId) -> Arc<[VarId]> {
             Arc::from(crate::needs::needs(self, def))
+        }
+
+        fn needs_known(&self, _def: DefId) -> Option<Arc<[VarId]>> {
+            None
         }
 
         fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {

@@ -491,6 +491,10 @@ impl crate::eval::World for OfSem<'_> {
         Arc::from(crate::needs::needs(self, def))
     }
 
+    fn needs_known(&self, _def: DefId) -> Option<Arc<[crate::flow::VarId]>> {
+        None
+    }
+
     fn capture(
         &self,
         _list: Vec<(crate::flow::VarId, crate::value::Value)>,
