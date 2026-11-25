@@ -110,15 +110,36 @@ fn eval_below(world: &dyn World, env: &Env, expr: &Expr, below: u32, vars: Vars)
 }
 
 /// The value of a def named in a body (`07-tc3` §4): the function itself, or, when the layer knows `CAPTURES` and the def is nested and needs variables from
-/// around it, the function with the value each of them has **here** (`capture_value`). Nothing captured, or nothing known of it, is the bare function.
+/// around it, the function with the value each of them has **here**. Nothing captured, or nothing known of it, is the bare function.
+///
+/// The list is made from the sparse sides: `needs` of a def can be hundreds of variables (the compiler's `createTypeChecker`), and few of them have a value
+/// here that is not unknown. So it walks what can have one, this body's own rows and the key's entries, and keeps those that are in `needs` (sorted: a binary
+/// search). `CaptureSets::intern` sorts the list.
 fn function(world: &dyn World, env: &Env, def: DefId, vars: Vars) -> Value {
     if world.knows(Caps::CAPTURES) {
         let needed = world.needs(def);
         if !needed.is_empty() {
-            let list: Vec<(VarId, Value)> = needed
-                .iter()
-                .map(|&var| (var, variable(world, env, var, vars)))
-                .collect();
+            let unknown = Value::unknown();
+            let wanted = |var: &VarId| needed.binary_search(var).is_ok();
+            let mut list: Vec<(VarId, Value)> = Vec::new();
+            for row in env.flow.vars.iter() {
+                let id = VarId {
+                    def: env.def,
+                    at: row.at,
+                };
+                if wanted(&id) {
+                    let value = variable(world, env, id, vars);
+                    if value != unknown {
+                        list.push((id, value));
+                    }
+                }
+            }
+            for (id, value) in env.key.captured.iter() {
+                if id.def != env.def && id.def.index().is_some() && wanted(id) && *value != unknown
+                {
+                    list.push((*id, value.clone()));
+                }
+            }
             let (made, cut) = world.capture(list);
             for _ in 0..cut {
                 world.note(VALUE_WIDENED_DEPTH);
@@ -915,5 +936,37 @@ mod tests {
         // read again, it is the same value and says nothing more
         assert_eq!(of_var(&world, &env, 10), value);
         assert_eq!(*world.notes.borrow(), notes);
+    }
+
+    #[test]
+    fn a_closure_of_a_hundred_needs_holds_only_the_two_that_have_a_value() {
+        // `g` = d(5), nested in `d(9)`, reads a hundred variables: `v` of `d(9)` (a row that holds `a`) and 99 of `d(8)`'s, of which the key holds one. `d(9)` has
+        // more rows that `g` does not read: they are not in the closure, whatever they hold
+        let mut env = env_with_vars(
+            vec![],
+            vec![],
+            vec![
+                local(10, vec![Expr::Def(d(1))]),
+                local(20, vec![Expr::Def(d(2))]),
+                local(30, vec![]),
+            ],
+        );
+        env.key = KeyData {
+            params: Box::new([]),
+            captured: vec![(outer(500), func(3))].into(),
+        };
+        let rows: Vec<Var> = (0..99).map(|k| local(500 + k, vec![])).collect();
+        let mut reads: Vec<Expr> = (0..99).map(|k| Expr::Var(outer(500 + k))).collect();
+        reads.push(Expr::Var(vid(10)));
+        let tables = vec![
+            (d(8), nested(None, rows, vec![])),
+            (d(5), nested(Some(d(9)), vec![], reads)),
+        ];
+        let world = world_with(&env, tables, all_caps());
+        assert_eq!(world.needs(d(5)).len(), 100);
+        let value = eval(&world, &env, &Expr::Def(d(5)));
+        let (def, list) = list_of(&world, &value);
+        assert_eq!(def, d(5));
+        assert_eq!(list, [(outer(500), func(3)), (vid(10), func(1))]);
     }
 }

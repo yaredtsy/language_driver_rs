@@ -93,8 +93,6 @@ pub(crate) struct TypeScript<'p> {
     keys: RefCell<Keys>,
     /// Every list of captured variables of this request (`captures.rs`): a `One::Closure` is a number into it.
     captures: RefCell<CaptureSets>,
-    /// `needs` of the defs asked so far in this request (`World::needs`): a whole component is stored at once.
-    needs: RefCell<HashMap<DefId, Arc<[VarId]>>>,
     /// Whether the context layer runs, and with which bits (`Precision::layer`). `None`: no table is read and no `Env` is built.
     layer: Option<Caps>,
     /// Every `(func, key)` `Lang::walk` was asked for, in order: `calls/keyed.rs` walks each again alone.
@@ -117,7 +115,6 @@ impl<'p> TypeScript<'p> {
             demoted: RefCell::new(HashSet::new()),
             keys: RefCell::new(Keys::new()),
             captures: RefCell::new(CaptureSets::new()),
-            needs: RefCell::new(HashMap::new()),
             layer: None,
             #[cfg(test)]
             walked: Vec::new(),
@@ -227,16 +224,15 @@ impl World for TypeScript<'_> {
     }
 
     fn needs(&self, def: DefId) -> Arc<[VarId]> {
-        if let Some(found) = self.needs.borrow().get(&def) {
-            return Arc::clone(found);
+        // kept by the `Sem`, with the tables it is made from, so a request asks only what no request has
+        if let Some(found) = self.sem.needs_memo(def) {
+            return found;
         }
-        // every borrow is released before the component is computed: it asks for tables, and a table may be read for the first time
         let component = needs_of_component(self, def);
-        let mut memo = self.needs.borrow_mut();
-        for (found, set) in component {
-            memo.insert(found, Arc::from(set));
-        }
-        Arc::clone(&memo[&def])
+        self.sem.remember_needs(component);
+        self.sem
+            .needs_memo(def)
+            .expect("the component holds the def asked")
     }
 
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {

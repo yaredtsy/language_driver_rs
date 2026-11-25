@@ -3,7 +3,7 @@
 //! Neutral, as `eval` is: it imports nothing from `sem` and asks only `World::flow`, so a test answers it with tables made by hand. Nothing reads the result
 //! yet; part 2 gives a nested def's value the variables it lists.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::Arc;
 
 use crate::eval::World;
@@ -16,20 +16,29 @@ pub(crate) fn needs(world: &dyn World, def: DefId) -> Box<[VarId]> {
     needs_of_component(world, def).swap_remove(0).1
 }
 
+/// Each def of a component with the variables it needs.
+pub(crate) type Component = Vec<(DefId, Box<[VarId]>)>;
+
 /// `needs` of every def reachable from `def` through `named`, `def` first, each with its exact set: they are solved together, so the others come free
-/// (`World::needs` keeps them all). One entry `(def, [])` when `def`'s `around` is `None` or the world has no table for it.
-pub(crate) fn needs_of_component(world: &dyn World, def: DefId) -> Vec<(DefId, Box<[VarId]>)> {
+/// (`Sem::remember_needs` keeps them all). One entry `(def, [])` when `def`'s `around` is `None` or the world has no table for it.
+pub(crate) fn needs_of_component(world: &dyn World, def: DefId) -> Component {
+    component(world, def).0
+}
+
+/// `needs_of_component`, and how many times the solve tried to put a variable into a set (what the cost of the solve is made of).
+fn component(world: &dyn World, def: DefId) -> (Component, usize) {
     let Some(flow) = world.flow(def) else {
-        return vec![(def, Box::new([]))];
+        return (vec![(def, Box::new([]))], 0);
     };
     if flow.around.is_none() {
-        return vec![(def, Box::new([]))];
+        return (vec![(def, Box::new([]))], 0);
     }
     // the defs reachable from `def` through `named`, `def` first, in the order found: a `Vec` and a position found by a map that is only looked up, never
     // iterated (rule 9)
     let mut defs: Vec<DefId> = vec![def];
     let mut place_of: HashMap<DefId, usize> = HashMap::from([(def, 0)]);
-    let mut named_of: Vec<Vec<usize>> = Vec::new();
+    // for each def, the defs that name it: where a set that grew has to go
+    let mut named_by: Vec<Vec<usize>> = vec![Vec::new()];
     let mut sets: Vec<BTreeSet<VarId>> = Vec::new();
     let mut next = 0;
     while next < defs.len() {
@@ -39,47 +48,55 @@ pub(crate) fn needs_of_component(world: &dyn World, def: DefId) -> Vec<(DefId, B
         } else {
             world.flow(at)
         };
-        let mut places = Vec::new();
         let mut set = BTreeSet::new();
         if let Some(table) = table {
             set.extend(reads(world, at, &table));
             for handle in named(world, &table) {
                 let place = *place_of.entry(handle).or_insert_with(|| {
                     defs.push(handle);
+                    named_by.push(Vec::new());
                     defs.len() - 1
                 });
-                if !places.contains(&place) {
-                    places.push(place);
+                // a def that names itself adds nothing to itself
+                if place != next && !named_by[place].contains(&next) {
+                    named_by[place].push(next);
                 }
             }
         }
-        named_of.push(places);
         sets.push(set);
         next += 1;
     }
-    // what a def names carries into it, except its own variables, until a round adds nothing
-    loop {
-        let mut grew = false;
-        for at in 0..defs.len() {
-            for &place in &named_of[at] {
-                let carried: Vec<VarId> = sets[place]
-                    .iter()
-                    .copied()
-                    .filter(|var| var.def != defs[at])
-                    .collect();
-                for var in carried {
-                    grew |= sets[at].insert(var);
+    // what a def names carries into the def that names it, except the variables of that def, until nothing grows. A worklist: a set is carried onward only when
+    // it grew, and only to the defs that name it
+    let mut queue: VecDeque<usize> = (0..defs.len()).collect();
+    let mut queued = vec![true; defs.len()];
+    let mut attempts = 0;
+    while let Some(from) = queue.pop_front() {
+        queued[from] = false;
+        // taken out while it is read, so the set of the def that names it can be changed; `from` is never in `named_by[from]`
+        let source = std::mem::take(&mut sets[from]);
+        for &to in &named_by[from] {
+            let mut grew = false;
+            for &var in &source {
+                if var.def == defs[to] {
+                    continue;
                 }
+                attempts += 1;
+                grew |= sets[to].insert(var);
+            }
+            if grew && !queued[to] {
+                queued[to] = true;
+                queue.push_back(to);
             }
         }
-        if !grew {
-            break;
-        }
+        sets[from] = source;
     }
-    defs.into_iter()
+    let found = defs
+        .into_iter()
         .zip(sets)
         .map(|(def, set)| (def, set.into_iter().collect()))
-        .collect()
+        .collect();
+    (found, attempts)
 }
 
 /// The variables `table` (the table of `own`) reads that belong to a def around it: an `Expr::Var` of another def of the outline (not the file's code) whose
@@ -340,5 +357,35 @@ mod tests {
             ),
         ]);
         assert_eq!(*needs(&world, g), [var(dd, 1)]);
+    }
+
+    #[test]
+    fn a_chain_of_fifty_nested_defs_all_need_the_one_variable_and_the_solve_stays_small() {
+        // `D` = d(0) declares `x`; `d(k)` for k in 1..=50 is nested in it; each names the next, and the last reads `x`
+        let dd = d(0);
+        let mut tables = vec![(dd, table(None, vec![row(1, true)], vec![]))];
+        for k in 1..=50u32 {
+            let calls = if k == 50 {
+                vec![Expr::Var(var(dd, 1))]
+            } else {
+                vec![Expr::Def(d(k + 1))]
+            };
+            tables.push((d(k), table(Some(dd), vec![], calls)));
+        }
+        let world = world(tables);
+        let (found, attempts) = component(&world, d(1));
+        assert_eq!(found.len(), 50);
+        for (def, set) in &found {
+            assert_eq!(**set, [var(dd, 1)], "{def:?}");
+        }
+        // the edges are 49 and the final sets hold one variable: each edge is tried a few times at most, not once for every round of a settle
+        let (edges, size) = (49, 1);
+        assert!(
+            attempts < 4 * edges * size,
+            "{attempts} attempts for {edges} edges of sets of {size}"
+        );
+        eprintln!("{attempts} attempts for {edges} edges");
+        // and what a def in the middle of the chain needs is the same through the `needs` that tests use
+        assert_eq!(*needs(&world, d(25)), [var(dd, 1)]);
     }
 }

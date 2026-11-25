@@ -28,6 +28,9 @@ pub(super) struct Flows {
     /// a `File` holds, so the file comes back from its number without a downcast of the engine's.)
     files: RefCell<IndexSet<P<SourceFile>>>,
     memo: RefCell<HashMap<DefId, Arc<Flow>>>,
+    /// What each def needs from the functions around it (`needs::needs_of_component`), kept with the tables it is made from: a fact of the program, not of a
+    /// request, so a request that reaches a def another already asked about does not compute its component again.
+    needs: RefCell<HashMap<DefId, Arc<[VarId]>>>,
 }
 
 /// The next program's number. It never reaches an output: it only tells two programs' numbers apart.
@@ -39,6 +42,7 @@ impl Flows {
             program: PROGRAMS.fetch_add(1, Ordering::Relaxed),
             files: RefCell::new(IndexSet::new()),
             memo: RefCell::new(HashMap::new()),
+            needs: RefCell::new(HashMap::new()),
         }
     }
 }
@@ -55,6 +59,19 @@ impl Sem {
             u32::try_from(file).expect("a program has fewer than 2^32 files"),
             index,
         )
+    }
+
+    /// What `def` needs, when a request of this program has already worked it out (`remember_needs`).
+    pub(crate) fn needs_memo(&self, def: DefId) -> Option<Arc<[VarId]>> {
+        self.flows.needs.borrow().get(&def).map(Arc::clone)
+    }
+
+    /// Keep what a component of defs needs (`needs::needs_of_component`), for every request of this program: plain data in, plain data out.
+    pub(crate) fn remember_needs(&self, entries: Vec<(DefId, Box<[VarId]>)>) {
+        let mut memo = self.flows.needs.borrow_mut();
+        for (def, set) in entries {
+            memo.insert(def, Arc::from(set));
+        }
     }
 
     /// For tests: whether `flow` has read `def`'s table in this program.
