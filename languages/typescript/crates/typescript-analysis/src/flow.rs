@@ -43,7 +43,13 @@ pub(crate) struct Flow {
     /// Index for index with `Sem::call_sites`.
     pub(crate) sites: Box<[SiteFlow]>,
     /// The anonymous functions written in the body, in source order (`Expr::Anon` and `SiteFlow::anon` are places in it).
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "kept for TC7 (anonymous functions: a call inside one becomes a context of its own); only the table's tests read it today"
+        )
+    )]
     pub(crate) anons: Box<[AnonFlow]>,
     /// The hand-overs, sorted by `at` (start, then end), ties in the order made: every def `Sem::handed_over` finds, then the names of a hand-over position it
     /// found no def for, through `expr_of`.
@@ -122,16 +128,34 @@ pub(crate) struct Param {
 /// A site of the body, read.
 #[derive(Debug)]
 pub(crate) struct SiteFlow {
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "kept for the table's tests, which print a site by its place; no phase reads it"
+        )
+    )]
     pub(crate) span: Span,
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "kept for the table's tests and for TC4 and TC5, which treat a `new`, a JSX element or an accessor differently from a call; no phase reads it yet"
+        )
+    )]
     pub(crate) kind: FlowKind,
     pub(crate) callee: Expr,
     /// `Some` for a call or a `new` (its arguments) and for JSX (one `Unknown`: the attributes, TC4). `None` for the other kinds: **not read**, which a
     /// later phase takes as unknown, never as "no argument".
     pub(crate) args: Option<Box<[Arg]>>,
     /// The innermost anonymous function whose span holds the site.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read from TC2 on"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "kept for TC7, which gives the calls of an anonymous function their own context; only the table's tests read it today"
+        )
+    )]
     pub(crate) anon: Option<u32>,
 }
 
