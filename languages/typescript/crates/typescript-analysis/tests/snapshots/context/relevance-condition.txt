@@ -1,0 +1,29 @@
+== main
+-- off
+main
+  guard
+    done
+  a [Passed]
+  guard
+    done
+  b [Passed]
+edges:
+guard | done | call done
+main | guard | call guard
+main | a | pass a
+main | guard | call guard
+main | b | pass b
+-- on
+main
+  guard
+    done
+  a [Passed]
+  guard
+    done
+  b [Passed]
+edges:
+guard | done | call done
+main | guard | call guard
+main | a | pass a
+main | guard | call guard
+main | b | pass b

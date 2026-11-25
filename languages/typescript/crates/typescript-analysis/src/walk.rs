@@ -2,6 +2,8 @@
 //! puts it where the core wants it: the sites of a def relative to its start, and for each site the targets, through `resolve(site, env)` in the final
 //! form it has on the first day (`docs/02-tree-rules/03-the-seam.md` §3).
 
+use std::sync::Arc;
+
 use analyzer_core::graph::{External, Reason, Site};
 use analyzer_core::outline::DefKind;
 use analyzer_core::solve::{Cancel, SiteCalls, Summary, Target};
@@ -250,9 +252,15 @@ fn key_of<'p>(
     };
     let params = match args {
         Some(args) => {
-            let data = bind(&flow.params, args, |expr| eval(lang, env, expr));
+            // with the bit off every parameter counts, as before (a slice of `true`, never an empty one standing for "all")
+            let relevant: Arc<[bool]> = if lang.knows(Caps::RELEVANCE) {
+                World::relevant(lang, id)
+            } else {
+                vec![true; flow.params.len()].into()
+            };
+            let data = bind(&flow.params, args, &relevant, |expr| eval(lang, env, expr));
             #[cfg(test)]
-            let data = lang.measured(id, &flow, data);
+            let data = lang.measured(id, data);
             data.params
         }
         None => Box::new([]),

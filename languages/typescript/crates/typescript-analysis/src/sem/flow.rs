@@ -32,6 +32,8 @@ pub(super) struct Flows {
     /// What each def needs from the functions around it (`needs::needs_of_component`), kept with the tables it is made from: a fact of the program, not of a
     /// request, so a request that reaches a def another already asked about does not compute its component again.
     needs: RefCell<HashMap<DefId, Arc<[VarId]>>>,
+    /// Which parameters of each def can reach a call (`relevance::relevant`), kept the same way.
+    relevance: RefCell<HashMap<DefId, Arc<[bool]>>>,
 }
 
 /// The next program's number. It never reaches an output: it only tells two programs' numbers apart.
@@ -44,6 +46,7 @@ impl Flows {
             files: RefCell::new(IndexSet::new()),
             memo: RefCell::new(HashMap::new()),
             needs: RefCell::new(HashMap::new()),
+            relevance: RefCell::new(HashMap::new()),
         }
     }
 }
@@ -73,6 +76,16 @@ impl Sem {
         for (def, set) in entries {
             memo.insert(def, Arc::from(set));
         }
+    }
+
+    /// Which parameters of `def` can reach a call, when a request of this program has already worked it out (`remember_relevance`).
+    pub(crate) fn relevance_memo(&self, def: DefId) -> Option<Arc<[bool]>> {
+        self.flows.relevance.borrow().get(&def).map(Arc::clone)
+    }
+
+    /// Keep which parameters of `def` can reach a call, for every request of this program: plain data.
+    pub(crate) fn remember_relevance(&self, def: DefId, flags: Arc<[bool]>) {
+        self.flows.relevance.borrow_mut().insert(def, flags);
     }
 
     /// For tests: whether `flow` has read `def`'s table in this program.

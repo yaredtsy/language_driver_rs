@@ -32,6 +32,9 @@ pub(crate) trait World {
     /// What `def` needs when the world has already worked it out, without working anything out: `needs::needs_of_component` does not solve such a def again
     /// (its set covers everything it reaches).
     fn needs_known(&self, def: DefId) -> Option<Arc<[VarId]>>;
+    /// For each parameter of `def` (in `Flow::params` order): whether its value can reach a call of the body (`relevance::relevant`). Kept by the world, as
+    /// `needs` is, since it is a fact of the code.
+    fn relevant(&self, def: DefId) -> Arc<[bool]>;
     /// `list` interned (`CaptureSets::intern`): the number of its normal form, `None` when nothing is left, and how many inner closures were cut. It counts
     /// nothing: the caller notes the cuts, so a quiet world stays quiet.
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32);
@@ -65,6 +68,10 @@ impl World for Quiet<'_> {
 
     fn needs_known(&self, def: DefId) -> Option<Arc<[VarId]>> {
         self.0.needs_known(def)
+    }
+
+    fn relevant(&self, def: DefId) -> Arc<[bool]> {
+        self.0.relevant(def)
     }
 
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
@@ -364,6 +371,10 @@ mod tests {
 
         fn needs_known(&self, _def: DefId) -> Option<Arc<[VarId]>> {
             None
+        }
+
+        fn relevant(&self, def: DefId) -> Arc<[bool]> {
+            Arc::from(crate::relevance::relevant(self, def))
         }
 
         fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {

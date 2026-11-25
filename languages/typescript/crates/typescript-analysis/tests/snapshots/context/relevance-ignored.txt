@@ -1,0 +1,25 @@
+== main
+-- off
+main
+  log
+  a [Passed]
+  log
+  b [Passed]
+edges:
+log | console.log | external typescript:lib Console.log
+main | log | call log
+main | a | pass a
+main | log | call log
+main | b | pass b
+-- on
+main
+  log
+  a [Passed]
+  log
+  b [Passed]
+edges:
+log | console.log | external typescript:lib Console.log
+main | log | call log
+main | a | pass a
+main | log | call log
+main | b | pass b

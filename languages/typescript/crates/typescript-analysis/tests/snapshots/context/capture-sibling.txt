@@ -24,7 +24,7 @@ main
 edges:
 main | setup | call setup @269d6643
 main | log | pass log
-setup @269d6643 | on | call on @8c923eb1
+setup @269d6643 | on | call on
 setup @269d6643 | first | pass setup.<locals>.first @227833d6
 setup.<locals>.first @227833d6 | second | call setup.<locals>.second @227833d6
 setup.<locals>.second @227833d6 | report | call log

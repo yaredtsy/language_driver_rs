@@ -27,9 +27,9 @@ main
     b
 edges:
 main | a | pass a
-main | later | call later @179b88e8
+main | later | call later
 main | swap | pass main.<locals>.swap
-main | later | call later @977ab74d
+main | later | call later
 main | fire | pass main.<locals>.fire @63eb1820
 main.<locals>.fire @63eb1820 | h | call a
 main.<locals>.fire @63eb1820 | h | call b

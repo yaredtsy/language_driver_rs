@@ -24,7 +24,7 @@ main
 edges:
 main | outer | call outer @75081fcf
 main | done | pass done
-outer @75081fcf | later | call later @c9ed1686
+outer @75081fcf | later | call later
 outer @75081fcf | inner | pass outer.<locals>.inner @f2641867
-outer.<locals>.inner @f2641867 | each | call each @22a59afb
+outer.<locals>.inner @f2641867 | each | call each
 outer.<locals>.inner @f2641867 | cb | call done

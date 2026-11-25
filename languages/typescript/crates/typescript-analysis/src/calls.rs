@@ -25,6 +25,7 @@ use crate::eval::{World, eval};
 use crate::flow::{DefId, Expr, Flow, VarId};
 use crate::key::{CanonVar, Key, KeyData, KeyId, Keys};
 use crate::needs::needs_of_component;
+use crate::relevance::relevant;
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
 use crate::value::VALUE_WIDENED_SET;
 use crate::value::{Captures, Value};
@@ -242,6 +243,16 @@ impl World for TypeScript<'_> {
 
     fn needs_known(&self, def: DefId) -> Option<Arc<[VarId]>> {
         self.sem.needs_memo(def)
+    }
+
+    fn relevant(&self, def: DefId) -> Arc<[bool]> {
+        // kept by the `Sem` beside `needs`: a fact of the code, worked out once per program
+        if let Some(found) = self.sem.relevance_memo(def) {
+            return found;
+        }
+        let found: Arc<[bool]> = Arc::from(relevant(self, def));
+        self.sem.remember_relevance(def, Arc::clone(&found));
+        found
     }
 
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
@@ -720,7 +731,7 @@ mod tests {
         assert_eq!(Precision::Precise.layer(), Some(Caps::BUILT));
         assert_eq!(
             Caps::BUILT,
-            Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES | Caps::MODULES
+            Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES | Caps::MODULES | Caps::RELEVANCE
         );
     }
 

@@ -92,11 +92,13 @@ fn admits(param: &Param) -> bool {
 }
 
 /// The key a call passes: argument `i` bound to parameter `i` of the callee's own list (`Flow::params`), by position, as JavaScript binds it
-/// (`06-tc2` §5). Slot `i` is unknown when the parameter is not admitted (its argument is not evaluated) or when a spread is at an argument at or before
-/// `i`; else the argument's value (`value_of`), or `{Undefined}` when the call has no argument `i`. Arguments past the last parameter are not read.
+/// (`06-tc2` §5). Slot `i` is unknown when the parameter is not admitted or not relevant (`relevant[i]` is false, or `relevant` has no `i`: its argument is
+/// not evaluated) or when a spread is at an argument at or before `i`; else the argument's value (`value_of`), or `{Undefined}` when the call has no
+/// argument `i`. Arguments past the last parameter are not read.
 pub(crate) fn bind(
     params: &[Param],
     args: &[Arg],
+    relevant: &[bool],
     mut value_of: impl FnMut(&Expr) -> Value,
 ) -> KeyData {
     let spread = args.iter().position(|arg| arg.spread);
@@ -104,7 +106,10 @@ pub(crate) fn bind(
         .iter()
         .enumerate()
         .map(|(i, param)| {
-            if !admits(param) || spread.is_some_and(|at| at <= i) {
+            if !admits(param)
+                || !relevant.get(i).copied().unwrap_or(false)
+                || spread.is_some_and(|at| at <= i)
+            {
                 Value::unknown()
             } else if let Some(arg) = args.get(i) {
                 value_of(&arg.value)
@@ -675,6 +680,7 @@ mod tests {
         let few = bind(
             &[p.clone(), p.clone()],
             &[arg(0, false)],
+            &[true, true],
             by_hand(&mut calls),
         );
         assert_eq!(*few.params, [f(0), Value::of([One::Undefined], false)]);
@@ -683,13 +689,14 @@ mod tests {
         let many = bind(
             &[p.clone(), p.clone()],
             &[arg(0, false), arg(1, false), arg(2, false)],
+            &[true, true],
             by_hand(&mut calls),
         );
         assert_eq!(*many.params, [f(0), f(1)]);
         assert_eq!(calls, 2, "the third argument is not read");
         let mut calls = 0;
         assert_eq!(
-            bind(&[], &[arg(0, false)], by_hand(&mut calls)),
+            bind(&[], &[arg(0, false)], &[], by_hand(&mut calls)),
             KeyData::default()
         );
         assert_eq!(calls, 0);
@@ -703,10 +710,11 @@ mod tests {
         let mid = bind(
             &params,
             &[arg(0, false), arg(1, true), arg(2, false)],
+            &[true; 3],
             by_hand(&mut calls),
         );
         assert_eq!(*mid.params, [f(0), Value::unknown(), Value::unknown()]);
-        let all = bind(&params, &[arg(0, true)], by_hand(&mut calls));
+        let all = bind(&params, &[arg(0, true)], &[true; 3], by_hand(&mut calls));
         assert_eq!(
             *all.params,
             [Value::unknown(), Value::unknown(), Value::unknown()]
@@ -719,10 +727,27 @@ mod tests {
         let key = bind(
             &[param(false, false), param(true, true)],
             &[arg(0, false), arg(1, false)],
+            &[true, true],
             by_hand(&mut calls),
         );
         assert_eq!(*key.params, [Value::unknown(), Value::unknown()]);
         assert_eq!(calls, 0);
+    }
+
+    #[test]
+    fn a_parameter_that_is_not_relevant_is_unknown_and_its_argument_is_not_read() {
+        let p = param(true, false);
+        let params = [p.clone(), p.clone(), p];
+        let args = [arg(0, false), arg(1, false), arg(2, false)];
+        let mut calls = 0;
+        let key = bind(&params, &args, &[true, false, true], by_hand(&mut calls));
+        assert_eq!(*key.params, [f(0), Value::unknown(), f(2)]);
+        assert_eq!(calls, 2);
+        // a flag the slice does not have is not relevant either: the callers pass a slice as long as the parameters
+        let mut calls = 0;
+        let key = bind(&params, &args, &[true], by_hand(&mut calls));
+        assert_eq!(*key.params, [f(0), Value::unknown(), Value::unknown()]);
+        assert_eq!(calls, 1);
     }
 
     #[test]

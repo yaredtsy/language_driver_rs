@@ -495,6 +495,10 @@ impl crate::eval::World for OfSem<'_> {
         None
     }
 
+    fn relevant(&self, def: DefId) -> Arc<[bool]> {
+        Arc::from(crate::relevance::relevant(self, def))
+    }
+
     fn capture(
         &self,
         _list: Vec<(crate::flow::VarId, crate::value::Value)>,

@@ -25,7 +25,7 @@ fn snapshot_path(id: &str) -> PathBuf {
 }
 
 /// What is wrong with a table, one sentence for each: a row with no fixture, a fixture that is not there, no snapshot, a fixture no row names, a snapshot
-/// no row builds. `tour.flow.txt` is not a row's snapshot (`src/sem/flow/tests.rs` writes it), nor are `locals-off.txt`, `captures-off.txt` and `modules-off.txt` (`calls/keyed.rs` writes them: every entry with `LOCALS`, `CAPTURES`, then `MODULES`, off).
+/// no row builds. `tour.flow.txt` is not a row's snapshot (`src/sem/flow/tests.rs` writes it), nor are `locals-off.txt`, `captures-off.txt`, `modules-off.txt` and `relevance-off.txt` (`calls/keyed.rs` writes them: every entry with `LOCALS`, `CAPTURES`, `MODULES`, then `RELEVANCE`, off).
 fn problems(table: &str, tests: &Path) -> Vec<String> {
     let rows = rows(table);
     let mut found = Vec::new();
@@ -94,6 +94,7 @@ fn problems(table: &str, tests: &Path) -> Vec<String> {
                     && name != "locals-off.txt"
                     && name != "captures-off.txt"
                     && name != "modules-off.txt"
+                    && name != "relevance-off.txt"
             })
             .collect();
         names.sort();
@@ -433,7 +434,7 @@ fn value_widened_set_is_counted_where_a_set_passes_the_cap() {
             seen += 1;
         }
     }
-    assert_eq!(seen, 90, "every entry of every row");
+    assert_eq!(seen, 94, "every entry of every row");
 }
 
 /// The tripwire (`06-tc2` §10, step 5c): a function drawn at the call of a value that the checker says does not fit the callee's type is counted
@@ -498,5 +499,5 @@ fn the_tripwire_counts_where_a_function_does_not_fit() {
             seen += 1;
         }
     }
-    assert_eq!(seen, 90, "every entry of every row");
+    assert_eq!(seen, 94, "every entry of every row");
 }

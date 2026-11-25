@@ -1,0 +1,42 @@
+== main
+-- off
+main
+  wrap
+    later
+    wrap.<locals>.inner [Passed]
+  a [Passed]
+  wrap
+    later
+    wrap.<locals>.inner [Passed]
+  b [Passed]
+edges:
+main | wrap | call wrap
+main | a | pass a
+main | wrap | call wrap
+main | b | pass b
+wrap | later | call later
+wrap | inner | pass wrap.<locals>.inner
+wrap.<locals>.inner | cb | unresolved function_typed_value
+-- on
+main
+  wrap
+    later
+    wrap.<locals>.inner [Passed]
+      a
+  a [Passed]
+  wrap
+    later
+    wrap.<locals>.inner [Passed]
+      b
+  b [Passed]
+edges:
+main | wrap | call wrap @5d2e5760
+main | a | pass a
+main | wrap | call wrap @ac15243e
+main | b | pass b
+wrap @5d2e5760 | later | call later
+wrap @5d2e5760 | inner | pass wrap.<locals>.inner @13bff567
+wrap @ac15243e | later | call later
+wrap @ac15243e | inner | pass wrap.<locals>.inner @711b3af3
+wrap.<locals>.inner @13bff567 | cb | call a
+wrap.<locals>.inner @711b3af3 | cb | call b

@@ -21,7 +21,7 @@ main
 edges:
 main | start | call start @2374a60c
 main | save | pass save
-start @2374a60c | timer | call timer @a22498e9
+start @2374a60c | timer | call timer
 start @2374a60c | finish | pass start.<locals>.finish @9449eb99
 start.<locals>.finish @9449eb99 | onDone | call save
 == start
@@ -38,7 +38,7 @@ start
   timer
   start.<locals>.finish [Passed]
 edges:
-start | timer | call timer @47a8db60
+start | timer | call timer
 start | finish | pass start.<locals>.finish
 start.<locals>.finish | onDone | unresolved function_typed_value
 == start.<locals>.finish

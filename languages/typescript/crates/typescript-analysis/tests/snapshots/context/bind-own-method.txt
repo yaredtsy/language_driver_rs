@@ -16,8 +16,8 @@ main
   handler.bind
     other [Passed]
 edges:
-handler.bind @6eee0fda | other | pass other
+handler.bind | other | pass other
 main | run | call run
-main | handler.bind | call handler.bind @6eee0fda
+main | handler.bind | call handler.bind
 run | cb | unresolved function_typed_value
 uncovered: bind=1

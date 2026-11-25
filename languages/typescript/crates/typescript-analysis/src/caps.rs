@@ -19,6 +19,8 @@ bitflags::bitflags! {
         const RETURNS = 32;
         /// TC3 step 4: a variable at the top of a file, read from a function or through an import, has its value.
         const MODULES = 64;
+        /// TC3 step 6: a parameter that cannot reach a call is not in the key.
+        const RELEVANCE = 128;
     }
 }
 
@@ -26,9 +28,11 @@ impl Caps {
     /// The bits that are built: what `Precision::Precise` turns on. `PARAMS` (TC2, step 5a): a callee that is a parameter is answered from the functions the key
     /// holds for it. `LOCALS` (TC3 step 2): a variable of the body holds the join of what is assigned to it. `CAPTURES` (TC3 step 3): a nested def's value
     /// carries the values of the variables it reads from around it. `MODULES` (TC3 step 4): a variable at the top of a file has its row of the file's own table as its
-    /// value, read from a function of the file or through an import.
+    /// value, read from a function of the file or through an import. `RELEVANCE` (TC3 step 6): a parameter that cannot reach a call, through variables
+    /// and captures, is unknown in a key, so callers that differ only in it share a context.
     pub(crate) const BUILT: Caps = Caps::PARAMS
         .union(Caps::LOCALS)
         .union(Caps::CAPTURES)
-        .union(Caps::MODULES);
+        .union(Caps::MODULES)
+        .union(Caps::RELEVANCE);
 }

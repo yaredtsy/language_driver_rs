@@ -164,7 +164,7 @@ fn named(world: &dyn World, table: &Flow) -> Vec<DefId> {
 
 /// Every expression of the table, `OneOf` members included: each site's callee and arguments, each hand-over's value, each parameter's default, and each
 /// row's assigned expressions.
-fn each_expr(table: &Flow, each: &mut dyn FnMut(&Expr)) {
+pub(crate) fn each_expr(table: &Flow, each: &mut dyn FnMut(&Expr)) {
     fn walk(expr: &Expr, each: &mut dyn FnMut(&Expr)) {
         each(expr);
         if let Expr::OneOf(members) = expr {
@@ -231,6 +231,10 @@ mod tests {
 
         fn needs_known(&self, def: DefId) -> Option<Arc<[VarId]>> {
             self.1.borrow().get(&def).map(Arc::clone)
+        }
+
+        fn relevant(&self, def: DefId) -> Arc<[bool]> {
+            Arc::from(crate::relevance::relevant(self, def))
         }
 
         fn capture(&self, _list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {

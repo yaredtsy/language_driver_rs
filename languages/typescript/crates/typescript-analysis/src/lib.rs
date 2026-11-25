@@ -8,6 +8,7 @@ mod eval;
 mod flow;
 mod key;
 mod needs;
+mod relevance;
 #[cfg(test)]
 mod scratch;
 mod sem;

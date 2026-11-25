@@ -16,7 +16,6 @@ use crate::env::{
     MODULE_READS_MODULE, VARIABLE_ADDED_TO_ENGINE, VARIABLE_ASSIGNED_MORE_THAN_ONCE,
     VARIABLE_ROUNDS_CAPPED, VARIABLE_WRITE_UNMODELLED,
 };
-use crate::flow::Expr;
 use crate::value::Value;
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
@@ -58,82 +57,31 @@ fn open(fixture: &str) -> Sem {
 /// What a measured solve asks and keeps (`06-tc2` §10, step 4b). Test-only.
 #[derive(Default)]
 pub(super) struct Measure {
-    /// `key_of` writes unknown in the slot of each parameter the callee's table never reads (`reads`): an approximation of relevance (§8).
-    pub(super) relevance: bool,
     /// Every key data `key_of` made, with its callee, after the mask and before interning (so anonymous functions are still told apart).
     pub(super) bound: Vec<(DefId, KeyData)>,
 }
 
 impl TypeScript<'_> {
-    /// The test-only hook of `walk::key_of`: masks `data` when `relevance` is on, records it, returns it.
-    pub(crate) fn measured(&self, callee: DefId, flow: &Flow, mut data: KeyData) -> KeyData {
-        let mut measure = self.measure.borrow_mut();
-        if measure.relevance {
-            let read = reads(flow);
-            debug_assert_eq!(
-                read.len(),
-                data.params.len(),
-                "bind makes one slot per parameter"
-            );
-            for (slot, read) in data.params.iter_mut().zip(read) {
-                if !read {
-                    *slot = Value::unknown();
-                }
-            }
-        }
-        measure.bound.push((callee, data.clone()));
+    /// The test-only hook of `walk::key_of`: records `data`, what `bind` made (relevance already applied), and returns it.
+    pub(crate) fn measured(&self, callee: DefId, data: KeyData) -> KeyData {
+        self.measure.borrow_mut().bound.push((callee, data.clone()));
         data
-    }
-}
-
-/// Which parameters of a table are read: parameter `i` is when `Expr::Param(i)` is a site's callee, one of a site's arguments, a hand-over's value or
-/// another parameter's default, `OneOf` members included. A return (TC6) and a nested def (TC3) are not in a table yet: this is §8 on what the table holds.
-fn reads(flow: &Flow) -> Vec<bool> {
-    let mut read = vec![false; flow.params.len()];
-    for site in &flow.sites {
-        params_in(&site.callee, &mut read);
-        for arg in site.args.iter().flat_map(|args| args.iter()) {
-            params_in(&arg.value, &mut read);
-        }
-    }
-    for held in &flow.handed {
-        params_in(&held.value, &mut read);
-    }
-    for param in &flow.params {
-        if let Some(default) = &param.default {
-            params_in(default, &mut read);
-        }
-    }
-    read
-}
-
-/// Marks each `Param(i)` in `expr`, `OneOf` members included.
-fn params_in(expr: &Expr, out: &mut [bool]) {
-    match expr {
-        Expr::Param(i) => {
-            if let Some(slot) = out.get_mut(*i as usize) {
-                *slot = true;
-            }
-        }
-        Expr::OneOf(members) => members.iter().for_each(|member| params_in(member, out)),
-        Expr::Unknown | Expr::Data | Expr::Def(_) | Expr::Anon(_) | Expr::Var(_) => {}
     }
 }
 
 /// The graph under `main`, with the layer as `layer` says.
 fn solve<'p>(sem: &'p Sem, layer: Option<Caps>) -> (Solver<TypeScript<'p>>, Graph) {
     let main = sem.entry("src/main.ts", "main", 0, STYLE).unwrap();
-    solve_from(sem, main, layer, false)
+    solve_from(sem, main, layer)
 }
 
-/// The graph from `func`, with the layer as `layer` says and relevance as `relevance` says; the solver keeps what it walked and bound.
+/// The graph from `func`, with the layer as `layer` says; the solver keeps what it walked and bound.
 fn solve_from<'p>(
     sem: &'p Sem,
     func: Func<'p>,
     layer: Option<Caps>,
-    relevance: bool,
 ) -> (Solver<TypeScript<'p>>, Graph) {
-    let (solver, graph, _) = solve_timed(sem, func, layer, relevance);
+    let (solver, graph, _) = solve_timed(sem, func, layer);
     (solver, graph)
 }
 
@@ -142,10 +90,8 @@ fn solve_timed<'p>(
     sem: &'p Sem,
     func: Func<'p>,
     layer: Option<Caps>,
-    relevance: bool,
 ) -> (Solver<TypeScript<'p>>, Graph, Duration) {
     let lang = TypeScript::new(sem, STYLE).with_layer(layer);
-    lang.measure.borrow_mut().relevance = relevance;
     let start = start_of(&lang, func);
     let mut solver = Solver::new(lang, Limits::default());
     let began = Instant::now();
@@ -389,8 +335,8 @@ fn the_bit_off_is_the_layer_that_knows_nothing() {
         let start = sem
             .entry(&file, &entry, 0, STYLE)
             .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
-        let (_, none) = solve_from(&sem, start, Some(Caps::empty()), false);
-        let (_, off) = solve_from(&sem, start, None, false);
+        let (_, none) = solve_from(&sem, start, Some(Caps::empty()));
+        let (_, off) = solve_from(&sem, start, None);
         assert_eq!(none, off, "{fixture} {entry}");
     }
 }
@@ -406,7 +352,7 @@ fn the_locals_bit_off_is_tc2() {
         let start = sem
             .entry(&file, &entry, 0, STYLE)
             .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
-        let (_, graph) = solve_from(&sem, start, Some(Caps::PARAMS), false);
+        let (_, graph) = solve_from(&sem, start, Some(Caps::PARAMS));
         text.push_str(&format!("== {fixture} {entry}\n{graph:?}\n"));
     }
     analyzer_testkit::expect_file(
@@ -427,7 +373,7 @@ fn the_captures_bit_off_is_step_2() {
         let start = sem
             .entry(&file, &entry, 0, STYLE)
             .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
-        let (_, graph) = solve_from(&sem, start, Some(Caps::PARAMS | Caps::LOCALS), false);
+        let (_, graph) = solve_from(&sem, start, Some(Caps::PARAMS | Caps::LOCALS));
         text.push_str(&format!("== {fixture} {entry}\n{graph:?}\n"));
     }
     analyzer_testkit::expect_file(
@@ -452,7 +398,6 @@ fn the_modules_bit_off_is_step_3() {
             &sem,
             start,
             Some(Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES),
-            false,
         );
         text.push_str(&format!("== {fixture} {entry}\n{graph:?}\n"));
     }
@@ -460,6 +405,61 @@ fn the_modules_bit_off_is_step_3() {
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/context/modules-off.txt"),
         &text,
     );
+}
+
+/// With `RELEVANCE` off the layer is step 5 exactly (`Caps::BUILT` without `RELEVANCE`): every entry of every row, written out whole, in
+/// `snapshots/context/relevance-off.txt`. Blessed before TC3 step 6 changed any code and never changed since: the proof that the bit off is the layer of
+/// step 5.
+#[test]
+fn the_relevance_bit_off_is_step_5() {
+    let mut text = String::new();
+    for (fixture, file, entry) in every_entry() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(&fixture);
+        let sem = Sem::open(&root, Path::new(&file)).unwrap();
+        let start = sem
+            .entry(&file, &entry, 0, STYLE)
+            .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
+        let (_, graph) = solve_from(&sem, start, Some(Caps::BUILT - Caps::RELEVANCE));
+        text.push_str(&format!("== {fixture} {entry}\n{graph:?}\n"));
+    }
+    analyzer_testkit::expect_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/context/relevance-off.txt"),
+        &text,
+    );
+}
+
+/// Relevance moves no edge (`07-tc3`, "Relevance"): for every entry of every row, the edges with `RELEVANCE` on and off, each as (from def, site text, call /
+/// pass / construct / external / unresolved target) without digests, are the same set, and the bit never makes more contexts. Only contexts merge.
+#[test]
+fn relevance_changes_no_edge() {
+    let (mut fewer, mut same) = (0, 0);
+    for (fixture, file, entry) in every_entry() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(&fixture);
+        let sem = Sem::open(&root, Path::new(&file)).unwrap();
+        let start = sem
+            .entry(&file, &entry, 0, STYLE)
+            .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
+        let (_, without) = solve_from(&sem, start, Some(Caps::BUILT - Caps::RELEVANCE));
+        let (_, with) = solve_from(&sem, start, Some(Caps::BUILT));
+        assert_eq!(
+            readable(&fixture, &with),
+            readable(&fixture, &without),
+            "{fixture} {entry}: the edges"
+        );
+        assert!(
+            with.contexts.len() <= without.contexts.len(),
+            "{fixture} {entry}: {} contexts with the bit, {} without",
+            with.contexts.len(),
+            without.contexts.len()
+        );
+        if with.contexts.len() < without.contexts.len() {
+            fewer += 1;
+        } else {
+            same += 1;
+        }
+    }
+    eprintln!("{fewer} entries with fewer contexts, {same} with as many");
+    assert!(fewer > 0, "the bit changed nothing anywhere");
 }
 
 /// The counters of the variables (`07-tc3` §3), per entry of every row, `(added to the engine, assigned more than once)`; an entry not listed counts 0 of
@@ -494,15 +494,21 @@ fn the_variable_counters_count_where_the_table_says() {
             (Caps::BUILT, unmodelled, added, more_than_once),
             (Caps::PARAMS, None, None, None),
         ] {
-            let (solver, _) = solve_from(&sem, start, Some(layer), false);
+            let (solver, _) = solve_from(&sem, start, Some(layer));
             let said = |key: &str| solver.lang().notes.borrow().get(key).copied();
             let at = format!("{fixture} {entry} {layer:?}");
             assert_eq!(said(VARIABLE_WRITE_UNMODELLED), unmodelled, "{at}");
             assert_eq!(said(VARIABLE_ROUNDS_CAPPED), None, "{at}");
+            // 8 evaluations of `next` past the limit, as TC3 step 3 counted; with `RELEVANCE` 6: `later`'s parameter reaches no call (it has no body), so the
+            // argument `later(next)` is not evaluated for the key, and the two evaluations it made are not made
             let widened_depth = (layer.contains(Caps::CAPTURES)
                 && fixture.ends_with("/capture-self")
                 && entry == "main")
-                .then_some(8);
+                .then_some(if layer.contains(Caps::RELEVANCE) {
+                    6
+                } else {
+                    8
+                });
             assert_eq!(said(VALUE_WIDENED_DEPTH), widened_depth, "{at}");
             assert_eq!(said(VARIABLE_ADDED_TO_ENGINE), added, "{at}");
             // TC3 step 4: `first`'s value reads `second`, a variable of another file, once, in the table of `one.ts`; with `MODULES` off nothing reads it
@@ -601,8 +607,12 @@ fn the_table_of_rows_is_read_whole() {
     assert_eq!(of("capture-written-in-nested"), 1);
     assert_eq!(of("capture-anonymous"), 1);
     assert_eq!(of("capture-self"), 1);
-    // TC3 steps 4 and 5: each `module-*` and `bind-*` row has one entry, `main`
+    // TC3 steps 4, 5 and 6: each `module-*`, `bind-*` and `relevance-*` row has one entry, `main`
     for row in [
+        "relevance-ignored",
+        "relevance-condition",
+        "relevance-through-local",
+        "relevance-captured",
         "bind-handed",
         "bind-variable",
         "bind-partial",
@@ -623,7 +633,7 @@ fn the_table_of_rows_is_read_whole() {
             "{row}"
         );
     }
-    assert_eq!(entries.len(), 90);
+    assert_eq!(entries.len(), 94);
 }
 
 /// Nine functions through one conditional are more than a set holds: the one context of `run` that the graph walked has a key of one slot, wide.
@@ -631,7 +641,7 @@ fn the_table_of_rows_is_read_whole() {
 fn nine_functions_make_a_wide_slot() {
     let sem = open("tests/fixtures/context/callback-wide");
     let pick = sem.entry("src/main.ts", "pick", 0, STYLE).unwrap();
-    let (solver, graph) = solve_from(&sem, pick, on(), false);
+    let (solver, graph) = solve_from(&sem, pick, on());
     let lang = solver.lang();
     let runs: Vec<_> = lang
         .walked
@@ -652,7 +662,7 @@ fn each_context_walked_alone(fixture: &str, file: &str, entry: &str) -> usize {
     let start = sem
         .entry(file, entry, 0, STYLE)
         .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
-    let (solver, graph) = solve_from(&sem, start, Some(Caps::BUILT), false);
+    let (solver, graph) = solve_from(&sem, start, Some(Caps::BUILT));
     let walked = &solver.lang().walked;
     assert_eq!(walked.len(), graph.contexts.len(), "{fixture} {entry}");
     for (func, key) in walked {
@@ -789,12 +799,12 @@ fn relevance_and_the_bind_record_on_keys() {
     let (run, ignore, pair) = (def_of("run"), def_of("ignore"), def_of("Pair.constructor"));
 
     // with relevance: `ignore`'s parameter is never read, so its two calls share one context
-    let (_, masked) = solve_from(&sem, main, on(), true);
+    let (_, masked) = solve_from(&sem, main, Some(Caps::BUILT));
     let found = contexts(&masked);
     assert_eq!(found, kinds(&found, &[ZEROS]));
 
     // without it: what `bind` made, before interning, told apart by the arrows
-    let (solver, graph) = solve_from(&sem, main, on(), false);
+    let (solver, graph) = solve_from(&sem, main, Some(Caps::BUILT - Caps::RELEVANCE));
     let distinct = |def: DefId| {
         let measure = solver.lang().measure.borrow();
         measure
@@ -809,7 +819,8 @@ fn relevance_and_the_bind_record_on_keys() {
     assert_eq!(contexts(&graph)["run"].len(), 3);
     assert_eq!(distinct(ignore), 2);
 
-    let read = |def: DefId| reads(&sem.flow(def, STYLE).unwrap());
+    let lang = TypeScript::new(&sem, STYLE).with_layer(Some(Caps::BUILT));
+    let read = |def: DefId| World::relevant(&lang, def).to_vec();
     assert_eq!(read(ignore), [false]);
     assert_eq!(read(run), [true]);
     assert_eq!(read(pair), [false, true]);
@@ -856,7 +867,7 @@ fn print_spread(label: &str, (spread, name): &(Spread, String)) {
     );
 }
 
-/// N6 (`06-tc2` §10, step 4b) on a real project: for each entry of a sample file, three solves of its whole graph (off, on, on with relevance) and how many
+/// N6 (`06-tc2` §10, step 4b) on a real project: for each entry of a sample file, three solves of its whole graph (off, on without `RELEVANCE`, on with it) and how many
 /// contexts per function the keys make. `cargo test --release -p typescript-analysis --lib measure_contexts -- --ignored --nocapture`.
 #[test]
 #[ignore = "a measurement on a real project, driven by TS_MEASURE_ROOT and TS_MEASURE_SAMPLE"]
@@ -898,12 +909,12 @@ fn measure_contexts() {
             .entry(file, qualname, *occurrence, STYLE)
             .unwrap_or_else(|| panic!("no entry: {file}\t{qualname}\t{occurrence}"));
         println!("== {file} {qualname}");
-        for (label, layer, relevance) in [
-            ("off      ", None, false),
-            ("on       ", Some(Caps::PARAMS), false),
-            ("relevance", Some(Caps::PARAMS), true),
+        for (label, layer) in [
+            ("off      ", None),
+            ("on       ", Some(Caps::BUILT - Caps::RELEVANCE)),
+            ("relevance", Some(Caps::BUILT)),
         ] {
-            let (solver, graph, took) = solve_timed(sem, func, layer, relevance);
+            let (solver, graph, took) = solve_timed(sem, func, layer);
             println!(
                 "  {label}  contexts {}  walks {}  cuts {:?}  {:.1} ms",
                 graph.contexts.len(),
