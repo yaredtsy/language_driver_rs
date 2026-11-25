@@ -133,6 +133,16 @@ changes, and the table above is read without this section.
 
 ## Reasons and counters that have no row of their own
 
+**The context layer's counters** (`Stats.language`, `Precision::Precise` only; each counted per walk of a context unless it says otherwise,
+so a sum over a graph grows with its contexts; the review before TC3, §2.1, plans to keep them per context before TC6):
+`value_widened_set` (a join passed `MAX_SET`; row `callback-wide`), `value_type_mismatch` / `value_type_unchecked` (the tripwire, D61;
+rows `callback-mismatch*`, `callback-generic`), `callee_undefined` (row `callback-not-passed`), `variable_write_unmodelled` (a body note,
+once per def; row `local-write-unmodelled`), `variable_added_to_engine` (D59; rows `local-either`, `callback-named-by-type`,
+`module-const`), `variable_assigned_more_than_once` (the ceiling of TC3 step 2b, a measure; row `local-assigned-twice`),
+`variable_rounds_capped` (a body's solve did not settle in 32 rounds: every row opened; no fixture reaches it outside the evaluator's test),
+`value_widened_depth` (a closure past the depth limit 2; row `capture-self`), `module_reads_module` (row `module-reads-module`),
+`key_names_unknown_def` (a key that names a def of no program: the open key instead; a test hook only).
+
 Every `Unresolved` reason (`function_typed_value`, `any_or_untyped`, `union_receiver`, `computed_name`, `no_declaration`, `decorator_result`, `anonymous_function_called`) and every `uncovered_*` counter is named in a row above. Five more names exist in `Stats.language` and have no fixture, because no fixture can make them fire:
 
 - `decl_not_in_outline`: a declaration the engine found in project code that the outline does not list: a bug in one of the two def rules, or a kind of declaration no rule has looked at yet. **Since D43 it never panics** (the `debug_assert!` is gone: a user's text must not stop a debug build). Every graph test goes through `tests/common`'s helper, which fails a test on this count, and the sweep (`tests/sweep.rs`) fails a real project on it. No fixture reaches it now. H13 was this count (a method signature in a type literal), found on a real file before the rule.

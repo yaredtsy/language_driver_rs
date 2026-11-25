@@ -86,6 +86,12 @@ Never replaced: `super.m()`, a static method called on the class by name, a func
 
 ## 5. `this`
 
+> **From TC3 (step 8b's measure on vscode, 2026-11-26):** a constructor parameter property (`constructor(private _x: X)`) written as
+> `this._x = …` or `this._x ??= …` is read today as an unmodelled write **of the parameter** (the property's name in `this._x` has the
+> parameter's symbol), so the parameter's row is open (safe, less precise; 18 tables in vscode). Writing `this._x` does not change the
+> parameter variable: when this phase reads `this.x`, such a write belongs to the field, and `written_identifiers` leaves the name of a
+> property access out of a variable's writes.
+
 `Key.this` is the receiver's value. `Expr::This` evaluates to it.
 
 | Where | `Key.this` |
