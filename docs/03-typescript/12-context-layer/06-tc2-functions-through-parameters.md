@@ -619,8 +619,8 @@ contexts and none off the functions with the most; through locals (TC3) it has m
   (`TS_SWEEP_FILE_CODE=1`); with one (`TS_SWEEP_SAMPLE`), the sample's entries whole. It prints one table: for off and on the median wall
   time and the median peak, then the two ratios, and a line `over the line to watch (2x time, +25% peak)` when a ratio passes it. It exits
   0 then too (D62: a measure, not a gate); non-zero only when a sweep fails. It prints which memory it measured. No change to Rust code; the
-  usage text at the top of the script says the mode. Proof: run on `tests/fixtures/context/tour` (`src/main.ts`) with 1 round, the output
-  pasted; `scripts/check-all.sh --static`.
+  usage text at the top of the script says the mode. Proof: run on `tests/fixtures/context/tour` (`src/tour.tsx`) with 1 round, at depth 1 and with a one-line sample
+  (`src/tour.tsx`, a tab, `main`), the output pasted; `shellcheck scripts/ts-try.sh`; `scripts/check-all.sh --static`.
 - **The reviewer: the four projects**, in `languages/typescript/engine/09-tc2.md`: V-NOC, the private codebase, the compiler, and
   **vscode** (re-cloned shallow and sparse, owed since H17): the cost (the command above, depth 1 and samples), contexts, the per-site
   measure (answered in every context, in some, in none), the tripwire's counters, and the comparison still 0 problems.
