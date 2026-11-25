@@ -158,6 +158,11 @@ fn context_rows() -> Vec<Row> {
         .collect()
 }
 
+/// How many entries the table gives (the words of a row after its folder and file): what a test that goes through every entry compares its count with.
+fn table_entries() -> usize {
+    context_rows().iter().map(|row| row.words.len() - 2).sum()
+}
+
 #[test]
 fn every_context_row_has_a_fixture_and_a_snapshot() {
     let found = problems(&context_table(), &tests_dir());
@@ -434,7 +439,8 @@ fn value_widened_set_is_counted_where_a_set_passes_the_cap() {
             seen += 1;
         }
     }
-    assert_eq!(seen, 96, "every entry of every row");
+    assert_eq!(seen, table_entries(), "every entry of every row");
+    assert!(seen > 0, "no entry was compared");
 }
 
 /// The tripwire (`06-tc2` §10, step 5c): a function drawn at the call of a value that the checker says does not fit the callee's type is counted
@@ -499,7 +505,8 @@ fn the_tripwire_counts_where_a_function_does_not_fit() {
             seen += 1;
         }
     }
-    assert_eq!(seen, 96, "every entry of every row");
+    assert_eq!(seen, table_entries(), "every entry of every row");
+    assert!(seen > 0, "no entry was compared");
 }
 
 /// The review before TC3, §1.2: the graph of `pick` under a limit on the number of contexts does not depend on what the project was asked before. A file gets
