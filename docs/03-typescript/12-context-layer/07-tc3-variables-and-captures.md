@@ -272,16 +272,21 @@ name it is). `Fn` and `CanonKey` get a `captured` list that is **skipped when em
 
 A variable declared at the top of a file is not captured: every function of the file sees the same one, so it does not belong in a key.
 
-```
-module_value(v)  =  value_of(v) in the env of the module def's own table, under the open key      once per request, kept in `TypeScript`
-```
+**As decided for step 4 (2026-11-25), corrected against the built code.**
 
-- Only a `const`. A top-level `let` or `var` is unknown: the reader would have to find its writes in every def of the file, and N4
-  says whether that is worth doing.
-- An import resolves to the declaring file's variable (`get_aliased_symbol`, as imports of functions already do), so
-  `import { onSave } from "./handlers"` is the same variable.
-- Rule 1 holds: the value is a function of the code alone, never of a caller.
-- A `const` whose initializer is a call is unknown until TC6.
+- **Its value is its row in the file's own table, under the open key** (`World::module_value`): the file's code (`Func::module`) has a
+  table like any def, and its write walk covers the whole file, every function in it included (step 1). So the row is complete.
+- **A `let` or `var` too, not only a `const`** (the first draft's "only a `const`" was there because the reader "would have to find its
+  writes in every def of the file": it does). Another module cannot write it: an import is a read-only binding. **In a script file**
+  (`!ast::is_external_or_common_js_module`) a top-level variable is a global that any other script may write: its row is `open`.
+- **An import is the declaring file's variable**: `var_of` follows an alias (`get_aliased_symbol`, as imports of functions already are) to
+  a top-level variable of a project file. `export { x } from` is an alias too.
+- **One module's value does not read another's**: inside a module's own table, a variable of another module is unknown, counted
+  `module_reads_module`. Following it would make an import cycle give different values depending on which file was asked first, and
+  "the same from any entry" (the README's point 9) would not hold.
+- A value made per request, one env per file (kept in `TypeScript`), solved once as any body's.
+- Its own bit, `Caps::MODULES`, so "the bit off is step 3" is proved as before (`modules-off.txt`).
+- A variable whose value is a call's result is unknown until TC6. Rule 1 holds: the value is a function of the code alone.
 
 ## 6. `bind`
 
@@ -316,7 +321,7 @@ the row `callback-reassigned` flipping: the handler **and** `fallback`, complete
 | 2 | the whole-scope join (§3): `env.rs` `value_of`, the memo; parameters joined with their assignments; the counter of the ceiling of 2b | `local-*` (`local-assigned-twice`: `a` and `b` at both calls), `param-reassigned`; the ceiling on the four projects |
 | 2b | **not built (owner, 2026-11-25, on the measure in `engine/10-tc3.md`: no edge at a callee would change); re-measured at TC6's close.** Was: only if step 2's ceiling is not near zero on the private codebase and the compiler: in order (D67, §3), opening with the spike (flow nodes at the pin, the `ReduceLabel` view, the nested-write rule, loops, unreachable code, the memo and the counted cap), behind `Caps::ORDER` | one fixture per flow node kind, by hand; fail-open counted; the sweep bit off/on with the removed members read by hand on two projects; the cost (D62) |
 | 3 | part 1: `Flow::around`, `needs` (printed in the table snapshots, tested by hand); part 2: `Fn` with captures, `Key.captured`, the canonical form, the depth limit | part 1: needs as written by hand, no graph moves; part 2: `capture-*`; TC2's digests unchanged |
-| 4 | module variables | `module-*` |
+| 4 | module variables (§5 as decided): `var_of` through imports, script files open, `World::module_value`, `Caps::MODULES` | `module-*`; `modules-off.txt` unchanged |
 | 5 | `bind` | `bind`; the counter drops where an edge appears |
 | 6 | relevance (moved from TC2 step 8, [06](06-tc2-functions-through-parameters.md) §8), through locals | equal edges, fewer contexts |
 | 7 | the four projects; the cost (`scripts/ts-try.sh cost`, D62) | `ENGINE.md` |
