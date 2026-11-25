@@ -581,6 +581,15 @@ fn the_kinds_of_data_and_nothing_are_reviewed() {
     );
 }
 
+/// A script's variable at the top of the file is open (any other script may write it); one inside a function written in the file is not (TC3 step 4's nit).
+#[test]
+fn a_script_local_is_not_a_global() {
+    analyzer_testkit::expect_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/flow/script.flow.txt"),
+        &tables_of(&root(), "src/script.ts"),
+    );
+}
+
 /// What each parameter's row says: rest, pattern, default, assigned, capable (`06-tc2` §2).
 #[test]
 fn the_parameter_rows_say_what_each_parameter_is() {

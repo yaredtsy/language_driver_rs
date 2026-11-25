@@ -1,0 +1,26 @@
+== sa
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== later
+params:
+  #0 capable
+vars:
+  cb@3 param#0 capable
+sites: none
+anons: 0
+handed: none
+== FILE
+params: none
+vars:
+  global@2 capable open = def sa
+  local@5 capable = def sa
+sites:
+  call ? (anon#0)
+  call var local@5 () in anon#0
+anons: 1
+handed:
+  sa def sa
+  sa def sa

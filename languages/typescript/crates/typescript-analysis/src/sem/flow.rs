@@ -351,8 +351,9 @@ impl Reader<'_, '_> {
                         found.push(Declaration {
                             name,
                             param: None,
-                            // in a script, any other script may write the variable (`07-tc3` §5): open, with the initializer kept
-                            open: open || in_script,
+                            // in a script, any other script may write a variable of the file's top level (`07-tc3` §5): open, with the initializer kept. One
+                            // inside a function written in the file (an arrow, a function expression) is that function's own, not a global
+                            open: open || (in_script && !inside_a_function(node, self.def)),
                             initializer: if open { None } else { initializer_of(node) },
                         });
                     }
@@ -825,6 +826,30 @@ impl Reader<'_, '_> {
             _ => Expr::Unknown,
         }
     }
+}
+
+/// Whether a function-like node is between `node` and `root`: what makes a variable declared under `root` that function's own and not the file's.
+fn inside_a_function(node: P<Node>, root: P<Node>) -> bool {
+    let mut up = node.parent();
+    while let Some(parent) = up {
+        if parent == root {
+            return false;
+        }
+        if matches!(
+            parent.kind(),
+            Kind::ArrowFunction
+                | Kind::FunctionExpression
+                | Kind::FunctionDeclaration
+                | Kind::MethodDeclaration
+                | Kind::GetAccessor
+                | Kind::SetAccessor
+                | Kind::Constructor
+        ) {
+            return true;
+        }
+        up = parent.parent();
+    }
+    false
 }
 
 /// Whether every value of `ty` is data (nothing callable, no object): what makes a parameter not capable (`06-tc2` §2). A union whose members all are;
