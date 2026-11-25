@@ -228,6 +228,7 @@ every row of the context table.
 | 5c | the tripwire (`value_type_mismatch`), designed after a probe (see "Step 5c" below) | 0 on the fixtures and the projects |
 | 5d | the rest of §9's fixtures, one row each | each row's "on" half, written by hand |
 | 5e | `scenarios/callback-argument/typescript` and `PreciseFor(&["callback-argument"])` | the scenario's two trees |
+| 5f | `eval`: a parameter that cannot hold a function is data (found by 5d's `callback-or-data`); the pinned entry counts | `callback-or-data`'s "on" half; the comparison on the projects |
 | 6 | counters per def | the two-keys counter test |
 | 7 | `Session::graph_from` | the cut-and-continue test |
 | 8 | relevance | equal edges, fewer contexts |
@@ -283,7 +284,7 @@ unknown for `Expr::Param` until step 3), so no graph changes.
   `Param(i)` → the key's slot `i` (unknown when absent), unknown for a rest parameter, joined with unknown when `assigned`, and, when the
   slot holds `Undefined` or is open and the parameter has a default, the slot without `Undefined` joined with the default's value. **A default
   is evaluated seeing only the parameters before its own** (`eval_below(.., i)`: `Param(j)` for `j ≥ i` is unknown), which is the language's
-  rule and keeps `a = a` from looping. `capable` is not read by `eval`: whether a slot may hold a value is `admit`'s (step 4). `eval` is pure;
+  rule and keeps `a = a` from looping. `capable` is not read by `eval`: whether a slot may hold a value is `admit`'s (step 4). (Corrected at step 5f: a parameter that is not `capable` evaluates to data.) `eval` is pure;
   `value_widened_set` is counted where a value is used (step 5). **A guard no step-3 test reaches:** `Lang::walk` filling `Env::key` from the key
   (every key is the open one until step 4); step 4's `callback-two-callers` proof is the first to reach it, and its review mutates it.
   (Corrected at step 4's design: `run`'s body passes nothing on, so its summary is the same under any key; the fixture that reaches the guard
@@ -528,5 +529,23 @@ expectation; the two tests that pin the number of context entries follow in the 
 
 **5e built as decided, `2d0a616`**: both trees as the shared files say, with the layer off and on; a third pinned count (the number of
 scenario programs, `each_scenario_gives_the_same_graph_the_same_tree_and_the_same_wire_every_time`) went from 6 to 7 with it.
+
+**5d, done by the reviewer (2026-11-25)**: the rest of §9 as twelve rows of the context table (`callback-default`, `-method`, `-recursive`,
+`-mutual`, `-spread`, `-rest`, `-not-capable`, `-javascript`, `-this-parameter`, `-overload`, `-or-data`, `-two-arrows`), each "on" half
+read against the row's text, written first. Already rows under other names: `callback-by-name` (`callback-two-callers`),
+`callback-returned-arrow` (the tour's line h), `callback-entry` (every row's callee as an entry), `callback-anonymous` (the tour's line i and
+`callback-two-arrows`). Eleven came out as written; the walk-alone and bit-off tests pass on all 56 entries. **`callback-or-data` did not**:
+`run(ok && handler)` keeps `unresolved function_typed_value` beside `call handler`, because `ok` is a parameter of `main` and `eval` reads an
+unlisted slot as unknown, so `unknown ∪ {handler}` is open. Step 3's rule "`capable` is not read by `eval`" is the cause: a parameter whose
+type holds only data cannot hold a function whatever is passed, which is D60's "else its annotation".
+
+**Step 5f, as decided for the build (2026-11-25).** In `eval.rs`'s `param`, after the rest check: a row that is not `capable` is
+`Value::data()` (whatever the key holds; `admit` never lists such a slot). Nothing else changes. `callback-or-data`'s "on" half flips: the
+key of `run` is `[Fn handler]` closed (digest `3fa907f4`, the pinned one), one edge `run @3fa907f4 | cb | call handler`, nothing unresolved
+beside. Every other snapshot is unchanged (a non-capable parameter matters only where it is joined with a function at a callee or a capable
+argument). The three tests that pin the number of context entries learn 56 (`the_table_of_rows_is_read_whole` with the twelve rows,
+`value_widened_set_is_counted_where_a_set_passes_the_cap`, `the_tripwire_counts_where_a_function_does_not_fit`); they are red from the
+reviewer's commit until then. Proof: the rows, a unit test in `eval.rs` (a non-capable parameter whose slot holds `{Fn}` is data), and the
+comparison on the projects still 0 problems.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)

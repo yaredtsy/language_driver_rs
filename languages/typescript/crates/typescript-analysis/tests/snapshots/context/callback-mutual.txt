@@ -1,0 +1,48 @@
+== main
+-- off
+main
+  ping
+    pong
+      ping [Recursive]
+  handler [Passed]
+edges:
+main | ping | call ping
+main | handler | pass handler
+ping | cb | unresolved function_typed_value
+ping | pong | call pong
+pong | cb | unresolved function_typed_value
+pong | ping | call ping
+-- on
+main
+  ping
+    handler
+    pong
+      handler
+      ping [Recursive]
+  handler [Passed]
+edges:
+main | ping | call ping @f245bcee
+main | handler | pass handler
+ping @f245bcee | cb | call handler
+ping @f245bcee | pong | call pong @f245bcee
+pong @f245bcee | cb | call handler
+pong @f245bcee | ping | call ping @f245bcee
+== ping
+-- off
+ping
+  pong
+    ping [Recursive]
+edges:
+ping | cb | unresolved function_typed_value
+ping | pong | call pong
+pong | cb | unresolved function_typed_value
+pong | ping | call ping
+-- on
+ping
+  pong
+    ping [Recursive]
+edges:
+ping | cb | unresolved function_typed_value
+ping | pong | call pong
+pong | cb | unresolved function_typed_value
+pong | ping | call ping

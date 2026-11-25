@@ -1,0 +1,35 @@
+== main
+-- off
+main
+  second [Passed]
+  run
+  first [Passed]
+edges:
+main | second | pass second
+main | run | call run
+main | first | pass first
+run | a | unresolved function_typed_value
+run | b | unresolved function_typed_value
+-- on
+main
+  second [Passed]
+  run
+    first
+  first [Passed]
+edges:
+main | second | pass second
+main | run | call run @cca227b4
+main | first | pass first
+run @cca227b4 | a | call first
+run @cca227b4 | b | unresolved function_typed_value
+== run
+-- off
+run
+edges:
+run | a | unresolved function_typed_value
+run | b | unresolved function_typed_value
+-- on
+run
+edges:
+run | a | unresolved function_typed_value
+run | b | unresolved function_typed_value

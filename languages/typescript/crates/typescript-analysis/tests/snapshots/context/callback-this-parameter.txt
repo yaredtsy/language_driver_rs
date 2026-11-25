@@ -1,0 +1,27 @@
+== main
+-- off
+main
+  run
+  handler [Passed]
+edges:
+main | run | call run
+main | handler | pass handler
+run | cb | unresolved function_typed_value
+-- on
+main
+  run
+    handler
+  handler [Passed]
+edges:
+main | run | call run @3fa907f4
+main | handler | pass handler
+run @3fa907f4 | cb | call handler
+== run
+-- off
+run
+edges:
+run | cb | unresolved function_typed_value
+-- on
+run
+edges:
+run | cb | unresolved function_typed_value

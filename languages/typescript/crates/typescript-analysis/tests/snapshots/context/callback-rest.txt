@@ -1,0 +1,26 @@
+== main
+-- off
+main
+  run
+  handler [Passed]
+edges:
+main | run | call run
+main | handler | pass handler
+run | first | unresolved function_typed_value
+-- on
+main
+  run
+  handler [Passed]
+edges:
+main | run | call run
+main | handler | pass handler
+run | first | unresolved function_typed_value
+== run
+-- off
+run
+edges:
+run | first | unresolved function_typed_value
+-- on
+run
+edges:
+run | first | unresolved function_typed_value

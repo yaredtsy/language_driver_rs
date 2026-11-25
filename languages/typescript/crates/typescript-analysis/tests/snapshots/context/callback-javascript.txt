@@ -1,0 +1,27 @@
+== main
+-- off
+main
+  run
+  handler [Passed]
+edges:
+main | run | call run
+main | handler | pass handler
+run | cb | unresolved any_or_untyped
+-- on
+main
+  run
+    handler
+  handler [Passed]
+edges:
+main | run | call run @8354044a
+main | handler | pass handler
+run @8354044a | cb | call handler
+== run
+-- off
+run
+edges:
+run | cb | unresolved any_or_untyped
+-- on
+run
+edges:
+run | cb | unresolved any_or_untyped

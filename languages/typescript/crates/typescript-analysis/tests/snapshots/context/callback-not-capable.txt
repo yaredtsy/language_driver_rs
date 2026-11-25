@@ -1,0 +1,32 @@
+== main
+-- off
+main
+  log
+    print
+  log
+    print
+edges:
+log | print | call print
+main | log | call log
+main | log | call log
+-- on
+main
+  log
+    print
+  log
+    print
+edges:
+log | print | call print
+main | log | call log
+main | log | call log
+== log
+-- off
+log
+  print
+edges:
+log | print | call print
+-- on
+log
+  print
+edges:
+log | print | call print

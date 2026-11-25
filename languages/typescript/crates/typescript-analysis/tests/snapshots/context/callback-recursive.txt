@@ -1,0 +1,35 @@
+== main
+-- off
+main
+  walk
+    walk [Recursive]
+  handler [Passed]
+edges:
+main | walk | call walk
+main | handler | pass handler
+walk | visit | unresolved function_typed_value
+walk | walk | call walk
+-- on
+main
+  walk
+    handler
+    walk [Recursive]
+  handler [Passed]
+edges:
+main | walk | call walk @f245bcee
+main | handler | pass handler
+walk @f245bcee | visit | call handler
+walk @f245bcee | walk | call walk @f245bcee
+== walk
+-- off
+walk
+  walk [Recursive]
+edges:
+walk | visit | unresolved function_typed_value
+walk | walk | call walk
+-- on
+walk
+  walk [Recursive]
+edges:
+walk | visit | unresolved function_typed_value
+walk | walk | call walk

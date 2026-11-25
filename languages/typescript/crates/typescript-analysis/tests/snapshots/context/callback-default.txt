@@ -1,0 +1,46 @@
+== main
+-- off
+main
+  run
+    fallback [Passed]
+  run
+    fallback [Passed]
+  handler [Passed]
+edges:
+main | run | call run
+main | run | call run
+main | handler | pass handler
+run | fallback | pass fallback
+run | cb | unresolved function_typed_value
+-- on
+main
+  run
+    fallback [Passed]
+    fallback
+  run
+    fallback [Passed]
+    handler
+  handler [Passed]
+edges:
+main | run | call run @600f3651
+main | run | call run @3fa907f4
+main | handler | pass handler
+run @3fa907f4 | fallback | pass fallback
+run @3fa907f4 | cb | call handler
+run @600f3651 | fallback | pass fallback
+run @600f3651 | cb | call fallback
+== run
+-- off
+run
+  fallback [Passed]
+edges:
+run | fallback | pass fallback
+run | cb | unresolved function_typed_value
+-- on
+run
+  fallback [Passed]
+  fallback
+edges:
+run | fallback | pass fallback
+run | cb | call fallback
+run | cb | unresolved function_typed_value

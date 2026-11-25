@@ -1,0 +1,31 @@
+== main
+-- off
+main
+  Runner.run
+  Runner
+  handler [Passed]
+edges:
+Runner.run | cb | unresolved function_typed_value
+main | new Runner().run | call Runner.run
+main | Runner | construct Runner no init
+main | handler | pass handler
+-- on
+main
+  Runner.run
+    handler
+  Runner
+  handler [Passed]
+edges:
+Runner.run @3fa907f4 | cb | call handler
+main | new Runner().run | call Runner.run @3fa907f4
+main | Runner | construct Runner no init
+main | handler | pass handler
+== Runner.run
+-- off
+Runner.run
+edges:
+Runner.run | cb | unresolved function_typed_value
+-- on
+Runner.run
+edges:
+Runner.run | cb | unresolved function_typed_value
