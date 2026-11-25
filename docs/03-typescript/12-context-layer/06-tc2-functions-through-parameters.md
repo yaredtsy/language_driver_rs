@@ -548,4 +548,9 @@ argument). The three tests that pin the number of context entries learn 56 (`the
 reviewer's commit until then. Proof: the rows, a unit test in `eval.rs` (a non-capable parameter whose slot holds `{Fn}` is data), and the
 comparison on the projects still 0 problems.
 
+**5f built as decided, `1b69317`** ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)): `callback-or-data`'s "on" half is
+the block above and no other snapshot moved; the three count tests learned 56 and are green again; the comparison on the three projects is
+still 0 problems. A closed value reaches more callees, so the compiler sample walks 31 more contexts (9,149 → 9,180), and the counters, being
+sums over contexts, rise with them (`function_typed_value` 6,414 → 6,429).
+
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
