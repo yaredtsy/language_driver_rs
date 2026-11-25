@@ -24,6 +24,7 @@ pub use analyzer_core::render::{Mark, Node, RenderOptions, render, to_text};
 pub use analyzer_core::solve::{Budget, Cancel, Limits};
 pub use analyzer_core::wire::{Frame, LineSpan, Sources, WireOptions, WireStyle, merge, wire};
 pub use calls::{Breakdown, Options, Precision, breakdown, call_graph};
+pub use key::CONTEXT_ID_VERSION;
 pub use session::{Refreshed, Session};
 pub use typescript_syntax::{DefKind, MarkerStyle, Placement, Span};
 

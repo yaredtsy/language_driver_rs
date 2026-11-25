@@ -8,6 +8,9 @@ use crate::flow::DefId;
 /// The most members a value lists before it is wide (`KeyPolicy::max_set`, §12).
 pub(crate) const MAX_SET: usize = 8;
 
+/// The key of the counter in `Stats.language` for a value set that passes `MAX_SET`: counted at the join that makes it wide, when neither side was.
+pub(crate) const VALUE_WIDENED_SET: &str = "value_widened_set";
+
 /// One thing a value can hold: a function, an anonymous function, an anonymous function of which one is not said (how a key holds one), or "nothing was
 /// passed". TC4 adds classes and objects, TC5 instances. The derived order is `Fn` by def, then `Anon` by def and number, then `AnonAny`, then `Undefined`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]

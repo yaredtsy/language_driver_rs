@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use analyzer_testkit::expect_file;
 use analyzer_testkit::graph::check_invariants;
-use common::context::{a_context_is_a_function_of_its_key, never_fewer_edges, off_is_identical};
+use common::context::{a_context_is_a_function_of_its_key, never_fewer_edges};
 use common::{Row, STYLE, call_graph, edges_as_text, render_graph, rows, split_policy, tests_dir};
 use typescript_analysis::{Cancel, Entry, Graph, Options, Precision, Project};
 
@@ -276,17 +276,8 @@ fn each_property_finds_what_it_is_for() {
     let pass = index_of(&g, &root, "lineA | encode | pass encode");
     let open = index_of(&g, &root, "each | f | unresolved function_typed_value");
 
-    // off_is_identical
-    assert!(off_is_identical(&g, &g, &root).is_empty());
     let mut h = g.clone();
     h.edges.remove(call);
-    let found = off_is_identical(&g, &h, &root);
-    assert!(
-        found
-            .iter()
-            .any(|p| p.contains("only off: lineA | each | call each")),
-        "{found:?}"
-    );
 
     // never_fewer_edges
     assert!(never_fewer_edges(&g, &g).is_empty());
@@ -419,4 +410,22 @@ fn the_counters_follow_the_edges() {
         assert_eq!(said(&off, "callee_undefined"), None, "{id} {entry}");
         assert_eq!(said(&off, "function_typed_value"), Some(1), "{id} {entry}");
     }
+}
+
+#[test]
+fn value_widened_set_is_counted_where_a_set_passes_the_cap() {
+    let mut seen = 0;
+    for row in context_rows() {
+        let (_, project) = open_row(&row);
+        for entry in &row.words[2..] {
+            let (off, on) = graphs_of(&project, &row, entry);
+            let said = |graph: &Graph| graph.stats.language.get("value_widened_set").copied();
+            // nine functions through one conditional: the argument is evaluated once, for the one target `run`
+            let want = (row.id == "callback-wide" && entry == "pick").then_some(1);
+            assert_eq!(said(&on), want, "{} {entry}", row.id);
+            assert_eq!(said(&off), None, "{} {entry}: the layer is off", row.id);
+            seen += 1;
+        }
+    }
+    assert_eq!(seen, 27, "every entry of every row");
 }

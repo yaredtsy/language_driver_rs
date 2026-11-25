@@ -14,6 +14,12 @@
 //!
 //! `TS_SWEEP_PRECISE=1` turns the context layer on (`Precision::Precise`); its dump is comparable with one made without it.
 //!
+//! `TS_SWEEP_COMPARE=1` checks "never fewer edges" (`common::context::never_fewer_edges`) entry by entry: a second `Session` is opened on the same project with
+//! `Precision::Default`, every entry the sweep builds (the sample lines, the defs, the file entries under `TS_SWEEP_FILE_CODE`) is also built by it with the same budget and
+//! cancel, and the pair is compared. An entry that one session gives a graph for and the other does not is a problem too. At the end it prints
+//! `compare: {n} entries, {m} with other edges, {p} problems` and the first 20 problems, and the test fails when there is one. It needs `TS_SWEEP_PRECISE=1` (alone it
+//! panics). Times are not a measure in this mode: two sessions are open, and the memory and the clock are shared.
+//!
 //! `TS_SWEEP_DUMP=<file>` writes one line per def, `<file>\t<qualname>\t<occurrence>\t<hash>`, sorted, where the hash is 16 hex digits of the graph's `Debug` text (or
 //! `none` when there is no graph). Two dumps are comparable only when both builds were made with the same toolchain (`DefaultHasher`'s algorithm may change between
 //! Rust releases); a line that differs is re-run alone with `TS_SWEEP_ENTRY`.
@@ -44,6 +50,9 @@ use typescript_analysis::{
     Session,
 };
 use typescript_syntax::Dialect;
+
+mod common;
+use common::context::never_fewer_edges;
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
     label: "ID",
@@ -416,6 +425,59 @@ impl Totals {
     }
 }
 
+/// The comparison of `TS_SWEEP_COMPARE`: the session with `Precision::Default`, and what the pairs of graphs said.
+struct Comparison {
+    default: Session,
+    entries: usize,
+    with_other_edges: usize,
+    problems: Vec<String>,
+}
+
+impl Comparison {
+    /// The graph of `entry` from the default session, compared with `precise`, the sweep's own.
+    fn entry(
+        &mut self,
+        file: &str,
+        entry: &Entry<'_>,
+        (qualname, occurrence): (&str, u16),
+        (budget, cancel): (&Budget, &Cancel),
+        precise: &Option<Graph>,
+    ) {
+        self.entries += 1;
+        let default = self.default.graph(file, entry, budget, cancel);
+        let at = format!("{file} {qualname} {occurrence}");
+        match (&default, precise) {
+            (Some(default), Some(precise)) => {
+                if default.edges != precise.edges {
+                    self.with_other_edges += 1;
+                }
+                for problem in never_fewer_edges(default, precise) {
+                    self.problems.push(format!("{at}: {problem}"));
+                }
+            }
+            (Some(_), None) => self
+                .problems
+                .push(format!("{at}: a graph with Default, none with Precise")),
+            (None, Some(_)) => self
+                .problems
+                .push(format!("{at}: a graph with Precise, none with Default")),
+            (None, None) => {}
+        }
+    }
+
+    fn print(&self) {
+        eprintln!(
+            "compare: {} entries, {} with other edges, {} problems",
+            self.entries,
+            self.with_other_edges,
+            self.problems.len()
+        );
+        for problem in self.problems.iter().take(20) {
+            eprintln!("  {problem}");
+        }
+    }
+}
+
 #[test]
 #[ignore = "a sweep of a real project, driven by TS_SWEEP_ROOT, TS_SWEEP_FILE and TS_SWEEP_DEPTH"]
 fn sweep_every_def_of_a_project() {
@@ -438,6 +500,11 @@ fn sweep_every_def_of_a_project() {
     } else {
         Precision::Default
     };
+    let compare = std::env::var("TS_SWEEP_COMPARE").is_ok_and(|value| value == "1");
+    assert!(
+        !compare || precision == Precision::Precise,
+        "TS_SWEEP_COMPARE=1 compares Precise with Default, so it needs TS_SWEEP_PRECISE=1"
+    );
     let dump_to = std::env::var("TS_SWEEP_DUMP").ok();
     let sites_to = std::env::var("TS_SWEEP_SITES").ok();
     let baseline_from = std::env::var("TS_SWEEP_BASELINE").ok();
@@ -454,6 +521,17 @@ fn sweep_every_def_of_a_project() {
         .unwrap_or_else(|error| panic!("the project does not open: {error:?}"));
     let open_time = started.elapsed();
     let after_open = rss_mb();
+    let mut comparison = compare.then(|| {
+        let mut options = Options::new(STYLE);
+        options.precision = Precision::Default;
+        Comparison {
+            default: Session::open(&root, Path::new(&file), options)
+                .unwrap_or_else(|error| panic!("the project does not open as Default: {error:?}")),
+            entries: 0,
+            with_other_edges: 0,
+            problems: Vec::new(),
+        }
+    });
 
     let files = session.project().expect("a session just opened").files();
     // a sample run is the whole graph unless asked otherwise; a sweep of every def is depth 1 unless asked otherwise
@@ -486,6 +564,15 @@ fn sweep_every_def_of_a_project() {
                 "no graph for the sample line {:?}",
                 (&line.file, qualname, occurrence)
             );
+            if let Some(comparison) = &mut comparison {
+                comparison.entry(
+                    &line.file,
+                    &entry,
+                    (qualname, occurrence),
+                    (&budget, &cancel),
+                    &graph,
+                );
+            }
             totals.add(&line.file, qualname, occurrence, graph, time);
         }
     } else {
@@ -521,12 +608,24 @@ fn sweep_every_def_of_a_project() {
                 let started = Instant::now();
                 let graph = session.graph(name, &entry, &budget, &cancel);
                 let time = started.elapsed();
+                if let Some(comparison) = &mut comparison {
+                    comparison.entry(
+                        name,
+                        &entry,
+                        (&def.qualname, this),
+                        (&budget, &cancel),
+                        &graph,
+                    );
+                }
                 totals.add(name, &def.qualname, this, graph, time);
             }
             if file_code {
                 let started = Instant::now();
                 let graph = session.graph(name, &Entry::File, &budget, &cancel);
                 let time = started.elapsed();
+                if let Some(comparison) = &mut comparison {
+                    comparison.entry(name, &Entry::File, ("FILE", 0), (&budget, &cancel), &graph);
+                }
                 totals.add(name, "FILE", 0, graph, time);
             }
         }
@@ -596,6 +695,14 @@ fn sweep_every_def_of_a_project() {
         }
     } else {
         eprintln!("site measure: off (set TS_SWEEP_SITES or TS_SWEEP_BASELINE)");
+    }
+    if let Some(comparison) = &comparison {
+        comparison.print();
+        assert!(
+            comparison.problems.is_empty(),
+            "the layer drew fewer edges than Default in {} places; see above",
+            comparison.problems.len()
+        );
     }
     assert!(
         gaps.is_empty(),

@@ -11,28 +11,39 @@ use crate::value::{One, Value};
 pub(crate) trait World {
     /// The table of `def`'s body; `None` when it has none.
     fn flow(&self, def: DefId) -> Option<Arc<Flow>>;
+    /// A join passed the cap of a value set: the world counts it (`value_widened_set`). No default body, so a world cannot forget to count.
+    fn widened(&self);
+}
+
+/// `a` joined with `b`: the one place `eval` joins. A join whose result is wide when neither side was is where a set is cut, so it is counted here.
+fn join(world: &impl World, a: &Value, b: &Value) -> Value {
+    let joined = a.join(b);
+    if joined.is_wide() && !a.is_wide() && !b.is_wide() {
+        world.widened();
+    }
+    joined
 }
 
 /// What `expr` can be, in `env` (`06-tc2` §3, step 3). One arm per variant and no `_`, so a variant a later phase adds does not compile until this
 /// decides it.
-pub(crate) fn eval(_world: &impl World, env: &Env, expr: &Expr) -> Value {
-    eval_below(env, expr, u32::MAX)
+pub(crate) fn eval(world: &impl World, env: &Env, expr: &Expr) -> Value {
+    eval_below(world, env, expr, u32::MAX)
 }
 
 /// `eval`, where a parameter at place `below` or after it is unknown: a default sees only the parameters before its own (a later one is not bound yet,
 /// and its own name would loop: `function f(a = a)`).
-fn eval_below(env: &Env, expr: &Expr, below: u32) -> Value {
+fn eval_below(world: &impl World, env: &Env, expr: &Expr, below: u32) -> Value {
     match expr {
         Expr::Unknown => Value::unknown(),
         Expr::Data => Value::data(),
         Expr::Def(def) => Value::of([One::Fn(*def)], false),
-        Expr::Param(index) if *index < below => param(env, *index),
+        Expr::Param(index) if *index < below => param(world, env, *index),
         Expr::Param(_) => Value::unknown(),
         Expr::Anon(index) => Value::of([One::Anon(env.def, *index)], false),
         Expr::OneOf(members) => members
             .iter()
-            .map(|member| eval_below(env, member, below))
-            .reduce(|a, b| a.join(&b))
+            .map(|member| eval_below(world, env, member, below))
+            .reduce(|a, b| join(world, &a, &b))
             .unwrap_or_else(Value::unknown),
     }
 }
@@ -41,7 +52,7 @@ fn eval_below(env: &Env, expr: &Expr, below: u32) -> Value {
 /// may have been passed (the key holds `Undefined`, or is open) and there is a default, the default's value takes `Undefined`'s place; joined with unknown
 /// when the body writes the parameter (TC3 reads the writes). Whether a slot may hold a value at all (`capable`) is the key's rule (`admit`, step 4), not
 /// this.
-fn param(env: &Env, index: u32) -> Value {
+fn param(world: &impl World, env: &Env, index: u32) -> Value {
     let Some(row) = env.flow.params.get(index as usize) else {
         return Value::unknown();
     };
@@ -56,13 +67,15 @@ fn param(env: &Env, index: u32) -> Value {
         .cloned()
         .unwrap_or_else(Value::unknown);
     let value = match &row.default {
-        Some(default) if passed.contains(One::Undefined) || passed.is_open() => passed
-            .without(One::Undefined)
-            .join(&eval_below(env, default, index)),
+        Some(default) if passed.contains(One::Undefined) || passed.is_open() => join(
+            world,
+            &passed.without(One::Undefined),
+            &eval_below(world, env, default, index),
+        ),
         _ => passed,
     };
     if row.assigned {
-        value.join(&Value::unknown())
+        join(world, &value, &Value::unknown())
     } else {
         value
     }
@@ -70,18 +83,24 @@ fn param(env: &Env, index: u32) -> Value {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::collections::HashMap;
 
     use super::*;
     use crate::flow::Param;
     use crate::key::KeyData;
+    use crate::value::MAX_SET;
 
-    /// A `World` answered by hand: a table per def, looked up.
-    struct ByHand(HashMap<DefId, Arc<Flow>>);
+    /// A `World` answered by hand: a table per def, looked up, and how many times a join passed the cap (a `Cell`, since `widened` takes `&self`).
+    struct ByHand(HashMap<DefId, Arc<Flow>>, Cell<u32>);
 
     impl World for ByHand {
         fn flow(&self, def: DefId) -> Option<Arc<Flow>> {
             self.0.get(&def).map(Arc::clone)
+        }
+
+        fn widened(&self) {
+            self.1.set(self.1.get() + 1);
         }
     }
 
@@ -125,7 +144,10 @@ mod tests {
 
     /// The world is not asked in this step; a hand-made one answers, so it is a world a test can use.
     fn world(env: &Env) -> ByHand {
-        let world = ByHand(HashMap::from([(env.def, Arc::clone(&env.flow))]));
+        let world = ByHand(
+            HashMap::from([(env.def, Arc::clone(&env.flow))]),
+            Cell::new(0),
+        );
         assert!(world.flow(env.def).is_some());
         assert!(world.flow(DefId::new(0, 0, None)).is_none());
         world
@@ -249,5 +271,39 @@ mod tests {
             ),
             Value::unknown()
         );
+    }
+
+    /// `expr` in an env whose parameter 0 holds `slot`: what it is, and how many cuts were counted.
+    fn counted(expr: Expr, slot: Value) -> (Value, u32) {
+        let env = env(vec![row(false, None, false)], vec![slot]);
+        let world = world(&env);
+        let value = eval(&world, &env, &expr);
+        (value, world.1.get())
+    }
+
+    fn defs(n: usize) -> Expr {
+        Expr::OneOf((1..=n as u32).map(|i| Expr::Def(d(i))).collect())
+    }
+
+    #[test]
+    fn nine_functions_pass_the_cap_and_count_once() {
+        let (value, count) = counted(defs(MAX_SET + 1), Value::unknown());
+        assert!(value.is_wide());
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn eight_functions_are_a_set_and_count_nothing() {
+        let (value, count) = counted(defs(MAX_SET), Value::unknown());
+        assert!(!value.is_wide());
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn a_slot_that_was_wide_is_not_cut_by_the_join() {
+        let expr = Expr::OneOf([Expr::Param(0), Expr::Def(d(1))].into());
+        let (value, count) = counted(expr, Value::wide());
+        assert!(value.is_wide());
+        assert_eq!(count, 0);
     }
 }

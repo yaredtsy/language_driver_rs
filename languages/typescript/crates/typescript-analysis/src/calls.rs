@@ -23,6 +23,7 @@ use crate::eval::World;
 use crate::flow::{DefId, Flow};
 use crate::key::{Key, KeyData, KeyId, Keys};
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
+use crate::value::VALUE_WIDENED_SET;
 use crate::walk;
 
 /// How to build a graph. The marker style is how a def's marker is read (`ID: …` in its JSDoc).
@@ -165,6 +166,10 @@ impl<'p> TypeScript<'p> {
 impl World for TypeScript<'_> {
     fn flow(&self, def: DefId) -> Option<Arc<Flow>> {
         self.sem.flow(def, self.style)
+    }
+
+    fn widened(&self) {
+        self.note(VALUE_WIDENED_SET);
     }
 }
 

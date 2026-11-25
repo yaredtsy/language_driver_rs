@@ -1,49 +1,11 @@
-//! Three properties of a pair of graphs, one with the context layer off and one with it on (`docs/03-typescript/12-context-layer/03-design.md` §8). Each
-//! returns the problems it found, one sentence each; empty means it holds. They take graphs, so any test can run them on any pair.
+//! Two properties of graphs made with the context layer (`docs/03-typescript/12-context-layer/03-design.md` §8): `never_fewer_edges` (rules 4 and 5, a pair
+//! of graphs, the layer off and on) and `a_context_is_a_function_of_its_key` (a set of graphs). Each returns the problems it found, one sentence each; empty
+//! means it holds. They take graphs, so any test can run them on any pair. Rule 7, "off is identical" (the graph with the bit off is the graph without the
+//! layer), is not here: it is held by the `-- off` halves of the snapshots and by `the_bit_off_is_the_layer_that_knows_nothing` (`calls/keyed.rs`).
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use typescript_analysis::{EdgeTo, Graph, Status};
-
-use super::edges_as_text;
-
-/// Rule 7: the graph with the layer on is the graph with it off. When not: the edge lines (`edges_as_text`) only one of them has, each as
-/// `only off: …` / `only on: …`, and `the stats differ` when they do; `the graphs differ elsewhere` when neither explains it.
-pub(crate) fn off_is_identical(off: &Graph, on: &Graph, root: &Path) -> Vec<String> {
-    if off == on {
-        return Vec::new();
-    }
-    let mut found = Vec::new();
-    let (off_lines, on_lines) = (edges_as_text(off, root), edges_as_text(on, root));
-    for line in only_in(&off_lines, &on_lines) {
-        found.push(format!("only off: {line}"));
-    }
-    for line in only_in(&on_lines, &off_lines) {
-        found.push(format!("only on: {line}"));
-    }
-    if off.stats != on.stats {
-        found.push("the stats differ".to_owned());
-    }
-    if found.is_empty() {
-        found.push("the graphs differ elsewhere".to_owned());
-    }
-    found
-}
-
-/// The lines of `a` that `b` has fewer of, a line that is there twice counting twice.
-fn only_in(a: &[String], b: &[String]) -> Vec<String> {
-    let mut left: BTreeMap<&str, i64> = BTreeMap::new();
-    for line in a {
-        *left.entry(line).or_default() += 1;
-    }
-    for line in b {
-        *left.entry(line).or_default() -= 1;
-    }
-    left.into_iter()
-        .flat_map(|(line, count)| std::iter::repeat_n(line.to_owned(), count.max(0) as usize))
-        .collect()
-}
 
 /// A target with the key set aside: what the layer may not change of an answer that is not unresolved.
 fn shape(to: &EdgeTo) -> Option<String> {

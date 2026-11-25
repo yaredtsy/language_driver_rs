@@ -11,6 +11,11 @@ use analyzer_core::graph::{StableDef, digest};
 use crate::flow::{Arg, DefId, Expr, Param};
 use crate::value::{One, Value};
 
+/// The version of a context's digest under `Precision::Precise`: the digest is core's `digest` of the canonical form of the key, and this says which
+/// form. It goes up when the digest of a key that already exists must change; a new variant, or a field that is skipped when empty, does not change the
+/// digest of any key that exists, so it does not bump it. The tag notes say so when it goes up.
+pub const CONTEXT_ID_VERSION: u32 = 1;
+
 /// A key: its number in the request's `Keys`. Two keys of one request are equal exactly when their numbers are.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct KeyId(u32);
@@ -344,6 +349,8 @@ mod tests {
 
     #[test]
     fn each_canonical_variant_has_its_pinned_bytes() {
+        // a pin above that changes bumps this
+        assert_eq!(CONTEXT_ID_VERSION, 1);
         let marked = || StableDef::Marked("abc".into());
         let rows: Vec<(Vec<Canon>, String, [u8; 16])> = vec![
             (

@@ -45,12 +45,6 @@ const A_OR_B: [u8; 16] = [
     55, 225, 1, 109, 241, 243, 47, 117, 120, 129, 24, 217, 191, 92, 235, 3,
 ];
 
-const FIXTURES: [&str; 3] = [
-    "tests/fixtures/context/callback-two-callers",
-    "tests/fixtures/context/callback-passed-through",
-    "tests/fixtures/keys",
-];
-
 fn open(fixture: &str) -> Sem {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(fixture);
     Sem::open(&root, Path::new("src/main.ts")).unwrap()
@@ -371,13 +365,28 @@ fn each_kind_of_argument_makes_its_key() {
     );
 }
 
+/// Every entry of every row of the context table, and the `keys` fixture from its `main`: `(fixture folder, file, entry)`.
+fn every_entry() -> Vec<(String, String, String)> {
+    let mut entries = context_entries();
+    entries.push((
+        "tests/fixtures/keys".to_owned(),
+        "src/main.ts".to_owned(),
+        "main".to_owned(),
+    ));
+    entries
+}
+
 #[test]
 fn the_bit_off_is_the_layer_that_knows_nothing() {
-    for fixture in FIXTURES {
-        let sem = open(fixture);
-        let (_, none) = solve(&sem, Some(Caps::empty()));
-        let (_, off) = solve(&sem, None);
-        assert_eq!(none, off, "{fixture}");
+    for (fixture, file, entry) in every_entry() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(&fixture);
+        let sem = Sem::open(&root, Path::new(&file)).unwrap();
+        let start = sem
+            .entry(&file, &entry, 0, STYLE)
+            .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
+        let (_, none) = solve_from(&sem, start, Some(Caps::empty()), false);
+        let (_, off) = solve_from(&sem, start, None, false);
+        assert_eq!(none, off, "{fixture} {entry}");
     }
 }
 
@@ -436,7 +445,26 @@ fn the_table_of_rows_is_read_whole() {
     assert_eq!(of("callback-either"), 2);
     assert_eq!(of("callback-not-passed"), 2);
     assert_eq!(of("callback-reassigned"), 2);
-    assert_eq!(entries.len(), 23);
+    assert_eq!(of("callback-data"), 2);
+    assert_eq!(of("callback-wide"), 2);
+    assert_eq!(entries.len(), 27);
+}
+
+/// Nine functions through one conditional are more than a set holds: the one context of `run` that the graph walked has a key of one slot, wide.
+#[test]
+fn nine_functions_make_a_wide_slot() {
+    let sem = open("tests/fixtures/context/callback-wide");
+    let pick = sem.entry("src/main.ts", "pick", 0, STYLE).unwrap();
+    let (solver, graph) = solve_from(&sem, pick, on(), false);
+    let lang = solver.lang();
+    let runs: Vec<_> = lang
+        .walked
+        .iter()
+        .filter(|(func, _)| graph.def(&sem.describe(*func, STYLE).id).unwrap().qname == "run")
+        .collect();
+    assert_eq!(runs.len(), 1, "one context of run");
+    let data = lang.keys.borrow().data(runs[0].1).clone();
+    assert_eq!(&*data.params, &[Value::wide()]);
 }
 
 /// A context of `graph` walked alone, by a language that remembers nothing, has exactly the edges the graph has leaving it: what the solver kept for a context
@@ -512,12 +540,7 @@ fn each_context_walked_alone(fixture: &str, file: &str, entry: &str) -> usize {
 #[test]
 fn each_context_walked_alone_has_the_edges_of_the_graph() {
     // every entry of every row of the context table, and the `keys` fixture from its `main`
-    let mut entries = context_entries();
-    entries.push((
-        "tests/fixtures/keys".to_owned(),
-        "src/main.ts".to_owned(),
-        "main".to_owned(),
-    ));
+    let entries = every_entry();
     let mut contexts = 0;
     for (fixture, file, entry) in &entries {
         contexts += each_context_walked_alone(fixture, file, entry);
