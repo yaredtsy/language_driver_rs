@@ -625,4 +625,9 @@ contexts and none off the functions with the most; through locals (TC3) it has m
   **vscode** (re-cloned shallow and sparse, owed since H17): the cost (the command above, depth 1 and samples), contexts, the per-site
   measure (answered in every context, in some, in none), the tripwire's counters, and the comparison still 0 problems.
 
+**9, the coder's half, built as decided, `963bbe8`**: `scripts/ts-try.sh cost`, `shellcheck` clean, run on the tour in both modes, a failing
+sweep exits 1 with its output kept. Found: on a fixture the times are 0.01 s (macOS `time -l` has two decimals) and the first run after a
+build is slower, so real projects need 3 rounds or more; the Linux branch (`time -v`) is written and not run. Memory is the footprint on
+macOS and the max RSS on Linux: a figure says which. The reviewer's half (the four projects) is next.
+
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
