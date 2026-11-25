@@ -427,7 +427,7 @@ fn value_widened_set_is_counted_where_a_set_passes_the_cap() {
             seen += 1;
         }
     }
-    assert_eq!(seen, 56, "every entry of every row");
+    assert_eq!(seen, 58, "every entry of every row");
 }
 
 /// The tripwire (`06-tc2` §10, step 5c): a function drawn at the call of a value that the checker says does not fit the callee's type is counted
@@ -441,7 +441,12 @@ fn the_tripwire_counts_where_a_function_does_not_fit() {
             let (off, on) = graphs_of(&project, &row, entry);
             let said = |graph: &Graph, key: &str| graph.stats.language.get(key).copied();
             let here = (row.id.as_str(), entry.as_str());
-            let mismatch = (here == ("callback-mismatch", "main")).then_some(1);
+            // one count for each function that fails, so two where two fail at one site
+            let mismatch = match here {
+                ("callback-mismatch", "main") => Some(1),
+                ("callback-mismatch-two", "main") => Some(2),
+                _ => None,
+            };
             let unchecked = (here == ("callback-generic", "main")).then_some(2);
             assert_eq!(
                 said(&on, "value_type_mismatch"),
@@ -464,7 +469,7 @@ fn the_tripwire_counts_where_a_function_does_not_fit() {
                 );
             }
             if mismatch.is_some() {
-                // D61: the mark replaces the open entry. The function is drawn, the site says `value_type_mismatch` once, and the engine's
+                // D61: the mark replaces the open entry. The function is drawn, the site says `value_type_mismatch` once however many functions failed (D61), and the engine's
                 // `function_typed_value` does not come back beside the call, so neither the counter nor its split has anything to count
                 let split: u64 = on
                     .stats
@@ -487,5 +492,5 @@ fn the_tripwire_counts_where_a_function_does_not_fit() {
             seen += 1;
         }
     }
-    assert_eq!(seen, 56, "every entry of every row");
+    assert_eq!(seen, 58, "every entry of every row");
 }
