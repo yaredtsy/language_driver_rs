@@ -6,7 +6,7 @@
 //! `Precision::Precise` the layer reads each walked body's table (`Lang::walk`) and asks `eval` about each callee that the engine could only call "a function-typed value"; where the key says which functions that is, the site draws
 //! a call to each (`walk::resolve_from_env`), and every other edge is the engine's.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
@@ -75,6 +75,11 @@ pub(crate) struct TypeScript<'p> {
     /// Counters that are not the reason of an edge (`walk::INHERITED_*`), filled as bodies are walked, once each, and put in `Stats.language` by
     /// `call_graph`.
     notes: RefCell<BTreeMap<&'static str, u64>>,
+    /// The defs whose body `Lang::walk` has started in this request (`TypeScript` is made per request). With the layer on one def is walked once for each of
+    /// its keys; what the body *has* is counted by the first walk only (`note_body`).
+    defs_walked: RefCell<HashSet<DefId>>,
+    /// Whether the walk running now is its def's first. True outside any walk, so what a request meets outside one (`start_of`, `call_graph`) counts.
+    first_walk: Cell<bool>,
     /// The defs the walked bodies hand over, by identity, and whether each was written inside an expression (`Sem::handed_over`). Compared with the
     /// graph's edges by `call_graph`, once they are known.
     handed: RefCell<HashMap<StableDef, bool>>,
@@ -99,6 +104,8 @@ impl<'p> TypeScript<'p> {
             sem,
             style,
             notes: RefCell::new(BTreeMap::new()),
+            defs_walked: RefCell::new(HashSet::new()),
+            first_walk: Cell::new(true),
             handed: RefCell::new(HashMap::new()),
             demoted: RefCell::new(HashSet::new()),
             keys: RefCell::new(Keys::new()),
@@ -132,10 +139,11 @@ impl<'p> TypeScript<'p> {
         self
     }
 
-    /// Count what a walked body hands over or calls that no edge covers (`Uncovered`), once per occurrence. A count and nothing else: no edge, no node.
+    /// Count what a walked body hands over or calls that no edge covers (`Uncovered`), once per occurrence. A count and nothing else: no edge, no node. A fact
+    /// of the body, so a body note (`note_body`).
     pub(crate) fn note_uncovered(&self, uncovered: &[Uncovered]) {
         for kind in uncovered {
-            self.note(kind.counter());
+            self.note_body(kind.counter());
         }
     }
 
@@ -150,13 +158,27 @@ impl<'p> TypeScript<'p> {
         }
     }
 
-    /// Count one more of `key`.
-    pub(crate) fn note(&self, key: &'static str) {
-        self.note_n(key, 1);
+    /// Count one more of `key`, a fact of **what the body has**: the same in every context of the def, so it is counted by the def's first walk in this request
+    /// and dropped in a later one (`06-tc2` §6, step 6). Outside any walk it counts.
+    pub(crate) fn note_body(&self, key: &'static str) {
+        self.note_body_n(key, 1);
     }
 
-    /// `n` more of `key`; nothing when `n` is 0, so the key is in `Stats.language` only when there is something to say.
-    pub(crate) fn note_n(&self, key: &'static str, n: u64) {
+    /// `n` more of `key`, as `note_body`; nothing when `n` is 0, so the key is in `Stats.language` only when there is something to say.
+    pub(crate) fn note_body_n(&self, key: &'static str, n: u64) {
+        if self.first_walk.get() {
+            self.note_walk_n(key, n);
+        }
+    }
+
+    /// Count one more of `key`, a fact of **what this context did** (the tripwire, `callee_undefined`, the split of `function_typed_value`): one for each
+    /// walk, since each walk of a def is its own context and draws its own edges.
+    pub(crate) fn note_walk(&self, key: &'static str) {
+        self.note_walk_n(key, 1);
+    }
+
+    /// `n` more of `key`, as `note_walk`; nothing when `n` is 0.
+    pub(crate) fn note_walk_n(&self, key: &'static str, n: u64) {
         if n > 0 {
             *self.notes.borrow_mut().entry(key).or_default() += n;
         }
@@ -169,7 +191,7 @@ impl World for TypeScript<'_> {
     }
 
     fn widened(&self) {
-        self.note(VALUE_WIDENED_SET);
+        self.note_walk(VALUE_WIDENED_SET);
     }
 }
 
@@ -196,16 +218,22 @@ impl<'p> Lang for TypeScript<'p> {
         self.walked.push((f, *key));
         // the layer on: this body's table, read once per program and kept (`Sem::flow`); off, nothing is read at all
         let def = self.sem.def_id(f);
+        // this walk is the def's first in the request, or a later one under another key: body notes count in the first only
+        let first = self.defs_walked.borrow_mut().insert(def);
+        self.first_walk.set(first);
         let env = self.layer.and_then(|_| World::flow(self, def)).map(|flow| {
             // what reading the table met of a kind the views do not handle, said at every walk as `walk::body` says the body's own
-            self.note_n(UNHANDLED_KEY, flow.unhandled);
+            self.note_body_n(UNHANDLED_KEY, flow.unhandled);
             Env {
                 flow,
                 def,
                 key: self.keys.borrow().data(*key).clone(),
             }
         });
-        walk::body(self, f, env.as_ref(), cancel)
+        let summary = walk::body(self, f, env.as_ref(), cancel);
+        // outside a walk again
+        self.first_walk.set(true);
+        summary
     }
 }
 
@@ -250,7 +278,7 @@ pub(crate) fn graph_within(
         let graph = solver.graph_within(&[start], budget, cancel);
         (solver, graph)
     });
-    solver.lang().note_n(UNHANDLED_KEY, unhandled);
+    solver.lang().note_body_n(UNHANDLED_KEY, unhandled);
     finish(&mut graph, solver.lang());
     Some(graph)
 }
@@ -618,6 +646,27 @@ mod tests {
         assert_eq!(Precision::Default.layer(), None);
         assert_eq!(Precision::Precise.layer(), Some(Caps::BUILT));
         assert_eq!(Caps::BUILT, Caps::PARAMS);
+    }
+
+    /// Body notes count in a def's first walk and in no later one (`note_body`); a context's own notes in every walk; and outside a walk everything counts,
+    /// also after a walk that was not the def's first (`call_graph` and `start_of` note there).
+    #[test]
+    fn a_body_note_is_dropped_in_a_later_walk_of_the_def_and_counts_again_outside_any_walk() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/two-keys");
+        let sem = Sem::open(&root, Path::new("src/main.ts")).unwrap();
+        let run = sem.entry("src/main.ts", "run", 0, STYLE).unwrap();
+        let mut lang = TypeScript::new(&sem, STYLE);
+        let said = |lang: &TypeScript<'_>, key: &str| lang.notes.borrow().get(key).copied();
+        Lang::walk(&mut lang, run, &KeyId::OPEN, &Cancel::new());
+        assert_eq!(said(&lang, "uncovered_bind"), Some(1), "the first walk");
+        // the same def again: its own `bind` is not counted twice
+        Lang::walk(&mut lang, run, &KeyId::OPEN, &Cancel::new());
+        assert_eq!(said(&lang, "uncovered_bind"), Some(1), "a later walk");
+        // outside a walk: the flag is back, so a body note counts, and a context's note always does
+        lang.note_body("probe_body");
+        lang.note_walk("probe_walk");
+        assert_eq!(said(&lang, "probe_body"), Some(1), "outside a walk");
+        assert_eq!(said(&lang, "probe_walk"), Some(1));
     }
 
     #[test]

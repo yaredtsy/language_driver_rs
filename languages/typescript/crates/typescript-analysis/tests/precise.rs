@@ -125,3 +125,45 @@ fn precise_never_has_fewer_edges() {
         problems.len()
     );
 }
+
+/// Counters per def (`06-tc2` §6 and §10, step 6): what a body *has* (`uncovered_bind`, the `helper.bind(null)` in `run`) is counted once per def however many
+/// contexts it is walked in, and what a context *did* (`value_type_mismatch`, the two functions that do not fit `cb`) once per walk. `run` is walked
+/// under two keys with the layer on, so the two counters part ways; with it off there is one walk and one context.
+#[test]
+fn a_body_counter_counts_once_per_def_and_a_context_counter_once_per_walk() {
+    let root = tests_dir().join("fixtures/two-keys");
+    let project = Project::open(&root, Path::new("src/main.ts")).unwrap();
+    let entry = Entry::Def {
+        qualname: "main",
+        occurrence: 0,
+    };
+    let cancel = Cancel::new();
+    let graph = |precision: Precision| {
+        let mut options = Options::new(STYLE);
+        options.precision = precision;
+        call_graph(&project, "src/main.ts", &entry, &options, &cancel).expect("a graph for main")
+    };
+    let (default, precise) = (graph(Precision::Default), graph(Precision::Precise));
+    let said =
+        |graph: &typescript_analysis::Graph, key: &str| graph.stats.language.get(key).copied();
+
+    let run = |graph: &typescript_analysis::Graph| {
+        graph
+            .contexts
+            .iter()
+            .filter(|context| {
+                graph
+                    .def(&context.id.func)
+                    .is_some_and(|def| def.qname == "run")
+            })
+            .count()
+    };
+    // the test cannot pass by the layer giving one key: `run` has a context for each function handed to it
+    assert_eq!(run(&precise), 2, "two contexts of `run` with the layer on");
+    assert_eq!(run(&default), 1, "one context of `run` with it off");
+
+    assert_eq!(said(&precise, "uncovered_bind"), Some(1), "the body, once");
+    assert_eq!(said(&precise, "value_type_mismatch"), Some(2), "each walk");
+    assert_eq!(said(&default, "uncovered_bind"), Some(1));
+    assert_eq!(said(&default, "value_type_mismatch"), None);
+}

@@ -66,7 +66,7 @@ pub(crate) fn body<'p>(
     cancel: &Cancel,
 ) -> Summary<TypeScript<'p>> {
     let (summary, unhandled) = counted(|| body_of(lang, f, env, cancel));
-    lang.note_n(
+    lang.note_body_n(
         UNHANDLED_KEY,
         unhandled + lang.sem.unhandled_in_body(f, lang.style),
     );
@@ -110,7 +110,7 @@ fn body_of<'p>(
     found.sort_by_key(|calls| (calls.site.start, calls.site.end));
     lang.note_handed_over(&hand_overs.handed);
     lang.note_uncovered(&hand_overs.uncovered);
-    lang.note_n(SIGNATURE_PASSED, hand_overs.signatures_passed);
+    lang.note_body_n(SIGNATURE_PASSED, hand_overs.signatures_passed);
     Summary::complete(found)
 }
 
@@ -129,7 +129,7 @@ fn resolve<'p>(
         lang.note_uncovered(&[Uncovered::GetterResultCall]);
     }
     for _ in 0..facts.outside_root {
-        lang.note(OUTSIDE_ROOT);
+        lang.note_body(OUTSIDE_ROOT);
     }
     let spoken = match env {
         Some(env) if lang.knows(Caps::PARAMS) => {
@@ -155,7 +155,7 @@ fn resolve<'p>(
             .iter()
             .filter(|resolved| **resolved == Resolved::Unknown(Why::FunctionTypedValue))
         {
-            lang.note(origin.counter());
+            lang.note_walk(origin.counter());
         }
     }
     match env {
@@ -262,9 +262,9 @@ fn resolve_from_env<'p>(
                     // A failure is drawn, counted, and marked at the site with its own reason (D61); it does not open the value.
                     match lang.sem.fits(f, site_index, func, lang.style) {
                         Fits::Yes => {}
-                        Fits::Unchecked => lang.note(VALUE_TYPE_UNCHECKED),
+                        Fits::Unchecked => lang.note_walk(VALUE_TYPE_UNCHECKED),
                         Fits::No => {
-                            lang.note(VALUE_TYPE_MISMATCH);
+                            lang.note_walk(VALUE_TYPE_MISMATCH);
                             mismatch = true;
                         }
                     }
@@ -276,7 +276,7 @@ fn resolve_from_env<'p>(
             One::Anon(..) | One::AnonAny => targets.push(Target::Unresolved(Reason::new(
                 Why::AnonymousFunctionCalled.counter(),
             ))),
-            One::Undefined => lang.note(CALLEE_UNDEFINED),
+            One::Undefined => lang.note_walk(CALLEE_UNDEFINED),
         }
     }
     if mismatch {
@@ -317,7 +317,7 @@ fn target<'p>(lang: &TypeScript<'p>, resolved: Resolved<'p>, jsx: bool) -> Targe
             maker,
             path,
         } => {
-            lang.note(LIBRARY_MADE);
+            lang.note_body(LIBRARY_MADE);
             Target::External(External {
                 package,
                 name: format!("{maker}{path}"),
@@ -350,11 +350,11 @@ pub(crate) fn construction<'p>(
         Init::Nothing => None,
         // no constructor to enter, and it is a limit rather than an answer: say so on the graph (rule 8)
         Init::External => {
-            lang.note(INHERITED_EXTERNAL);
+            lang.note_body(INHERITED_EXTERNAL);
             None
         }
         Init::Unknown => {
-            lang.note(INHERITED_UNKNOWN);
+            lang.note_body(INHERITED_UNKNOWN);
             None
         }
     };
