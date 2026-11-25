@@ -113,17 +113,37 @@ unchanged with every capability bit. Step 2 gives it its value.
 
 As built, `Env` is plain data, `{ flow: Arc<Flow>, def: DefId, key: KeyData }`, made by `Lang::walk` for one body, and `eval` asks
 what is not in a table through the `World` trait (a test answers it by hand). The first draft's `Env<'a, 'p>` with a `&TypeScript` inside
-would tie `env.rs` to the engine; it is not done. Step 2 adds the memo to `Env` itself: one slot per row of `flow.vars`
-(`NotYet | InProgress | Done(Value)`), behind a `RefCell` because `eval` takes `&Env` (a `RefCell` lets a shared reference change what it
-holds, checked at run time). It is indexed by the row's place, never iterated, so rule 9 holds without a hash map.
+would tie `env.rs` to the engine; it is not done.
 
-`value_of(own row)` is the join of `eval` of each assigned expression, joined with unknown when `open`; data when not capable (TC2 step
-5f's rule, for a variable); a parameter's row starts from the parameter's value (`eval::param`). Two variables defined through each other
-(`let g = h; let h = g;`) meet the in-progress mark: unknown, counted `variable_in_cycle`. A variable of a def around this one is step 3's
-(the key's captures), and of the file's code step 4's (`World`).
+**Step 2, as decided (2026-11-25).**
 
-With `LOCALS` off, `Expr::Var` stays unknown and a parameter's writes join with unknown, as in TC2, so the bit off is TC2's graph (the
-README's point 8).
+- **The values of a body's variables are solved together, once per walk.** `Env` gets `vars: OnceCell<Box<[Value]>>`, one value per row of
+  `flow.vars`, made the first time the walk reads a variable and kept for the walk. (🦀 A `OnceCell` is a slot that starts empty and is
+  filled at most once, through a shared `&` reference: `get_or_init(|| …)` runs the closure the first time and hands back the stored value
+  after.) The first draft's memo with an in-progress mark is **not** built: with a memo it is wrong for two variables defined through each
+  other (`g = a ∪ h`, `h = g ∪ b`: if `h` is worked out while `g` is in progress, it is kept as `b` alone and loses `a`), and answering
+  unknown there instead would open `cb = cb || fallback`. The expressions of a table only join (a def, a parameter, an anonymous function,
+  a variable, `OneOf`, data, unknown), so the exact answer, the least one, is cheap: every row starts empty, every row is recomputed from the
+  others' current values, and that is repeated until nothing grows. Values only grow and are capped (`MAX_SET`, then wide), so it stops;
+  past 32 rounds every row is joined with unknown and `variable_rounds_capped` is counted (rule 8). The rounds before the last are run with
+  the counting of `value_widened_set` off, and one last round with it on, so a cut is counted once.
+- **A row's value**: data when not capable (TC2 step 5f's rule, for a variable); else the parameter's value as passed for a parameter's row
+  (TC2's rest, capable and default rules), nothing for a local; joined with the value of each assigned expression; joined with unknown when
+  `open`. A local never assigned is then empty, and a value with no member is not an answer: the site keeps the engine's answer.
+- **`Expr::Param(i)`** of a parameter the body writes is that parameter's row: the slot joined with what the body assigns, which replaces
+  TC2's "joined with unknown". `Param::assigned` stays as the switch (step 1 proved it equals "its row has a write").
+- **A variable of another def** (`id.def` is not the walk's def) stays unknown: its value comes with captures (step 3) and module
+  variables (step 4).
+- **With `LOCALS` off** nothing above runs: `Expr::Var` is unknown, and a written parameter joins unknown, as in TC2. Proved by a snapshot of
+  every entry's graph with `PARAMS` alone, written before the step's code changes and unchanged after.
+- **Where the engine named a function (D59).** `walk::resolve_from_env` spoke only when the engine's answer had an open entry. When it has
+  none and the callee holds an `Expr::Var`, the layer now evaluates it and **adds** each function of the value that the engine's answer does
+  not already call (with the tripwire, D61), an `anonymous_function_called` mark for an arrow, and keeps every target of the engine's.
+  A site where it added something counts `variable_added_to_engine`.
+- **Counters**, per walk with `LOCALS` on: `variable_write_unmodelled` (a body's `Flow::unmodelled`, counted as a body note);
+  `variable_added_to_engine`; `variable_rounds_capped`; and **the ceiling of 2b**, `variable_assigned_more_than_once`: a site whose callee or
+  an argument reads (directly or in a `OneOf`) this body's capable variable or written parameter with two or more sources (its assignments,
+  and the passed value for a parameter). Step 2b is built only if this is not near zero on the private codebase and the compiler, by site.
 
 **In order (D67, owner, 2026-11-25), built in two steps.** The paragraph above is step 2: the **whole-scope join**, the value of every
 assignment of the variable. It is built first and stays as the permanent fallback, because the in-order walk needs it anyway (a read or a
@@ -224,8 +244,9 @@ edge. `call` and `apply` stay counted.
 
 ## 7. Fixtures and tests
 
-`local-alias` · `local-either` · `local-assigned-twice` · `local-open` (a `for … of` variable: the engine's answer) · `local-cycle` ·
-`local-never-assigned` · `local-write-unmodelled` (a write in a form the table has no row for: open, counted) · `param-reassigned` (the handler **and** `noop`, complete) · `capture-handler` · `capture-sibling` ·
+`local-alias` · `local-either` · `local-assigned-twice` · `local-open` (a `for … of` target: `a` and the engine's answer) · `local-cycle` ·
+`local-never-assigned` · `local-write-unmodelled` (a write in a form the table has no row for: open, counted) · `local-data` · `param-reassigned` (built as
+the row `callback-reassigned` flipping: the handler **and** `fallback`, complete) · `capture-handler` · `capture-sibling` ·
 `capture-two-levels` · `capture-through-parameter` (the nested def is called three calls away, with its captures) ·
 `capture-written-in-nested` (a nested def assigns the variable: both values) · `capture-entry` (asked at the nested def: today's tree) ·
 `capture-anonymous` (an arrow inside the nested def reads the variable) · `module-const` · `module-const-imported` · `module-let`
