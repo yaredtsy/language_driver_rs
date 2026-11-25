@@ -630,4 +630,10 @@ sweep exits 1 with its output kept. Found: on a fixture the times are 0.01 s (ma
 build is slower, so real projects need 3 rounds or more; the Linux branch (`time -v`) is written and not run. Memory is the footprint on
 macOS and the max RSS on Linux: a figure says which. The reviewer's half (the four projects) is next.
 
+**9, the reviewer's half, done (2026-11-25)** ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md) "TC2 step 9: the four
+projects"): the cost is under the line to watch everywhere (time 0.83x–1.40x, peak 1.00x–1.22x; vscode at depth 1 1.16x and 1.11x, at
+2.9 GB of footprint with the layer off); of the sites the default leaves open on the samples, TC2 answers 34 + 12 in some contexts on the
+private codebase, 105 + 86 on the compiler, none on V-NOC or vscode's sample; the comparison is 0 problems (vscode's depth 1 not run:
+two sessions do not fit in memory); vscode's sweep has no `decl_not_in_outline` / `engine_kind_unhandled`.
+
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
