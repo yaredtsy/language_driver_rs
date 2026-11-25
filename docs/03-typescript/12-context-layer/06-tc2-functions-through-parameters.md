@@ -558,7 +558,10 @@ sums over contexts, rise with them (`function_typed_value` 6,414 → 6,429).
 `value_type_mismatch` and still draws the call, and the site gets **one** `Target::Unresolved` whose reason is `VALUE_TYPE_MISMATCH` (however
 many of the value's functions fail; pushed after the loop over the members). The engine's open entries come back beside only when the value
 is open for its own reasons, as for any site. `Fits::Unchecked` is unchanged (counted only). `callback-mismatch`'s "on" half: `run @98a8cb88 |
-cb | unresolved function_typed_value` becomes `run @98a8cb88 | cb | unresolved value_type_mismatch`, and nothing else moves. Proof: the row,
+cb | unresolved function_typed_value` becomes `run @98a8cb88 | cb | unresolved value_type_mismatch`, and nothing else moves. The
+test `the_tripwire_counts_where_a_function_does_not_fit` (`tests/context.rs`) asserted 5c's behaviour (at `callback-mismatch`'s `main`,
+`function_typed_value` 1 and its split adding up to 1): it now asserts `function_typed_value` absent, the split 0, and exactly one
+`unresolved value_type_mismatch` edge in the graph (missed by the first brief; the coder stopped on it). Proof: the row,
 every other snapshot unchanged, the mutation (the push removed) caught by the row, and on the projects (reviewer) 16 `unresolved
 value_type_mismatch` edges on the compiler sample, `function_typed_value` falling by the sites that were opened only by a mismatch, the
 comparison still 0 problems.
