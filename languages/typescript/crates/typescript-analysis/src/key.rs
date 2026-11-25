@@ -252,6 +252,9 @@ where
 pub(crate) struct Keys {
     table: IndexSet<KeyData>,
     digests: Vec<[u8; 16]>,
+    /// The digests made so far, to check in a debug build that no two keys share one (a set, so the check costs one lookup, not a pass over `digests`).
+    #[cfg(debug_assertions)]
+    seen: std::collections::HashSet<[u8; 16]>,
 }
 
 impl Keys {
@@ -267,6 +270,8 @@ impl Keys {
         Keys {
             table,
             digests: vec![[0; 16]],
+            #[cfg(debug_assertions)]
+            seen: std::collections::HashSet::new(),
         }
     }
 
@@ -288,10 +293,14 @@ impl Keys {
                 list: &list,
             };
             let made = digest(&CanonKey::of(&self.table[index], &names));
-            debug_assert!(
-                !self.digests.contains(&made),
-                "two keys of one request with one digest: the canonical form lost a difference, and Graph::new would merge their contexts"
-            );
+            #[cfg(debug_assertions)]
+            {
+                let fresh = self.seen.insert(made);
+                debug_assert!(
+                    fresh,
+                    "two keys of one request with one digest: the canonical form lost a difference, and Graph::new would merge their contexts"
+                );
+            }
             self.digests.push(made);
         }
         KeyId(u32::try_from(index).expect(
