@@ -66,6 +66,9 @@ take is its **machine**.
 
 ### 3.1 Why not Python's executing walk
 
+> **Superseded for the reads inside a body by D67** (owner, 2026-11-25): a variable's value follows the order of the code, as in Python;
+> the order is read from tsrs's binder flow graph (07-tc3 §3). The reasons below stand for a variable read from inside a nested function.
+
 Three reasons, each from something read, not from taste:
 
 1. **A closure captures the variable.** In JavaScript `const back = () => onClose()` reads `onClose` when it runs, not when it is

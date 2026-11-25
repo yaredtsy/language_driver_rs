@@ -237,6 +237,10 @@ its relevant parameters, through its engine's cache).
 
 ## 5. Variables: one value each
 
+> **Changed by D67** (owner, 2026-11-25): inside the body that declares it, a variable has the value of the assignments that reach the
+> place (in order, joined where paths meet), as in Python; see 07-tc3 §3. The whole-scope join below stays for a variable read from inside
+> a nested function, until that is decided.
+
 ```
 value_of(variable) =
     a parameter's binding   the key's slot for that parameter, along the pattern's path;  joined with what the body assigns to it

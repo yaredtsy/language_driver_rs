@@ -26,7 +26,7 @@ Patterns A7–A10 of [02](02-patterns.md); line c of the tour, and the half of l
 | two nested handlers, one calling the other, the second reading a parameter | unresolved in the second | resolved: the first carries what the second needs |
 | `const onSave = pick ? a : b;` at the top of a file, `onSave()` in a function | `a` alone (see below) | `a` and `b` |
 | `run(handler.bind(null))` | counted, no edge | `run` → `handler` |
-| `let h = a; h(); h = b; h();` | `a` twice (see below) | both calls show `a` and `b` ([03](03-design.md) §11, "assigned twice") |
+| `let h = a; h(); h = b; h();` | `a` twice (see below) | `a`, then `b`: the order of the code (D67, as in Python) |
 
 
 **Checked 2026-11-24** (with the analyzer of `9530a7d`, `a` and `b` both `() => void`): the three rows marked "see below" are **not
@@ -125,6 +125,25 @@ holds, checked at run time). It is indexed by the row's place, never iterated, s
 With `LOCALS` off, `Expr::Var` stays unknown and a parameter's writes join with unknown, as in TC2, so the bit off is TC2's graph (the
 README's point 8).
 
+**In order (D67, owner, 2026-11-25).** The paragraph above is the first design; D67 changes what a read sees. A read of a variable
+inside the body that declares it sees the assignments that **reach** it: going back from the read, the first write of the variable on each
+path, with the paths joined where they meet. Python does this by walking the statements with a map per path (`interp/walk.rs`:
+`Env::join` after an `if`'s arms, a `try`, a `match`). Here the paths are already drawn by tsrs's binder: each identifier read has a flow
+node (`Node::flow_node`), and from it the antecedents lead back through `Assignment` nodes (whose `node` is the written name or the
+declaration), `BranchLabel` / `LoopLabel` nodes (where paths meet: every antecedent), conditions and calls (passed through), to the
+function's `Start`. So `sem` records, for each `Expr::Var` read, **which of the row's assignments reach it** (and whether the def's start
+does: the parameter's slot, or nothing for a local), and `eval` joins only those: the env stays plain data, and the memo is per
+(variable, set of assignments). What reaches the `Start` of a nested function or an anonymous one is not in this body's order: the first
+draft's whole-scope join until the owner decides (below). Step 2 starts with a spike that the flow nodes are where this says, at the pin.
+
+Two points to confirm with the owner before step 2 is written:
+- **A loop.** Python walks a loop's body once (`Stmt::While`, `Stmt::For`: the body from the state before it, joined with that state), so
+  in `let h = a; while (c) { h(); h = b; }` the call sees `a` only, though the second turn calls `b`: an edge missed. The flow graph's
+  `LoopLabel` gives both. Recommended: both, and Python's one pass written down as a gap of Python's.
+- **A nested function's read** (`const f = () => h();`). Python reads it from the run of the body around it at the time the closure runs
+  (`activations`, `lookup`). Here a nested function can run at any later time (handed to a library), so the sound answer is every
+  assignment from where it is made on; recommended: the whole-scope join for now (a superset of Python's), fixtures beside Python's.
+
 ## 4. Captures
 
 ```
@@ -204,7 +223,7 @@ edge. `call` and `apply` stay counted.
 | # | Do | Proof |
 |---|---|---|
 | 1 | `sem/flow.rs`: `Var`, `VarId`, assignments, `Expr::Var`, writes from nested functions; `eval` gives `Var` unknown | the table of `flow/src/vars.ts` and the tour's (line c: `call var h@35 ()`, `h@35 capable = def encode`) as written by hand; every `Expr::Var` has its row in the declaring def's table; `Param.assigned` equals its row's writes; no graph, digest or other snapshot moves |
-| 2 | `env.rs`: `value_of`, the memo; parameters joined with their assignments | `local-*`, `param-reassigned` |
+| 2 | **in order (D67)**: a spike on the binder's flow nodes, then for each `Expr::Var` read the assignments that reach it (`sem`); `env.rs`: `value_of`, the memo; parameters joined with what reaches them | `local-*` (`local-assigned-twice`: `a` then `b`; branches; a loop), `param-reassigned` |
 | 3 | `needs`; `Fn` with captures; `Key.captured`; the canonical form | `capture-*`; TC2's digests unchanged |
 | 4 | module variables | `module-*` |
 | 5 | `bind` | `bind`; the counter drops where an edge appears |
