@@ -14,6 +14,7 @@ use super::collect::{CallNode, SiteKind, unwrap_expression};
 use super::handed::HandOvers;
 use super::view::{
     Binary, Conditional, Parameter, arguments_of, expression_of, initializer_of, parameters_of,
+    spelled,
 };
 use super::*;
 use crate::flow::{
@@ -661,6 +662,51 @@ impl Reader<'_, '_> {
         })
     }
 
+    /// The function `call` binds when it is `f.bind()` or `f.bind(thisArg)` of `Function.prototype.bind`: `f`'s node. `None` for any other call. Three
+    /// conditions: the callee is a property access spelled `bind`; there are no arguments, or one that is not a spread; and the checker's resolved signature
+    /// is a method `bind` of the interface `Function`, `CallableFunction` or `NewableFunction`, declared in a file that is not project code (the library's).
+    fn bound_function(&mut self, call: P<Node>) -> Option<P<Node>> {
+        let callee = expression_of(call)?;
+        if callee.kind() != Kind::PropertyAccessExpression {
+            return None;
+        }
+        let name = callee.name()?;
+        if spelled(self.file.node.text(), name).as_deref() != Some("bind") {
+            return None;
+        }
+        match arguments_of(call) {
+            [] => {}
+            [this] if this.kind() != Kind::SpreadElement => {}
+            _ => return None,
+        }
+        let declaration = self
+            .checker
+            .get_resolved_signature_exported(call)
+            .declaration()?;
+        let file = ast::get_source_file_of_node(declaration)?;
+        let declared_in = File {
+            node: file,
+            _sem: PhantomData,
+            _one_thread: PhantomData,
+        };
+        if self.sem.is_project_code(declared_in) {
+            return None;
+        }
+        let method = declaration.name()?;
+        if spelled(file.text(), method).as_deref() != Some("bind") {
+            return None;
+        }
+        let interface = declaration
+            .parent()
+            .filter(|parent| parent.kind() == Kind::InterfaceDeclaration)?;
+        let interface_name = spelled(file.text(), interface.name()?)?;
+        matches!(
+            interface_name.as_str(),
+            "Function" | "CallableFunction" | "NewableFunction"
+        )
+        .then(|| expression_of(callee))?
+    }
+
     /// What the expression is, as far as the code alone says (`crate::flow::Expr`).
     fn expr_of(&mut self, node: P<Node>) -> Expr {
         let node = unwrap_expression(node);
@@ -701,6 +747,12 @@ impl Reader<'_, '_> {
                         .map(|function| Expr::Def(self.sem.def_id(function))),
                 )
             }
+            // `f.bind(x)` with nothing or one argument that is `this`: the same function with `this` fixed, so `f`'s value (`07-tc3` §6). An argument after
+            // `this` shifts the parameters, so it is not. Only `Function.prototype.bind`: a `bind` of a class or object of its own is a call like any other.
+            Kind::CallExpression => match self.bound_function(node) {
+                Some(target) => self.expr_of(target),
+                None => Expr::Unknown,
+            },
             Kind::ConditionalExpression => match Conditional::expect(node) {
                 Some(conditional) => {
                     let when_true = self.expr_of(conditional.when_true());

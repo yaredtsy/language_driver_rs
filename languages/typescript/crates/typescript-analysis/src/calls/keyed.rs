@@ -601,8 +601,12 @@ fn the_table_of_rows_is_read_whole() {
     assert_eq!(of("capture-written-in-nested"), 1);
     assert_eq!(of("capture-anonymous"), 1);
     assert_eq!(of("capture-self"), 1);
-    // TC3 step 4: each `module-*` row has one entry, `main`
+    // TC3 steps 4 and 5: each `module-*` and `bind-*` row has one entry, `main`
     for row in [
+        "bind-handed",
+        "bind-variable",
+        "bind-partial",
+        "bind-own-method",
         "module-const",
         "module-const-imported",
         "module-let",
@@ -619,7 +623,7 @@ fn the_table_of_rows_is_read_whole() {
             "{row}"
         );
     }
-    assert_eq!(entries.len(), 86);
+    assert_eq!(entries.len(), 90);
 }
 
 /// Nine functions through one conditional are more than a set holds: the one context of `run` that the graph walked has a key of one slot, wide.

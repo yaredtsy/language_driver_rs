@@ -1,0 +1,17 @@
+== main
+-- off
+main
+  run
+edges:
+main | run | call run
+main | handler.bind | external typescript:lib CallableFunction.bind
+run | cb | unresolved function_typed_value
+uncovered: bind=1
+-- on
+main
+  run
+edges:
+main | run | call run
+main | handler.bind | external typescript:lib CallableFunction.bind
+run | cb | unresolved function_typed_value
+uncovered: bind=1
