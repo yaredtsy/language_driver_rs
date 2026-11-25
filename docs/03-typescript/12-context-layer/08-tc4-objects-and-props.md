@@ -11,7 +11,8 @@ TC4
 ├── 6. JSX
 ├── 7. limits
 ├── 8. fixtures and tests
-└── 9. steps
+├── 9. steps (as first planned)
+└── 10. checked against the code (2026-11-26): the steps to build from
 ```
 
 Depends on TC3. With TC3 this is the phase React code shows: a parent's tree says what its children do with the
@@ -242,6 +243,49 @@ component never reads: one context).
 | 8 | the four projects; `TaskDetailPanel` from its parent | `ENGINE.md` |
 | 9 | (mine) `policy.md`, `ENGINE.md`; the N5 question, if the number asks it | reviewed |
 
-After step 8 is where I would tag: the first release whose trees look different on V-NOC's own code.
+No tag at TC4 (D64: the first tag that carries the layer is TC5's, with the layer on by default). The steps above are as first planned;
+§10 corrects their order and content against the code, and its table is the one to build from.
+
+## 10. Checked against the code (reviewer, 2026-11-26, at `684ef7e`, after TC3 and §0)
+
+Read against `flow.rs`, `value.rs`, `eval.rs`, `key.rs`, `captures.rs`, `relevance.rs`, `needs.rs`, `sem/flow.rs`, the tour's table
+(`tour.flow.txt`) and Python's `interp/key.rs` and `relevant.rs`. What holds, and what changes.
+
+**What holds.** `Caps::OBJECTS` (8) is already a bit: TC4 needs no wider `Caps`. A destructured parameter's names are variables of the
+table already (the tour: `Panel`'s `onClose@13 capable open`, `#0 pattern`): TC4 gives them `Member(Param(0), onClose)` in place of
+`open`, which is exactly V-NOC's 94 prop sites ([`engine/10-tc3.md`](../../../languages/typescript/engine/10-tc3.md), "V-NOC's open
+sites"). `SiteFlow::args` of a JSX site is one `Unknown` today, the place §6 fills. D66 decided §5's library question: an object
+handed to a library is open. N5 (TC0) counted the trust rule's cost: objects passed in are almost never written through (0.3–2%), local
+literals often (26–36%), and "handed to a project function" is the large row (21–58%), so `touches` is what keeps TC4 useful.
+
+**What changes** (each decided here; none is the owner's):
+
+| # | The plan said | The code says | So |
+|---|---|---|---|
+| 1 | §3: `Object { members: Box<[(NameId, Value)]>, complete }` as a member of a value | `One` is `Copy` and small; a value that holds other values goes through a request table, as `One::Closure(DefId, Captures)` does (`captures::CaptureSets`, an `IndexSet`) | **`One::Object(Objects)`**, a number into a request table of objects (`objects.rs`, beside `captures.rs`), each in its normal form (members sorted by name, `Anon` written `AnonAny`, unknown members kept: an unknown member is not a missing one). Added **after** `Undefined` in `One`'s order, so no existing order or digest moves |
+| 2 | §6 of the design: the digest is of the canonical key | `Keys::intern` writes a capture list through a `list` closure, so the digest never holds a request's own number | an object is written into the canonical key **by its members** (name, canonical value), never by its number; every pinned digest of TC2/TC3 unchanged |
+| 3 | §7: `max_depth` (2) counts objects in objects; captures have their own `MAX_CAPTURE_DEPTH` (2) | Python has one depth (`fp_depth`, 2) for every step from a parameter: an attribute, a free value, a default | **one depth** for objects and capture lists together (2), counted `value_widened_depth`; a closure in a closure is cut where it is today |
+| 4 | §9: the depth and member caps at step 7 | from step 2 a key can hold an object made from a key (R3: `walk(node) { walk({ parent: node }) }`), so without the cap the keys of a recursion never end | **the caps come with step 2**, with the row `object-too-deep` |
+| 5 | §9: member calls answered (3) before the trust rule (4) | the layer replaces the engine's open answer where it knows the value; an object written through after it was passed would make that answer wrong | **the trust rule before any answer**: step 3 is the trust rule and `touches`, step 4 answers member calls |
+| 6 | §2–§5 add `Expr` variants | `relevance.rs` matches `Expr` exhaustively (`relevance.rs:82`: a new variant does not compile until it is read); `needs::each_expr` (`needs.rs:167`) recurses only into `OneOf` with an `if let`, so a new variant would be skipped **silently** | step 1 makes `each_expr`'s recursion a `match` with no `_` arm, and gives each new variant its reading in both: `Member(x, _)` and `Omit(x, _)` read `x`, `Object` reads each member's expression. A parameter read only as `props.onClose()` is then relevant (today it is not: the callee is `Unknown`) |
+| 7 | §7 "relevance by member", with a **[measure]**; §8's row `props-unread-member` expects one context | Python's relevance is per parameter (`relevant_params`), and its key holds every attribute of an object (`Fp::Instance`) | not built in this phase's first pass: the row is written at step 5 with **two** contexts (Python's answer), and step 7 measures the ceiling (contexts per component, and the same with each slot cut to the members the body reads, from the table, as N6 was). Built at step 7b only if it pays, then the row flips (D67's rule) |
+| 8 | the README's point 8: an off snapshot per bit | none for `OBJECTS` yet | `objects-off.txt` blessed at step 2, before any code reads the bit |
+| 9 | "After step 8 is where I would tag" | D64 | no tag (above) |
+
+**The steps, as they will be built:**
+
+| # | Do | Proof |
+|---|---|---|
+| 1 | `sem/flow.rs`: `Object`, `Member`, `Omit`, patterns (a parameter's and a local's), JSX attributes as an `Object` argument; `relevance` and `needs` read them (row 6) | table snapshots (`tour.flow.txt`, a new `objects.flow.txt`); every graph unchanged (`eval` gives the new forms unknown) |
+| 2 | `objects.rs` and `One::Object` (rows 1–3); `eval`: literals, spread, member, defaults in patterns; the depth and member caps (row 4); `objects-off.txt` | unit tests on hand-written tables; `object-options`, `object-pattern-*`, `object-too-deep`; pinned digests unchanged |
+| 3 | the trust rule and `touches` (a fact per function and parameter, kept in `Sem` as relevance is) | `object-written-*`, `object-to-external`, `object-stored`, `object-second-name*`, `object-module-const*`, `object-in-array` |
+| 4 | member calls answered; a literal's method as a target | `object-method`, `object-implements` |
+| 5 | JSX attributes as the argument; a tag that is a value | `props-*` (`props-unread-member` with two contexts) |
+| 6 | `Class` | `class-as-value*`; `uncovered_class` drops where an edge appears |
+| 7 | the four projects; `TaskDetailPanel` from its parent; the ceiling of relevance by member | `engine/11-tc4.md` |
+| 7b | relevance by member, only if step 7 says it pays | `props-unread-member` flips |
+| 8 | (mine) `policy.md`, `ENGINE.md`; the README's phase rule | reviewed |
+
+Each step is one prompt; step 1 or 2 may split when its prompt is written.
 
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
