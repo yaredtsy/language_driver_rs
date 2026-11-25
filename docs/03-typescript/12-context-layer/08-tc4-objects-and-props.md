@@ -48,8 +48,25 @@ passed, 13 ignored; Rust, Bend and core green. The four `*-off.txt` snapshots ga
 On the compiler's `createProgram` (whole graph) the cap cuts **111** contexts, in 4 functions (`visitNode` 125 contexts listed); the
 comparison with the default graph finds 0 problems.
 
-**Step 0b, the allowance by site** (§3.4): `never_fewer_edges` allows exactly the sites the layer emptied (a callee that is only
-`undefined`), not as many sites as `callee_undefined` counts. Designed after 0a.
+**Step 0b, the allowance by site** (§3.4; decided 2026-11-26). `never_fewer_edges` allows exactly the sites the layer emptied (a callee
+that is only `undefined`), not as many sites as `callee_undefined` counts: with a count, a bug that empties the wrong site passes whenever
+another site was honestly counted (92 on the compiler's `createProgram`). As built:
+
+- **The walk lists what it emptied.** In `walk::resolve_from_env`'s open-entry path, a site is emptied when `members` saw `Undefined`
+  and no target is left (the only way the layer turns an engine answer into no edge). `resolve` says so beside its targets, and
+  `body_of` records `(f, site)` on `TypeScript` (`emptied`). After the solve, the request turns it into a sorted, deduplicated
+  `Vec<(StableDef, Site)>` (the def's id as the graph's edges name it). The counter `callee_undefined` and every output stay as they are.
+- **Tests read it through a test-only feature**, `__testing` (as `__proof`: not API, a convention): `typescript_analysis::testing`
+  with `call_graph_and_emptied` and `session_graph_and_emptied`, each the graph and the list. The crate's tests turn it on by listing
+  the crate as its own dev-dependency with the feature (checked on 2026-11-26 in a scratch crate: Cargo accepts it, and a build without
+  tests does not see the feature). The public call function still returns a `Graph` (rule 7).
+- **`never_fewer_edges(default, precise, emptied)`**: a site of `default` with no edge in `precise` is allowed only when every edge it
+  had was `Unresolved` **and** it is in `emptied`; and a listed site where `default` has an answer (an edge that is not `Unresolved`) is
+  reported. Its callers (the context rows, `precise.rs`, the sweep's comparison) pass the list of the precise graph.
+
+Proof: the row `callback-not-passed` (`main`) lists exactly `run`'s site `cb?.()`, asked at `run` nothing; the property's own test
+(the right site allowed, no list or another site reported, a listed answered site reported); a walk that does not record fails the
+rows' property test; every snapshot unchanged.
 
 ## 1. What the user sees
 
