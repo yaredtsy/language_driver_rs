@@ -513,4 +513,12 @@ written and a failure is believed only where no type parameter is in scope:
 - **Proof**: the rows; `value_type_mismatch` 0 on the three projects (the reviewer's sweep), with `value_type_unchecked` reported beside it
   so the share the tripwire cannot see is known; the comparison still 0 problems.
 
+**5c built as decided, `4ceed44`** ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)). **Its proof fails as written**:
+`value_type_mismatch` is 0 on V-NOC and the private codebase but **16 on the compiler**, and none of the 16 is a wrong binding: 15 are functions
+that reach a non-generic overload implementation (`visitNode`, `visitArrayWorker`) whose parameter is declared wider than the function, and 1
+is a return type the engine infers wider than `tsc`. The public checker offers nothing looser than assignability. **Asked of the owner
+(2026-11-25):** keep the rule as built (a failure keeps the engine's answer beside the call, so no wrong edge ever stands alone; the count
+becomes a number to watch, each new site read by the reviewer, instead of 0), count only (the call alone, no unresolved edge beside), or
+remove the tripwire. Recommended: keep it as built.
+
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
