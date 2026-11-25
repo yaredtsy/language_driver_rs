@@ -40,8 +40,13 @@ each multiplies. As built:
 
 Proof: core's tests (a keyed toy: the third context of a function is cut at cap 2, the first two whole; `None` and a one-context
 language never cut; the same graph twice on one solver); the row `cap-per-function` (under 64, every context) and a test of the same
-fixture at cap 2 (`run`'s third context `Incomplete`, `c` not reached, the properties hold); every language's tests green (Python's on
+fixture at cap 2 (`run`'s third context `Incomplete`, nothing calls `c`, which `third` still hands over, the properties hold); every language's tests green (Python's on
 CI); the compiler's `createProgram`, whole graph: how many contexts are cut, and the comparison with the default graph.
+
+**0a built as decided, `c6b88b2` (core) and `7021f7a`** ([`engine/11-tc4.md`](../../../languages/typescript/engine/11-tc4.md)): 500
+passed, 13 ignored; Rust, Bend and core green. The four `*-off.txt` snapshots gained the row's section (they are written over every row).
+On the compiler's `createProgram` (whole graph) the cap cuts **111** contexts, in 4 functions (`visitNode` 125 contexts listed); the
+comparison with the default graph finds 0 problems.
 
 **Step 0b, the allowance by site** (§3.4): `never_fewer_edges` allows exactly the sites the layer emptied (a callee that is only
 `undefined`), not as many sites as `callee_undefined` counts. Designed after 0a.
