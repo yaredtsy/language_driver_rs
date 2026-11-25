@@ -35,6 +35,11 @@ Patterns A1–A6, A11, R1, R2 of [02](02-patterns.md); lines a, b, h, i of the t
 
 In every row the `[Passed]` edge of the function under its caller stays.
 
+**As built** (TC2 step 10): every row has a fixture: `callback-two-callers` (the first two rows), `callback-passed-through` and the
+tour's line b, `callback-either`, `callback-default`, `callback-method-value` (added at step 10), the tour's lines h and i (and
+`callback-two-arrows`), and every row's callee asked as an entry. On the projects TC2 answers fewer sites than TC0 forecast
+([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md), step 10).
+
 ## 2. `sem`: which parameter a name is
 
 `sem/flow.rs` learns two things.
@@ -635,5 +640,10 @@ projects"): the cost is under the line to watch everywhere (time 0.83x–1.40x, 
 2.9 GB of footprint with the layer off); of the sites the default leaves open on the samples, TC2 answers 34 + 12 in some contexts on the
 private codebase, 105 + 86 on the compiler, none on V-NOC or vscode's sample; the comparison is 0 problems (vscode's depth 1 not run:
 two sessions do not fit in memory); vscode's sweep has no `decl_not_in_outline` / `engine_kind_unhandled`.
+
+**10 done (2026-11-25)**: the README's rule checked point by point ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)
+"TC2 step 10"); the README's TC2 lines corrected (no tag, D64; no cut; the `callee_undefined` allowance in point 2; the measured
+yield); one row added, `callback-method-value` (§1's `run(api.load)` had no fixture). **10b (coder)**: the three tests that pin the
+context table's 58 entries learn the row (60). TC2 closes when 10b is accepted.
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)

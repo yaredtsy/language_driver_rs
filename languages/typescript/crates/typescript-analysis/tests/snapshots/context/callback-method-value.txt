@@ -1,0 +1,36 @@
+== main
+-- off
+main
+  Api
+  run
+  Api.load [Passed]
+    fetchAll
+edges:
+Api.load | fetchAll | call fetchAll
+main | Api | construct Api no init
+main | run | call run
+main | api.load | pass Api.load
+run | cb | unresolved function_typed_value
+-- on
+main
+  Api
+  run
+    Api.load
+      fetchAll
+  Api.load [Passed]
+    fetchAll
+edges:
+Api.load | fetchAll | call fetchAll
+main | Api | construct Api no init
+main | run | call run @ff0f4018
+main | api.load | pass Api.load
+run @ff0f4018 | cb | call Api.load
+== run
+-- off
+run
+edges:
+run | cb | unresolved function_typed_value
+-- on
+run
+edges:
+run | cb | unresolved function_typed_value

@@ -41,7 +41,9 @@ pin, function by function. What changed, and in which file, is the last section 
    byte what it is today. With it on, a phase can only replace an "unresolved" answer by a better one; it never removes an edge the
    engine gave.
 5. **The order follows what was measured**: parameters first (17% to 48% of the unresolved function-typed calls, by project), then what
-   a call returns (14% to 77%), then `this` (0% to 47%). No single phase answers most of every project.
+   a call returns (14% to 77%), then `this` (0% to 47%). No single phase answers most of every project. Those are upper bounds: TC2,
+   a parameter's value called as it is, measured 0% (V-NOC), 1.8% (the private codebase) and 3.4% (the compiler) of the function-typed
+   sites of the samples, against a forecast of at most 1%, 15% and 6%.
 6. **Where the design had to choose, it takes what Python does.** A key is a number (interned), its digest is made once. A value that
    holds nothing callable ("data") is not the same as a value the layer knows nothing about. A return value around a cycle starts
    empty and is worked out again until it stops changing: answering "unknown" there would make a tree depend on where the request
@@ -60,7 +62,7 @@ pin, function by function. What changed, and in which file, is the last section 
 | **TC0** | counts on the four projects, four spikes | — | numbers in `ENGINE.md` that confirm or reorder the list below | none | S |
 | **TCL** | a function a library made is named, not "unresolved" (`setOpen` from `useState`). **Not part of the layer**: no key, no value, no table. Any time after TC0 | — | on `TaskDetailPanel`, 56 of the 86 unresolved calls become `External` (measured; the plan said 43) | none | S, **done** (`aa32042`, `fbee1b4`) |
 | **TC1** | `sem::flow`: a body as plain data, held by number; the interned key; the capability set; `Options::precision`; the test harness of the layer | nothing (the open key only) | nothing: every graph identical | none | M |
-| **TC2** | a function passed to a parameter, bound through the resolved signature | `Fn` per parameter | `run(handler)` shows `handler` under `run`; two callers of `run` are two contexts | the scenario level per scenario; a cut per function **only if N6 asks for it** | M |
+| **TC2** | a function passed to a parameter, bound through the resolved signature | `Fn` per parameter | `run(handler)` shows `handler` under `run`; two callers of `run` are two contexts | the scenario level per scenario; the digest (no cut per function: N6 did not ask for one) | M, **done** (step 9 measured, step 10 closed it) |
 | **TC3** | locals, variables a nested def captures, module constants | + captured variables | a nested handler that calls its component's callback resolves | none | M |
 | **TC4** | object literals, JSX attributes, destructuring, spread | + objects, by member | `<Panel onClose={f} />` and `open({ onDone: f })` resolve inside the callee; a component passed as a prop | none | L |
 | **TC5** | instances: `new C()`, the static class of an argument, `this` | + instances | `emit(new JsonWriter())` shows `JsonWriter.write`; plain JavaScript method calls | none | M |
@@ -76,14 +78,14 @@ TC0–TC6 have a file each. TC7–TC10 are one file of sketches: they are design
 
 ```
 after TCL   a call of a function a library made (`setOpen`) has a name: about half of what reads "unresolved" in a React component
-after TC2   a callback passed by name resolves in the function that calls it
+after TC2   a callback passed by name resolves in the function that calls it (measured at TC2 step 9: no site of V-NOC's samples changes)
 after TC4   React props resolve: the tree under a parent shows what its children do with the handlers it gave them
 after TC5   a call through an interface shows the class that was passed (the scenario two-callers, precise)
 after TC6   factories and custom hooks
 ```
 
-A tag is the owner's. The first phase that changes a graph is TC2, so the first tag that can carry the layer is the one after TC2; I
-would tag after TC4, when React code visibly improves. Which tag turns the layer **on by default** is a decision of its own (Q-TC4).
+A tag is the owner's. TC2 is the first phase that changes a graph, and it has **no tag** (D64): the first tag that carries the layer is
+TC5's, and it turns the layer **on by default** (Q-TC4, D64).
 
 ## The rule for every phase
 
@@ -92,7 +94,8 @@ Each phase ends with these, and is not done without them:
 1. **Off is identical.** Every existing snapshot (policy, calls, scenarios, wire) passes untouched with `Precision::Default`.
 2. **Never fewer edges.** For every fixture, each edge of the default graph from a site the layer does not speak at is in the precise
    graph, and no site that had a call target has none. **And on the four projects**: the sites the default graph draws and the precise
-   graph does not are counted in the sweep, and the count is 0 (a cut is the one way to lose a subtree, and no fixture reaches a cap).
+   graph does not are counted in the sweep, and the count is 0 (a cut is the one way to lose a subtree, and no fixture reaches a cap), with
+   one allowance: a site whose callee the layer knows is only `undefined` has no edge, counted `callee_undefined` ([06](06-tc2-functions-through-parameters.md) §3).
 3. **No-reuse mode agrees.** Solving with the memo off gives the same edge set (a summary is a function of its key); for core's flat solver, which walks a context once per request, the check is each context walked alone in a fresh request, [06](06-tc2-functions-through-parameters.md) §9).
 4. **Same twice.** `assert_deterministic` on the precise graphs; digests equal across two processes.
 5. **Its fixtures flip on purpose.** Each row the phase adds to the precise policy table has a fixture and a reviewed snapshot.

@@ -267,6 +267,8 @@ and method are other splits of the same parameter column). Shares of the sample'
 | **TC6**: what a project function returned | 3% | 26% | 23% |
 | not placed: "other" (a module name, an import, no leftmost name) | 4% | 25% | 56% |
 
+**TC2 as measured** (TC2 step 9, `engine/09-tc2.md`): 0%, 1.8% and 3.4%, below its bound.
+
 **The order is confirmed**: TCL first (three quarters of V-NOC's function-typed sites, and no layer needed), then TC1–TC6 as planned. No
 phase is below "a few percent" on every project; TC2's own yield is small in React code, but every later phase needs its key. The
 "other" column, the compiler's largest, is not placed by any count: TC3's module constants answer some of it, and TC3's own sweep says
