@@ -644,6 +644,7 @@ two sessions do not fit in memory); vscode's sweep has no `decl_not_in_outline` 
 **10 done (2026-11-25)**: the README's rule checked point by point ([`engine/09-tc2.md`](../../../languages/typescript/engine/09-tc2.md)
 "TC2 step 10"); the README's TC2 lines corrected (no tag, D64; no cut; the `callee_undefined` allowance in point 2; the measured
 yield); one row added, `callback-method-value` (§1's `run(api.load)` had no fixture). **10b (coder)**: the three tests that pin the
-context table's 58 entries learn the row (60). TC2 closes when 10b is accepted.
+context table's 58 entries learn the row (60). **10b built as decided, `091eb75`** (reviewer: 449 passed, 13 ignored; static checks
+pass). **TC2 is closed (2026-11-25).**
 
 Next: [`07-tc3-variables-and-captures.md`](07-tc3-variables-and-captures.md)
