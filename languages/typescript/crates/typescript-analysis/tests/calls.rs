@@ -61,9 +61,10 @@ fn the_shared_scenarios_in_typescript_give_their_trees() {
         scenarios: "../../../../scenarios",
         graph: scenario_graph,
     };
-    // every scenario has a TypeScript program: straight-line, recursion-direct, method-on-class, external-call, construct-marked-class and two-callers, which
-    // at `Level::Default` is the tree a default resolver gives (`Writer.write` under both callers; the precise tree is Python's)
-    assert_eq!(run(&subject, Level::Default), 6);
+    // every scenario has a TypeScript program: straight-line, recursion-direct, method-on-class, external-call, construct-marked-class, two-callers and
+    // callback-argument. At `Level::Default` two-callers is the tree a default resolver gives (`Writer.write` under both callers; the precise tree is
+    // Python's), and callback-argument leaves `each` a leaf both times (the call through `f` is `unresolved function_typed_value`, not drawn)
+    assert_eq!(run(&subject, Level::Default), 7);
 }
 
 #[test]
@@ -73,8 +74,9 @@ fn the_shared_scenarios_with_the_layer_on_give_their_trees() {
         scenarios: "../../../../scenarios",
         graph: scenario_graph_precise,
     };
-    // the layer on and not yet precise for any scenario: every tree is the default one. TC2 step 5 adds `callback-argument` to the list
-    assert_eq!(run(&subject, Levels::PreciseFor(&[])), 6);
+    // the layer on: precise for `callback-argument` from TC2 step 5e (the first `each` knows its `f` is `work` and draws it; the second holds an arrow, which
+    // draws nothing), and the default tree for the other six
+    assert_eq!(run(&subject, Levels::PreciseFor(&["callback-argument"])), 7);
 }
 
 /// The scenario folders that have a TypeScript program, by name.
@@ -117,7 +119,7 @@ fn each_scenario_gives_the_same_graph_the_same_tree_and_the_same_wire_every_time
     // rule 11: a graph built twice, each time from a project opened afresh, is equal. A map iterated to make output would differ between the two, because
     // every map seeds its own hasher
     let programs = scenario_programs();
-    assert_eq!(programs.len(), 6, "{programs:?}");
+    assert_eq!(programs.len(), 7, "{programs:?}");
     for (name, program) in programs {
         let first = scenario_graph(&program).unwrap_or_else(|| panic!("{name}: no graph"));
         let second = scenario_graph(&program).unwrap();
