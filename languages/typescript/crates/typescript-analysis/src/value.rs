@@ -11,7 +11,7 @@ pub(crate) const MAX_SET: usize = 8;
 /// The key of the counter in `Stats.language` for a value set that passes `MAX_SET`: counted at the join that makes it wide, when neither side was.
 pub(crate) const VALUE_WIDENED_SET: &str = "value_widened_set";
 
-/// A list of captured variables as a number: its place in the request's table of lists (`captures::CaptureSets`), so that a value that holds other values
+/// A list of captured variables as a number: its place in the request's table of lists (`nested::Nested`), so that a value that holds other values
 /// stays `Copy` (`KeyId` does the same for keys). Never 0-for-empty here: a def that captures nothing is `One::Fn`, not a closure with no list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct Captures(u32);
@@ -26,9 +26,24 @@ impl Captures {
     }
 }
 
+/// An object as a number: its place in the request's table of objects (`nested::Nested`), as `Captures` is for a list, so that a value that holds an object
+/// stays `Copy`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct ObjectId(u32);
+
+impl ObjectId {
+    pub(crate) fn new(index: u32) -> ObjectId {
+        ObjectId(index)
+    }
+
+    pub(crate) fn index(self) -> u32 {
+        self.0
+    }
+}
+
 /// One thing a value can hold: a function, a nested function with what it captured, an anonymous function, an anonymous function of which one is not said (how
-/// a key holds one), or "nothing was passed". TC4 adds classes and objects, TC5 instances. The derived order is `Fn` by def, then `Closure` by def and list,
-/// then `Anon` by def and number, then `AnonAny`, then `Undefined`.
+/// a key holds one), "nothing was passed", or an object. TC4 adds classes, TC5 instances. The derived order is `Fn` by def, then `Closure` by def and list,
+/// then `Anon` by def and number, then `AnonAny`, then `Undefined`, then `Object` by number.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum One {
     /// A def with a body.
@@ -42,6 +57,8 @@ pub(crate) enum One {
     AnonAny,
     /// Nothing was passed: a parameter with this value starts from its default.
     Undefined,
+    /// An object: a number into the request's table (`nested::Nested`).
+    Object(ObjectId),
 }
 
 /// What can be at a place. `unknown` (nothing known: ask the engine), `data` (nothing callable, and the layer knows it), `wide` (too much to list: no
@@ -123,6 +140,19 @@ impl Value {
         of_capped(
             self.known().iter().copied().filter(|member| *member != one),
             self.is_open(),
+            MAX_SET,
+        )
+    }
+
+    /// The members `drop` does not take, and open: what is left of a value when some of what it held is cut away, so something unknown can be there where it
+    /// was. A wide value stays wide.
+    pub(crate) fn opened_without(&self, drop: impl Fn(One) -> bool) -> Value {
+        if self.is_wide() {
+            return Value::wide();
+        }
+        of_capped(
+            self.known().iter().copied().filter(|one| !drop(*one)),
+            true,
             MAX_SET,
         )
     }
@@ -302,6 +332,28 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn opened_without_keeps_what_is_not_dropped_and_opens() {
+        let is_f1 = |one| one == f(1);
+        let value = Value::of([f(0), f(1), One::Undefined], false);
+        let cut = value.opened_without(is_f1);
+        assert_eq!(cut, Value::of([f(0), One::Undefined], true));
+        assert!(cut.is_open());
+        // open stays open, and a value that held only what is dropped is unknown
+        assert_eq!(
+            Value::of([f(1)], false).opened_without(is_f1),
+            Value::unknown()
+        );
+        assert_eq!(
+            Value::of([f(0), f(1)], true).opened_without(is_f1),
+            Value::of([f(0)], true)
+        );
+        // a wide value stays wide
+        assert!(Value::wide().opened_without(is_f1).is_wide());
+        // data held nothing: it is open after the call all the same
+        assert_eq!(Value::data().opened_without(is_f1), Value::unknown());
     }
 
     #[test]

@@ -8,9 +8,9 @@ use serde::Serialize;
 
 use analyzer_core::graph::{StableDef, digest};
 
-use crate::captures::CaptureList;
 use crate::flow::{Arg, DefId, Expr, Param, VarId};
-use crate::value::{Captures, One, Value};
+use crate::nested::{CaptureList, ObjectData};
+use crate::value::{Captures, ObjectId, One, Value};
 
 /// The version of a context's digest under `Precision::Precise`: the digest is core's `digest` of the canonical form of the key, and this says which
 /// form. It goes up when the digest of a key that already exists must change; a new variant, or a field that is skipped when empty, does not change the
@@ -144,6 +144,12 @@ enum Canon {
         func: StableDef,
         captured: Vec<(CanonVar, Canon)>,
     },
+    /// An object written by its members (in name order, as the table keeps them) and never by its number: its place in a request's table follows the order
+    /// objects were made.
+    Object {
+        members: Vec<(String, Canon)>,
+        complete: bool,
+    },
 }
 
 /// A captured variable written with stable ids only: the def that declares it, its name, and which row of that name it is among the rows of that def (by
@@ -163,19 +169,22 @@ struct CanonKey {
     captured: Vec<(CanonVar, Canon)>,
 }
 
-/// What a key's canonical form asks of the world: the stable id of a def, the canonical form of a variable, and the list a closure holds.
-struct Names<'a, S, V, L> {
+/// What a key's canonical form asks of the world: the stable id of a def, the canonical form of a variable, the list a closure holds, and the object a number
+/// stands for.
+struct Names<'a, S, V, L, O> {
     stable: &'a S,
     stable_var: &'a V,
     list: &'a L,
+    objects: &'a O,
 }
 
 impl CanonKey {
-    fn of<S, V, L>(data: &KeyData, names: &Names<'_, S, V, L>) -> CanonKey
+    fn of<S, V, L, O>(data: &KeyData, names: &Names<'_, S, V, L, O>) -> CanonKey
     where
         S: Fn(DefId) -> StableDef,
         V: Fn(VarId) -> CanonVar,
         L: Fn(Captures) -> CaptureList,
+        O: Fn(ObjectId) -> ObjectData,
     {
         CanonKey {
             params: data.params.iter().map(|slot| canon(slot, names)).collect(),
@@ -185,14 +194,15 @@ impl CanonKey {
 }
 
 /// `list` in its canonical form: sorted by the variable's canonical form, not by `VarId`, whose order follows the order files were first asked for.
-fn captured_canon<S, V, L>(
+fn captured_canon<S, V, L, O>(
     list: &[(VarId, Value)],
-    names: &Names<'_, S, V, L>,
+    names: &Names<'_, S, V, L, O>,
 ) -> Vec<(CanonVar, Canon)>
 where
     S: Fn(DefId) -> StableDef,
     V: Fn(VarId) -> CanonVar,
     L: Fn(Captures) -> CaptureList,
+    O: Fn(ObjectId) -> ObjectData,
 {
     let mut written: Vec<(CanonVar, Canon)> = list
         .iter()
@@ -204,11 +214,12 @@ where
 
 /// A slot in its canonical form: `stable` names each def it holds. 🦀 `Canon` derives `Ord`, so `sort()` orders the members by variant and then by
 /// `StableDef`: the order does not depend on `DefId`, whose file numbers follow the order files were first asked for.
-fn canon<S, V, L>(value: &Value, names: &Names<'_, S, V, L>) -> Canon
+fn canon<S, V, L, O>(value: &Value, names: &Names<'_, S, V, L, O>) -> Canon
 where
     S: Fn(DefId) -> StableDef,
     V: Fn(VarId) -> CanonVar,
     L: Fn(Captures) -> CaptureList,
+    O: Fn(ObjectId) -> ObjectData,
 {
     if value.is_wide() {
         return Canon::Wide;
@@ -224,6 +235,17 @@ where
             },
             One::AnonAny => Canon::AnonAny,
             One::Undefined => Canon::Undefined,
+            One::Object(id) => {
+                let object = (names.objects)(*id);
+                Canon::Object {
+                    members: object
+                        .members
+                        .iter()
+                        .map(|(name, value)| (name.to_string(), canon(value, names)))
+                        .collect(),
+                    complete: object.complete,
+                }
+            }
             One::Anon(..) => {
                 debug_assert!(
                     false,
@@ -276,14 +298,15 @@ impl Keys {
     }
 
     /// The number of `data`, in its normal form: the one it already has, or the next one, whose digest is made here, once: core's `digest` of its
-    /// canonical form, `stable` naming each def a slot holds, `stable_var` each variable a closure or the key captured, and `list` the list a closure holds.
-    /// Never zeros for a key that is not the open one.
+    /// canonical form, `stable` naming each def a slot holds, `stable_var` each variable a closure or the key captured, `list` the list a closure holds, and
+    /// `objects` the object a number stands for (written by its members, never by its number). Never zeros for a key that is not the open one.
     pub(crate) fn intern(
         &mut self,
         data: KeyData,
         stable: impl Fn(DefId) -> StableDef,
         stable_var: impl Fn(VarId) -> CanonVar,
         list: impl Fn(Captures) -> CaptureList,
+        objects: impl Fn(ObjectId) -> ObjectData,
     ) -> KeyId {
         let (index, new) = self.table.insert_full(data.normal());
         if new {
@@ -291,6 +314,7 @@ impl Keys {
                 stable: &stable,
                 stable_var: &stable_var,
                 list: &list,
+                objects: &objects,
             };
             let made = digest(&CanonKey::of(&self.table[index], &names));
             #[cfg(debug_assertions)]
@@ -335,6 +359,7 @@ mod tests {
                 stable,
                 |_| unreachable!("no variable is in these keys"),
                 |_| unreachable!("no closure is in these keys"),
+                |_| unreachable!("no object is in these keys"),
             )
         }
     }
@@ -612,6 +637,7 @@ mod tests {
             stable: &by_name,
             stable_var: &|_| unreachable!("no variable"),
             list: &|_| unreachable!("no closure"),
+            objects: &|_| unreachable!("no object"),
         };
         let c = |value: Value| canon(&value, &names);
         let set = |known: Vec<Canon>, open| Canon::Set { known, open };
@@ -828,6 +854,75 @@ mod tests {
         assert_eq!(written_with(vec![Canon::Fn(m("a"))], vec![]).1, A);
     }
 
+    /// An object whose one member `onDone` holds the function `save`, in its canonical form.
+    fn save_object() -> Canon {
+        Canon::Object {
+            members: vec![("onDone".into(), Canon::Fn(m("save")))],
+            complete: true,
+        }
+    }
+
+    const OBJECT: [u8; 16] = [
+        26, 10, 101, 238, 90, 107, 139, 9, 120, 177, 209, 107, 114, 254, 170, 117,
+    ];
+
+    #[test]
+    fn an_object_has_its_pinned_bytes() {
+        let (json, got) = written_with(vec![save_object()], vec![]);
+        assert_eq!(
+            json,
+            format!(
+                r#"{{"params":[{{"Object":{{"members":[["onDone",{{"Fn":{}}}]],"complete":true}}}}]}}"#,
+                path("save")
+            )
+        );
+        assert_eq!(got, OBJECT, "{got:?}");
+        // an object that is not complete is another key
+        let open = Canon::Object {
+            members: vec![("onDone".into(), Canon::Fn(m("save")))],
+            complete: false,
+        };
+        assert_ne!(written_with(vec![open], vec![]).1, got);
+    }
+
+    #[test]
+    fn an_objects_digest_does_not_follow_its_number() {
+        use crate::nested::Nested;
+        let save = |def: u32| vec![("onDone".into(), f(def))];
+        let key_of = |nested: &mut Nested, first: u32, second: u32| {
+            // the two objects are made in this order, so each has the other's number in the other table
+            let (one, _) = nested.intern_object(save(first), true);
+            let (other, _) = nested.intern_object(save(second), true);
+            (one.unwrap(), other.unwrap())
+        };
+        let mut forward = Nested::new();
+        let (a_forward, _) = key_of(&mut forward, 0, 1);
+        let mut backward = Nested::new();
+        let (_, a_backward) = key_of(&mut backward, 1, 0);
+        // the same object, `{ onDone: a }`, has two numbers
+        assert_ne!(a_forward, a_backward);
+        let digest_of = |nested: &Nested, id: ObjectId| {
+            let mut keys = Keys::new();
+            let key = keys.intern(
+                KeyData {
+                    params: vec![Value::of([One::Object(id)], false)].into(),
+                    ..KeyData::default()
+                },
+                by_name,
+                |_| unreachable!("no variable"),
+                |_| unreachable!("no closure"),
+                |id| nested.object(id).clone(),
+            );
+            keys.digest(key)
+        };
+        let (one, other) = (
+            digest_of(&forward, a_forward),
+            digest_of(&backward, a_backward),
+        );
+        assert_eq!(one, other);
+        assert_ne!(one, ZEROS);
+    }
+
     #[test]
     fn the_captured_entries_are_in_their_normal_form() {
         let normal = |captured: Vec<(VarId, Value)>| {
@@ -871,14 +966,15 @@ mod tests {
             nth: 0,
         };
         let none = |_: Captures| -> CaptureList { unreachable!() };
+        let no_object = |_: ObjectId| -> ObjectData { unreachable!() };
         let mut keys = Keys::new();
         let one = KeyData {
             params: Box::new([]),
             captured: vec![(var(1, 3), f(0)), (var(2, 9), f(1))].into(),
         };
-        let a = keys.intern(one.clone(), by_name, captured_name, none);
+        let a = keys.intern(one.clone(), by_name, captured_name, none, no_object);
         assert_ne!(a, KeyId::OPEN);
-        assert_eq!(keys.intern(one, by_name, captured_name, none), a);
+        assert_eq!(keys.intern(one, by_name, captured_name, none, no_object), a);
         // the same two variables under another numbering of defs: `v9`'s def now comes before `v3`'s, so the list is in the other order, and the digest is
         // the same, since the list is written in the order of its canonical form
         let mut other = Keys::new();
@@ -886,7 +982,7 @@ mod tests {
             params: Box::new([]),
             captured: vec![(var(1, 9), f(1)), (var(2, 3), f(0))].into(),
         };
-        let b = other.intern(swapped, by_name, captured_name, none);
+        let b = other.intern(swapped, by_name, captured_name, none, no_object);
         assert_eq!(keys.digest(a), other.digest(b));
         assert_ne!(keys.digest(a), ZEROS);
     }

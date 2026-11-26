@@ -212,8 +212,8 @@ mod tests {
 
     use super::*;
     use crate::caps::Caps;
-    use crate::captures::CaptureList;
     use crate::flow::{Arg, FlowKind, SiteFlow, Var};
+    use crate::nested::CaptureList;
     use crate::value::{Captures, Value};
     use typescript_syntax::Span;
 
@@ -253,6 +253,18 @@ mod tests {
         }
 
         fn captured(&self, _captures: Captures) -> CaptureList {
+            unreachable!("these tests do not evaluate")
+        }
+
+        fn object(
+            &self,
+            _members: Vec<(Box<str>, Value)>,
+            _complete: bool,
+        ) -> (Option<crate::value::ObjectId>, u32) {
+            (None, 0)
+        }
+
+        fn object_data(&self, _id: crate::value::ObjectId) -> crate::nested::ObjectData {
             unreachable!("these tests do not evaluate")
         }
 

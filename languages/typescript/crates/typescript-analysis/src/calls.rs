@@ -19,16 +19,16 @@ use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary}
 
 use crate::Project;
 use crate::caps::Caps;
-use crate::captures::{CaptureList, CaptureSets};
 use crate::env::{Env, VARIABLE_WRITE_UNMODELLED};
 use crate::eval::{World, eval};
 use crate::flow::{DefId, Expr, Flow, VarId};
 use crate::key::{CanonVar, Key, KeyData, KeyId, Keys};
 use crate::needs::needs_of_component;
+use crate::nested::{CaptureList, Nested, ObjectData};
 use crate::relevance::relevant;
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
 use crate::value::VALUE_WIDENED_SET;
-use crate::value::{Captures, One, Value};
+use crate::value::{Captures, ObjectId, One, Value};
 use crate::walk;
 
 /// The key of the counter in `Stats.language` for a key that named a def or a variable the program does not know: it is the open key then (`intern_key`). It
@@ -113,8 +113,8 @@ pub(crate) struct TypeScript<'p> {
     emptied: RefCell<Vec<(Func<'p>, Site)>>,
     /// Every key of this request (`key.rs`); `digest` reads it, and the walk interns into it (`intern_key`).
     keys: RefCell<Keys>,
-    /// Every list of captured variables of this request (`captures.rs`): a `One::Closure` is a number into it.
-    captures: RefCell<CaptureSets>,
+    /// Every list of captured variables of this request (`nested.rs`): a `One::Closure` is a number into it.
+    nested: RefCell<Nested>,
     /// The env of each file's own code that a variable of it was asked of (`World::module_value`): made once per request, under the open key, and solved once.
     /// Looked up, never iterated (rule 9). An `Rc`, so the map's borrow is released before the env is evaluated.
     modules: RefCell<HashMap<DefId, Rc<Env>>>,
@@ -140,7 +140,7 @@ impl<'p> TypeScript<'p> {
             demoted: RefCell::new(HashSet::new()),
             emptied: RefCell::new(Vec::new()),
             keys: RefCell::new(Keys::new()),
-            captures: RefCell::new(CaptureSets::new()),
+            nested: RefCell::new(Nested::new()),
             modules: RefCell::new(HashMap::new()),
             layer: None,
             #[cfg(test)]
@@ -182,19 +182,20 @@ impl<'p> TypeScript<'p> {
             }
         };
         let list = |captures: Captures| World::captured(self, captures);
+        let objects = |id: ObjectId| World::object_data(self, id);
         self.keys
             .borrow_mut()
-            .intern(data, stable, stable_var, list)
+            .intern(data, stable, stable_var, list, objects)
     }
 
-    /// Whether every def `data` names is one of this program: the defs of its values (a closure's own def, not the lists it holds: they were made from this
-    /// program's values, and walking them again on every key would copy each list), and the def of each variable it captured.
+    /// Whether every def `data` names is one of this program: the defs of its values (a closure's own def, not the lists it holds, and not what an object holds:
+    /// they were made from this program's values, and walking them again on every key would copy each list), and the def of each variable it captured.
     fn names_are_known(&self, data: &KeyData) -> bool {
         let known = |def: DefId| self.sem.func(def).is_some();
         let value_is_known = |value: &Value| {
             value.known().iter().all(|one| match one {
                 One::Fn(def) | One::Anon(def, _) | One::Closure(def, _) => known(*def),
-                One::AnonAny | One::Undefined => true,
+                One::AnonAny | One::Undefined | One::Object(_) => true,
             })
         };
         data.params.iter().all(value_is_known)
@@ -319,11 +320,19 @@ impl World for TypeScript<'_> {
     }
 
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
-        self.captures.borrow_mut().intern(list)
+        self.nested.borrow_mut().intern(list)
     }
 
     fn captured(&self, captures: Captures) -> CaptureList {
-        self.captures.borrow().get(captures).into()
+        self.nested.borrow().get(captures).into()
+    }
+
+    fn object(&self, members: Vec<(Box<str>, Value)>, complete: bool) -> (Option<ObjectId>, u32) {
+        self.nested.borrow_mut().intern_object(members, complete)
+    }
+
+    fn object_data(&self, id: ObjectId) -> ObjectData {
+        self.nested.borrow().object(id).clone()
     }
 
     fn module_value(&self, var: VarId) -> Value {

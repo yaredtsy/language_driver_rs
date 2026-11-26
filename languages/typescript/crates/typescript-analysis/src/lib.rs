@@ -2,12 +2,12 @@
 
 mod calls;
 mod caps;
-mod captures;
 mod env;
 mod eval;
 mod flow;
 mod key;
 mod needs;
+mod nested;
 mod relevance;
 #[cfg(test)]
 mod scratch;

@@ -547,7 +547,19 @@ impl crate::eval::World for OfSem<'_> {
         unreachable!("the tables are not evaluated here")
     }
 
-    fn captured(&self, _captures: crate::value::Captures) -> crate::captures::CaptureList {
+    fn captured(&self, _captures: crate::value::Captures) -> crate::nested::CaptureList {
+        unreachable!("the tables are not evaluated here")
+    }
+
+    fn object(
+        &self,
+        _members: Vec<(Box<str>, crate::value::Value)>,
+        _complete: bool,
+    ) -> (Option<crate::value::ObjectId>, u32) {
+        (None, 0)
+    }
+
+    fn object_data(&self, _id: crate::value::ObjectId) -> crate::nested::ObjectData {
         unreachable!("the tables are not evaluated here")
     }
 

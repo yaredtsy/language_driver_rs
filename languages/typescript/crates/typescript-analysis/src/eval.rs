@@ -1,13 +1,14 @@
 //! What an expression of a table can be (`docs/03-typescript/12-context-layer/03-design.md` §3, §7). What it needs that is not in the table it asks
 //! through `World`, so a test answers by hand and the file has no tie to the engine (§15.4).
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::caps::Caps;
-use crate::captures::{CaptureList, VALUE_WIDENED_DEPTH};
 use crate::env::{Env, MODULE_READS_MODULE, VARIABLE_ROUNDS_CAPPED};
-use crate::flow::{DefId, Expr, Flow, VarId};
-use crate::value::{Captures, One, Value};
+use crate::flow::{DefId, Expr, Flow, Part, VarId};
+use crate::nested::{CaptureList, ObjectData, VALUE_WIDENED_DEPTH, VALUE_WIDENED_MEMBERS};
+use crate::value::{Captures, ObjectId, One, Value};
 
 /// How many rounds `solve` repeats before it gives up and opens every variable of the body (`07-tc3` §3). A chain of rows each reading the next settles in as
 /// many rounds as it is long, so this is also the longest chain that is read exactly.
@@ -35,11 +36,16 @@ pub(crate) trait World {
     /// For each parameter of `def` (in `Flow::params` order): whether its value can reach a call of the body (`relevance::relevant`). Kept by the world, as
     /// `needs` is, since it is a fact of the code.
     fn relevant(&self, def: DefId) -> Arc<[bool]>;
-    /// `list` interned (`CaptureSets::intern`): the number of its normal form, `None` when nothing is left, and how many inner closures were cut. It counts
+    /// `list` interned (`Nested::intern`): the number of its normal form, `None` when nothing is left, and how many inner closures were cut. It counts
     /// nothing: the caller notes the cuts, so a quiet world stays quiet.
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32);
     /// A copy of the list `captures` stands for.
     fn captured(&self, captures: Captures) -> CaptureList;
+    /// An object with these members interned (`Nested::intern_object`): the number of its normal form, `None` when it has more than `MAX_MEMBERS` (the caller
+    /// makes the value unknown and counts `value_widened_members`), and how many closures and objects inside it were cut. It counts nothing, as `capture` does.
+    fn object(&self, members: Vec<(Box<str>, Value)>, complete: bool) -> (Option<ObjectId>, u32);
+    /// A copy of the object `id` stands for.
+    fn object_data(&self, id: ObjectId) -> ObjectData;
     /// The value of `var`, a variable of a file's own code (`DefId::index` is `None`): its row of that file's table, solved under the open key, kept for the
     /// request. Unknown when the file has no table.
     fn module_value(&self, var: VarId) -> Value;
@@ -80,6 +86,15 @@ impl World for Quiet<'_> {
 
     fn captured(&self, captures: Captures) -> CaptureList {
         self.0.captured(captures)
+    }
+
+    // an object must be interned the same in every round, so the quiet world asks the one it wraps
+    fn object(&self, members: Vec<(Box<str>, Value)>, complete: bool) -> (Option<ObjectId>, u32) {
+        self.0.object(members, complete)
+    }
+
+    fn object_data(&self, id: ObjectId) -> ObjectData {
+        self.0.object_data(id)
     }
 
     fn module_value(&self, var: VarId) -> Value {
@@ -123,8 +138,39 @@ fn eval_below(world: &dyn World, env: &Env, expr: &Expr, below: u32, vars: Vars)
         Expr::Param(_) => Value::unknown(),
         Expr::Anon(index) => Value::of([One::Anon(env.def, *index)], false),
         Expr::Var(id) => variable(world, env, *id, vars),
-        // TC4 step 2 gives these their values; until then a member, an object and a default are not known
-        Expr::Member(..) | Expr::Object(_) | Expr::Omit(..) | Expr::Default(..) => Value::unknown(),
+        // TC4 (`08-tc4` §3, §4): behind `OBJECTS`, which is not built yet; with it off these are unknown, as before step 2
+        Expr::Member(..) | Expr::Object(_) | Expr::Omit(..) | Expr::Default(..)
+            if !world.knows(Caps::OBJECTS) =>
+        {
+            Value::unknown()
+        }
+        Expr::Object(parts) => object_literal(world, env, parts, below, vars),
+        Expr::Member(object, name) => {
+            let value = eval_below(world, env, object, below, vars);
+            member(world, &value, name)
+        }
+        Expr::Omit(object, names) => {
+            let value = eval_below(world, env, object, below, vars);
+            match (value.known(), value.is_open()) {
+                ([One::Object(id)], false) => {
+                    let data = world.object_data(*id);
+                    let members = data
+                        .members
+                        .iter()
+                        .filter(|(name, _)| !names.contains(name))
+                        .cloned()
+                        .collect();
+                    made_object(world, members, data.complete)
+                }
+                _ => Value::unknown(),
+            }
+        }
+        Expr::Default(value, default) => {
+            let value = eval_below(world, env, value, below, vars);
+            defaulted(world, value, || {
+                eval_below(world, env, default, below, vars)
+            })
+        }
         Expr::OneOf(members) => members
             .iter()
             .map(|member| eval_below(world, env, member, below, vars))
@@ -133,12 +179,117 @@ fn eval_below(world: &dyn World, env: &Env, expr: &Expr, below: u32, vars: Vars)
     }
 }
 
+/// `value` where something may not have been passed: when it holds `Undefined` or is open, `default`'s value takes `Undefined`'s place (the rest of `value`
+/// stays); else `value`. One rule for a parameter's default (`passed`) and a pattern element's `= d` (`Expr::Default`).
+fn defaulted(world: &dyn World, value: Value, default: impl FnOnce() -> Value) -> Value {
+    if value.contains(One::Undefined) || value.is_open() {
+        join(world, &value.without(One::Undefined), &default())
+    } else {
+        value
+    }
+}
+
+/// The object with these members, as a value: interned by the world; no object (more than `MAX_MEMBERS` members) is unknown, counted
+/// `value_widened_members`; each closure or object cut by the depth is counted `value_widened_depth`.
+fn made_object(world: &dyn World, members: Vec<(Box<str>, Value)>, complete: bool) -> Value {
+    let (made, cut) = world.object(members, complete);
+    for _ in 0..cut {
+        world.note(VALUE_WIDENED_DEPTH);
+    }
+    match made {
+        Some(id) => Value::of([One::Object(id)], false),
+        None => {
+            world.note(VALUE_WIDENED_MEMBERS);
+            Value::unknown()
+        }
+    }
+}
+
+/// An object literal (`08-tc4` §3): its parts in order. A later member of a name replaces an earlier one; a part the table cannot name, and a spread of
+/// anything but one object or `undefined`, makes the object not complete and every member set before it open (the part may replace any of them).
+fn object_literal(world: &dyn World, env: &Env, parts: &[Part], below: u32, vars: Vars) -> Value {
+    let mut members: BTreeMap<Box<str>, Value> = BTreeMap::new();
+    let mut complete = true;
+    let open_every = |members: &mut BTreeMap<Box<str>, Value>| {
+        for value in members.values_mut() {
+            *value = value.join(&Value::unknown());
+        }
+    };
+    for part in parts {
+        match part {
+            Part::Named(name, expr) => {
+                members.insert(name.clone(), eval_below(world, env, expr, below, vars));
+            }
+            Part::Unnamed => {
+                complete = false;
+                open_every(&mut members);
+            }
+            Part::Spread(expr) => {
+                let value = eval_below(world, env, expr, below, vars);
+                match (value.known(), value.is_open()) {
+                    // spreading nothing adds nothing
+                    ([One::Undefined], false) => {}
+                    ([One::Object(id)], false) => {
+                        let data = world.object_data(*id);
+                        if !data.complete {
+                            complete = false;
+                            open_every(&mut members);
+                        }
+                        for (name, value) in data.members.iter() {
+                            members.insert(name.clone(), value.clone());
+                        }
+                    }
+                    _ => {
+                        complete = false;
+                        open_every(&mut members);
+                    }
+                }
+            }
+        }
+    }
+    made_object(world, members.into_iter().collect(), complete)
+}
+
+/// The member `name` of `value` (`08-tc4` §4): the join over its members of what each has there. An object with the name, its value; a complete one without
+/// it, `undefined`; one that is not complete, unknown; `undefined`, `undefined` (reading through nothing calls nothing); any other member, unknown. A value
+/// with no member (data: a string has methods) is unknown, and an open value is open.
+fn member(world: &dyn World, value: &Value, name: &str) -> Value {
+    let mut found: Option<Value> = None;
+    for one in value.known() {
+        let got = match one {
+            One::Object(id) => {
+                let data = world.object_data(*id);
+                match data
+                    .members
+                    .binary_search_by(|(member, _)| member.as_ref().cmp(name))
+                {
+                    Ok(at) => data.members[at].1.clone(),
+                    Err(_) if data.complete => Value::of([One::Undefined], false),
+                    Err(_) => Value::unknown(),
+                }
+            }
+            One::Undefined => Value::of([One::Undefined], false),
+            One::Fn(_) | One::Closure(..) | One::Anon(..) | One::AnonAny => Value::unknown(),
+        };
+        found = Some(match found {
+            Some(so_far) => join(world, &so_far, &got),
+            None => got,
+        });
+    }
+    let found = found.unwrap_or_else(Value::unknown);
+    if value.is_open() {
+        join(world, &found, &Value::unknown())
+    } else {
+        found
+    }
+}
+
 /// The value of a def named in a body (`07-tc3` §4): the function itself, or, when the layer knows `CAPTURES` and the def is nested and needs variables from
 /// around it, the function with the value each of them has **here**. Nothing captured, or nothing known of it, is the bare function.
 ///
 /// The list is made from the sparse sides: `needs` of a def can be hundreds of variables (the compiler's `createTypeChecker`), and few of them have a value
 /// here that is not unknown. So it walks what can have one, this body's own rows and the key's entries, and keeps those that are in `needs` (sorted: a binary
-/// search). `CaptureSets::intern` sorts the list.
+/// search). `Nested::intern` sorts the list.
 fn function(world: &dyn World, env: &Env, def: DefId, vars: Vars) -> Value {
     if world.knows(Caps::CAPTURES) {
         let needed = world.needs(def);
@@ -236,12 +387,10 @@ fn passed(world: &dyn World, env: &Env, index: u32, vars: Vars) -> Value {
         .cloned()
         .unwrap_or_else(Value::unknown);
     match &row.default {
-        Some(default) if passed.contains(One::Undefined) || passed.is_open() => join(
-            world,
-            &passed.without(One::Undefined),
-            &eval_below(world, env, default, index, vars),
-        ),
-        _ => passed,
+        Some(default) => defaulted(world, passed, || {
+            eval_below(world, env, default, index, vars)
+        }),
+        None => passed,
     }
 }
 
@@ -334,9 +483,9 @@ mod tests {
     use std::collections::{BTreeMap, HashMap};
 
     use super::*;
-    use crate::captures::CaptureSets;
     use crate::flow::{Param, Var};
     use crate::key::KeyData;
+    use crate::nested::Nested;
     use crate::value::MAX_SET;
 
     /// A `World` answered by hand: a table per def, looked up, how many times a join passed the cap (a `Cell`, since `widened` takes `&self`), the bits the
@@ -346,7 +495,7 @@ mod tests {
         widened: Cell<u32>,
         caps: Caps,
         notes: RefCell<BTreeMap<&'static str, u32>>,
-        captures: RefCell<CaptureSets>,
+        nested: RefCell<Nested>,
         /// What `module_value` answers, by variable; unknown for one not listed.
         modules: HashMap<VarId, Value>,
     }
@@ -381,11 +530,23 @@ mod tests {
         }
 
         fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
-            self.captures.borrow_mut().intern(list)
+            self.nested.borrow_mut().intern(list)
         }
 
         fn captured(&self, captures: Captures) -> CaptureList {
-            self.captures.borrow().get(captures).into()
+            self.nested.borrow().get(captures).into()
+        }
+
+        fn object(
+            &self,
+            members: Vec<(Box<str>, Value)>,
+            complete: bool,
+        ) -> (Option<ObjectId>, u32) {
+            self.nested.borrow_mut().intern_object(members, complete)
+        }
+
+        fn object_data(&self, id: ObjectId) -> ObjectData {
+            self.nested.borrow().object(id).clone()
         }
 
         fn module_value(&self, var: VarId) -> Value {
@@ -456,7 +617,7 @@ mod tests {
             widened: Cell::new(0),
             caps,
             notes: RefCell::new(BTreeMap::new()),
-            captures: RefCell::new(CaptureSets::new()),
+            nested: RefCell::new(Nested::new()),
             modules: HashMap::new(),
         };
         assert!(world.flow(env.def).is_some());
@@ -1079,5 +1240,373 @@ mod tests {
         let (def, list) = list_of(&world, &value);
         assert_eq!(def, d(5));
         assert_eq!(list, [(outer(500), func(3)), (vid(10), func(1))]);
+    }
+
+    // ---- TC4 step 2: objects, behind `Caps::OBJECTS` --------------------------------------------------------------------------------------------------
+
+    fn objects_on() -> Caps {
+        Caps::PARAMS | Caps::LOCALS | Caps::OBJECTS
+    }
+
+    /// An env with no parameter, and a world that knows `PARAMS`, `LOCALS` and `OBJECTS`.
+    fn with_objects() -> (Env, ByHand) {
+        let env = env(vec![], vec![]);
+        let world = world_knowing(&env, objects_on());
+        (env, world)
+    }
+
+    fn def(index: u32) -> Expr {
+        Expr::Def(d(index))
+    }
+
+    fn named(name: &str, value: Expr) -> Part {
+        Part::Named(name.into(), value)
+    }
+
+    fn object_expr(parts: Vec<Part>) -> Expr {
+        Expr::Object(parts.into())
+    }
+
+    fn member_expr(object: Expr, name: &str) -> Expr {
+        Expr::Member(Box::new(object), name.into())
+    }
+
+    /// The members and completeness of the one object `value` is.
+    fn members_of(world: &ByHand, value: &Value) -> (Vec<(String, Value)>, bool) {
+        match value.known() {
+            [One::Object(id)] if !value.is_open() => {
+                let data = world.object_data(*id);
+                let members = data
+                    .members
+                    .iter()
+                    .map(|(name, value)| (name.to_string(), value.clone()))
+                    .collect();
+                (members, data.complete)
+            }
+            other => panic!("not one closed object: {other:?}"),
+        }
+    }
+
+    fn opened(value: Value) -> Value {
+        value.join(&Value::unknown())
+    }
+
+    #[test]
+    fn objects_are_off_without_their_bit() {
+        let env = env(vec![], vec![]);
+        let world = world_knowing(&env, Caps::BUILT);
+        let of = |expr: Expr| eval(&world, &env, &expr);
+        let literal = || object_expr(vec![named("a", def(1))]);
+        assert_eq!(of(literal()), Value::unknown());
+        assert_eq!(of(member_expr(literal(), "a")), Value::unknown());
+        assert_eq!(
+            of(Expr::Omit(Box::new(literal()), ["a".into()].into())),
+            Value::unknown()
+        );
+        assert_eq!(
+            of(Expr::Default(Box::new(Expr::Undefined), Box::new(def(1)))),
+            Value::unknown()
+        );
+        assert!(world.notes.borrow().is_empty());
+    }
+
+    #[test]
+    fn an_object_literal_and_its_members() {
+        let (env, world) = with_objects();
+        let of = |expr: Expr| eval(&world, &env, &expr);
+        let literal = || object_expr(vec![named("a", def(1))]);
+        let value = of(literal());
+        assert_eq!(
+            members_of(&world, &value),
+            (vec![("a".to_owned(), func(1))], true)
+        );
+        assert_eq!(of(member_expr(literal(), "a")), func(1));
+        assert_eq!(of(member_expr(literal(), "b")), undefined());
+        // the same literal twice is the same object
+        assert_eq!(of(literal()), value);
+        // a later member of a name replaces an earlier one
+        let twice = of(object_expr(vec![named("a", def(1)), named("a", def(2))]));
+        assert_eq!(members_of(&world, &twice).0, [("a".to_owned(), func(2))]);
+    }
+
+    #[test]
+    fn a_spread_before_and_after() {
+        let (env, world) = with_objects();
+        let of = |expr: Expr| eval(&world, &env, &expr);
+        let s = || object_expr(vec![named("a", def(1)), named("b", def(3))]);
+        // the spread then `a`: `a` is `g`, `b` is `h`
+        let after = of(object_expr(vec![Part::Spread(s()), named("a", def(2))]));
+        assert_eq!(
+            members_of(&world, &after),
+            (
+                vec![("a".to_owned(), func(2)), ("b".to_owned(), func(3))],
+                true
+            )
+        );
+        // `a`, then the spread: the spread replaces it
+        let before = of(object_expr(vec![named("a", def(2)), Part::Spread(s())]));
+        assert_eq!(
+            members_of(&world, &before),
+            (
+                vec![("a".to_owned(), func(1)), ("b".to_owned(), func(3))],
+                true
+            )
+        );
+        // a spread with only `b` leaves `a` as written
+        let only_b = || object_expr(vec![named("b", def(3))]);
+        let kept = of(object_expr(vec![
+            named("a", def(1)),
+            Part::Spread(only_b()),
+        ]));
+        assert_eq!(
+            members_of(&world, &kept),
+            (
+                vec![("a".to_owned(), func(1)), ("b".to_owned(), func(3))],
+                true
+            )
+        );
+        // a spread of nothing adds nothing
+        let nothing = of(object_expr(vec![
+            named("a", def(1)),
+            Part::Spread(Expr::Undefined),
+        ]));
+        assert_eq!(
+            members_of(&world, &nothing),
+            (vec![("a".to_owned(), func(1))], true)
+        );
+        // a spread of something unknown: not complete, `a` may be replaced
+        let unknown = object_expr(vec![named("a", def(1)), Part::Spread(Expr::Unknown)]);
+        let value = of(unknown.clone());
+        let (members, complete) = match value.known() {
+            [One::Object(id)] => {
+                let data = world.object_data(*id);
+                (data.members.to_vec(), data.complete)
+            }
+            other => panic!("not one object: {other:?}"),
+        };
+        assert!(!complete);
+        assert_eq!(members, [("a".into(), opened(func(1)))]);
+        assert_eq!(of(member_expr(unknown, "b")), Value::unknown());
+    }
+
+    #[test]
+    fn a_spread_that_is_not_one_complete_object_opens_what_came_before() {
+        let (env, world) = with_objects();
+        let of = |expr: Expr| eval(&world, &env, &expr);
+        let data_and_function = |spread: Expr| {
+            let value = of(object_expr(vec![named("a", def(1)), Part::Spread(spread)]));
+            match value.known() {
+                [One::Object(id)] => world.object_data(*id),
+                other => panic!("not one object: {other:?}"),
+            }
+        };
+        for spread in [
+            Expr::Data,
+            def(2),
+            Expr::OneOf([object_expr(vec![]), object_expr(vec![named("b", def(2))])].into()),
+            Expr::OneOf([Expr::Undefined, Expr::Unknown].into()),
+        ] {
+            let data = data_and_function(spread.clone());
+            assert!(!data.complete, "{spread:?}");
+            assert_eq!(
+                data.members.to_vec(),
+                [("a".into(), opened(func(1)))],
+                "{spread:?}"
+            );
+        }
+        // one object that is itself not complete: its members are copied, and what came before is open
+        let incomplete = object_expr(vec![named("b", def(2)), Part::Unnamed]);
+        let data = data_and_function(incomplete);
+        assert!(!data.complete);
+        assert_eq!(
+            data.members.to_vec(),
+            [("a".into(), opened(func(1))), ("b".into(), opened(func(2)))]
+        );
+    }
+
+    #[test]
+    fn an_unnamed_part_opens_what_came_before() {
+        let (env, world) = with_objects();
+        let value = eval(
+            &world,
+            &env,
+            &object_expr(vec![named("a", def(1)), Part::Unnamed, named("b", def(2))]),
+        );
+        let data = match value.known() {
+            [One::Object(id)] => world.object_data(*id),
+            other => panic!("not one object: {other:?}"),
+        };
+        assert!(!data.complete);
+        assert_eq!(
+            data.members.to_vec(),
+            [("a".into(), opened(func(1))), ("b".into(), func(2))]
+        );
+    }
+
+    #[test]
+    fn omit_and_default() {
+        let (env, world) = with_objects();
+        let of = |expr: Expr| eval(&world, &env, &expr);
+        let ab = || object_expr(vec![named("a", def(1)), named("b", def(3))]);
+        let rest = of(Expr::Omit(Box::new(ab()), ["a".into()].into()));
+        assert_eq!(
+            members_of(&world, &rest),
+            (vec![("b".to_owned(), func(3))], true)
+        );
+        // an object that was not complete stays so
+        let incomplete = of(Expr::Omit(
+            Box::new(object_expr(vec![named("a", def(1)), Part::Unnamed])),
+            ["a".into()].into(),
+        ));
+        match incomplete.known() {
+            [One::Object(id)] => assert!(!world.object_data(*id).complete),
+            other => panic!("not one object: {other:?}"),
+        }
+        // anything but one closed object is unknown
+        assert_eq!(
+            of(Expr::Omit(Box::new(def(1)), ["a".into()].into())),
+            Value::unknown()
+        );
+        assert_eq!(
+            of(Expr::Omit(Box::new(Expr::Unknown), ["a".into()].into())),
+            Value::unknown()
+        );
+        let default = |value: Expr| of(Expr::Default(Box::new(value), Box::new(def(2))));
+        // nothing there: the default
+        assert_eq!(
+            default(member_expr(object_expr(vec![]), "a")),
+            func(2),
+            "a missing member of a complete object is undefined"
+        );
+        // something there: it
+        assert_eq!(
+            default(member_expr(object_expr(vec![named("a", def(1))]), "a")),
+            func(1)
+        );
+        // nothing known: the default, and open
+        assert_eq!(default(Expr::Unknown), opened(func(2)));
+        // a value that is not nothing is left as it is (`null` is data)
+        assert_eq!(default(Expr::Data), Value::data());
+    }
+
+    /// A parameter's default and a pattern element's default are one rule (`defaulted`): the same answers for the same value.
+    #[test]
+    fn a_parameters_default_and_an_elements_default_are_one_rule() {
+        for key in [
+            undefined(),
+            func(1),
+            Value::unknown(),
+            Value::data(),
+            Value::of([One::Fn(d(1)), One::Undefined], false),
+        ] {
+            let env = env(vec![row(false, Some(def(5)), false)], vec![key.clone()]);
+            let world = world_knowing(&env, objects_on());
+            let as_parameter = eval(&world, &env, &Expr::Param(0));
+            let as_element = defaulted(&world, key.clone(), || func(5));
+            assert_eq!(as_parameter, as_element, "{key:?}");
+        }
+    }
+
+    #[test]
+    fn a_member_of_other_values() {
+        let base = env(vec![row(false, None, false)], vec![]);
+        let world = world_knowing(&base, objects_on());
+        let object = |members: Vec<(&str, Value)>| {
+            let members = members.into_iter().map(|(n, v)| (n.into(), v)).collect();
+            world.object(members, true).0.unwrap()
+        };
+        let (o1, o2) = (object(vec![("a", func(1))]), object(vec![("a", func(2))]));
+        // `a` of a value held in the parameter slot of the key
+        let of = |held: Value| {
+            let env = Env::new(
+                Arc::clone(&base.flow),
+                base.def,
+                KeyData {
+                    params: vec![held].into(),
+                    captured: Box::new([]),
+                },
+            );
+            eval(&world, &env, &member_expr(Expr::Param(0), "a"))
+        };
+        // a function, and data, have members we do not know
+        assert_eq!(of(func(9)), Value::unknown());
+        assert_eq!(of(Value::data()), Value::unknown());
+        // nothing: reading through it gives nothing
+        assert_eq!(of(undefined()), undefined());
+        // two objects: the join
+        assert_eq!(
+            of(Value::of([One::Object(o1), One::Object(o2)], false)),
+            Value::of([One::Fn(d(1)), One::Fn(d(2))], false)
+        );
+        // an object that may be something else too
+        assert_eq!(of(Value::of([One::Object(o1)], true)), opened(func(1)));
+        // an object and nothing: the member, or `undefined`
+        assert_eq!(
+            of(Value::of([One::Object(o1), One::Undefined], false)),
+            Value::of([One::Fn(d(1)), One::Undefined], false)
+        );
+        // an unknown value
+        assert_eq!(of(Value::unknown()), Value::unknown());
+    }
+
+    #[test]
+    fn objects_nest_two_deep() {
+        let (env, world) = with_objects();
+        let of = |expr: Expr| eval(&world, &env, &expr);
+        let counted = || world.notes.borrow().clone();
+        // `{x: {y: f}}` keeps `y`
+        let two = object_expr(vec![named("x", object_expr(vec![named("y", def(1))]))]);
+        assert_eq!(of(member_expr(member_expr(two.clone(), "x"), "y")), func(1));
+        assert!(counted().is_empty());
+        // `{x: {y: {z: f}}}` is one level too deep: `x`, the object of depth 2, is removed from its member, which is open, and the cut is counted once
+        let three = object_expr(vec![named(
+            "x",
+            object_expr(vec![named("y", object_expr(vec![named("z", def(1))]))]),
+        )]);
+        assert_eq!(of(member_expr(three.clone(), "x")), Value::unknown());
+        assert_eq!(counted(), BTreeMap::from([(VALUE_WIDENED_DEPTH, 1)]));
+    }
+
+    #[test]
+    fn one_depth_for_lists_and_objects_in_both_directions() {
+        let (_, world) = with_objects();
+        let (inner, _) = world.object(vec![("y".into(), func(1))], true);
+        let (middle, _) = world.object(
+            vec![("x".into(), Value::of([One::Object(inner.unwrap())], false))],
+            true,
+        );
+        let middle = Value::of([One::Object(middle.unwrap())], false);
+        // a captured value that is an object of depth 2 makes a list of depth 3: removed, counted once
+        let var = |at: u32| VarId { def: d(8), at };
+        assert_eq!(world.capture(vec![(var(1), middle.clone())]), (None, 1));
+        let (made, cut) = world.capture(vec![(var(1), middle), (var(2), func(2))]);
+        assert_eq!(cut, 1);
+        assert_eq!(world.captured(made.unwrap()).to_vec(), [(var(2), func(2))]);
+        // a closure whose list is depth 2 as a member makes an object of depth 3: written as its function, counted once
+        let (one, _) = world.capture(vec![(var(1), func(1))]);
+        let (two, _) = world.capture(vec![(
+            var(1),
+            Value::of([One::Closure(d(2), one.unwrap())], false),
+        )]);
+        let held = Value::of([One::Closure(d(3), two.unwrap())], false);
+        let (made, cut) = world.object(vec![("k".into(), held)], true);
+        assert_eq!(cut, 1);
+        assert_eq!(world.object_data(made.unwrap()).members[0].1, func(3));
+    }
+
+    #[test]
+    fn too_many_members_is_unknown() {
+        let literal =
+            |n: usize| object_expr((0..n).map(|i| named(&format!("k{i}"), def(1))).collect());
+        let (env, world) = with_objects();
+        let value = eval(&world, &env, &literal(64));
+        assert!(matches!(value.known(), [One::Object(_)]));
+        assert!(world.notes.borrow().is_empty());
+        let value = eval(&world, &env, &literal(65));
+        assert_eq!(value, Value::unknown());
+        assert_eq!(
+            *world.notes.borrow(),
+            BTreeMap::from([(VALUE_WIDENED_MEMBERS, 1)])
+        );
     }
 }

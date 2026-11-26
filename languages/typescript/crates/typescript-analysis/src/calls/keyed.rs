@@ -11,11 +11,11 @@ use analyzer_core::graph::{ContextId, EdgeTo, Graph};
 use analyzer_core::solve::{Budget, Cancel, Lang, Solver, Target};
 
 use super::*;
-use crate::captures::VALUE_WIDENED_DEPTH;
 use crate::env::{
     MODULE_READS_MODULE, VARIABLE_ADDED_TO_ENGINE, VARIABLE_ASSIGNED_MORE_THAN_ONCE,
     VARIABLE_ROUNDS_CAPPED, VARIABLE_WRITE_UNMODELLED,
 };
+use crate::nested::VALUE_WIDENED_DEPTH;
 use crate::value::Value;
 
 const STYLE: MarkerStyle<'static> = MarkerStyle {
@@ -625,7 +625,7 @@ fn each_context_walked_alone(fixture: &str, file: &str, entry: &str) -> usize {
         let mut fresh = TypeScript::new(&sem, STYLE).with_layer(Some(Caps::BUILT));
         let data = solver.lang().keys.borrow().data(*key).clone();
         // a closure in the key is a number into the solver's table of capture lists: the fresh language starts with a copy of it
-        *fresh.captures.borrow_mut() = solver.lang().captures.borrow().clone();
+        *fresh.nested.borrow_mut() = solver.lang().nested.borrow().clone();
         let again = fresh.intern_key(data);
         assert_eq!(fresh.digest(&again), digest, "{fixture} {entry}");
         let summary = Lang::walk(&mut fresh, *func, &again, &Cancel::new());

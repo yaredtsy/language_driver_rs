@@ -339,7 +339,7 @@ fn members<'p>(
         let (def, captures) = match one {
             One::Fn(def) => (Some(def), None),
             One::Closure(def, captures) => (Some(def), Some(*captures)),
-            One::Anon(..) | One::AnonAny | One::Undefined => (None, None),
+            One::Anon(..) | One::AnonAny | One::Undefined | One::Object(_) => (None, None),
         };
         match one {
             One::Fn(_) | One::Closure(..) => match lang.sem.func(*def.expect("a function")) {
@@ -368,6 +368,8 @@ fn members<'p>(
                 None,
             )),
             One::Undefined => found.saw_undefined = true,
+            // an object is not a function: the call is something the layer cannot turn into a target (TC4 step 5 gives a member call its answer)
+            One::Object(_) => found.open = true,
         }
     }
     found
@@ -386,6 +388,7 @@ fn member_order(lang: &TypeScript<'_>, one: &One) -> (u8, Option<StableDef>, u32
         One::Anon(def, number) => (1, id(*def), *number),
         One::AnonAny => (2, None, 0),
         One::Undefined => (3, None, 0),
+        One::Object(id) => (4, None, id.index()),
     }
 }
 
