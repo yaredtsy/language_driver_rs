@@ -386,6 +386,9 @@ Proof: unit tests on hand-written tables (`trust.rs`, `eval.rs`); the trust of e
 (`trust.trust.txt`), the fixture extended with a cycle, a rest parameter and pattern parameters; the same answers asked in the other order
 on a fresh `Sem`; every other snapshot unchanged.
 
+**Step 3b built as decided, `68af644`** ([`engine/11-tc4.md`](../../../languages/typescript/engine/11-tc4.md)): 544 passed, 13
+ignored; only `trust.flow.txt` (new entries) and the new `trust.trust.txt` moved.
+
 **Step 3c, to be designed after 3b's review.** The counters, once per body (`note_body`, only with `OBJECTS`): `module_object_shared`,
 `this_written_outside_class` (needs `Flow::this_uses`: the placement of `this` in a def that is not a class member or an arrow, nested
 arrows included, nested non-arrow functions and classes not) and `member_call_on_trusted`.
