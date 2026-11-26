@@ -27,6 +27,7 @@ use crate::needs::needs_of_component;
 use crate::nested::{CaptureList, Nested, ObjectData};
 use crate::relevance::relevant;
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
+use crate::trust::trust_of_component;
 use crate::value::VALUE_WIDENED_SET;
 use crate::value::{Captures, ObjectId, One, Value};
 use crate::walk;
@@ -317,6 +318,21 @@ impl World for TypeScript<'_> {
         let found: Arc<[bool]> = Arc::from(relevant(self, def));
         self.sem.remember_relevance(def, Arc::clone(&found));
         found
+    }
+
+    fn trusted(&self, var: VarId) -> bool {
+        // kept by the `Sem` beside `needs`: a fact of the code, worked out once per program, a component at a time
+        if let Some(found) = self.sem.trust_memo(var) {
+            return found;
+        }
+        self.sem.remember_trust(trust_of_component(self, var));
+        self.sem
+            .trust_memo(var)
+            .expect("the component holds the variable asked")
+    }
+
+    fn trusted_known(&self, var: VarId) -> Option<bool> {
+        self.sem.trust_memo(var)
     }
 
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {

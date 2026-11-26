@@ -36,6 +36,12 @@ pub(crate) trait World {
     /// For each parameter of `def` (in `Flow::params` order): whether its value can reach a call of the body (`relevance::relevant`). Kept by the world, as
     /// `needs` is, since it is a fact of the code.
     fn relevant(&self, def: DefId) -> Arc<[bool]>;
+    /// Whether the object `var` holds can be trusted (`trust::trust_of_component`, `08-tc4` §5): no use of it, in its whole scope and in every function it
+    /// is handed to, can change its members. Kept by the world, as `relevant` is, since it is a fact of the code.
+    fn trusted(&self, var: VarId) -> bool;
+    /// `trusted` when the world has already worked it out, without working anything out: `trust_of_component` does not follow such a variable (its
+    /// answer covers everything it reaches).
+    fn trusted_known(&self, var: VarId) -> Option<bool>;
     /// `list` interned (`Nested::intern`): the number of its normal form, `None` when nothing is left, and how many inner closures were cut. It counts
     /// nothing: the caller notes the cuts, so a quiet world stays quiet.
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32);
@@ -78,6 +84,14 @@ impl World for Quiet<'_> {
 
     fn relevant(&self, def: DefId) -> Arc<[bool]> {
         self.0.relevant(def)
+    }
+
+    fn trusted(&self, var: VarId) -> bool {
+        self.0.trusted(var)
+    }
+
+    fn trusted_known(&self, var: VarId) -> Option<bool> {
+        self.0.trusted_known(var)
     }
 
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
@@ -250,6 +264,52 @@ fn object_literal(world: &dyn World, env: &Env, parts: &[Part], below: u32, vars
     made_object(world, members.into_iter().collect(), complete)
 }
 
+/// What a read of `var` gives, its value being `value` (`08-tc4` §10 row 11): when the world knows `OBJECTS`, `value` holds an object and `var` is not trusted
+/// (`World::trusted`; `None`, a parameter with no row, is not trusted), `value` with its objects opened (`objects_opened`); else `value`. Trust is asked
+/// only of a value that holds an object.
+fn as_read(world: &dyn World, var: Option<VarId>, value: Value) -> Value {
+    if !world.knows(Caps::OBJECTS)
+        || !value
+            .known()
+            .iter()
+            .any(|one| matches!(one, One::Object(_)))
+    {
+        return value;
+    }
+    match var {
+        Some(var) if world.trusted(var) => value,
+        _ => objects_opened(world, value),
+    }
+}
+
+/// `value` with each object in it opened: made again (`made_object`) with every member joined with unknown and `complete: false`, since the code may have
+/// written any member or added one. Every other member of the value, and whether it is open, as it was, so a function is never opened by the trust rule.
+/// The same object opened twice is the same object (an object is interned by its members).
+fn objects_opened(world: &dyn World, value: Value) -> Value {
+    let rest = Value::of(
+        value
+            .known()
+            .iter()
+            .filter(|one| !matches!(one, One::Object(_)))
+            .copied(),
+        value.is_open(),
+    );
+    let mut opened = rest;
+    for one in value.known() {
+        if let One::Object(id) = one {
+            let members = world
+                .object_data(*id)
+                .members
+                .iter()
+                .map(|(name, member)| (name.clone(), member.join(&Value::unknown())))
+                .collect();
+            let object = made_object(world, members, false);
+            opened = join(world, &opened, &object);
+        }
+    }
+    opened
+}
+
 /// The member `name` of `value` (`08-tc4` §4): the join over its members of what each has there. An object with the name, its value; a complete one without
 /// it, `undefined`; one that is not complete, unknown; `undefined`, `undefined` (reading through nothing calls nothing); any other member, unknown. A value
 /// with no member (data: a string has methods) is unknown, and an open value is open.
@@ -337,20 +397,21 @@ fn variable(world: &dyn World, env: &Env, id: VarId, vars: Vars) -> Value {
             return Value::unknown();
         }
         return match env.flow.var_index(id.at) {
-            Some(row) => row_of(world, env, row, vars),
+            Some(row) => as_read(world, Some(id), row_of(world, env, row, vars)),
             None => Value::unknown(),
         };
     }
     if world.knows(Caps::CAPTURES) && id.def.index().is_some() {
-        return env
+        let value = env
             .key
             .captured
             .binary_search_by_key(&id, |(var, _)| *var)
             .map_or_else(|_| Value::unknown(), |at| env.key.captured[at].1.clone());
+        return as_read(world, Some(id), value);
     }
     if world.knows(Caps::MODULES) && id.def.index().is_none() {
         if env.def.index().is_some() {
-            return world.module_value(id);
+            return as_read(world, Some(id), world.module_value(id));
         }
         world.note(MODULE_READS_MODULE);
     }
@@ -396,7 +457,25 @@ fn passed(world: &dyn World, env: &Env, index: u32, vars: Vars) -> Value {
 
 /// The value of parameter `index` in this context. A parameter the body writes holds what was passed **and** what the body assigns: its row of the table when
 /// the layer knows `LOCALS` (`row_value` starts it from `passed`); before that, what was passed joined with unknown (TC2).
+///
+/// A named parameter is read through the trust rule (`as_read`); a pattern parameter never is: its elements are read at the entry, before any code of the body
+/// runs (`08-tc4` §10, step 3).
 fn param(world: &dyn World, env: &Env, index: u32, vars: Vars) -> Value {
+    let value = param_value(world, env, index, vars);
+    match env.flow.params.get(index as usize) {
+        Some(row) if row.named => {
+            let var = env.flow.param_var(index).map(|row| VarId {
+                def: env.def,
+                at: env.flow.vars[row].at,
+            });
+            as_read(world, var, value)
+        }
+        _ => value,
+    }
+}
+
+/// `param` before the trust rule.
+fn param_value(world: &dyn World, env: &Env, index: u32, vars: Vars) -> Value {
     let Some(row) = env.flow.params.get(index as usize) else {
         return Value::unknown();
     };
@@ -480,7 +559,7 @@ fn solve(world: &dyn World, env: &Env) -> Box<[Value]> {
 #[cfg(test)]
 mod tests {
     use std::cell::{Cell, RefCell};
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
     use super::*;
     use crate::flow::{Param, Var};
@@ -500,6 +579,10 @@ mod tests {
         made: Cell<u32>,
         /// What `module_value` answers, by variable; unknown for one not listed.
         modules: HashMap<VarId, Value>,
+        /// The variables `trusted` says no to; every other is trusted.
+        untrusted: RefCell<HashSet<VarId>>,
+        /// How many times `trusted` was asked.
+        trust_asked: Cell<u32>,
     }
 
     impl World for ByHand {
@@ -529,6 +612,15 @@ mod tests {
 
         fn relevant(&self, def: DefId) -> Arc<[bool]> {
             Arc::from(crate::relevance::relevant(self, def))
+        }
+
+        fn trusted(&self, var: VarId) -> bool {
+            self.trust_asked.set(self.trust_asked.get() + 1);
+            !self.untrusted.borrow().contains(&var)
+        }
+
+        fn trusted_known(&self, _var: VarId) -> Option<bool> {
+            None
         }
 
         fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
@@ -624,6 +716,8 @@ mod tests {
             nested: RefCell::new(Nested::new()),
             made: Cell::new(0),
             modules: HashMap::new(),
+            untrusted: RefCell::new(HashSet::new()),
+            trust_asked: Cell::new(0),
         };
         assert!(world.flow(env.def).is_some());
         assert!(world.flow(DefId::new(0, 0, None)).is_none());
@@ -1541,7 +1635,12 @@ mod tests {
 
     #[test]
     fn a_member_of_other_values() {
-        let base = env(vec![row(false, None, false)], vec![]);
+        // the parameter has a row of variables: a parameter with none is not trusted, and an object read through it is open
+        let base = env_with_vars(
+            vec![row(false, None, false)],
+            vec![],
+            vec![var_row(5, Some(0), true, vec![], false)],
+        );
         let world = world_knowing(&base, objects_on());
         let object = |members: Vec<(&str, Value)>| {
             let members = members.into_iter().map(|(n, v)| (n.into(), v)).collect();
@@ -1640,5 +1739,184 @@ mod tests {
             *world.notes.borrow(),
             BTreeMap::from([(VALUE_WIDENED_MEMBERS, 1)])
         );
+    }
+
+    // ---- TC4 step 3b: an object that cannot be trusted is read open ---------------------------------------------------------------------------------
+
+    /// An env with one named, capable parameter whose row of variables is at 5 (`vid(5)`), the key holding `held` for it.
+    fn param_env(held: Value) -> Env {
+        env_with_vars(
+            vec![row(false, None, false)],
+            vec![held],
+            vec![var_row(5, Some(0), true, vec![], false)],
+        )
+    }
+
+    /// A world for `param_env`, and the object `{a: f1}` interned in it.
+    fn world_and_object(caps: Caps) -> (ByHand, ObjectId) {
+        let world = world_knowing(&param_env(Value::unknown()), caps);
+        let (made, _) = world.object(vec![("a".into(), func(1))], true);
+        (world, made.unwrap())
+    }
+
+    #[test]
+    fn an_untrusted_parameter_gives_its_objects_opened() {
+        let (world, o) = world_and_object(objects_on());
+        world.untrusted.borrow_mut().insert(vid(5));
+        let env = param_env(Value::of([One::Object(o)], false));
+        let read = eval(&world, &env, &Expr::Param(0));
+        assert_eq!(
+            members_of(&world, &read),
+            (vec![("a".to_owned(), opened(func(1)))], false)
+        );
+        assert_eq!(
+            eval(&world, &env, &member_expr(Expr::Param(0), "a")),
+            opened(func(1))
+        );
+        // a member that is not there reads unknown: the object is not complete
+        assert_eq!(
+            eval(&world, &env, &member_expr(Expr::Param(0), "b")),
+            Value::unknown()
+        );
+        // the slot holds the function and the object: the function stays, the value stays closed, the object is opened
+        let both = param_env(Value::of([One::Fn(d(1)), One::Object(o)], false));
+        let read = eval(&world, &both, &Expr::Param(0));
+        assert!(!read.is_open());
+        assert!(read.contains(One::Fn(d(1))));
+        let objects: Vec<ObjectId> = read
+            .known()
+            .iter()
+            .filter_map(|one| match one {
+                One::Object(id) => Some(*id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(objects.len(), 1);
+        assert_ne!(objects[0], o);
+        let data = world.object_data(objects[0]);
+        assert!(!data.complete);
+        assert_eq!(data.members.to_vec(), [("a".into(), opened(func(1)))]);
+    }
+
+    #[test]
+    fn a_trusted_parameter_gives_its_object_as_it_is() {
+        let (world, o) = world_and_object(objects_on());
+        let env = param_env(Value::of([One::Object(o)], false));
+        assert_eq!(
+            eval(&world, &env, &member_expr(Expr::Param(0), "a")),
+            func(1)
+        );
+        assert!(world.trust_asked.get() > 0);
+    }
+
+    #[test]
+    fn a_value_with_no_object_is_not_asked_and_not_changed() {
+        let (world, _) = world_and_object(objects_on());
+        world.untrusted.borrow_mut().insert(vid(5));
+        let env = param_env(func(1));
+        assert_eq!(eval(&world, &env, &Expr::Param(0)), func(1));
+        assert_eq!(world.trust_asked.get(), 0);
+    }
+
+    #[test]
+    fn a_pattern_parameter_is_never_opened() {
+        let (world, o) = world_and_object(objects_on());
+        // every variable of the test is untrusted
+        for at in 0..10 {
+            world.untrusted.borrow_mut().insert(vid(at));
+        }
+        let env = env(
+            vec![Param {
+                named: false,
+                ..row(false, None, false)
+            }],
+            vec![Value::of([One::Object(o)], false)],
+        );
+        assert_eq!(
+            eval(&world, &env, &member_expr(Expr::Param(0), "a")),
+            func(1)
+        );
+        assert_eq!(world.trust_asked.get(), 0);
+    }
+
+    #[test]
+    fn with_objects_off_nothing_is_opened_or_asked() {
+        let (world, o) = world_and_object(Caps::PARAMS | Caps::LOCALS);
+        world.untrusted.borrow_mut().insert(vid(5));
+        let held = Value::of([One::Object(o)], false);
+        let env = param_env(held.clone());
+        assert_eq!(eval(&world, &env, &Expr::Param(0)), held);
+        assert_eq!(world.trust_asked.get(), 0);
+    }
+
+    #[test]
+    fn a_second_name_reads_the_object_its_first_name_gave() {
+        let (world, o) = world_and_object(objects_on());
+        // `x` is parameter 0 (row 5); `o = x` (row 6); `x` is untrusted, `o` is not
+        world.untrusted.borrow_mut().insert(vid(5));
+        let env = env_with_vars(
+            vec![row(false, None, false)],
+            vec![Value::of([One::Object(o)], false)],
+            vec![
+                var_row(5, Some(0), true, vec![], false),
+                local(6, vec![Expr::Param(0)]),
+            ],
+        );
+        assert_eq!(
+            eval(&world, &env, &member_expr(Expr::Var(vid(6)), "a")),
+            opened(func(1))
+        );
+    }
+
+    #[test]
+    fn a_captured_variable_is_opened_by_its_declaring_defs_trust() {
+        let (world, o) =
+            world_and_object(Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES | Caps::OBJECTS);
+        let env = Env::new(
+            Arc::new(Flow {
+                params: Box::new([]),
+                sites: Box::new([]),
+                anons: Box::new([]),
+                handed: Box::new([]),
+                unhandled: 0,
+                vars: Box::new([]),
+                unmodelled: 0,
+                around: Some(d(8)),
+            }),
+            d(9),
+            KeyData {
+                params: Box::new([]),
+                captured: Box::new([(outer(5), Value::of([One::Object(o)], false))]),
+            },
+        );
+        let read = || eval(&world, &env, &member_expr(Expr::Var(outer(5)), "a"));
+        assert_eq!(read(), func(1));
+        world.untrusted.borrow_mut().insert(outer(5));
+        assert_eq!(read(), opened(func(1)));
+    }
+
+    #[test]
+    fn a_module_variable_is_opened_when_not_trusted() {
+        let (mut world, o) =
+            world_and_object(Caps::PARAMS | Caps::LOCALS | Caps::MODULES | Caps::OBJECTS);
+        let top = VarId {
+            def: DefId::new(0, 0, None),
+            at: 3,
+        };
+        world
+            .modules
+            .insert(top, Value::of([One::Object(o)], false));
+        let env = env(vec![], vec![]);
+        let read = || eval(&world, &env, &member_expr(Expr::Var(top), "a"));
+        assert_eq!(read(), func(1));
+        world.untrusted.borrow_mut().insert(top);
+        assert_eq!(read(), opened(func(1)));
+    }
+
+    #[test]
+    fn opening_twice_is_the_same_object() {
+        let (world, o) = world_and_object(objects_on());
+        let once = objects_opened(&world, Value::of([One::Fn(d(2)), One::Object(o)], false));
+        assert_eq!(objects_opened(&world, once.clone()), once);
     }
 }

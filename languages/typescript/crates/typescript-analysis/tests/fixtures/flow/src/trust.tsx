@@ -52,3 +52,16 @@ export function deep(x: P, y: P, z: P, w: P) {
     const n = w.n;
     return z.b;
 }
+function down(o: O, n: number) { if (n) down(o, n - 1); o.a(); }
+function ping(o: O) { pong(o); }
+function pong(o: O) { ping(o); lib(o); }
+function restOf(...os: O[]) { os; }
+function pat({ a }: O) { a(); }
+function patWrites({ b }: O) { b.c = () => {}; }
+export function callers(v: O, w: O, x: O, y: O, z: O) {
+    down(v, 1);
+    ping(w);
+    restOf(x);
+    pat(y);
+    patWrites(z);
+}

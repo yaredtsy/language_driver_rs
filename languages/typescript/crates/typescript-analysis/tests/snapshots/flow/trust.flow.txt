@@ -210,6 +210,92 @@ handed:
   y.b member(param#1, b)
   w.n member(param#3, n)
   z.b member(param#2, b)
+== down
+params:
+  #0 capable
+  #1
+vars:
+  o@55 param#0 capable uses(passed: down#0, receiver)
+  n@55 param#1
+sites:
+  call def down (param#0, data)
+  call member(param#0, a) ()
+anons: 0
+handed:
+  o param#0
+== ping
+params:
+  #0 capable
+vars:
+  o@56 param#0 capable uses(passed: pong#0)
+sites:
+  call def pong (param#0)
+anons: 0
+handed:
+  o param#0
+== pong
+params:
+  #0 capable
+vars:
+  o@57 param#0 capable uses(escapes, passed: ping#0)
+sites:
+  call def ping (param#0)
+  call ? (param#0)
+anons: 0
+handed:
+  o param#0
+  o param#0
+== restOf
+params:
+  #0 rest capable
+vars:
+  os@58 param#0 capable
+sites: none
+anons: 0
+handed: none
+== pat
+params:
+  #0 pattern names: var a@59
+vars:
+  a@59 capable = member(param#0, a)
+sites:
+  call var a@59 ()
+anons: 0
+handed: none
+== patWrites
+params:
+  #0 pattern names: var b@60
+vars:
+  b@60 capable = member(param#0, b) uses(escapes)
+sites: none
+anons: 1
+handed: none
+== callers
+params:
+  #0 capable
+  #1 capable
+  #2 capable
+  #3 capable
+  #4 capable
+vars:
+  v@61 param#0 capable uses(passed: down#0)
+  w@61 param#1 capable uses(passed: ping#0)
+  x@61 param#2 capable uses(passed: restOf#0)
+  y@61 param#3 capable uses(passed: pat#0)
+  z@61 param#4 capable uses(passed: patWrites#0)
+sites:
+  call def down (param#0, data)
+  call def ping (param#1)
+  call def restOf (param#2)
+  call def pat (param#3)
+  call def patWrites (param#4)
+anons: 0
+handed:
+  v param#0
+  w param#1
+  x param#2
+  y param#3
+  z param#4
 == FILE
 params: none
 vars:

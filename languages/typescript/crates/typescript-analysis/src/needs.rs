@@ -248,6 +248,14 @@ mod tests {
             Arc::from(crate::relevance::relevant(self, def))
         }
 
+        fn trusted(&self, _var: VarId) -> bool {
+            unreachable!("these tests do not evaluate")
+        }
+
+        fn trusted_known(&self, _var: VarId) -> Option<bool> {
+            unreachable!("these tests do not evaluate")
+        }
+
         fn capture(&self, _list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
             unreachable!("these tests do not evaluate")
         }

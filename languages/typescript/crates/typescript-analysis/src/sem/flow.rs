@@ -36,6 +36,8 @@ pub(super) struct Flows {
     needs: RefCell<HashMap<DefId, Arc<[VarId]>>>,
     /// Which parameters of each def can reach a call (`relevance::relevant`), kept the same way.
     relevance: RefCell<HashMap<DefId, Arc<[bool]>>>,
+    /// Whether each variable's object can be trusted (`trust::trust_of_component`), kept the same way as `relevance`: a fact of the code.
+    trust: RefCell<HashMap<VarId, bool>>,
 }
 
 /// The next program's number. It never reaches an output: it only tells two programs' numbers apart.
@@ -49,6 +51,7 @@ impl Flows {
             memo: RefCell::new(HashMap::new()),
             needs: RefCell::new(HashMap::new()),
             relevance: RefCell::new(HashMap::new()),
+            trust: RefCell::new(HashMap::new()),
         }
     }
 }
@@ -88,6 +91,16 @@ impl Sem {
     /// Keep which parameters of `def` can reach a call, for every request of this program: plain data.
     pub(crate) fn remember_relevance(&self, def: DefId, flags: Arc<[bool]>) {
         self.flows.relevance.borrow_mut().insert(def, flags);
+    }
+
+    /// Whether the object `var` holds can be trusted, when a request of this program has already worked it out (`remember_trust`).
+    pub(crate) fn trust_memo(&self, var: VarId) -> Option<bool> {
+        self.flows.trust.borrow().get(&var).copied()
+    }
+
+    /// Keep which variables' objects can be trusted (`trust::trust_of_component`), for every request of this program: plain data in, plain data out.
+    pub(crate) fn remember_trust(&self, entries: Vec<(VarId, bool)>) {
+        self.flows.trust.borrow_mut().extend(entries);
     }
 
     /// For tests: whether `flow` has read `def`'s table in this program.

@@ -13,6 +13,7 @@ mod relevance;
 mod scratch;
 mod sem;
 mod session;
+mod trust;
 mod value;
 mod walk;
 

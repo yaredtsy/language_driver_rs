@@ -1,0 +1,84 @@
+== lib
+  o@1 trusted
+== O
+  none
+== leaves
+  o@3 trusted
+== writes
+  o@4 untrusted
+== reads
+  x@5 trusted
+== writesThrough
+  x@15 untrusted
+  y@15 untrusted
+  z@15 untrusted
+== passes
+  x@20 trusted
+  y@20 untrusted
+  z@20 untrusted
+== stores
+  x@25 untrusted
+  y@25 untrusted
+  z@25 untrusted
+  w@25 untrusted
+  o@26 trusted
+  arr@27 trusted
+  holder@28 untrusted
+== names
+  x@32 trusted
+  y@32 trusted
+  o@33 trusted
+  a@34 trusted
+  b@34 trusted
+  later@35 trusted
+== spreads
+  x@39 trusted
+  copy@39 trusted
+== pattern
+  a@40 trusted
+  b@40 trusted
+== outer
+  x@41 untrusted
+  inner@41 trusted
+== outer.<locals>.inner
+  none
+== Comp
+  props@42 trusted
+== jsx
+  x@43 trusted
+  y@43 untrusted
+== shared.a
+  none
+== own.a
+  none
+== P
+  none
+== leaves2
+  o@47 trusted
+== deep
+  x@48 untrusted
+  y@48 trusted
+  z@48 untrusted
+  w@48 trusted
+  b@49 untrusted
+== down
+  o@55 trusted
+== ping
+  o@56 untrusted
+== pong
+  o@57 untrusted
+== restOf
+  os@58 trusted
+== pat
+  a@59 trusted
+== patWrites
+  b@60 untrusted
+== callers
+  v@61 trusted
+  w@61 untrusted
+  x@61 untrusted
+  y@61 trusted
+  z@61 untrusted
+== FILE
+  shared@44 untrusted
+  own@45 trusted

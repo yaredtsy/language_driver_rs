@@ -590,6 +590,14 @@ impl crate::eval::World for OfSem<'_> {
         Arc::from(crate::relevance::relevant(self, def))
     }
 
+    fn trusted(&self, _var: crate::flow::VarId) -> bool {
+        unreachable!("the tables are not evaluated here")
+    }
+
+    fn trusted_known(&self, _var: crate::flow::VarId) -> Option<bool> {
+        unreachable!("the tables are not evaluated here")
+    }
+
     fn capture(
         &self,
         _list: Vec<(crate::flow::VarId, crate::value::Value)>,
@@ -618,12 +626,10 @@ impl crate::eval::World for OfSem<'_> {
     }
 }
 
-/// The tables of every def of `file` in `root`, in outline order, then the file's own code, as `== <qualname>` and `show_table`.
-fn tables_of(root: &Path, file: &str) -> String {
-    let sem = Sem::open(root, Path::new(file)).unwrap();
-    let text = std::fs::read_to_string(root.join(file)).unwrap();
+/// The defs of `file` (whose text is `text`), in outline order, then the file's own code as `FILE`, each with its name.
+fn entries_of<'s>(sem: &'s Sem, file: &str, text: &str) -> Vec<(String, Func<'s>)> {
     let dialect = typescript_syntax::Dialect::from_path(file).expect("a source file");
-    let outline = typescript_syntax::outline(&text, dialect, STYLE);
+    let outline = typescript_syntax::outline(text, dialect, STYLE);
     let mut entries: Vec<(String, Func<'_>)> = Vec::new();
     let mut seen: HashMap<&str, u16> = HashMap::new();
     for def in &outline.defs {
@@ -638,6 +644,14 @@ fn tables_of(root: &Path, file: &str) -> String {
         "FILE".to_owned(),
         sem.file_entry(file).expect("the file's code"),
     ));
+    entries
+}
+
+/// The tables of every def of `file` in `root`, in outline order, then the file's own code, as `== <qualname>` and `show_table`.
+fn tables_of(root: &Path, file: &str) -> String {
+    let sem = Sem::open(root, Path::new(file)).unwrap();
+    let text = std::fs::read_to_string(root.join(file)).unwrap();
+    let entries = entries_of(&sem, file, &text);
     let mut out = String::new();
     for (name, func) in &entries {
         let id = sem.def_id(*func);
@@ -685,6 +699,83 @@ fn the_uses_of_a_variable_are_reviewed() {
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/flow/trust.flow.txt"),
         &tables_of(&root(), "src/trust.tsx"),
     );
+}
+
+/// Whether the object each capable variable of every table of `file` holds can be trusted, as `World::trusted` of the `TypeScript` world answers: for each def in
+/// `entries_of`'s order, its name and its capable rows in row order, each `<name>@<line>` (as `show_var` begins) and its answer. The variables are asked in table
+/// order, or, with `reversed`, from the last to the first; the answers are put back in table order.
+fn trust_of(root: &Path, file: &str, reversed: bool) -> Vec<(String, Vec<(String, bool)>)> {
+    use crate::eval::World;
+    let sem = Sem::open(root, Path::new(file)).unwrap();
+    let text = std::fs::read_to_string(root.join(file)).unwrap();
+    let lang =
+        crate::calls::TypeScript::new(&sem, STYLE).with_layer(Some(crate::caps::Caps::BUILT));
+    // (the def's place in the list, its variable, how it is written)
+    let mut asked: Vec<(usize, crate::flow::VarId, String)> = Vec::new();
+    let entries = entries_of(&sem, file, &text);
+    for (place, (_, func)) in entries.iter().enumerate() {
+        let id = sem.def_id(*func);
+        let flow = sem.flow(id, STYLE).expect("a table");
+        for var in flow.vars.iter().filter(|var| var.capable) {
+            let (name, line) = name_at(&text, var.at);
+            asked.push((
+                place,
+                crate::flow::VarId {
+                    def: id,
+                    at: var.at,
+                },
+                format!("{name}@{line}"),
+            ));
+        }
+    }
+    let mut answers: Vec<Option<bool>> = vec![None; asked.len()];
+    let order: Vec<usize> = if reversed {
+        (0..asked.len()).rev().collect()
+    } else {
+        (0..asked.len()).collect()
+    };
+    for at in order {
+        answers[at] = Some(lang.trusted(asked[at].1));
+    }
+    let mut found: Vec<(String, Vec<(String, bool)>)> = entries
+        .iter()
+        .map(|(name, _)| (name.clone(), Vec::new()))
+        .collect();
+    for ((place, _, label), answer) in asked.into_iter().zip(answers) {
+        found[place]
+            .1
+            .push((label, answer.expect("every variable was asked")));
+    }
+    found
+}
+
+/// Which variables' objects can be trusted (TC4 step 3b): one line for each capable variable of each table of the trust fixture.
+#[test]
+fn the_trust_of_each_variable_is_reviewed() {
+    let mut out = String::new();
+    for (name, rows) in trust_of(&root(), "src/trust.tsx", false) {
+        out.push_str(&format!("== {name}\n"));
+        if rows.is_empty() {
+            out.push_str("  none\n");
+        }
+        for (label, answer) in rows {
+            let said = if answer { "trusted" } else { "untrusted" };
+            out.push_str(&format!("  {label} {said}\n"));
+        }
+    }
+    analyzer_testkit::expect_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/flow/trust.trust.txt"),
+        &out,
+    );
+}
+
+/// The answer is the least one, whatever variable is asked first (`08-tc4` §10, row 12): two fresh programs, the variables asked in opposite orders.
+#[test]
+fn the_trust_of_a_variable_does_not_depend_on_which_is_asked_first() {
+    let forward = trust_of(&root(), "src/trust.tsx", false);
+    let backward = trust_of(&root(), "src/trust.tsx", true);
+    assert_eq!(forward, backward);
+    assert!(forward.iter().map(|(_, rows)| rows.len()).sum::<usize>() > 30);
 }
 
 /// What each kind of expression is read as (the review before TC3, §1.1): sixteen kinds are data, `void 0` and the global `undefined` are nothing.
