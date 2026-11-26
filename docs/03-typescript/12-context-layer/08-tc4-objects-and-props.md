@@ -315,6 +315,9 @@ Each step is one prompt; step 1 or 2 may split when its prompt is written.
   of TC2 and TC3 is unchanged.
 - `World` gets `object` (intern) and `object_data` (read), as it has `capture` and `captured`.
 
+**Step 2 built as decided, `e698cfe`** (`engine/11-tc4.md`): 521 passed, 13 ignored, no snapshot moved. Step 2b adds the test the
+review found missing (an object's depth counts its closures) and the rounds of a variable that holds an object.
+
 **Step 1, as decided for the build (2026-11-26).** The table reads the new forms; nothing evaluates them yet, so no graph moves.
 
 - `Expr` gains four variants: `Member(Box<Expr>, Box<str>)` (`x.k`, `x?.k`, `x["k"]` with a string literal), `Object(Box<[Part]>)`
