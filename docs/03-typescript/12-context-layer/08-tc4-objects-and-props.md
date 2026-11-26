@@ -272,6 +272,8 @@ literals often (26–36%), and "handed to a project function" is the large row (
 | 8 | the README's point 8: an off snapshot per bit | none for `OBJECTS` yet | `objects-off.txt` blessed at step 2, before any code reads the bit |
 | 9 | "After step 8 is where I would tag" | D64 | no tag (above) |
 | 10 | (found at step 2b) | an object is interned by its members, so a variable whose object is built from a variable that settles over `solve`'s rounds keeps one object per round (the round join keeps them): `y = {a: x}` with `x = f; x = g` holds `{a: data}` and `{a: {f, g}}`. Sound, but two keys can hold equal values with different digests | step 4 makes the projects' sweep count values that hold two or more objects; if step 8 shows they split contexts, a value drops an object whose every member is contained in another object of the same value, at the end of `solve`. Not built before the number |
+| 11 | (found at step 3b's design) step 3: "`eval`'s `Member`, `Omit` and a spread read a variable's or a parameter's object as open when it is not trusted" | a variable's value also goes, unopened, into a key (`g(x)`), a capture list, a literal (`{ f: x }`) and a second name (`const o = x`): `function f(x) { x.a = other; g(x); }` would hand `g` the key's `{a: save}`, and `g`'s `p.a()` would be answered `save` | **the read of the variable opens it**, not the read through it: `eval` of an untrusted `Var` or named `Param` gives its value with **each object opened** (every member open, not complete), and nothing else changed, so a function is never opened by the rule. A read through it is then open by `member`'s own rule (an open member reads open). A pattern parameter is never opened (read at the entry) |
+| 12 | §5: "a function asked for while being computed: true (a cycle)" | a depth-first memo that answers "true" on a cycle makes every recursive function that passes its object down untrusted (`walk(node, ctx) { walk(child, ctx) }`, common in the compiler) | trust is solved **whole**, as `needs` is: the variables reached from the one asked (through second names and the parameters it is passed to), then "not trusted" spreads back from every variable that has a use the rule does not allow. A cycle with no such use is trusted. It is the least answer, so it does not depend on which variable is asked first (rule 9 with a memo per program) |
 
 **The steps, as they will be built** (re-ordered again at step 2's design, 2026-11-26: a destructured prop, `const { onClose } = props`,
 reads through the object as soon as `OBJECTS` is on, so the trust rule must exist **before** the bit is turned on, not only before member
@@ -281,7 +283,7 @@ calls are answered):
 |---|---|---|
 | 1 | `sem/flow.rs`: `Object`, `Member`, `Omit`, `Default`, patterns, JSX attributes as an `Object` argument; every reader as `Unknown` | table snapshots; no graph moves (**built**, `9e64de5`) |
 | 2 | values, **off**: `One::Object` in the request's table of nested values (rows 1–3), `eval` of the four forms behind `Caps::OBJECTS`, the depth and member caps (row 4), the digest; `OBJECTS` not in `Caps::BUILT` | unit tests on hand-written tables; a pinned digest; no graph moves |
-| 3 | the trust rule and `touches`, **off** (a fact per function and parameter, kept in `Sem` as relevance is) | unit tests; table snapshots that print it |
+| 3 | the trust rule and `touches`, **off** (a fact per function and parameter, kept in `Sem` as relevance is): 3a the table's uses, 3b the solve and `eval`'s reading, 3c the counters | unit tests; table snapshots that print it |
 | 4 | **on**: `OBJECTS` in `Caps::BUILT`; `objects-off.txt` first; `relevance` and `needs` read the new forms (row 6); a pattern parameter is capable; a whitespace-only JSX child is no child | `object-options`, `object-pattern-*`, `object-too-deep`, `object-written-*`, `object-to-external`, `object-stored`, `object-second-name*`, `object-module-const*`, `object-in-array`, `props-function-component`, `props-destructured`, `props-nested-handler` |
 | 5 | member calls answered (`walk::holds_name` of a `Member`); a literal's method as a target | `object-method`, `object-implements`, `props-*` read through `props.x` |
 | 6 | a JSX tag that is a value | `props-component-as-prop`, `props-spread-through`, `props-children`, `props-unread-member` (two contexts) |
@@ -351,7 +353,42 @@ review found missing (an object's depth counts its closures) and the rounds of a
   to `touches`, for a caller that reads the object it passed after the call (a JSX element's attributes are never read again). `eval`'s `Member`, `Omit` and a spread read a
   variable or a parameter's object as open when it is not trusted (only with `OBJECTS`). Counted, once per body: `module_object_shared`
   (an exported module row read through) and, for Q-TC9 (a), `this_written_outside_class` (a def that is not a class member whose body
-  writes through `this`, by the same placement) and `member_call_on_trusted` (a trusted variable with `receiver`).
+  writes through `this`, by the same placement) and `member_call_on_trusted` (a trusted variable with `receiver`). **Split at 3b's design:**
+  3b is the solve and `eval`'s reading (below); **3c** is the three counters, with the table's `this` placement they need.
+
+**Step 3b, as decided for the build (2026-11-26).** Rows 11 and 12 correct the bullet above; this is what is built. Off: `OBJECTS` is not
+in `Caps::BUILT`, so no graph moves.
+
+- **`trust.rs`** (neutral, as `needs.rs` and `relevance.rs`: imports nothing from `sem`, asks only `World`).
+  `trust_of_component(world, var) -> Vec<(VarId, bool)>`: `var` first, then every variable reached from it, each with its answer. A
+  variable's **node**: its row (`world.flow(var.def)`, `var_index(var.at)`). No table or no row: not trusted. A row that is not capable:
+  trusted, and nothing follows (data has no member to write). Otherwise it is **bad** when `uses.escapes || uses.exported`, and it
+  follows each of `uses.names` and, for each `(g, i)` of `uses.passed`, parameter `i` of `g`: a named parameter's row (`param_var(i)`),
+  a pattern parameter's `uses.names`; **bad** instead when `g` has no table, `i` is past the last parameter (`arguments`), parameter `i`
+  is a rest parameter (its elements are not followed), a pattern parameter has `uses.escapes`, or a named one has no row. A variable the
+  world already knows (`World::trusted_known`, not the one asked) is a fixed node: its answer, nothing followed, not returned. Then "not
+  trusted" spreads back from every bad node to every node that reaches it; the rest are trusted. `Uses::receiver` is not read (Q-TC9).
+  `touches(g, i)` is not a function of its own: it is the answer of the variables parameter `i` of `g` stands for.
+- **The memo**: `Flows::trust` in `Sem` (`trust_memo`, `remember_trust`), a fact of the program, as `needs` and `relevance`.
+  `World::trusted(var)` and `World::trusted_known(var)`; `TypeScript` answers through the memo and keeps a whole component; `Quiet`
+  passes both through.
+- **`eval`** (row 11): `as_read(world, var, value)` at the end of `variable` (a row of this body, a captured entry, a module's value) and
+  of `param` for a **named** parameter (`var` is its row's `VarId`; no row: not trusted). Only when the world knows `OBJECTS` and the
+  value holds an object (trust is not asked otherwise). Not trusted: `objects_opened`, each `One::Object` made again by `made_object` with
+  every member joined with unknown and `complete: false`, every other member of the value as it was. Opening is idempotent (an object is
+  interned by its members). `Member`, `Omit` and a spread are unchanged: they read what the variable gave.
+- **Not decided here, written for step 8**: 3a's "a chain whose top can hold a function or an object is placed again" treats a
+  function-valued member as capable, so `<button onClick={props.onClose}>` makes `props` (and the object a caller passed) untrusted, though
+  handing a function on cannot write the object's members. Step 8 counts how often a variable is untrusted only through such a chain
+  before the rule narrows to "a top that can hold an object other than a function".
+
+Proof: unit tests on hand-written tables (`trust.rs`, `eval.rs`); the trust of every capable row of `trust.tsx` in a reviewed snapshot
+(`trust.trust.txt`), the fixture extended with a cycle, a rest parameter and pattern parameters; the same answers asked in the other order
+on a fresh `Sem`; every other snapshot unchanged.
+
+**Step 3c, to be designed after 3b's review.** The counters, once per body (`note_body`, only with `OBJECTS`): `module_object_shared`,
+`this_written_outside_class` (needs `Flow::this_uses`: the placement of `this` in a def that is not a class member or an arrow, nested
+arrows included, nested non-arrow functions and classes not) and `member_call_on_trusted`.
 
 **Step 1, as decided for the build (2026-11-26).** The table reads the new forms; nothing evaluates them yet, so no graph moves.
 
