@@ -329,7 +329,11 @@ review found missing (an object's depth counts its closures) and the rounds of a
   gets the variables of its pattern as its `names`. Each reference is placed by its parent, after the nodes that only wrap it
   (parentheses, `as`, `!`, `satisfies`):
   - the object of an access chain (`x.a`, `x.a.b`, `x["a"]`): allowed, unless an access of the chain is written (`=`, `+=`, `++`,
-    `delete`): escapes; a chain that ends as the callee of a call: allowed, and `receiver`;
+    `delete`): escapes; a chain that ends as the callee of a call: allowed, and `receiver`. **Fixed at 3a's review (3a-fix):** a chain
+    whose top can hold a function or an object (its type is not `holds_only_data`) is then placed again, as if the top were the
+    reference: `const b = x.b; b.c = f` makes `b` a second name of `x` (so the write through `b` reaches `x`), `return x.b` escapes,
+    `g(x.b)` is `passed (g, 0)`. A top that is data (`x.label`) stays allowed. Without it a write through a member read into a variable
+    was not seen, and `x.b.c()` would be answered from a key the code had changed;
   - the callee of a call (`x()`), a condition (`if`, `while`, `for`, `do`, `?:`'s test), the operand of `!` or `typeof`, either side of
     a comparison (`===`, `!==`, `==`, `!=`, `instanceof`, `in`), an expression statement: allowed. `&&`, `||`, `??`: allowed only when
     the binary is itself an expression statement or a condition, else escapes;
@@ -342,7 +346,9 @@ review found missing (an object's depth counts its closures) and the rounds of a
   - anything else (a return, a store `o.f = x`, `{ f: x }`, `[x]`, a spread argument `f(...x)`, a template, an unknown place): escapes.
 - **3b, the rule is solved** (`trust.rs`, neutral, kept per program in `Sem` as relevance is): `trusted(var) = !escapes && !exported
   && every (g, i) in passed: !touches(g, i) && every second name trusted`; `touches(g, i) = !trusted(parameter i of g)` (its row, or for a
-  pattern parameter its `names`), `true` for a def with no table; a cycle is `true`. `eval`'s `Member`, `Omit` and a spread read a
+  pattern parameter its `names`), `true` for a def with no table; a cycle is `true`. **A pattern parameter's own elements are never
+  opened in its body**: they are read at the entry, before any code of the body runs, so no write can come between; its uses matter only
+  to `touches`, for a caller that reads the object it passed after the call (a JSX element's attributes are never read again). `eval`'s `Member`, `Omit` and a spread read a
   variable or a parameter's object as open when it is not trusted (only with `OBJECTS`). Counted, once per body: `module_object_shared`
   (an exported module row read through) and, for Q-TC9 (a), `this_written_outside_class` (a def that is not a class member whose body
   writes through `this`, by the same placement) and `member_call_on_trusted` (a trusted variable with `receiver`).
