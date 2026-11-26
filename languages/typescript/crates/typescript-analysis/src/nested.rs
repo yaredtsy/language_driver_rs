@@ -342,6 +342,33 @@ mod tests {
     }
 
     #[test]
+    fn an_objects_depth_counts_its_closures() {
+        let mut sets = Nested::new();
+        // a list of depth 1
+        let (l1, cut) = sets.intern(vec![(v(1), f(1))]);
+        assert_eq!(cut, 0);
+        let l1 = l1.unwrap();
+        // an object whose one member is a closure of that list: `1 + 1` is the limit, so nothing is cut, and the object is depth `1 + 1`
+        let (o, cut) = object_of(&mut sets, vec![("m", closure(2, l1))]);
+        assert_eq!(cut, 0);
+        assert_eq!(
+            sets.object(o).members[0].1,
+            closure(2, l1),
+            "kept as a closure"
+        );
+        assert_eq!(sets.object_depth[o.index() as usize], 2);
+        // a list holding `o` would be `1 + 2`: `o` is removed, the entry is left unknown and dropped
+        assert_eq!(sets.intern(vec![(v(2), object(o))]), (None, 1));
+        // an object holding `o` is the same: the member stays, unknown
+        let (outer, cut) = object_of(&mut sets, vec![("p", object(o))]);
+        assert_eq!(cut, 1);
+        assert_eq!(
+            sets.object(outer).members[0],
+            ("p".into(), Value::unknown())
+        );
+    }
+
+    #[test]
     fn one_depth_counts_lists_and_objects_in_both_directions() {
         let mut sets = Nested::new();
         let (inner, _) = object_of(&mut sets, vec![("y", f(1))]);

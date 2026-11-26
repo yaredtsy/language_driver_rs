@@ -496,6 +496,8 @@ mod tests {
         caps: Caps,
         notes: RefCell<BTreeMap<&'static str, u32>>,
         nested: RefCell<Nested>,
+        /// How many times an object was asked for (`World::object`): one per object literal evaluated, so a test can count the rounds of `solve`.
+        made: Cell<u32>,
         /// What `module_value` answers, by variable; unknown for one not listed.
         modules: HashMap<VarId, Value>,
     }
@@ -542,6 +544,7 @@ mod tests {
             members: Vec<(Box<str>, Value)>,
             complete: bool,
         ) -> (Option<ObjectId>, u32) {
+            self.made.set(self.made.get() + 1);
             self.nested.borrow_mut().intern_object(members, complete)
         }
 
@@ -618,6 +621,7 @@ mod tests {
             caps,
             notes: RefCell::new(BTreeMap::new()),
             nested: RefCell::new(Nested::new()),
+            made: Cell::new(0),
             modules: HashMap::new(),
         };
         assert!(world.flow(env.def).is_some());
@@ -1440,6 +1444,32 @@ mod tests {
         assert_eq!(
             data.members.to_vec(),
             [("a".into(), opened(func(1))), ("b".into(), func(2))]
+        );
+    }
+
+    #[test]
+    fn a_variable_that_holds_an_object_settles() {
+        // `x = f; x = g;  y = { a: x }`
+        let env = env_with_vars(
+            vec![],
+            vec![],
+            vec![
+                local(10, vec![def(1), def(2)]),
+                local(20, vec![object_expr(vec![named("a", Expr::Var(vid(10)))])]),
+            ],
+        );
+        let world = world_knowing(&env, objects_on());
+        let a_of_y = eval(&world, &env, &member_expr(Expr::Var(vid(20)), "a"));
+        assert_eq!(a_of_y, Value::of([One::Fn(d(1)), One::Fn(d(2))], false));
+        // one object literal is evaluated once a row and round, and once more for the answer: the rounds are the calls less that one
+        let rounds = world.made.get() - 1;
+        let y = of_var(&world, &env, 20);
+        let objects = y.known().len();
+        assert_eq!(rounds, 3);
+        assert!(!y.is_open());
+        assert_eq!(
+            objects, 2,
+            "round one made `{{ a: data }}`, round two `{{ a: {{f, g}} }}`, and the value keeps both"
         );
     }
 
