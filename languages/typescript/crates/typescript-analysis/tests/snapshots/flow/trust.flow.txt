@@ -174,6 +174,42 @@ vars: none
 sites: none
 anons: 0
 handed: none
+== P
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== leaves2
+params:
+  #0 capable
+vars:
+  o@47 param#0 capable uses(receiver)
+sites:
+  call member(param#0, c) ()
+anons: 0
+handed: none
+== deep
+params:
+  #0 capable
+  #1 capable
+  #2 capable
+  #3 capable
+vars:
+  x@48 param#0 capable uses(names: var b@49)
+  y@48 param#1 capable uses(passed: leaves2#0)
+  z@48 param#2 capable uses(escapes)
+  w@48 param#3 capable
+  b@49 capable = member(param#0, b) uses(escapes)
+  n@52
+sites:
+  call def leaves2 (member(param#1, b))
+anons: 1
+handed:
+  x.b member(param#0, b)
+  y.b member(param#1, b)
+  w.n member(param#3, n)
+  z.b member(param#2, b)
 == FILE
 params: none
 vars:

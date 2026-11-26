@@ -43,3 +43,12 @@ function Comp(props: { o: O }) { props.o.a(); return null; }
 export function jsx(x: O, y: O) { <Comp o={x} />; <div title={y as any} />; }
 export const shared = { a: () => {} };
 const own = { a: () => {} };
+type P = { b: { c: () => void }; n: string };
+function leaves2(o: { c: () => void }) { o.c(); }
+export function deep(x: P, y: P, z: P, w: P) {
+    const b = x.b;
+    b.c = () => {};
+    leaves2(y.b);
+    const n = w.n;
+    return z.b;
+}

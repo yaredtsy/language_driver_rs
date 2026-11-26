@@ -619,7 +619,11 @@ impl Reader<'_, '_> {
         if written.is_some_and(ast::is_write_access) {
             return;
         }
-        let used = wrapped(reference);
+        self.place_used(wrapped(reference), found);
+    }
+
+    /// `place` for a node that is already the topmost wrapper over a value of the variable (the reference itself, or the top of a read chain): points 1–10.
+    fn place_used(&mut self, used: P<Node>, found: &mut Found) {
         let Some(parent) = used.parent() else {
             found.escapes = true;
             return;
@@ -656,10 +660,20 @@ impl Reader<'_, '_> {
                 }
             };
             // `new x.C()` runs a constructor: `this` there is the new object, not `x`
-            found.receiver |= top.parent().is_some_and(|above| {
+            if top.parent().is_some_and(|above| {
                 above.kind() == Kind::CallExpression
                     && CallOrNew::cast(above).and_then(CallOrNew::callee) == Some(top)
-            });
+            }) {
+                found.receiver = true;
+                return;
+            }
+            // a member that is data (`x.label`) keeps nothing of `x`; one that can hold a function or an object is a value of `x` that the body may then keep or
+            // write through (`const b = x.b; b.c = f`), so it is placed as the reference is
+            let ty = self.checker.get_type_at_location(top);
+            if holds_only_data(self.checker, ty, 4) {
+                return;
+            }
+            self.place_used(top, found);
             return;
         }
         // 2. the callee of a call or a `new`
