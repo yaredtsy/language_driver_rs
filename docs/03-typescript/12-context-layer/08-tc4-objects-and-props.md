@@ -319,6 +319,34 @@ Each step is one prompt; step 1 or 2 may split when its prompt is written.
 **Step 2 built as decided, `e698cfe`** (`engine/11-tc4.md`): 521 passed, 13 ignored, no snapshot moved. Step 2b adds the test the
 review found missing (an object's depth counts its closures) and the rounds of a variable that holds an object.
 
+**Step 3, as decided for the build (2026-11-26).** The trust rule of §5, in two halves, both off.
+
+- **3a, the table records the uses** (`sem/flow.rs`, plain data). For every capable row, a `Uses` read from every reference of the
+  variable's symbol in the declaring def's **whole** node, nested defs included (the scope §5 asks for): `escapes` (a use the rule does not
+  allow), `passed` (argument `i` of a call whose callee the engine names as project functions, `(def, i)` for each; a JSX attribute's
+  value given to a component named so, `(component, 0)`), `names` (second names: `const o = x`, `y = x`, and the variables of
+  `const { a } = x`), `receiver` (a method is called on it: Q-TC9) and `exported` (a module row). A pattern parameter's row in `params`
+  gets the variables of its pattern as its `names`. Each reference is placed by its parent, after the nodes that only wrap it
+  (parentheses, `as`, `!`, `satisfies`):
+  - the object of an access chain (`x.a`, `x.a.b`, `x["a"]`): allowed, unless an access of the chain is written (`=`, `+=`, `++`,
+    `delete`): escapes; a chain that ends as the callee of a call: allowed, and `receiver`;
+  - the callee of a call (`x()`), a condition (`if`, `while`, `for`, `do`, `?:`'s test), the operand of `!` or `typeof`, either side of
+    a comparison (`===`, `!==`, `==`, `!=`, `instanceof`, `in`), an expression statement: allowed. `&&`, `||`, `??`: allowed only when
+    the binary is itself an expression statement or a condition, else escapes;
+  - `{...x}`, `<T {...x} />`: allowed;
+  - argument `i` of a call or a `new` (not spread): `passed` when the engine names the callee as project functions only
+    (`functions_named`, no class), else escapes (a library, an unknown callee: D66);
+  - `<T a={x} />`: `passed (T, 0)` when the tag names project functions only, else escapes;
+  - the initializer of a declaration, or the right side of `y = x` where `y` is a variable with a row: `names` (every variable of an
+    object pattern; an array pattern escapes);
+  - anything else (a return, a store `o.f = x`, `{ f: x }`, `[x]`, a spread argument `f(...x)`, a template, an unknown place): escapes.
+- **3b, the rule is solved** (`trust.rs`, neutral, kept per program in `Sem` as relevance is): `trusted(var) = !escapes && !exported
+  && every (g, i) in passed: !touches(g, i) && every second name trusted`; `touches(g, i) = !trusted(parameter i of g)` (its row, or for a
+  pattern parameter its `names`), `true` for a def with no table; a cycle is `true`. `eval`'s `Member`, `Omit` and a spread read a
+  variable or a parameter's object as open when it is not trusted (only with `OBJECTS`). Counted, once per body: `module_object_shared`
+  (an exported module row read through) and, for Q-TC9 (a), `this_written_outside_class` (a def that is not a class member whose body
+  writes through `this`, by the same placement) and `member_call_on_trusted` (a trusted variable with `receiver`).
+
 **Step 1, as decided for the build (2026-11-26).** The table reads the new forms; nothing evaluates them yet, so no graph moves.
 
 - `Expr` gains four variants: `Member(Box<Expr>, Box<str>)` (`x.k`, `x?.k`, `x["k"]` with a string literal), `Object(Box<[Part]>)`
