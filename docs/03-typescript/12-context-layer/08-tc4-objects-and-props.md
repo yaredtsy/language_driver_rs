@@ -389,9 +389,23 @@ on a fresh `Sem`; every other snapshot unchanged.
 **Step 3b built as decided, `68af644`** ([`engine/11-tc4.md`](../../../languages/typescript/engine/11-tc4.md)): 544 passed, 13
 ignored; only `trust.flow.txt` (new entries) and the new `trust.trust.txt` moved.
 
-**Step 3c, to be designed after 3b's review.** The counters, once per body (`note_body`, only with `OBJECTS`): `module_object_shared`,
-`this_written_outside_class` (needs `Flow::this_uses`: the placement of `this` in a def that is not a class member or an arrow, nested
-arrows included, nested non-arrow functions and classes not) and `member_call_on_trusted`.
+**Step 3c, as decided for the build (2026-11-26).** Three counters, each a fact of a body (`note_body`: said at a def's first walk of the
+request), only when the world knows `OBJECTS`, so nothing moves while the bit is off. They are numbers for two open questions, upper
+bounds by design:
+
+- **`member_call_on_trusted`** (Q-TC9 (a)): the rows of the body's own table that are capable, have `uses.receiver` and are trusted. Each
+  is a variable whose object a method may change if that method writes `this`.
+- **`this_written_outside_class`** (Q-TC9 (a)): 1 for a body whose def's `this` is not trusted. The table gets **`Flow::this_uses:
+  Option<Uses>`**: `Some` for a function declaration, a function expression, and a method or accessor of an object literal; `None` for a
+  class member, a constructor, an arrow (its `this` is the enclosing def's), a class and a file's code. Each `ThisKeyword` in the def's node
+  is placed by `Reader::place`, as a reference of a variable is; a nested arrow is entered, a nested non-arrow function or class is not.
+  "Not trusted" is `trust::uses_trusted`: the same rule as a row's (bad uses, then every name and passed parameter trusted).
+- **`module_object_shared`** (§5's table, N5's question): the distinct rows of a file's own code that the body's table reads (an
+  `Expr::Var` anywhere in it, inside `Member`, `Object`, `Omit` and `Default` too) that are capable and `exported`. Such a variable is
+  never trusted, so its objects are read open.
+
+`trust::body_counts(world, def, flow)` computes the three; `TypeScript::walk` notes them beside `variable_write_unmodelled`. Policy
+rows for them wait for step 4 (the bit on).
 
 **Step 1, as decided for the build (2026-11-26).** The table reads the new forms; nothing evaluates them yet, so no graph moves.
 
