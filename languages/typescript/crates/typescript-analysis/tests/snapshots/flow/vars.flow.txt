@@ -21,7 +21,7 @@ handed: none
 == alias
 params: none
 vars:
-  h@10 capable = def a
+  h@10 capable = def a uses(escapes)
 sites:
   call ? (var h@10)
 anons: 0
@@ -70,7 +70,7 @@ handed: none
 params: none
 vars:
   f@40 capable open
-  e@41 capable open
+  e@41 capable open uses(escapes)
   first@42 capable open
   length@44
 sites:
@@ -107,8 +107,8 @@ unmodelled: 1
 == cycle
 params: none
 vars:
-  g@64 capable = def a; var h@65
-  h@65 capable = var g@64
+  g@64 capable = def a; var h@65 uses(names: var h@65)
+  h@65 capable = var g@64 uses(names: var g@64)
 sites:
   call var h@65 ()
 anons: 0
@@ -132,7 +132,7 @@ params:
   #0 assigned capable
   #1
 vars:
-  cb@76 param#0 capable = oneof(param#0 | def a)
+  cb@76 param#0 capable = oneof(param#0 | def a) uses(escapes)
   n@76 param#1
 sites:
   call param#0 ()
@@ -143,9 +143,9 @@ handed:
 params:
   #0 capable
 vars:
-  cb@82 param#0 capable
+  cb@82 param#0 capable uses(names: var h@83)
   h@83 capable = def a; def b; param#0
-  arrow@89 capable = def outer.<locals>.arrow
+  arrow@89 capable = def outer.<locals>.arrow uses(escapes)
   f@91 capable open
 sites:
   call ? (def outer.<locals>.inner, def outer.<locals>.arrow)
@@ -219,7 +219,7 @@ handed: none
 params:
   #0 capable
 vars:
-  arr@112 param#0 capable
+  arr@112 param#0 capable uses(escapes)
   x@113 capable open = def a
 sites:
   call var x@113 ()
@@ -258,8 +258,8 @@ needs: nest:cb@120
 params: none
 vars:
   flag@3
-  items@4 capable open
-  handler@7 capable = oneof(def a | def b)
+  items@4 capable open uses(escapes, receiver)
+  handler@7 capable = oneof(def a | def b) uses(escapes)
 sites: none
 anons: 0
 handed:

@@ -7,18 +7,20 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use indexmap::IndexSet;
+use tsrs_ast::modifierflags::ModifierFlags;
 use tsrs_ast::{Symbol, SymbolFlags};
 use tsrs_checker::{Type, TypeFlags};
 
 use super::collect::{CallNode, SiteKind, unwrap_expression};
 use super::handed::HandOvers;
 use super::view::{
-    Binary, Binding, Conditional, ElementAccess, NameToken, Parameter, arguments_of, elements_of,
-    expression_of, initializer_of, parameters_of, properties_of, spelled,
+    Binary, Binding, CallOrNew, Conditional, ElementAccess, NameToken, Parameter, PrefixUnary,
+    Wrapper, arguments_of, elements_of, expression_of, initializer_of, parameters_of,
+    properties_of, spelled, tag_name_of,
 };
 use super::*;
 use crate::flow::{
-    AnonFlow, Arg, DefId, Expr, Flow, FlowKind, HandedFlow, Param, Part, SiteFlow, Var, VarId,
+    AnonFlow, Arg, DefId, Expr, Flow, FlowKind, HandedFlow, Param, Part, SiteFlow, Uses, Var, VarId,
 };
 
 /// The tables of one program, and the numbers they are written in.
@@ -180,6 +182,7 @@ impl Sem {
                     .enumerate()
                     .map(|(index, &span)| (span, index as u32))
                     .collect(),
+                exports: None,
             };
             reader.read(&body, &hand_overs)
         });
@@ -232,6 +235,8 @@ struct Reader<'a, 'p> {
     params: Vec<P<Node>>,
     /// The place of each anonymous function of the body, by its span.
     anon_at: HashMap<Span, u32>,
+    /// The symbols the file's module exports, and what each export alias names (`exported_symbols`), asked once and only for a row of the file's own code.
+    exports: Option<HashSet<P<Symbol>>>,
 }
 
 impl Reader<'_, '_> {
@@ -251,6 +256,17 @@ impl Reader<'_, '_> {
             }
         }
         let vars = self.vars(&params, &writes);
+        // a pattern parameter's uses are the variables of its pattern: the table reads them from the declaration, which `self.params` still holds
+        for (row, &node) in params.iter_mut().zip(&self.params.clone()) {
+            if !row.named
+                && let Some(parameter) = Parameter::cast(node)
+            {
+                match self.pattern_vars(parameter.name()) {
+                    Some(names) => row.uses.names = sorted(names).into(),
+                    None => row.uses.escapes = true,
+                }
+            }
+        }
         let params: Box<[Param]> = params.into();
         let anons: Box<[AnonFlow]> = body.anons.iter().map(|&span| AnonFlow { span }).collect();
         let sites = body
@@ -446,9 +462,8 @@ impl Reader<'_, '_> {
     fn vars(&mut self, params: &[Param], writes: &[(P<Symbol>, P<Node>)]) -> (Box<[Var]>, u64) {
         let text = self.file.node.text();
         let mut unmodelled = 0;
-        let mut vars: Vec<Var> = Vec::new();
+        let mut rows: Vec<(Declaration, Option<P<Symbol>>, bool)> = Vec::new();
         for declaration in self.declarations() {
-            let at = own_span(text, declaration.name).start;
             let symbol = self
                 .checker
                 .get_symbol_at_location_exported(declaration.name);
@@ -459,8 +474,26 @@ impl Reader<'_, '_> {
                     !holds_only_data(self.checker, ty, 4)
                 }),
             };
+            rows.push((declaration, symbol, capable));
+        }
+        // every reference of a capable variable, from one walk of the whole def; an identifier is looked up only when its name is one of theirs
+        let wanted: HashSet<&str> = rows
+            .iter()
+            .filter(|(_, _, capable)| *capable)
+            .filter_map(|(declaration, _, _)| NameToken::cast(declaration.name))
+            .map(NameToken::value)
+            .collect();
+        let references = if wanted.is_empty() {
+            HashMap::new()
+        } else {
+            referenced_identifiers(self.checker, self.def, &wanted)
+        };
+        let mut vars: Vec<Var> = Vec::new();
+        for (declaration, symbol, capable) in rows {
+            let at = own_span(text, declaration.name).start;
             let mut open = declaration.open;
             let mut assigned = Vec::new();
+            let mut uses = Uses::default();
             if capable {
                 match declaration.initial {
                     Some(Initial::Node(initializer)) => assigned.push(self.expr_of(initializer)),
@@ -483,6 +516,9 @@ impl Reader<'_, '_> {
                         }
                     }
                 }
+                if let Some(symbol) = symbol {
+                    uses = self.uses_of(declaration.name, symbol, &references);
+                }
             }
             vars.push(Var {
                 at,
@@ -490,10 +526,261 @@ impl Reader<'_, '_> {
                 capable,
                 assigned: assigned.into(),
                 open: capable && open,
+                uses,
             });
         }
         vars.sort_by_key(|var| var.at);
         (vars.into(), unmodelled)
+    }
+
+    /// What the body does with the variable `name` declares (`symbol`): each of its references, placed, and whether the file exports it.
+    fn uses_of(
+        &mut self,
+        name: P<Node>,
+        symbol: P<Symbol>,
+        references: &HashMap<P<Symbol>, Vec<P<Node>>>,
+    ) -> Uses {
+        let mut found = Found::default();
+        for &reference in references.get(&symbol).map_or(&[][..], Vec::as_slice) {
+            self.place(reference, &mut found);
+        }
+        // only a row of the file's own code can be a module's export
+        let exported = self.def.kind() == Kind::SourceFile && self.is_exported(name, symbol);
+        Uses {
+            escapes: found.escapes,
+            passed: sorted(found.passed).into(),
+            names: sorted(found.names).into(),
+            receiver: found.receiver,
+            exported,
+        }
+    }
+
+    /// Whether the file exports the variable `name` declares: its declaration's statement has the `export` modifier (`get_combined_modifier_flags` walks up from
+    /// a binding element or a declaration to its statement), or the module's exports hold its symbol, or an alias among them names it (`export { x }`,
+    /// `export default x`). The module's own symbol is `get_symbol_of_declaration_exported` of the file; its exports are `get_exports_of_module_exported`, each
+    /// alias followed by `get_aliased_symbol`. A script has no module symbol, so no export.
+    fn is_exported(&mut self, name: P<Node>, symbol: P<Symbol>) -> bool {
+        if name.parent().is_some_and(|declaration| {
+            ast::get_combined_modifier_flags(declaration).intersects(ModifierFlags::Export)
+        }) {
+            return true;
+        }
+        if self.exports.is_none() {
+            let mut found = HashSet::new();
+            if let Some(module) = self
+                .checker
+                .get_symbol_of_declaration_exported(self.file.node.as_node())
+            {
+                for export in self.checker.get_exports_of_module_exported(module) {
+                    found.insert(export);
+                    if export.flags().intersects(SymbolFlags::Alias) {
+                        found.insert(self.checker.get_aliased_symbol(export));
+                    }
+                }
+            }
+            self.exports = Some(found);
+        }
+        self.exports
+            .as_ref()
+            .is_some_and(|exports| exports.contains(&symbol))
+    }
+
+    /// The variables a binding pattern declares, nested patterns included, in source order; `None` when one of them has no row in this def's table (`var_of`: a
+    /// pattern of a nested def) or an element has no name the table can use.
+    fn pattern_vars(&mut self, pattern: P<Node>) -> Option<Vec<VarId>> {
+        let mut found = Vec::new();
+        let mut pending = vec![pattern];
+        while let Some(pattern) = pending.pop() {
+            for &element in elements_of(pattern) {
+                // a hole of an array pattern (`[, a]`)
+                if element.kind() != Kind::BindingElement {
+                    continue;
+                }
+                let name = element.name()?;
+                match name.kind() {
+                    Kind::Identifier => found.push(self.var_of(name)?),
+                    Kind::ObjectBindingPattern | Kind::ArrayBindingPattern => pending.push(name),
+                    _ => return None,
+                }
+            }
+        }
+        Some(found)
+    }
+
+    /// One reference of a variable, put into what the body does with its value (`08-tc4` §5, the numbered rules of step 3a). A reference that is itself written is
+    /// no use of the value (the row's `assigned` and `open` say it). Otherwise the reference is climbed past the nodes that only wrap it, and its parent says.
+    fn place(&mut self, reference: P<Node>, found: &mut Found) {
+        // a shorthand property `{ x }` is the reference, and the identifier it holds is what is written in `({ x } = o)`
+        let written = if reference.kind() == Kind::ShorthandPropertyAssignment {
+            reference.name()
+        } else {
+            Some(reference)
+        };
+        if written.is_some_and(ast::is_write_access) {
+            return;
+        }
+        let used = wrapped(reference);
+        let Some(parent) = used.parent() else {
+            found.escapes = true;
+            return;
+        };
+        // 1. the object of an access chain
+        if matches!(
+            parent.kind(),
+            Kind::PropertyAccessExpression | Kind::ElementAccessExpression
+        ) && expression_of(parent) == Some(used)
+        {
+            let mut chain = parent;
+            let top = loop {
+                let outer = wrapped(chain);
+                // `(x.a as any) = f` writes through a wrapper the access's own test does not see past
+                if ast::is_write_access(chain)
+                    || ast::is_write_access(outer)
+                    || outer
+                        .parent()
+                        .is_some_and(|above| above.kind() == Kind::DeleteExpression)
+                {
+                    found.escapes = true;
+                    return;
+                }
+                match outer.parent() {
+                    Some(next)
+                        if matches!(
+                            next.kind(),
+                            Kind::PropertyAccessExpression | Kind::ElementAccessExpression
+                        ) && expression_of(next) == Some(outer) =>
+                    {
+                        chain = next;
+                    }
+                    _ => break outer,
+                }
+            };
+            // `new x.C()` runs a constructor: `this` there is the new object, not `x`
+            found.receiver |= top.parent().is_some_and(|above| {
+                above.kind() == Kind::CallExpression
+                    && CallOrNew::cast(above).and_then(CallOrNew::callee) == Some(top)
+            });
+            return;
+        }
+        // 2. the callee of a call or a `new`
+        if let Some(call) = CallOrNew::cast(parent)
+            && call.callee() == Some(used)
+        {
+            return;
+        }
+        // 3. a condition, or a place whose value is only tested
+        if is_tested(used) {
+            return;
+        }
+        // 4. a side of `&&`, `||`, `??` whose value is itself only tested
+        if let Some(binary) = Binary::cast(parent)
+            && matches!(
+                binary.operator(),
+                Kind::AmpersandAmpersandToken | Kind::BarBarToken | Kind::QuestionQuestionToken
+            )
+        {
+            if !is_tested(wrapped(parent)) {
+                found.escapes = true;
+            }
+            return;
+        }
+        // 5. a spread copies the members, it does not keep the object
+        if matches!(
+            parent.kind(),
+            Kind::SpreadAssignment | Kind::JsxSpreadAttribute
+        ) {
+            return;
+        }
+        // 6. an argument of a call or a `new`
+        if let Some(call) = CallOrNew::cast(parent) {
+            let index = arguments_of(parent)
+                .iter()
+                .position(|&argument| argument == used);
+            let target = call.callee().map(unwrap_expression);
+            match (index, target) {
+                (Some(index), Some(target)) => {
+                    let index = u32::try_from(index).expect("a call has fewer than 2^32 arguments");
+                    self.pass_to(target, index, found);
+                }
+                _ => found.escapes = true,
+            }
+            return;
+        }
+        // 7. the value of a JSX attribute: the component's first parameter
+        if parent.kind() == Kind::JsxExpression
+            && expression_of(parent) == Some(used)
+            && let Some(attribute) = parent
+                .parent()
+                .filter(|attribute| attribute.kind() == Kind::JsxAttribute)
+            && initializer_of(attribute) == Some(parent)
+        {
+            let tag = attribute
+                .parent()
+                .and_then(|attributes| attributes.parent())
+                .and_then(tag_name_of);
+            match tag {
+                Some(tag) => self.pass_to(tag, 0, found),
+                None => found.escapes = true,
+            }
+            return;
+        }
+        // 8. a declaration's initializer: a second name (an object pattern: its variables)
+        if parent.kind() == Kind::VariableDeclaration
+            && initializer_of(parent) == Some(used)
+            && let Some(name) = parent.name()
+        {
+            match name.kind() {
+                Kind::Identifier => match self.var_of(name) {
+                    Some(var) => found.names.push(var),
+                    None => found.escapes = true,
+                },
+                Kind::ObjectBindingPattern => match self.pattern_vars(name) {
+                    Some(names) => found.names.extend(names),
+                    None => found.escapes = true,
+                },
+                _ => found.escapes = true,
+            }
+            return;
+        }
+        // 9. the right side of `y = x`
+        if let Some(binary) = Binary::cast(parent)
+            && binary.operator() == Kind::EqualsToken
+            && binary.right() == used
+        {
+            let left = unwrap_expression(binary.left());
+            match (left.kind() == Kind::Identifier)
+                .then(|| self.var_of(left))
+                .flatten()
+            {
+                Some(var) => found.names.push(var),
+                None => found.escapes = true,
+            }
+            return;
+        }
+        // 10. anything else: a return, a store, an array element, a template, a place the rule does not list
+        found.escapes = true;
+    }
+
+    /// `target` (a callee, or a component's tag name) given the value as argument `index`: `passed` when the engine names project functions and no class there,
+    /// else the value escapes (a library, an intrinsic tag, a class, an expression that names nothing).
+    fn pass_to(&mut self, target: P<Node>, index: u32, found: &mut Found) {
+        if !matches!(
+            target.kind(),
+            Kind::Identifier | Kind::PropertyAccessExpression
+        ) {
+            found.escapes = true;
+            return;
+        }
+        let (functions, classes) = self
+            .sem
+            .functions_named(&mut *self.checker, target, self.style);
+        if functions.is_empty() || classes > 0 {
+            found.escapes = true;
+            return;
+        }
+        for function in functions {
+            found.passed.push((self.sem.def_id(function), index));
+        }
     }
 
     /// What one write of a variable is, by the node that holds the written name (`07-tc3` §2's table).
@@ -543,6 +830,7 @@ impl Reader<'_, '_> {
                     default: None,
                     assigned: false,
                     capable: false,
+                    uses: Uses::default(),
                 },
                 None,
             );
@@ -568,6 +856,7 @@ impl Reader<'_, '_> {
                 default,
                 assigned: false,
                 capable,
+                uses: Uses::default(),
             },
             symbol,
         )
@@ -1150,6 +1439,122 @@ fn written_identifiers(
     }
     written.sort_by_key(|(_, node)| own_span(text, *node).start);
     written
+}
+
+/// What `place` has found of one variable so far; `uses_of` makes the row's `Uses` of it.
+#[derive(Default)]
+struct Found {
+    escapes: bool,
+    passed: Vec<(DefId, u32)>,
+    names: Vec<VarId>,
+    receiver: bool,
+}
+
+/// `items` in order, without a repeat.
+fn sorted<T: Ord>(mut items: Vec<T>) -> Vec<T> {
+    items.sort();
+    items.dedup();
+    items
+}
+
+/// `node` and every wrapper above it that only wraps it (`(x)`, `x as T`, `x!`, `x satisfies T`, `<T>x`): the topmost, which is `node` when it has none.
+fn wrapped(node: P<Node>) -> P<Node> {
+    let mut top = node;
+    while let Some(parent) = top.parent()
+        && let Some(wrapper) = Wrapper::cast(parent)
+        && wrapper.inner() == Some(top)
+    {
+        top = parent;
+    }
+    top
+}
+
+/// Whether the value of `node` is only tested, never kept (`08-tc4` §5, point 3): it is the condition of an `if`, `while`, `do`, `for` or `c ? a : b`, the operand of
+/// `!` or `typeof`, a side of `===`, `!==`, `==`, `!=`, `instanceof` or `in`, or the expression of an expression statement. A `for`'s three expressions are
+/// all evaluated for their effect or their truth; none of them keeps its value.
+fn is_tested(node: P<Node>) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    match parent.kind() {
+        Kind::IfStatement
+        | Kind::WhileStatement
+        | Kind::DoStatement
+        | Kind::ForStatement
+        | Kind::ExpressionStatement
+        | Kind::TypeOfExpression => true,
+        Kind::PrefixUnaryExpression => PrefixUnary::cast(parent)
+            .is_some_and(|unary| unary.operator() == Kind::ExclamationToken),
+        Kind::ConditionalExpression => {
+            Conditional::cast(parent).is_some_and(|conditional| conditional.condition() == node)
+        }
+        Kind::BinaryExpression => Binary::cast(parent).is_some_and(|binary| {
+            matches!(
+                binary.operator(),
+                Kind::EqualsEqualsEqualsToken
+                    | Kind::ExclamationEqualsEqualsToken
+                    | Kind::EqualsEqualsToken
+                    | Kind::ExclamationEqualsToken
+                    | Kind::InstanceOfKeyword
+                    | Kind::InKeyword
+            )
+        }),
+        _ => false,
+    }
+}
+
+/// Every reference under `container` (its parameters, its body, and the defs and anonymous functions written in it) to a variable whose name is in `wanted`:
+/// each `Identifier` that is not the name a declaration gives and not part of a `typeof x` type, with its symbol; a shorthand property `{ x }` as the property
+/// node itself, with the symbol of the variable it names (`get_shorthand_assignment_value_symbol`, since its own symbol is the property). The name is compared
+/// before the checker is asked, so the walk costs the checker only the names of capable variables. Same walk, same stack, as `written_identifiers`.
+fn referenced_identifiers(
+    checker: &mut Checker,
+    container: P<Node>,
+    wanted: &HashSet<&str>,
+) -> HashMap<P<Symbol>, Vec<P<Node>>> {
+    let mut found: HashMap<P<Symbol>, Vec<P<Node>>> = HashMap::new();
+    let mut pending = vec![container];
+    while let Some(node) = pending.pop() {
+        let symbol = match node.kind() {
+            Kind::Identifier
+                if NameToken::cast(node).is_some_and(|name| wanted.contains(name.value()))
+                    && ast::get_declaration_from_name(Some(node)).is_none()
+                    && !is_in_type_query(node) =>
+            {
+                checker.get_symbol_at_location_exported(node)
+            }
+            Kind::ShorthandPropertyAssignment
+                if node
+                    .name()
+                    .and_then(NameToken::cast)
+                    .is_some_and(|name| wanted.contains(name.value())) =>
+            {
+                checker.get_shorthand_assignment_value_symbol(Some(node))
+            }
+            _ => None,
+        };
+        if let Some(symbol) = symbol {
+            found.entry(symbol).or_default().push(node);
+        }
+        node.for_each_child(&mut |child| {
+            pending.push(child);
+            false
+        });
+    }
+    found
+}
+
+/// Whether the identifier is the name in a type `typeof x` or `typeof x.y` (a type query reads no value).
+fn is_in_type_query(identifier: P<Node>) -> bool {
+    let mut up = identifier.parent();
+    while let Some(node) = up {
+        match node.kind() {
+            Kind::QualifiedName => up = node.parent(),
+            Kind::TypeQuery => return true,
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// The only maker of `Expr::OneOf`, so that it is never nested, never lists a member twice and always has two or more. A member that is itself a `OneOf`

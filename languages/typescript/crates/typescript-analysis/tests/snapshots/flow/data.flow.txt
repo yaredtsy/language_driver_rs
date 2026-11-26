@@ -19,7 +19,7 @@ handed:
 params: none
 vars:
   n@2
-  o@3 capable open
+  o@3 capable open uses(escapes)
 sites: none
 anons: 0
 handed: none

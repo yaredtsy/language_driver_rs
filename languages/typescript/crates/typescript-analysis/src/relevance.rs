@@ -219,6 +219,7 @@ mod tests {
             default,
             assigned: false,
             capable: true,
+            uses: Default::default(),
         }
     }
 
@@ -230,6 +231,7 @@ mod tests {
             capable: true,
             assigned: assigned.into(),
             open: false,
+            uses: Default::default(),
         }
     }
 

@@ -294,6 +294,7 @@ mod tests {
             capable,
             assigned: Box::new([]),
             open: false,
+            uses: Default::default(),
         }
     }
 

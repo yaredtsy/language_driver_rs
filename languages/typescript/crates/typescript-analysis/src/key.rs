@@ -417,6 +417,7 @@ mod tests {
             default: None,
             assigned: false,
             capable,
+            uses: Default::default(),
         }
     }
 

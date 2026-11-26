@@ -215,6 +215,18 @@ impl Binary {
 }
 
 view! {
+    /// `!a`, `-a`, `++a`: an operator before its operand.
+    PrefixUnary: PrefixUnaryExpression
+}
+
+impl PrefixUnary {
+    /// The kind of the operator token (`ExclamationToken`, `MinusToken`, `PlusPlusToken`, …).
+    pub(super) fn operator(self) -> Kind {
+        self.0.as_prefix_unary_expression().operator
+    }
+}
+
+view! {
     /// `a[b]`: the expression inside the brackets.
     ElementAccess: ElementAccessExpression
 }

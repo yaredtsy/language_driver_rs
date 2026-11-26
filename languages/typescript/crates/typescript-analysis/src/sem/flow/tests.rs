@@ -136,6 +136,49 @@ fn show(sem: &Sem, own: DefId, text: &str, site: &SiteFlow) -> String {
     )
 }
 
+/// The names of a set of variables as the table's tests write them: `names: var a@3 var b@3`.
+fn show_names(sem: &Sem, own: DefId, text: &str, names: &[VarId]) -> String {
+    let all: Vec<String> = names
+        .iter()
+        .map(|&id| expr(sem, own, text, &Expr::Var(id)))
+        .collect();
+    format!("names: {}", all.join(" "))
+}
+
+/// What a variable's uses say, as ` uses(escapes, passed: f#0, names: var a@3, receiver, exported)`: only what is set, in this order; nothing when the uses are
+/// default.
+fn show_uses(sem: &Sem, own: DefId, text: &str, uses: &Uses) -> String {
+    let mut said: Vec<String> = Vec::new();
+    if uses.escapes {
+        said.push("escapes".into());
+    }
+    if !uses.passed.is_empty() {
+        let all: Vec<String> = uses
+            .passed
+            .iter()
+            .map(|&(def, index)| {
+                let func = sem.func(def).expect("a def of this program");
+                format!("{}#{index}", sem.describe(func, STYLE).qualname)
+            })
+            .collect();
+        said.push(format!("passed: {}", all.join(" ")));
+    }
+    if !uses.names.is_empty() {
+        said.push(show_names(sem, own, text, &uses.names));
+    }
+    if uses.receiver {
+        said.push("receiver".into());
+    }
+    if uses.exported {
+        said.push("exported".into());
+    }
+    if said.is_empty() {
+        String::new()
+    } else {
+        format!(" uses({})", said.join(", "))
+    }
+}
+
 /// A parameter's row as `#<index>`, then ` rest`, ` pattern` (not named), ` default <expr>`, ` assigned`, ` capable`, each only when it holds.
 fn show_param(sem: &Sem, own: DefId, text: &str, index: usize, param: &Param) -> String {
     let mut out = format!("#{index}");
@@ -153,6 +196,12 @@ fn show_param(sem: &Sem, own: DefId, text: &str, index: usize, param: &Param) ->
     }
     if param.capable {
         out.push_str(" capable");
+    }
+    if !param.uses.names.is_empty() {
+        out.push_str(&format!(
+            " {}",
+            show_names(sem, own, text, &param.uses.names)
+        ));
     }
     out
 }
@@ -459,6 +508,7 @@ fn show_var(sem: &Sem, own: DefId, text: &str, var: &crate::flow::Var) -> String
             .collect();
         out.push_str(&format!(" = {}", all.join("; ")));
     }
+    out.push_str(&show_uses(sem, own, text, &var.uses));
     out
 }
 
@@ -628,6 +678,15 @@ fn the_objects_of_a_body_are_reviewed() {
     );
 }
 
+/// What the body does with each variable's value (TC4 step 3a): `escapes`, `passed`, `names`, `receiver`, `exported`. Nothing reads them yet.
+#[test]
+fn the_uses_of_a_variable_are_reviewed() {
+    analyzer_testkit::expect_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/flow/trust.flow.txt"),
+        &tables_of(&root(), "src/trust.tsx"),
+    );
+}
+
 /// What each kind of expression is read as (the review before TC3, §1.1): sixteen kinds are data, `void 0` and the global `undefined` are nothing.
 #[test]
 fn the_kinds_of_data_and_nothing_are_reviewed() {
@@ -685,7 +744,11 @@ fn the_parameter_rows_say_what_each_parameter_is() {
     assert_eq!(row("generic", 0), ["#0 capable", "#1 capable"]);
     assert_eq!(
         row("uses", 0),
-        ["#0 capable", "#1 pattern", "#2 rest capable"]
+        [
+            "#0 capable",
+            "#1 pattern names: var x@16",
+            "#2 rest capable"
+        ]
     );
     assert_eq!(
         row("reassigned", 0),

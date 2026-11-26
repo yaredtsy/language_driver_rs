@@ -20,7 +20,7 @@ handed: none
 params:
   #0 capable
 vars:
-  opts@4 param#0 capable
+  opts@4 param#0 capable uses(receiver)
 sites:
   call member(param#0, onDone) ()
 anons: 0
@@ -31,7 +31,7 @@ params:
 vars:
   x@7 param#0 capable
   k@8
-  short@10 capable = {save: def save, other: def other, m: def literals.<locals>.short.m, ...param#0, ?}
+  short@10 capable = {save: def save, other: def other, m: def literals.<locals>.short.m, ...param#0, ?} uses(passed: open#0)
 sites:
   call def open ({onDone: def save})
   call def open (var short@10)
@@ -52,7 +52,7 @@ handed: none
 params:
   #0 capable
 vars:
-  o@13 param#0 capable
+  o@13 param#0 capable uses(receiver)
 sites:
   call member(member(param#0, a), b) ()
   call member(member(param#0, a), b) ()
@@ -69,12 +69,12 @@ anons: 0
 handed: none
 == patterns
 params:
-  #0 pattern
+  #0 pattern names: var onClose@20 var deep@20 var opt@20 var rest@20
 vars:
   onClose@20 capable = member(param#0, onClose)
   deep@20 capable = member(member(param#0, nested), deep)
   opt@20 capable = default(member(param#0, opt), def save)
-  rest@20 capable = omit(param#0; onClose, nested, opt)
+  rest@20 capable = omit(param#0; onClose, nested, opt) uses(passed: open#0)
 sites:
   call var onClose@20 ()
   call var deep@20 ()
@@ -88,7 +88,7 @@ handed:
 params:
   #0 capable
 vars:
-  p@26 param#0 capable
+  p@26 param#0 capable uses(names: var onClose@27 var opt@27)
   onClose@27 capable = member(param#0, onClose)
   opt@27 capable = default(member(param#0, opt), def other)
   first@28 capable open
@@ -104,7 +104,7 @@ handed:
 params:
   #0 capable
 vars:
-  props@33 param#0 capable
+  props@33 param#0 capable uses(receiver)
 sites:
   call member(param#0, onClose) ()
 anons: 0

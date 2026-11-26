@@ -61,7 +61,7 @@ handed: none
 params:
   #0 capable
 vars:
-  f@11 param#0 capable
+  f@11 param#0 capable uses(passed: each#0)
 sites:
   call def each (param#0)
 anons: 0
@@ -71,17 +71,17 @@ handed:
 params:
   #0 capable
 vars:
-  opts@12 param#0 capable
+  opts@12 param#0 capable uses(receiver)
 sites:
   call member(param#0, onDone) ()
 anons: 0
 handed: none
 == Panel
 params:
-  #0 pattern
+  #0 pattern names: var onClose@13
 vars:
   onClose@13 capable = member(param#0, onClose)
-  back@14 capable = def Panel.<locals>.back
+  back@14 capable = def Panel.<locals>.back uses(escapes)
 sites: none
 anons: 0
 handed:
@@ -98,7 +98,7 @@ needs: Panel:onClose@13
 params:
   #0 capable
 vars:
-  w@17 param#0 capable
+  w@17 param#0 capable uses(receiver)
 sites:
   call member(param#0, write) ()
 anons: 0

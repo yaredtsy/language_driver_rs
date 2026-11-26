@@ -97,6 +97,25 @@ pub(crate) struct Var {
     pub(crate) assigned: Box<[Expr]>,
     /// Assigned somewhere in a way the table does not model. Said only when `capable`; `false` otherwise.
     pub(crate) open: bool,
+    /// What the body does with the variable's value (`08-tc4` §5). Read only when `capable`; default otherwise.
+    pub(crate) uses: Uses,
+}
+
+/// What the body does with a variable's value, as far as the trust rule asks (`08-tc4` §5): read by the table, decided by step 3b. All `false` and empty
+/// when the variable is only read in allowed ways.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Uses {
+    /// A use the rule does not allow: a write through it, a store, a return, a library or unknown callee it is given to, anything not listed.
+    pub(crate) escapes: bool,
+    /// Given as argument `i` to a call whose callee the engine names as project functions (each `(def, i)`), or as a JSX attribute's value to a component
+    /// named so (`(component, 0)`). Sorted, no repeats.
+    pub(crate) passed: Box<[(DefId, u32)]>,
+    /// Second names: the variables whose value is this one or one of its members (`const o = x`, `y = x`, `const { a } = x`). Sorted, no repeats.
+    pub(crate) names: Box<[VarId]>,
+    /// A method is called on it (`x.k()`, `x.a.k()`): it is `this` there (Q-TC9).
+    pub(crate) receiver: bool,
+    /// A row of a file's own code that the file exports.
+    pub(crate) exported: bool,
 }
 
 /// A place where the body hands a function over without calling it (D22): a name in a hand-over position, or a def written there.
@@ -123,6 +142,9 @@ pub(crate) struct Param {
     pub(crate) assigned: bool,
     /// Its declared type can hold a function, an object or an instance (`holds_only_data` is false). A binding pattern is not capable until TC4.
     pub(crate) capable: bool,
+    /// For a **pattern** parameter only: `names` is every variable of its pattern (nested patterns included). A named parameter's uses are its row's in
+    /// `Flow::vars`; this is default for it.
+    pub(crate) uses: Uses,
 }
 
 /// A site of the body, read.

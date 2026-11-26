@@ -48,6 +48,9 @@ fn touch(node: P<Node>, text: &str) {
         seen(view.right());
         seen(view.operator());
     }
+    if let Some(view) = PrefixUnary::cast(node) {
+        seen(view.operator());
+    }
     if let Some(view) = ElementAccess::cast(node) {
         seen(view.argument());
     }
@@ -221,6 +224,7 @@ fn every_cast_and_every_accessor_of_every_view_is_total_on_the_libraries_and_the
         ("JsxTag", JsxTag::KINDS),
         ("NameToken", NameToken::KINDS),
         ("Binary", Binary::KINDS),
+        ("PrefixUnary", PrefixUnary::KINDS),
         ("ElementAccess", ElementAccess::KINDS),
         ("TaggedTemplate", TaggedTemplate::KINDS),
         ("Conditional", Conditional::KINDS),
