@@ -354,6 +354,7 @@ mod tests {
             unmodelled: 0,
             around,
             this_uses: None,
+            arrow: false,
         })
     }
 

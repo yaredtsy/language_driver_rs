@@ -23,7 +23,9 @@ App
 edges:
 App | Btn | call Btn @60646e2a
 App | save | pass save
-App | Btn | call Btn @60646e2a
+App | Btn | call Btn @ccc03f10
 App | save | pass save
 Btn @60646e2a | props.reset | unresolved anonymous_function_called
 Btn @60646e2a | props.onPress | call save
+Btn @ccc03f10 | props.reset | unresolved anonymous_function_called
+Btn @ccc03f10 | props.onPress | call save

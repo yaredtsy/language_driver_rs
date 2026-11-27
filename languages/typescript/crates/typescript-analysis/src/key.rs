@@ -42,14 +42,14 @@ pub(crate) struct KeyData {
 
 impl KeyData {
     /// The one normal form (`03-design.md` §6), made by `Keys::intern` and nowhere else: every `One::Anon(..)` of every slot and of every captured value is
-    /// written as `One::AnonAny`, then the trailing parameters that are `Value::unknown()` are dropped, so the open key of a function with three parameters
+    /// written as `One::AnonArrow`, then the trailing parameters that are `Value::unknown()` are dropped, so the open key of a function with three parameters
     /// equals that of one with none; the captured entries are sorted by variable and the unknown ones dropped.
     fn normal(mut self) -> KeyData {
         // an anonymous function is one member, whichever it is: callers that pass different arrows share a context
         for slot in self.params.iter_mut() {
             if slot.known().iter().any(|one| matches!(one, One::Anon(..))) {
                 *slot = slot.map(|one| match one {
-                    One::Anon(..) => One::AnonAny,
+                    One::Anon(..) => One::AnonArrow,
                     other => other,
                 });
             }
@@ -65,7 +65,7 @@ impl KeyData {
                 .filter(|(_, value)| *value != unknown)
                 .map(|(var, value)| {
                     let value = value.map(|one| match one {
-                        One::Anon(..) => One::AnonAny,
+                        One::Anon(..) => One::AnonArrow,
                         other => other,
                     });
                     (*var, value)
@@ -132,7 +132,9 @@ enum Canon {
     Data,
     Wide,
     Fn(StableDef),
-    AnonAny,
+    /// An anonymous arrow, which one not said (`One::AnonArrow`). 🦀 `serde(rename)` changes only the name written out, not the Rust name: the bytes (and every digest holding an arrow) stay as `AnonAny` wrote them
+    #[serde(rename = "AnonAny")]
+    AnonArrow,
     Undefined,
     /// Two or more members, or one and open: sorted as `Canon` (by `StableDef`), never by `DefId`.
     Set {
@@ -150,6 +152,8 @@ enum Canon {
         members: Vec<(String, Canon)>,
         complete: bool,
     },
+    /// An anonymous function expression, which one not said (`One::AnonFunction`). Last, as the canonical form only grows.
+    AnonFunction,
 }
 
 /// A captured variable written with stable ids only: the def that declares it, its name, and which row of that name it is among the rows of that def (by
@@ -233,7 +237,8 @@ where
                 func: (names.stable)(*def),
                 captured: captured_canon(&(names.list)(*captures), names),
             },
-            One::AnonAny => Canon::AnonAny,
+            One::AnonArrow => Canon::AnonArrow,
+            One::AnonFunction => Canon::AnonFunction,
             One::Undefined => Canon::Undefined,
             One::Object(id) => {
                 let object = (names.objects)(*id);
@@ -249,9 +254,9 @@ where
             One::Anon(..) => {
                 debug_assert!(
                     false,
-                    "a key's anonymous function is AnonAny (KeyData::normal)"
+                    "a key's anonymous function is AnonArrow (KeyData::normal)"
                 );
-                Canon::AnonAny
+                Canon::AnonArrow
             }
         })
         .collect();
@@ -568,9 +573,16 @@ mod tests {
                 ],
             ),
             (
-                vec![Canon::AnonAny],
+                vec![Canon::AnonArrow],
                 r#"{"params":["AnonAny"]}"#.into(),
                 ANON,
+            ),
+            (
+                vec![Canon::AnonFunction],
+                r#"{"params":["AnonFunction"]}"#.into(),
+                [
+                    121, 231, 11, 182, 209, 45, 66, 35, 206, 192, 213, 22, 171, 119, 195, 246,
+                ],
             ),
             (
                 vec![Canon::Undefined],
@@ -585,7 +597,7 @@ mod tests {
                         Canon::Fn(marked()),
                         Canon::Fn(m("a")),
                         Canon::Fn(m("b")),
-                        Canon::AnonAny,
+                        Canon::AnonArrow,
                         Canon::Undefined,
                     ],
                     open: true,
@@ -650,7 +662,7 @@ mod tests {
             c(Value::of([One::Fn(d(0))], true)),
             set(vec![Canon::Fn(m("a"))], true)
         );
-        assert_eq!(c(Value::of([One::AnonAny], false)), Canon::AnonAny);
+        assert_eq!(c(Value::of([One::AnonArrow], false)), Canon::AnonArrow);
         assert_eq!(c(Value::of([One::Undefined], false)), Canon::Undefined);
         assert_eq!(
             c(Value::of([One::Fn(d(0)), One::Fn(d(1))], false)),
@@ -705,7 +717,7 @@ mod tests {
         .normal();
         assert_eq!(
             *mixed.params,
-            [Value::of([One::Fn(d(1)), One::AnonAny], false)]
+            [Value::of([One::Fn(d(1)), One::AnonArrow], false)]
         );
     }
 
@@ -942,7 +954,7 @@ mod tests {
                 (var(1, 3), arrow),
             ]),
             [
-                (var(1, 3), Value::of([One::Fn(d(1)), One::AnonAny], false)),
+                (var(1, 3), Value::of([One::Fn(d(1)), One::AnonArrow], false)),
                 (var(2, 9), f(0)),
             ]
         );

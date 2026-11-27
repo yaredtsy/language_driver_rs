@@ -41,9 +41,10 @@ impl ObjectId {
     }
 }
 
-/// One thing a value can hold: a function, a nested function with what it captured, an anonymous function, an anonymous function of which one is not said (how
-/// a key holds one), "nothing was passed", or an object. TC4 adds classes, TC5 instances. The derived order is `Fn` by def, then `Closure` by def and list,
-/// then `Anon` by def and number, then `AnonAny`, then `Undefined`, then `Object` by number.
+/// One thing a value can hold: a function, a nested function with what it captured, an anonymous function, an anonymous arrow or an anonymous function
+/// expression of which one is not said (how a key, a capture list and an object hold one), "nothing was passed", or an object. TC4 adds classes, TC5
+/// instances. The derived order is `Fn` by def, then `Closure` by def and list, then `Anon` by def and number, then `AnonArrow`, then `Undefined`, then
+/// `Object` by number, then `AnonFunction`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum One {
     /// A def with a body.
@@ -52,13 +53,16 @@ pub(crate) enum One {
     Closure(DefId, Captures),
     /// An anonymous function: the def it is written in, and its number among that body's anonymous functions (`Flow::anons`).
     Anon(DefId, u32),
-    /// An anonymous function, which one not said: how a key holds one (`KeyData::normal` writes every `Anon` of a slot as this), so callers that pass
-    /// different arrows share a context. Never made by `eval` from an expression.
-    AnonAny,
+    /// An anonymous arrow, which one not said: how a key, a capture list and an object hold one (`KeyData::normal` writes every `Anon` of a slot as this), so
+    /// callers that pass different arrows share a context. Never made by `eval` from an expression.
+    AnonArrow,
     /// Nothing was passed: a parameter with this value starts from its default.
     Undefined,
     /// An object: a number into the request's table (`nested::Nested`).
     Object(ObjectId),
+    /// An anonymous function expression (`function () {}`), which one not said. Unlike an arrow it has a `this` of its own, so a call of it may write the object it
+    /// is a member of (`08-tc4` §10, step 4d). Made only by `eval::anon_kinds`, from an `Anon` that is not an arrow.
+    AnonFunction,
 }
 
 /// What can be at a place. `unknown` (nothing known: ask the engine), `data` (nothing callable, and the layer knows it), `wide` (too much to list: no
@@ -360,13 +364,13 @@ mod tests {
     fn map_keeps_the_normal_form() {
         let anon = |index| One::Anon(DefId::new(0, 0, Some(0)), index);
         let to_any = |one| match one {
-            One::Anon(..) => One::AnonAny,
+            One::Anon(..) => One::AnonArrow,
             other => other,
         };
         let value = Value::of([anon(0), anon(1), f(1)], false);
         let mapped = value.map(to_any);
-        assert_eq!(mapped, Value::of([f(1), One::AnonAny], false));
-        assert_eq!(mapped.known(), [f(1), One::AnonAny]);
+        assert_eq!(mapped, Value::of([f(1), One::AnonArrow], false));
+        assert_eq!(mapped.known(), [f(1), One::AnonArrow]);
         assert!(!mapped.is_open());
         assert!(
             Value::of([anon(0), anon(1), f(1)], true)

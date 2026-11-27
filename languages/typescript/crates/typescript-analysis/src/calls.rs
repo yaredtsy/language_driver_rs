@@ -20,7 +20,7 @@ use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary}
 use crate::Project;
 use crate::caps::Caps;
 use crate::env::{Env, VARIABLE_WRITE_UNMODELLED};
-use crate::eval::{World, eval, for_key};
+use crate::eval::{World, anon_kinds, eval, for_key};
 use crate::flow::{DefId, Expr, Flow, VarId};
 use crate::key::{CanonVar, Key, KeyData, KeyId, Keys};
 use crate::needs::needs_of_component;
@@ -171,10 +171,10 @@ impl<'p> TypeScript<'p> {
     pub(crate) fn intern_key(&self, mut data: KeyData) -> KeyId {
         let world: &dyn World = self;
         for value in data.params.iter_mut() {
-            *value = for_key(world, value);
+            *value = for_key(world, &anon_kinds(world, value));
         }
         for (_, value) in data.captured.iter_mut() {
-            *value = for_key(world, value);
+            *value = for_key(world, &anon_kinds(world, value));
         }
         if !self.names_are_known(&data) {
             self.note_walk(KEY_NAMES_UNKNOWN_DEF);
@@ -230,7 +230,7 @@ impl<'p> TypeScript<'p> {
         let value_is_known = |value: &Value| {
             value.known().iter().all(|one| match one {
                 One::Fn(def) | One::Anon(def, _) | One::Closure(def, _) => known(*def),
-                One::AnonAny | One::Undefined | One::Object(_) => true,
+                One::AnonArrow | One::AnonFunction | One::Undefined | One::Object(_) => true,
             })
         };
         data.params.iter().all(value_is_known)
@@ -372,7 +372,10 @@ impl World for TypeScript<'_> {
         self.sem.trust_memo(var)
     }
 
-    fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
+    fn capture(&self, mut list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
+        for (_, value) in list.iter_mut() {
+            *value = anon_kinds(self, value);
+        }
         self.nested.borrow_mut().intern(list)
     }
 
@@ -380,7 +383,14 @@ impl World for TypeScript<'_> {
         self.nested.borrow().get(captures).into()
     }
 
-    fn object(&self, members: Vec<(Box<str>, Value)>, complete: bool) -> (Option<ObjectId>, u32) {
+    fn object(
+        &self,
+        mut members: Vec<(Box<str>, Value)>,
+        complete: bool,
+    ) -> (Option<ObjectId>, u32) {
+        for (_, value) in members.iter_mut() {
+            *value = anon_kinds(self, value);
+        }
         self.nested.borrow_mut().intern_object(members, complete)
     }
 

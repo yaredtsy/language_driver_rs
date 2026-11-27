@@ -258,7 +258,7 @@ needs: nest:cb@120
 params: none
 vars:
   flag@3
-  items@4 capable open uses(escapes, names: var forms:length@44, receiver)
+  items@4 capable open uses(escapes, names: var forms:length@44, receiver, called: forEach)
   handler@7 capable = oneof(def a | def b) uses(escapes)
 sites: none
 anons: 0

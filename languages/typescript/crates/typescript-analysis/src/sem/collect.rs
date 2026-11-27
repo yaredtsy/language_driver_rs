@@ -39,7 +39,8 @@ pub(super) struct Collector<'a> {
     /// The assignments whose left side is an object pattern (`({ load } = api)`): the pattern and the value it takes from (`note_assignment`).
     pub(super) assigns: Vec<(P<Node>, P<Node>)>,
     /// The anonymous functions the walk enters: an arrow or a function expression that is not a def of the outline, in the order met, which is source order.
-    pub(super) anons: Vec<Span>,
+    /// Each with whether it is an arrow (`Kind::ArrowFunction`), else a function expression.
+    pub(super) anons: Vec<(Span, bool)>,
 }
 
 /// What reading one def's body found. `sites` is the calls; `nested` and `refs` are what the body hands over (`Sem::handed_over`).
@@ -54,7 +55,7 @@ pub(super) struct Body {
     pub(super) call_apply: Vec<P<Node>>,
     pub(super) refs: Vec<(Span, P<Node>)>,
     /// The anonymous functions of the body, in source order (`Collector::anons`).
-    pub(super) anons: Vec<Span>,
+    pub(super) anons: Vec<(Span, bool)>,
     /// How many nodes the reading met of a kind an accessor does not handle, where it expected one (`view::counted`): the count of this body, kept with it.
     pub(super) unhandled: u64,
 }
@@ -278,7 +279,10 @@ impl<'a> Collector<'a> {
             }
             // an anonymous function (a def of the outline has returned above): listed, and walked into as before
             Kind::ArrowFunction | Kind::FunctionExpression => {
-                self.anons.push(own_span(self.text, node));
+                self.anons.push((
+                    own_span(self.text, node),
+                    node.kind() == Kind::ArrowFunction,
+                ));
             }
             // `({ load } = api)`: the names on the left take members of the value on the right, and no edge follows them
             Kind::BinaryExpression => self.note_assignment(node),

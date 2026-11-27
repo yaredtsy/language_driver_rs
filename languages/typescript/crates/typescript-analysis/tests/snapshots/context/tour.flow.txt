@@ -71,7 +71,7 @@ handed:
 params:
   #0 capable
 vars:
-  opts@12 param#0 capable uses(receiver)
+  opts@12 param#0 capable uses(receiver, called: onDone)
 sites:
   call member(param#0, onDone) ()
 anons: 0
@@ -98,7 +98,7 @@ needs: Panel:onClose@13
 params:
   #0 capable
 vars:
-  w@17 param#0 capable uses(receiver)
+  w@17 param#0 capable uses(receiver, called: write)
 sites:
   call member(param#0, write) ()
 anons: 0

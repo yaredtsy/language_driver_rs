@@ -208,7 +208,7 @@ impl Sem {
                     .anons
                     .iter()
                     .enumerate()
-                    .map(|(index, &span)| (span, index as u32))
+                    .map(|(index, &(span, _))| (span, index as u32))
                     .collect(),
                 exports: None,
             };
@@ -296,7 +296,11 @@ impl Reader<'_, '_> {
             }
         }
         let params: Box<[Param]> = params.into();
-        let anons: Box<[AnonFlow]> = body.anons.iter().map(|&span| AnonFlow { span }).collect();
+        let anons: Box<[AnonFlow]> = body
+            .anons
+            .iter()
+            .map(|&(span, arrow)| AnonFlow { span, arrow })
+            .collect();
         let sites = body
             .sites
             .iter()
@@ -314,6 +318,7 @@ impl Reader<'_, '_> {
             unmodelled: vars.1,
             around: self.around(),
             this_uses: self.this_uses(),
+            arrow: self.def.kind() == Kind::ArrowFunction,
         }
     }
 
@@ -361,6 +366,8 @@ impl Reader<'_, '_> {
             passed: sorted(found.passed).into(),
             names: sorted(found.names).into(),
             receiver: found.receiver,
+            called: sorted(found.called).into(),
+            called_any: found.called_any,
             exported: false,
         })
     }
@@ -628,6 +635,8 @@ impl Reader<'_, '_> {
             passed: sorted(found.passed).into(),
             names: sorted(found.names).into(),
             receiver: found.receiver,
+            called: sorted(found.called).into(),
+            called_any: found.called_any,
             exported,
         }
     }
@@ -699,6 +708,28 @@ impl Reader<'_, '_> {
         self.place_used(wrapped(reference), found);
     }
 
+    /// The name a call's callee chain calls (`08-tc4` §10, step 4d): the **last** access of `chain`. A property access gives its name (a private name keeps its
+    /// `#`); an element access gives its argument when that is a string literal or a no-substitution template; `None` for any other element access.
+    fn called_name(&self, chain: P<Node>) -> Option<Box<str>> {
+        let text = self.file.node.text();
+        if chain.kind() == Kind::PropertyAccessExpression {
+            let name = chain.name()?;
+            return match name.kind() {
+                Kind::PrivateIdentifier => own_span(text, name).slice(text).map(Into::into),
+                _ => self.property_name(name),
+            };
+        }
+        ElementAccess::cast(chain)
+            .map(ElementAccess::argument)
+            .filter(|argument| {
+                matches!(
+                    argument.kind(),
+                    Kind::StringLiteral | Kind::NoSubstitutionTemplateLiteral
+                )
+            })
+            .and_then(|argument| self.property_name(argument))
+    }
+
     /// `place` for a node that is already the topmost wrapper over a value of the variable (the reference itself, or the top of a read chain): points 1–10.
     fn place_used(&mut self, used: P<Node>, found: &mut Found) {
         let Some(parent) = used.parent() else {
@@ -742,6 +773,10 @@ impl Reader<'_, '_> {
                     && CallOrNew::cast(above).and_then(CallOrNew::callee) == Some(top)
             }) {
                 found.receiver = true;
+                match self.called_name(chain) {
+                    Some(name) => found.called.push(name),
+                    None => found.called_any = true,
+                }
                 return;
             }
             // a member that is data (`x.label`) keeps nothing of `x`; one that can hold a function or an object is a value of `x` that the body may then keep or
@@ -1567,6 +1602,8 @@ struct Found {
     passed: Vec<(DefId, u32)>,
     names: Vec<VarId>,
     receiver: bool,
+    called: Vec<Box<str>>,
+    called_any: bool,
 }
 
 /// `items` in order, without a repeat.

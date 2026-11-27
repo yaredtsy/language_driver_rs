@@ -16,7 +16,7 @@ handed: none
 params:
   #0 capable
 vars:
-  o@3 param#0 capable uses(receiver)
+  o@3 param#0 capable uses(receiver, called: a)
 sites:
   call member(param#0, a) ()
 anons: 0
@@ -33,7 +33,7 @@ handed: none
 params:
   #0 capable
 vars:
-  x@5 param#0 capable uses(receiver)
+  x@5 param#0 capable uses(receiver, called: a)
 sites:
   call member(param#0, a) ()
 anons: 0
@@ -96,7 +96,7 @@ params:
 vars:
   x@32 param#0 capable uses(names: var o@33 var later@35)
   y@32 param#1 capable uses(names: var a@34 var b@34)
-  o@33 capable = param#0 uses(receiver)
+  o@33 capable = param#0 uses(receiver, called: a)
   a@34 capable = member(param#1, a)
   b@34 capable = member(param#1, b)
   later@35 capable = param#0
@@ -144,7 +144,7 @@ handed: none
 params:
   #0 capable
 vars:
-  props@42 param#0 capable uses(receiver)
+  props@42 param#0 capable uses(receiver, called: a)
 sites:
   call member(member(param#0, o), a) ()
 anons: 0
@@ -184,7 +184,7 @@ handed: none
 params:
   #0 capable
 vars:
-  o@47 param#0 capable uses(receiver)
+  o@47 param#0 capable uses(receiver, called: c)
 sites:
   call member(param#0, c) ()
 anons: 0
@@ -215,7 +215,7 @@ params:
   #0 capable
   #1
 vars:
-  o@55 param#0 capable uses(passed: down#0, receiver)
+  o@55 param#0 capable uses(passed: down#0, receiver, called: a)
   n@55 param#1
 sites:
   call def down (param#0, data)
@@ -341,7 +341,7 @@ handed:
 == counter.call
 params: none
 vars: none
-this: uses(receiver)
+this: uses(receiver, called: k)
 sites:
   call def counter.n.k ()
 anons: 0
@@ -398,8 +398,8 @@ params: none
 vars:
   shared@44 capable = {a: def shared.a} uses(exported)
   own@45 capable = {a: def own.a}
-  sharedHolder@68 capable = {a: def sharedHolder.a} uses(receiver, exported)
-  ownHolder@69 capable = {a: def ownHolder.a} uses(receiver)
+  sharedHolder@68 capable = {a: def sharedHolder.a} uses(receiver, called: a, exported)
+  ownHolder@69 capable = {a: def ownHolder.a} uses(receiver, called: a)
   counter@71 capable = {n: {k: def counter.n.k}, reset: def counter.reset, read: def counter.read, call: def counter.call}
 sites: none
 anons: 0

@@ -20,7 +20,7 @@ handed: none
 params:
   #0 capable
 vars:
-  opts@4 param#0 capable uses(receiver)
+  opts@4 param#0 capable uses(receiver, called: onDone)
 sites:
   call member(param#0, onDone) ()
 anons: 0
@@ -52,7 +52,7 @@ handed: none
 params:
   #0 capable
 vars:
-  o@13 param#0 capable uses(receiver)
+  o@13 param#0 capable uses(receiver, called: b)
 sites:
   call member(member(param#0, a), b) ()
   call member(member(param#0, a), b) ()
@@ -104,7 +104,7 @@ handed:
 params:
   #0 capable
 vars:
-  props@33 param#0 capable uses(receiver)
+  props@33 param#0 capable uses(receiver, called: onClose)
 sites:
   call member(param#0, onClose) ()
 anons: 0

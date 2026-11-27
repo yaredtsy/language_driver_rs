@@ -43,13 +43,6 @@ pub(crate) struct Flow {
     /// Index for index with `Sem::call_sites`.
     pub(crate) sites: Box<[SiteFlow]>,
     /// The anonymous functions written in the body, in source order (`Expr::Anon` and `SiteFlow::anon` are places in it).
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "kept for TC7 (anonymous functions: a call inside one becomes a context of its own); only the table's tests read it today"
-        )
-    )]
     pub(crate) anons: Box<[AnonFlow]>,
     /// The hand-overs, sorted by `at` (start, then end), ties in the order made: every def `Sem::handed_over` finds, then the names of a hand-over position it
     /// found no def for, through `expr_of`.
@@ -66,6 +59,16 @@ pub(crate) struct Flow {
     /// object literal; `None` for a class member, a constructor, an arrow (its `this` is the enclosing def's), a class and a file's code. Read only for the
     /// counter `this_written_outside_class`.
     pub(crate) this_uses: Option<Uses>,
+    /// The def's own node is an `ArrowFunction` (`08-tc4` §10, step 4d): a property `reset: () => {}` is a def whose node is the arrow. An arrow has no `this` of
+    /// its own, so a call of it cannot write the object it is a member of.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "kept for step 4d-b, whose read asks whether a member def is an arrow; only the table's tests read it today"
+        )
+    )]
+    pub(crate) arrow: bool,
 }
 
 impl Flow {
@@ -118,6 +121,11 @@ pub(crate) struct Uses {
     pub(crate) names: Box<[VarId]>,
     /// A method is called on it (`x.k()`, `x.a.k()`): it is `this` there (Q-TC9).
     pub(crate) receiver: bool,
+    /// The names of the methods called on it, one per chain that is the callee of a call: the chain's **last** access (`x.m()` and `x.a.m()` give `m`,
+    /// `x["m"]()` gives `m`, a private name keeps its `#`). Sorted, no repeats. Step 4d: only a method that is called can write through `this`.
+    pub(crate) called: Box<[Box<str>]>,
+    /// A method is called on it by a name the table cannot read (`x[k]()`).
+    pub(crate) called_any: bool,
     /// A row of a file's own code that the file exports.
     pub(crate) exported: bool,
 }
@@ -208,6 +216,8 @@ pub(crate) struct Arg {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct AnonFlow {
     pub(crate) span: Span,
+    /// An `ArrowFunction`; `false` is a `FunctionExpression`, which has a `this` of its own (`08-tc4` §10, step 4d).
+    pub(crate) arrow: bool,
 }
 
 /// What an expression is, as far as the code alone says. `Member`, `Object`, `Omit` and `Default` are TC4's (`08-tc4` §2): the table reads them, and no reader

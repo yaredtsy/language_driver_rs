@@ -339,7 +339,11 @@ fn members<'p>(
         let (def, captures) = match one {
             One::Fn(def) => (Some(def), None),
             One::Closure(def, captures) => (Some(def), Some(*captures)),
-            One::Anon(..) | One::AnonAny | One::Undefined | One::Object(_) => (None, None),
+            One::Anon(..)
+            | One::AnonArrow
+            | One::AnonFunction
+            | One::Undefined
+            | One::Object(_) => (None, None),
         };
         match one {
             One::Fn(_) | One::Closure(..) => match lang.sem.func(*def.expect("a function")) {
@@ -361,9 +365,9 @@ fn members<'p>(
                 }
                 None => found.open = true,
             },
-            // an arrow is `AnonAny` in the body of a callee, where its key holds it
-            One::Anon(..) | One::AnonAny if anon_already => {}
-            One::Anon(..) | One::AnonAny => found.targets.push((
+            // an anonymous function is `AnonArrow` or `AnonFunction` in the body of a callee, where its key holds it
+            One::Anon(..) | One::AnonArrow | One::AnonFunction if anon_already => {}
+            One::Anon(..) | One::AnonArrow | One::AnonFunction => found.targets.push((
                 Target::Unresolved(Reason::new(Why::AnonymousFunctionCalled.counter())),
                 None,
             )),
@@ -386,8 +390,8 @@ fn member_order(lang: &TypeScript<'_>, one: &One) -> (u8, Option<StableDef>, u32
     match one {
         One::Fn(def) | One::Closure(def, _) => (0, id(*def), 0),
         One::Anon(def, number) => (1, id(*def), *number),
-        One::AnonAny => (2, None, 0),
-        One::Undefined => (3, None, 0),
+        One::AnonArrow => (2, None, 0),
+        One::Undefined | One::AnonFunction => (3, None, 0),
         One::Object(id) => (4, None, id.index()),
     }
 }

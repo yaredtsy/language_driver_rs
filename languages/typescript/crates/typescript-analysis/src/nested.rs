@@ -51,7 +51,7 @@ impl Nested {
     }
 
     /// `list` in its normal form, interned: every inner `Closure` whose list would make this one deeper than `MAX_DEPTH` written as its `Fn`, every inner
-    /// `Object` that would is removed from its value (which is then open), every `Anon` written `AnonAny` (callers that pass different arrows share a list),
+    /// `Object` that would is removed from its value (which is then open), every `Anon` written `AnonArrow` (callers that pass different arrows share a list),
     /// unknown entries dropped (an entry the cut leaves unknown too), sorted by `VarId`. `None` when nothing is left. Also the number of cuts: the caller counts them (this table counts nothing, so
     /// a quiet world stays quiet).
     pub(crate) fn intern(&mut self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
@@ -82,7 +82,7 @@ impl Nested {
     }
 
     /// An object with these members, interned: the members sorted by name (the caller gives no name twice), each value in its normal form as a list's is (an
-    /// `Anon` is `AnonAny`, a closure or an object that would make this one deeper than `MAX_DEPTH` is cut), unknown members **kept** (an unknown member is not a
+    /// `Anon` is `AnonArrow`, a closure or an object that would make this one deeper than `MAX_DEPTH` is cut), unknown members **kept** (an unknown member is not a
     /// missing one: a missing one is `undefined` where the object is complete). `None`, and no cut, when there are more than `MAX_MEMBERS`: the caller makes
     /// the value unknown and counts `VALUE_WIDENED_MEMBERS`. Also the number of cuts.
     pub(crate) fn intern_object(
@@ -122,7 +122,7 @@ impl Nested {
     }
 
     /// `value` as a member of a list or an object: an inner `Object` that would make the holder deeper than `MAX_DEPTH` is removed (the value is open), an
-    /// inner `Closure` that would is its `Fn`, every `Anon` is `AnonAny`. Each cut adds one to `cut`.
+    /// inner `Closure` that would is its `Fn`, every `Anon` is `AnonArrow`. Each cut adds one to `cut`.
     fn normal_value(&self, value: Value, cut: &mut u32) -> Value {
         let too_deep = |one: One| {
             matches!(one, One::Closure(..) | One::Object(_))
@@ -139,7 +139,7 @@ impl Nested {
             value = value.opened_without(|one| matches!(one, One::Object(_)) && too_deep(one));
         }
         value.map(|one| match one {
-            One::Anon(..) => One::AnonAny,
+            One::Anon(..) => One::AnonArrow,
             One::Closure(def, _) if too_deep(one) => {
                 *cut += 1;
                 One::Fn(def)
@@ -162,7 +162,7 @@ impl Nested {
         match one {
             One::Closure(_, captures) => self.depth_of(captures),
             One::Object(id) => self.object_depth[id.index() as usize],
-            One::Fn(_) | One::Anon(..) | One::AnonAny | One::Undefined => 0,
+            One::Fn(_) | One::Anon(..) | One::AnonArrow | One::AnonFunction | One::Undefined => 0,
         }
     }
 
@@ -207,7 +207,7 @@ mod tests {
         let at: Vec<u32> = list.iter().map(|(var, _)| var.at).collect();
         assert_eq!(at, [2, 5, 9]);
         assert_eq!(list[0].1, Value::data());
-        assert_eq!(list[1].1, Value::of([One::Fn(d(1)), One::AnonAny], false));
+        assert_eq!(list[1].1, Value::of([One::Fn(d(1)), One::AnonArrow], false));
     }
 
     #[test]
@@ -290,7 +290,7 @@ mod tests {
         assert_eq!(data.members[0].1, Value::unknown());
         assert_eq!(
             data.members[2].1,
-            Value::of([One::Fn(d(1)), One::AnonAny], false)
+            Value::of([One::Fn(d(1)), One::AnonArrow], false)
         );
     }
 

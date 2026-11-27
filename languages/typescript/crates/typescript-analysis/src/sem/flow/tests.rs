@@ -145,7 +145,7 @@ fn show_names(sem: &Sem, own: DefId, text: &str, names: &[VarId]) -> String {
     format!("names: {}", all.join(" "))
 }
 
-/// What a variable's uses say, as ` uses(escapes, passed: f#0, names: var a@3, receiver, exported)`: only what is set, in this order; nothing when the uses are
+/// What a variable's uses say, as ` uses(escapes, passed: f#0, names: var a@3, receiver, called: m n, called any, exported)`: only what is set, in this order; nothing when the uses are
 /// default.
 fn show_uses(sem: &Sem, own: DefId, text: &str, uses: &Uses) -> String {
     let mut said: Vec<String> = Vec::new();
@@ -168,6 +168,12 @@ fn show_uses(sem: &Sem, own: DefId, text: &str, uses: &Uses) -> String {
     }
     if uses.receiver {
         said.push("receiver".into());
+    }
+    if !uses.called.is_empty() {
+        said.push(format!("called: {}", uses.called.join(" ")));
+    }
+    if uses.called_any {
+        said.push("called any".into());
     }
     if uses.exported {
         said.push("exported".into());
@@ -324,7 +330,7 @@ fn the_anonymous_functions_are_listed_in_source_order() {
     let written: Vec<&str> = flow
         .anons
         .iter()
-        .map(|&AnonFlow { span }| span.slice(&text).unwrap())
+        .map(|&AnonFlow { span, .. }| span.slice(&text).unwrap())
         .collect();
     assert_eq!(
         written,
@@ -697,7 +703,7 @@ fn the_objects_of_a_body_are_reviewed() {
     );
 }
 
-/// What the body does with each variable's value (TC4 step 3a): `escapes`, `passed`, `names`, `receiver`, `exported`. Nothing reads them yet.
+/// What the body does with each variable's value (TC4 step 3a): `escapes`, `passed`, `names`, `receiver`, `called`, `called_any`, `exported`. Nothing reads them yet.
 #[test]
 fn the_uses_of_a_variable_are_reviewed() {
     analyzer_testkit::expect_file(
@@ -1050,4 +1056,79 @@ fn a_parameters_assigned_is_its_rows_writes() {
     });
     eprintln!("checked {named} named parameters, {assigned} assigned");
     assert!(named > 50 && assigned > 0);
+}
+
+/// The table of the method calls of step 4d (`08-tc4` §10): `called` is the last access of each chain that is a callee, `called_any` is a call by a name the
+/// table cannot read, and both come with `receiver`.
+#[test]
+fn the_names_called_on_a_variable_are_the_last_access_of_each_chain() {
+    let sem = Sem::open(&root(), Path::new("src/called.ts")).unwrap();
+    let text = sem.text_of("src/called.ts").unwrap();
+    let (id, flow) = table_of(&sem, "src/called.ts", "f", 0);
+    let x = &flow.vars[flow.param_var(0).expect("a row for x")].uses;
+    assert!(x.receiver && !x.escapes);
+    assert_eq!(&*x.called, ["m".into(), "n".into()]);
+    assert!(x.called_any);
+    assert_eq!(
+        show_uses(&sem, id, &text, x),
+        " uses(receiver, called: m n, called any)"
+    );
+}
+
+/// A fixture of `tests/fixtures/context`, opened as the tour test opens its folder.
+fn context_fixture(name: &str, file: &str) -> Sem {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/context")
+        .join(name);
+    Sem::open(&root, Path::new(file)).unwrap()
+}
+
+#[test]
+fn a_method_that_calls_this_records_the_name_in_its_this_uses() {
+    let sem = context_fixture("method-this-calls-this", "src/main.ts");
+    let (_, run) = table_of(&sem, "src/main.ts", "run", 0);
+    let o = &run.vars[run.param_var(0).expect("a row for o")].uses;
+    assert_eq!(&*o.called, ["f".into(), "reset".into()]);
+    assert!(!o.called_any);
+    let (_, reset) = table_of(&sem, "src/main.ts", "main.<locals>.reset", 0);
+    let uses = reset.this_uses.as_ref().expect("a method has a `this`");
+    assert_eq!(&*uses.called, ["clear".into()]);
+    assert!(!uses.escapes);
+    let (_, clear) = table_of(&sem, "src/main.ts", "main.<locals>.clear", 0);
+    assert!(
+        clear
+            .this_uses
+            .as_ref()
+            .expect("a method has a `this`")
+            .escapes
+    );
+}
+
+/// The prompt of step 4d-a expected `reset: () => {}` of `method-arrow-member` to be a def; it is not (an arrow held by a property is a def only in a `const`
+/// object literal at the top of a file, D21), so it is the anonymous arrow `anon#0` of `main`. `Flow::arrow` is then tested on a def that is an arrow.
+#[test]
+fn a_def_knows_whether_its_own_node_is_an_arrow() {
+    let sem = open();
+    assert!(flow_of(&sem, "src/flow.tsx", "held", 0).arrow);
+    assert!(!flow_of(&sem, "src/flow.tsx", "flow", 0).arrow);
+    let sem = context_fixture("method-arrow-member", "src/main.ts");
+    assert!(!flow_of(&sem, "src/main.ts", "run", 0).arrow);
+    // `reset: () => {}` is no def: it is the one anonymous arrow of `main`
+    let main = flow_of(&sem, "src/main.ts", "main", 0);
+    assert_eq!(
+        main.anons.iter().map(|anon| anon.arrow).collect::<Vec<_>>(),
+        [true]
+    );
+    assert!(
+        sem.entry("src/main.ts", "main.<locals>.reset", 0, STYLE)
+            .is_none()
+    );
+}
+
+#[test]
+fn an_anonymous_function_knows_whether_it_is_an_arrow() {
+    let sem = context_fixture("method-anon-member", "src/main.tsx");
+    let flow = flow_of(&sem, "src/main.tsx", "App", 0);
+    let arrows: Vec<bool> = flow.anons.iter().map(|anon| anon.arrow).collect();
+    assert_eq!(arrows, [true, false]);
 }

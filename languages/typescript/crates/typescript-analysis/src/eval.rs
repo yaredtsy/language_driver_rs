@@ -311,6 +311,26 @@ fn objects_opened(world: &dyn World, value: Value) -> Value {
     opened
 }
 
+/// `value` with each anonymous function that is not an arrow written as `AnonFunction` (`08-tc4` §10, step 4d): an `Anon(def, i)` whose anon `i` of `def`'s
+/// table is an arrow stays; any other (a function expression, a def with no table, no anon `i`) becomes `One::AnonFunction`, since only an arrow is known to
+/// have no `this` of its own, and a function that cannot be seen is not known to be one. Nothing else changes; a value with no `Anon` is returned as it is.
+/// Made before a key, a capture list or an object holds the value, which then write the remaining `Anon` as `AnonArrow` without telling the two apart.
+pub(crate) fn anon_kinds(world: &dyn World, value: &Value) -> Value {
+    if !value.known().iter().any(|one| matches!(one, One::Anon(..))) {
+        return value.clone();
+    }
+    value.map(|one| match one {
+        One::Anon(def, index) => {
+            let arrow = world
+                .flow(def)
+                .and_then(|flow| flow.anons.get(index as usize).map(|anon| anon.arrow))
+                .unwrap_or(false);
+            if arrow { one } else { One::AnonFunction }
+        }
+        other => other,
+    })
+}
+
 /// `value` as a key holds it (`08-tc4` §10, "Step 4c"): every object in it **reduced**, every other member and whether it is open as they were. A reduced object
 /// keeps the members whose value can reach a call (`reaches_a_call`: a function, `undefined`, or an object that keeps a member; a bare unknown does not), each
 /// itself written by `for_key` (the objects inside are reduced too, and a slot's own `open` stays), and drops the others; it is complete only when it was and nothing was dropped. It is made again through the world's interning (`made_object`), so objects that reduce to the
@@ -354,7 +374,7 @@ pub(crate) fn for_key(world: &dyn World, value: &Value) -> Value {
     reduced
 }
 
-/// Whether `value` can reach a call: one of its known members is a function (`Fn`, `Closure`, `Anon`, `AnonAny`), `Undefined` (it selects a default), or an
+/// Whether `value` can reach a call: one of its known members is a function (`Fn`, `Closure`, `Anon`, `AnonArrow`, `AnonFunction`), `Undefined` (it selects a default), or an
 /// object that keeps at least one member when reduced. Data (no known member) cannot, and neither does a value that is only open (a bare unknown); an object that
 /// keeps nothing is data for this purpose.
 ///
@@ -364,7 +384,12 @@ pub(crate) fn for_key(world: &dyn World, value: &Value) -> Value {
 /// An unknown-or-`save` member is kept, since `save` can be called.
 fn reaches_a_call(world: &dyn World, value: &Value) -> bool {
     value.known().iter().any(|one| match one {
-        One::Fn(_) | One::Closure(..) | One::Anon(..) | One::AnonAny | One::Undefined => true,
+        One::Fn(_)
+        | One::Closure(..)
+        | One::Anon(..)
+        | One::AnonArrow
+        | One::AnonFunction
+        | One::Undefined => true,
         One::Object(id) => world
             .object_data(*id)
             .members
@@ -392,7 +417,9 @@ fn member(world: &dyn World, value: &Value, name: &str) -> Value {
                 }
             }
             One::Undefined => Value::of([One::Undefined], false),
-            One::Fn(_) | One::Closure(..) | One::Anon(..) | One::AnonAny => Value::unknown(),
+            One::Fn(_) | One::Closure(..) | One::Anon(..) | One::AnonArrow | One::AnonFunction => {
+                Value::unknown()
+            }
         };
         found = Some(match found {
             Some(so_far) => join(world, &so_far, &got),
@@ -898,6 +925,7 @@ mod tests {
                 unmodelled: 0,
                 around: None,
                 this_uses: None,
+                arrow: false,
             }),
             d(9),
             KeyData {
@@ -927,6 +955,69 @@ mod tests {
         assert!(world.flow(env.def).is_some());
         assert!(world.flow(DefId::new(0, 0, None)).is_none());
         world
+    }
+
+    /// A table of `d(index)` with these anonymous functions (`true` for an arrow), and nothing else.
+    fn with_anons(arrows: &[bool]) -> Arc<Flow> {
+        Arc::new(Flow {
+            params: Box::new([]),
+            sites: Box::new([]),
+            anons: arrows
+                .iter()
+                .map(|&arrow| crate::flow::AnonFlow {
+                    span: typescript_syntax::Span::new(0, 0),
+                    arrow,
+                })
+                .collect(),
+            handed: Box::new([]),
+            unhandled: 0,
+            vars: Box::new([]),
+            unmodelled: 0,
+            around: None,
+            this_uses: None,
+            arrow: false,
+        })
+    }
+
+    #[test]
+    fn anon_kinds_tell_an_arrow_from_a_function() {
+        let env = env(vec![], vec![]);
+        // `d(9)` is `env`'s own def, with no anonymous function; `d(3)` has an arrow then a function expression; `d(4)` has no table
+        let world = world_with(&env, vec![(d(3), with_anons(&[true, false]))], all_caps());
+        let held = |ones: &[One], open: bool| Value::of(ones.iter().copied(), open);
+        let arrow = One::Anon(d(3), 0);
+        let function = One::Anon(d(3), 1);
+        assert_eq!(
+            anon_kinds(&world, &held(&[arrow], false)),
+            held(&[arrow], false)
+        );
+        assert_eq!(
+            anon_kinds(&world, &held(&[function], false)),
+            held(&[One::AnonFunction], false)
+        );
+        // a def with no table, and an anon number its table has not: not known to be an arrow
+        assert_eq!(
+            anon_kinds(&world, &held(&[One::Anon(d(4), 0)], false)),
+            held(&[One::AnonFunction], false)
+        );
+        assert_eq!(
+            anon_kinds(&world, &held(&[One::Anon(d(3), 2)], false)),
+            held(&[One::AnonFunction], false)
+        );
+        // an arrow and a function expression side by side: only the function changes, and the value stays open
+        assert_eq!(
+            anon_kinds(&world, &held(&[arrow, function, One::Fn(d(1))], true)),
+            held(&[arrow, One::AnonFunction, One::Fn(d(1))], true)
+        );
+        // a value with no `Anon` is returned as it is
+        for value in [
+            held(&[One::Fn(d(1)), One::Undefined], false),
+            Value::unknown(),
+            Value::data(),
+            Value::wide(),
+        ] {
+            assert_eq!(anon_kinds(&world, &value), value);
+        }
     }
 
     #[test]
@@ -1402,6 +1493,7 @@ mod tests {
             unmodelled: 0,
             around,
             this_uses: None,
+            arrow: false,
         })
     }
 
@@ -2169,6 +2261,7 @@ mod tests {
                 unmodelled: 0,
                 around: Some(d(8)),
                 this_uses: None,
+                arrow: false,
             }),
             d(9),
             KeyData {
