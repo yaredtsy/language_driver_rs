@@ -1,0 +1,15 @@
+== main
+-- off
+main
+  main.<locals>.o.run
+    save
+edges:
+main | o.run | call main.<locals>.o.run
+main.<locals>.o.run | save | call save
+-- on
+main
+  main.<locals>.o.run
+    save
+edges:
+main | o.run | call main.<locals>.o.run
+main.<locals>.o.run | save | call save

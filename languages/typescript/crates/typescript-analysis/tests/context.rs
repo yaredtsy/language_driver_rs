@@ -513,6 +513,39 @@ fn the_counters_of_the_object_rows() {
     }
 }
 
+/// The counters of TC4 step 5 (`policy.md`, the rows marked step 5), with the layer on and off.
+#[test]
+fn the_counters_of_the_member_rows() {
+    const KEYS: [&str; 2] = [
+        "variable_added_to_engine",
+        "variable_assigned_more_than_once",
+    ];
+    // (row, entry, the count of each key with the layer on); `None` is a counter that is not said at all
+    let cases: [(&str, &str, [Option<u64>; 2]); 10] = [
+        ("object-method", "main", [None, None]),
+        ("object-implements", "main", [None, None]),
+        ("object-implements", "emit", [None, None]),
+        ("props-member-call", "main", [None, None]),
+        ("member-named-by-type", "main", [None, None]),
+        ("member-named-by-type", "run", [None, None]),
+        ("member-named-by-type-instance", "main", [None, None]),
+        ("member-two-sources", "main", [None, None]),
+        ("member-nested", "main", [None, None]),
+        ("member-field-function", "main", [None, None]),
+    ];
+    for (id, entry, want) in cases {
+        let row = context_rows()
+            .into_iter()
+            .find(|row| row.id == id)
+            .unwrap_or_else(|| panic!("no row `{id}`"));
+        let (_, project) = open_row(&row);
+        let (off, on, _) = graphs_of(&project, &row, entry);
+        let said = |graph: &Graph| KEYS.map(|key| graph.stats.language.get(key).copied());
+        assert_eq!(said(&on), want, "{id} {entry}");
+        assert_eq!(said(&off), [None; 2], "{id} {entry}: the layer is off");
+    }
+}
+
 #[test]
 fn value_widened_set_is_counted_where_a_set_passes_the_cap() {
     let mut seen = 0;

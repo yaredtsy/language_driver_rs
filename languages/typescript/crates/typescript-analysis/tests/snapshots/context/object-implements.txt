@@ -1,0 +1,32 @@
+== main
+-- off
+main
+  emit
+  main.<locals>.write [Passed]
+    encode
+edges:
+emit | w.write | unresolved function_typed_value
+main | emit | call emit
+main | write | pass main.<locals>.write
+main.<locals>.write | encode | call encode
+-- on
+main
+  emit
+    main.<locals>.write
+      encode
+  main.<locals>.write [Passed]
+    encode
+edges:
+emit @32f3911d | w.write | call main.<locals>.write
+main | emit | call emit @32f3911d
+main | write | pass main.<locals>.write
+main.<locals>.write | encode | call encode
+== emit
+-- off
+emit
+edges:
+emit | w.write | unresolved function_typed_value
+-- on
+emit
+edges:
+emit | w.write | unresolved function_typed_value

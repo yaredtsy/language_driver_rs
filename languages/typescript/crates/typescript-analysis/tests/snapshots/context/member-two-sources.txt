@@ -1,0 +1,23 @@
+== main
+-- off
+main
+  main.<locals>.save [Passed]
+    b
+  Saver.save
+    base
+edges:
+Saver.save | base | call base
+main | save | pass main.<locals>.save
+main | s.save | call Saver.save
+main.<locals>.save | b | call b
+-- on
+main
+  main.<locals>.save [Passed]
+    b
+  Saver.save
+    base
+edges:
+Saver.save | base | call base
+main | save | pass main.<locals>.save
+main | s.save | call Saver.save
+main.<locals>.save | b | call b

@@ -1,0 +1,23 @@
+== main
+-- off
+main
+  run
+    Saver.save
+      base
+  Saver
+edges:
+Saver.save | base | call base
+main | run | call run
+main | Saver | construct Saver no init
+run | s.save | call Saver.save
+-- on
+main
+  run
+    Saver.save
+      base
+  Saver
+edges:
+Saver.save | base | call base
+main | run | call run
+main | Saver | construct Saver no init
+run | s.save | call Saver.save

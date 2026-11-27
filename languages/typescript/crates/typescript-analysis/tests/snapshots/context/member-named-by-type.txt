@@ -1,0 +1,42 @@
+== main
+-- off
+main
+  run
+    Saver.save
+      base
+  main.<locals>.save [Passed]
+    mine
+edges:
+Saver.save | base | call base
+main | run | call run
+main | save | pass main.<locals>.save
+main.<locals>.save | mine | call mine
+run | s.save | call Saver.save
+-- on
+main
+  run
+    Saver.save
+      base
+  main.<locals>.save [Passed]
+    mine
+edges:
+Saver.save | base | call base
+main | run | call run
+main | save | pass main.<locals>.save
+main.<locals>.save | mine | call mine
+run | s.save | call Saver.save
+== run
+-- off
+run
+  Saver.save
+    base
+edges:
+Saver.save | base | call base
+run | s.save | call Saver.save
+-- on
+run
+  Saver.save
+    base
+edges:
+Saver.save | base | call base
+run | s.save | call Saver.save

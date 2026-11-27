@@ -1,0 +1,18 @@
+== main
+-- off
+main
+  Panel
+  handleClose [Passed]
+edges:
+Panel | props.onClose | unresolved function_typed_value
+main | Panel | call Panel
+main | handleClose | pass handleClose
+-- on
+main
+  Panel
+    handleClose
+  handleClose [Passed]
+edges:
+Panel @a4dcb001 | props.onClose | call handleClose
+main | Panel | call Panel @a4dcb001
+main | handleClose | pass handleClose

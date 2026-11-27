@@ -1,0 +1,27 @@
+== main
+-- off
+main
+  run
+    Saver.save
+      base
+  main.<locals>.inner.save [Passed]
+    mine
+edges:
+Saver.save | base | call base
+main | run | call run
+main | save | pass main.<locals>.inner.save
+main.<locals>.inner.save | mine | call mine
+run | h.inner.save | call Saver.save
+-- on
+main
+  run
+    Saver.save
+      base
+  main.<locals>.inner.save [Passed]
+    mine
+edges:
+Saver.save | base | call base
+main | run | call run
+main | save | pass main.<locals>.inner.save
+main.<locals>.inner.save | mine | call mine
+run | h.inner.save | call Saver.save
