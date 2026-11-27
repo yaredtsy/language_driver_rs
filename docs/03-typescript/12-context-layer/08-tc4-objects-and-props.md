@@ -483,6 +483,11 @@ dropped: `open({})` still reads `Undefined` and takes the default); `{ a: 1 }` a
 member read of a dropped member is unknown: sound, and a default beside it is shown with the engine's answer. Values inside a body are
 not reduced. Pinned digests of TC2 and TC3 hold no object and do not move.
 
+**Step 4c built as decided, `a5a345f` and `6362d7a`** ([`engine/11-tc4.md`](../../../languages/typescript/engine/11-tc4.md), "TC4
+step 4c as built"): `eval::for_key` in `intern_key`; `object-data-members` has two contexts of `report`, `object-rest` moved its digest,
+nothing else. On the samples the private codebase's cuts went 349 → 150, all at two functions whose callers' literals hold **unknown**
+members (not data): the key still splits by member names. A further rule (a bare unknown member is dropped too) was measured: 0 cuts.
+
 **Two steps added after 4b (owner's decisions, 2026-11-27).** **4d**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
 when one of the object's function members writes through `this` or cannot be seen (an open member, an object that is not complete, an
