@@ -452,9 +452,9 @@ finding was checked again against the code of `9fc7a50`.
 |---|---|---|
 | §1.1 `void 0` is data | yes (`sem/flow.rs`, the data list) | **fixed in TC3 step 8b**: `Expr::Undefined` for `void …` and the global `undefined` (the review's first fix), a row per kind of the data list |
 | §1.2 the order of a value's members reaches the output under a count limit | yes (`walk::members` pushes in `DefId` order) | **fixed in 8b**: the members sorted by stable id before targets are made; the review's test, two histories, limits 1–8 |
-| §1.3 a parameter typed as data that holds a function | yes, and TC3 applies the same rule to variables | **the owner's** (README "What needs your yes"); recommended: an expression cast to `any` or `unknown` is `Unknown` (narrow, sound, local) |
+| §1.3 a parameter typed as data that holds a function | yes, and TC3 applies the same rule to variables | **decided (D69, 2026-11-27):** a value before a type; the type is read only where no value is known |
 | §2.1 counters are side effects of a walk | partly: TC3's solve counts once per walk (its last round), but `key_of` still evaluates per target, and TC6's rounds will multiply | scheduled **before TC6** (notes kept per `(def, key)`); the rule "a counter counts places" written then |
-| §2.2 one `Basis` for every edge | yes: TC3 now draws edges from locals and closures with `Basis::Type`, where Python says `Path` | **the owner's**: a basis per edge (a core change) before TC4, or one stamp written down as a decision |
+| §2.2 one `Basis` for every edge | yes: TC3 now draws edges from locals and closures with `Basis::Type`, where Python says `Path` | **decided (D70, 2026-11-27):** one stamp, `Basis::Type`, written down |
 | §2.3 no cap on the contexts of one function | yes | scheduled **before TC4** (03 §12's cap, 64, marked and counted); **built** as 08-tc4 step 0a (`c6b88b2`, `7021f7a`) |
 | §2.4 parts of the table nothing reads | partly: `Flow::handed` is read now (needs, relevance); four fields are still `expect(dead_code)` with a stale reason | **8b**: each removed or its reason corrected; the second `handed_over` call per def taken from the table if it is the same |
 | §3.1 literal pins | yes (94, raised at every TC3 step) | **8b**: the count read from the table |

@@ -468,6 +468,13 @@ the bit on, the coder stopped on four differences from the rows; each is decided
    object type as able to hold an object. §7's narrowing (an object type whose members are all data) stays a [check], for every parameter
    at once, and would move TC2's snapshots: not in TC4 unless step 8 counts contexts it would save.
 
+**Two steps added after 4b (owner's decisions, 2026-11-27).** **4c**, D68 (Q-TC9): a method call can change its own object. A
+variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
+when one of the object's function members writes through `this` or cannot be seen (an open member, an object that is not complete, an
+anonymous function that may not be an arrow); a key tells an arrow from another anonymous function. **4d**, D69 (§1.3 of the review
+before TC3): a value before a type: a parameter or a variable declared as data holds the value it is given where one is known; the type
+says only that what is unknown is data. Each is designed when its prompt is written, with its cost measured.
+
 **Step 1, as decided for the build (2026-11-26).** The table reads the new forms; nothing evaluates them yet, so no graph moves.
 
 - `Expr` gains four variants: `Member(Box<Expr>, Box<str>)` (`x.k`, `x?.k`, `x["k"]` with a string literal), `Object(Box<[Part]>)`
