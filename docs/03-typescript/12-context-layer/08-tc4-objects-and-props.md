@@ -546,6 +546,13 @@ the correction above. No rule applied; only `method-anon-member` split into two 
 in `intern_key` and in `capture`: each mutation passes every test); 4d-b's first commit adds the row `anon-kinds-in-keys`, and the row
 `method-arrow-def` for an arrow that is a def (no row read `Flow::arrow` in a graph).
 
+**Step 4d-b built as decided, `afa9e3f` and `0fc9249`** (`engine/11-tc4.md`): the rows moved as written; on the private sample 123
+reads opened, 27 edges added beside (21,182 → 21,209 unresolved), the same contexts, no time measurable. **4d-fix (found at 4d-b):**
+`walk::members` drew an `anonymous_function_called` target for **each** anonymous member of a value (the engine's mark `anon_already`
+is not set by the loop), so a value of two arrows, or since 4d-a of an arrow and a function expression, said one edge twice (the graph
+drops it; the walk-alone test and the counters do not). It draws one per site; the coder's `dedup()` in the walk-alone test is taken out,
+since that test is the one guard that sees a doubled edge.
+
 **Two steps added after 4b (owner's decisions, 2026-11-27).** **4d**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
 when one of the object's function members writes through `this` or cannot be seen (an open member, an object that is not complete, an
