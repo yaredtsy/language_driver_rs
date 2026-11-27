@@ -553,6 +553,9 @@ is not set by the loop), so a value of two arrows, or since 4d-a of an arrow and
 drops it; the walk-alone test and the counters do not). It draws one per site; the coder's `dedup()` in the walk-alone test is taken out,
 since that test is the one guard that sees a doubled edge.
 
+**4d-fix built, `2be3cc5`**: as decided; three off snapshots moved one number each (`Stats.unresolved`, the double that was
+counted), no edge. **Step 4d is closed**; next is 4e (D69).
+
 **Two steps added after 4b (owner's decisions, 2026-11-27).** **4d**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
 when one of the object's function members writes through `this` or cannot be seen (an open member, an object that is not complete, an
