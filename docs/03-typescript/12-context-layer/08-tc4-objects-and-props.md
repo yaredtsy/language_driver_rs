@@ -598,6 +598,13 @@ carry a function there, the parameter is not in the key, the row is data, and th
 the rule in place, locally: 6,905 contexts, unresolved back to 21,191, no test failing (so no fixture guarded it either way: row
 `relevance-through-data-row`). 4e-c also adds the guard the coder's mutation (d) found missing: a data-typed row's unmodelled write is
 not counted (`vars.ts`, `unmodelledData`).
+
+**4e-c corrected (the coder's stop, 2026-11-28).** The row's first form was wrong: in `const n: number = cb.length` the initializer is a
+**hand-over** position (D22), and the table's `handed` list is a relevance sink of its own, older than 4e-b, so `cb` was relevant at
+4e-a already and the rule does not move it. What 4e-b added is a data-typed row assigned **without** a hand-over: a destructured
+element (`const { id } = props`, a pattern parameter `{ n }`). The row now shows both: `f` (the initializer, a hand-over: two contexts,
+unchanged) and `g` (`g({ n }: { n: number; h: () => void })` calling `log(n)`: two contexts before the rule, one after; probed by the
+reviewer at `675d735` with HEAD's `relevance.rs` and with the rule). Hand-overs stay sinks.
  `eval::row_value` of a row that is not capable: what a parameter's
 row is passed (`passed`) joined with every assigned value, then `as_data_typed`. Evaluated only with `LOCALS`, so `locals-off.txt` does
 not move. Relevance now reads a data-typed row's assignments too, so a parameter assigned into one and called through it may become
