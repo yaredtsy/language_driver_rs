@@ -312,14 +312,14 @@ fn objects_opened(world: &dyn World, value: Value) -> Value {
 }
 
 /// `value` as a key holds it (`08-tc4` §10, "Step 4c"): every object in it **reduced**, every other member and whether it is open as they were. A reduced object
-/// keeps the members whose value can reach a call (`reaches_a_call`), each itself written by `for_key` (the objects inside are reduced too), and drops the
-/// others; it is complete only when it was and nothing was dropped. It is made again through the world's interning (`made_object`), so objects that reduce to the
+/// keeps the members whose value can reach a call (`reaches_a_call`: a function, `undefined`, or an object that keeps a member; a bare unknown does not), each
+/// itself written by `for_key` (the objects inside are reduced too, and a slot's own `open` stays), and drops the others; it is complete only when it was and nothing was dropped. It is made again through the world's interning (`made_object`), so objects that reduce to the
 /// same members are one object, and the value stays sorted and without duplicates.
 ///
 /// Why: data cannot reach a call, so it is no reason for a context. A function called from many places with `{ duration: 12 }`, `{ duration: 40 }`, … would
 /// get one context for each literal for nothing (`engine/11-tc4.md` has the numbers: 261 contexts of one function, 349 cuts at the cap of 64 in one sample).
 /// This is the rule relevance has for a whole parameter (`relevance::relevant`), for the members of an object. The callee then reads the reduced object: a member
-/// that was dropped reads unknown, since the object is no longer complete, which is sound. Only a key is reduced; the values inside a body are not.
+/// that was dropped reads unknown, since the object is no longer complete, which is sound (a member that was unknown reads unknown too). Only a key is reduced; the values inside a body are not.
 pub(crate) fn for_key(world: &dyn World, value: &Value) -> Value {
     if !value
         .known()
@@ -354,18 +354,23 @@ pub(crate) fn for_key(world: &dyn World, value: &Value) -> Value {
     reduced
 }
 
-/// Whether `value` can reach a call: it is open, or a known member is a function (`Fn`, `Closure`, `Anon`, `AnonAny`), `Undefined` (it selects a default), or an
-/// object that keeps at least one member when reduced. Data (no known member, not open) cannot; an object that keeps nothing is data for this purpose.
+/// Whether `value` can reach a call: one of its known members is a function (`Fn`, `Closure`, `Anon`, `AnonAny`), `Undefined` (it selects a default), or an
+/// object that keeps at least one member when reduced. Data (no known member) cannot, and neither does a value that is only open (a bare unknown); an object that
+/// keeps nothing is data for this purpose.
+///
+/// Whether the value is open does not count (step 4c-fix): in the callee an unknown member and a missing member of an object that is not complete read the same,
+/// unknown, so keeping the unknown member would split a key by member names for nothing (`{ count: messages.length }` at 150 cuts of one sample). What is lost is
+/// `undefined` for a name the literal leaves out, which a default there would have taken; the default is then shown beside the engine's answer, which is sound.
+/// An unknown-or-`save` member is kept, since `save` can be called.
 fn reaches_a_call(world: &dyn World, value: &Value) -> bool {
-    value.is_open()
-        || value.known().iter().any(|one| match one {
-            One::Fn(_) | One::Closure(..) | One::Anon(..) | One::AnonAny | One::Undefined => true,
-            One::Object(id) => world
-                .object_data(*id)
-                .members
-                .iter()
-                .any(|(_, member)| reaches_a_call(world, member)),
-        })
+    value.known().iter().any(|one| match one {
+        One::Fn(_) | One::Closure(..) | One::Anon(..) | One::AnonAny | One::Undefined => true,
+        One::Object(id) => world
+            .object_data(*id)
+            .members
+            .iter()
+            .any(|(_, member)| reaches_a_call(world, member)),
+    })
 }
 
 /// The member `name` of `value` (`08-tc4` §4): the join over its members of what each has there. An object with the name, its value; a complete one without
@@ -2241,9 +2246,34 @@ mod tests {
         // { u: Undefined } -> itself
         let with_undefined = make(vec![("u", undefined())], true);
         assert_eq!(reduced(&world, with_undefined.clone()), with_undefined);
-        // { o: open } -> itself
+        // { o: open } -> {} not complete: a bare unknown member is dropped
         let with_open = make(vec![("o", Value::unknown())], true);
-        assert_eq!(reduced(&world, with_open.clone()), with_open);
+        assert_eq!(nothing_known(reduced(&world, with_open)), (vec![], false));
+        // { o: open ∪ Fn } -> itself (complete, `o` still open)
+        let open_or_fn = fun().join(&Value::unknown());
+        let with_open_or_fn = make(vec![("o", open_or_fn.clone())], true);
+        assert_eq!(reduced(&world, with_open_or_fn.clone()), with_open_or_fn);
+        assert_eq!(
+            nothing_known(reduced(&world, with_open_or_fn)),
+            (vec![("o".to_owned(), open_or_fn)], true)
+        );
+        // { o: open ∪ { b: data } } -> {} not complete
+        let open_or_data = make(vec![("b", data())], true).join(&Value::unknown());
+        assert_eq!(
+            nothing_known(reduced(&world, make(vec![("o", open_or_data)], true))),
+            (vec![], false)
+        );
+        // { inner: { u: Undefined } } -> itself
+        let inner_undefined = make(vec![("inner", make(vec![("u", undefined())], true))], true);
+        assert_eq!(reduced(&world, inner_undefined.clone()), inner_undefined);
+        // { f: Fn, o: open } -> { f: Fn } not complete
+        assert_eq!(
+            nothing_known(reduced(
+                &world,
+                make(vec![("f", fun()), ("o", Value::unknown())], true)
+            )),
+            (vec![("f".to_owned(), fun())], false)
+        );
         // { inner: { a: data } } -> {} not complete
         let inner_data = make(vec![("inner", make(vec![("a", data())], true))], true);
         assert_eq!(nothing_known(reduced(&world, inner_data)), (vec![], false));

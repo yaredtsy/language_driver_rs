@@ -26,8 +26,7 @@ main | report | call report @07a92ab2
 main | report | call report @07a92ab2
 main | report | call report @077398c6
 main | save | pass save
-main | report | call report @b2ce4a50
+main | report | call report @07a92ab2
 main | Date.now | external typescript:lib DateConstructor.now
 report @077398c6 | console.log | external typescript:lib Console.log
 report @07a92ab2 | console.log | external typescript:lib Console.log
-report @b2ce4a50 | console.log | external typescript:lib Console.log

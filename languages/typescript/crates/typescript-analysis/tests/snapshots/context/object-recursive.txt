@@ -18,15 +18,12 @@ main
 edges:
 main | walk | call walk @cfb4b704
 main | save | pass save
-walk @03246be4 | visit | call save
-walk @03246be4 | visit | unresolved function_typed_value
-walk @03246be4 | walk | call walk @2e215067
-walk @2e215067 | visit | call save
-walk @2e215067 | visit | unresolved function_typed_value
-walk @2e215067 | walk | call walk @03246be4
+walk @41ccbf2d | visit | call save
+walk @41ccbf2d | visit | unresolved function_typed_value
+walk @41ccbf2d | walk | call walk @44eb1d1c
 walk @44eb1d1c | visit | call save
 walk @44eb1d1c | visit | unresolved function_typed_value
-walk @44eb1d1c | walk | call walk @03246be4
+walk @44eb1d1c | walk | call walk @41ccbf2d
 walk @cfb4b704 | visit | call save
 walk @cfb4b704 | visit | unresolved function_typed_value
 walk @cfb4b704 | walk | call walk @44eb1d1c

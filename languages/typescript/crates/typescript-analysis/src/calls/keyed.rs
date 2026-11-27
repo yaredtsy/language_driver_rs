@@ -807,13 +807,14 @@ fn relevance_and_the_bind_record_on_keys() {
 }
 
 /// TC4 step 4c: a key keeps only what can reach a call (`for_key`). In `object-data-members` the objects of the first two calls of `report` hold only data, so both
-/// are `{}` not complete and the two calls reach one context; the third holds `save` and has its own. With the objects bit off no object is in a key and `report`
+/// are `{}` not complete and the two calls reach one context; the third holds `save` and has its own; the fourth holds only an unknown member (`Date.now()`), which
+/// is dropped too (step 4c-fix), so it is the first's key. With the objects bit off no object is in a key and `report`
 /// has one context.
 #[test]
 fn data_members_make_no_context() {
     let sem = open("tests/fixtures/context/object-data-members");
     let (_, on) = solve(&sem, Some(Caps::BUILT));
-    assert_eq!(contexts(&on)["report"].len(), 3);
+    assert_eq!(contexts(&on)["report"].len(), 2);
     let mut calls: Vec<(u32, [u8; 16])> = on
         .edges
         .iter()
@@ -832,9 +833,8 @@ fn data_members_make_no_context() {
         "{{ a: 1 }} and {{ b: 2 }} are one key"
     );
     assert_ne!(calls[1].1, calls[2].1, "{{ c: 3, f: save }} has its own");
-    // `d` is unknown and kept today, so `{ d: Date.now() }` has its own
-    assert_ne!(calls[3].1, calls[0].1);
-    assert_ne!(calls[3].1, calls[2].1);
+    // `d` is unknown, and an unknown member is dropped too (step 4c-fix): `{ d: Date.now() }` is the same key
+    assert_eq!(calls[3].1, calls[0].1, "{{ d: Date.now() }} is one key too");
 
     let (_, off) = solve(&sem, Some(Caps::BUILT - Caps::OBJECTS));
     assert_eq!(contexts(&off)["report"].len(), 1);

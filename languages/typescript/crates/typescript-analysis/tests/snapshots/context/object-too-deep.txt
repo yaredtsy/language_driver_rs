@@ -22,7 +22,7 @@ main
 edges:
 main | runTwo | call runTwo @b5274d6c
 main | save | pass save
-main | runThree | call runThree @08587f07
+main | runThree | call runThree @07a92ab2
 main | save | pass save
-runThree @08587f07 | c | unresolved function_typed_value
+runThree @07a92ab2 | c | unresolved function_typed_value
 runTwo @b5274d6c | f | call save
