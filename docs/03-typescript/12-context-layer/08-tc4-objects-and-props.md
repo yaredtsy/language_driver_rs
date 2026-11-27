@@ -645,4 +645,35 @@ says only that what is unknown is data. Each is designed when its prompt is writ
 only the table snapshots moved. A shorthand is read through its value symbol; a def read through a member is not a hand-over; a rest
 parameter's pattern stays open.
 
+**Step 5, as decided for the build (reviewer, 2026-11-28, at `0224f02`).** Probed at HEAD with the layer on, before the design
+(`typescript-cli calls … --precise`, probes of the reviewer's scratchpad): `props.onClose()` with no pattern, a literal's method
+called through its own variable (`o.run()`), and **B7** (`emit({ write() { encode(); } })`, `w.write()` on an interface) are all
+answered **already at step 4**: the layer replaces the engine's open answer wherever it knows the value, and a literal's method is a
+def (D9) that `eval` turns into `One::Fn`. So of step 5's row only one thing is left to build: **what the layer says beside an
+engine answer that is not open at a member call**. Probed: `class Saver { save() {…} }`, `run(s: Saver) { s.save(); }`,
+`run({ save() { mine(); } })`: the engine names `Saver.save` through the type, the key of `run` holds the literal, and the layer
+says nothing (`holds_name` of a `Member` is false), so `mine` is never reached. The same hole is open for a local
+(`let s: Saver = …; s = {…}; s.save()`) and for `typeof` a const literal. It is D59's rule for a variable, applied to a member of a
+variable: show every function the receiver may hold.
+
+- **Two commits.** **5-1**: the fixtures of six rows (below), blessed with today's code; nothing but fixtures and snapshots moves, and
+  three of the six (`object-method`, `object-implements`, `props-member-call`) and the guard (`member-named-by-type-instance`) have the
+  **same** halves after 5-2. **5-2**: the code.
+- **5-2, the whole change.** (1) `walk::holds_name`: `Expr::Member(inner, _) => holds_name(inner)` (a name read through any number of
+  members: `a.b.c()`); `Object`, `Omit`, `Default` stay false. (2) `walk::reads_many_sources`: `Expr::Member(inner, _) =>
+  reads_many_sources(env, inner)`, so the ceiling of step 2b counts a read through a member (`variable_assigned_more_than_once`,
+  a count, not a graph change); `Object`, `Omit`, `Default` stay `None` (noted, not asked: a row read through them is not counted).
+  (3) nothing else: `resolve_from_env`'s non-open branch already evaluates the callee, drops what the engine calls (`already`),
+  adds the rest, applies the tripwire (D61) and counts `variable_added_to_engine`. **No new counter**: a member of a held object is
+  a variable's value (D59). The branch stays behind `Caps::LOCALS`, so `locals-off.txt` and `objects-off.txt` do not move.
+- **Why a literal beside `Saver.save` and not instead.** The layer adds and never removes (D59): the engine's
+  `Saver.save` is the declared type's answer and may be what runs when the object is a real instance. One edge too many beats one
+  missing (rule 8). A `new Saver()` argument is TC5's: its value is not known, so the layer says nothing (row
+  `member-named-by-type-instance`).
+- **Cost.** A site `a.b()` with `a` a variable or parameter now evaluates the callee when the engine's answer is not open, where it
+  returned at once. `eval` memoizes a row per context; the reviewer measures the dev sweep (private, tsc) before and after and the
+  counters `variable_added_to_engine`, `variable_assigned_more_than_once` on every sample. A time past the noise is a finding.
+- **What this does not do**: a member read of an instance or a class (`this.x()`, a field holding a function): TC5; relevance by
+  member: step 8b.
+
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
