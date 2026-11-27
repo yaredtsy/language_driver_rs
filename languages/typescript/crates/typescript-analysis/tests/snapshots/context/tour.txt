@@ -61,9 +61,11 @@ main
   encode [Passed]
   encode
   open
+    encode
   encode [Passed]
   Panel
     Panel.<locals>.back [Passed]
+      join
   join [Passed]
   send
   Json
@@ -76,8 +78,8 @@ main
   each
   join
 edges:
-Panel | back | pass Panel.<locals>.back
-Panel.<locals>.back | onClose | unresolved function_typed_value
+Panel @9767d14a | back | pass Panel.<locals>.back @31fedcf3
+Panel.<locals>.back @31fedcf3 | onClose | call join
 each @718115a3 | f | call encode
 each @725b147a | f | call join
 each @e33b6f72 | f | unresolved anonymous_function_called
@@ -87,9 +89,9 @@ main | relay | call relay @725b147a
 main | join | pass join
 main | encode | pass encode
 main | h | call encode
-main | open | call open
+main | open | call open @5e3e9f69
 main | encode | pass encode
-main | Panel | call Panel
+main | Panel | call Panel @9767d14a
 main | join | pass join
 main | send | call send
 main | Json | construct Json no init
@@ -100,7 +102,7 @@ main | twice(encode) | unresolved no_declaration
 main | encode | pass encode
 main | each | call each @e33b6f72
 main | join | call join
-open | opts.onDone | unresolved function_typed_value
+open @5e3e9f69 | opts.onDone | call encode
 pick | Csv | construct Csv no init
 relay @725b147a | each | call each @725b147a
 send | w.write | unresolved function_typed_value
@@ -172,11 +174,12 @@ open | opts.onDone | unresolved function_typed_value
 -- on
 lineD
   open
+    encode
   encode [Passed]
 edges:
-lineD | open | call open
+lineD | open | call open @5e3e9f69
 lineD | encode | pass encode
-open | opts.onDone | unresolved function_typed_value
+open @5e3e9f69 | opts.onDone | call encode
 == lineE
 -- off
 lineE
@@ -192,11 +195,12 @@ lineE | join | pass join
 lineE
   Panel
     Panel.<locals>.back [Passed]
+      join
   join [Passed]
 edges:
-Panel | back | pass Panel.<locals>.back
-Panel.<locals>.back | onClose | unresolved function_typed_value
-lineE | Panel | call Panel
+Panel @9767d14a | back | pass Panel.<locals>.back @31fedcf3
+Panel.<locals>.back @31fedcf3 | onClose | call join
+lineE | Panel | call Panel @9767d14a
 lineE | join | pass join
 == lineF
 -- off

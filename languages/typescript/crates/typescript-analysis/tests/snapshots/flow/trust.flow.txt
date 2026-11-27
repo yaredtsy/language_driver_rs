@@ -117,7 +117,7 @@ anons: 0
 handed: none
 == pattern
 params:
-  #0 pattern names: var a@40 var b@40
+  #0 pattern capable names: var a@40 var b@40
 vars:
   a@40 capable = member(param#0, a)
   b@40 capable = member(param#0, b)
@@ -255,7 +255,7 @@ anons: 0
 handed: none
 == pat
 params:
-  #0 pattern names: var a@59
+  #0 pattern capable names: var a@59
 vars:
   a@59 capable = member(param#0, a)
 sites:
@@ -264,7 +264,7 @@ anons: 0
 handed: none
 == patWrites
 params:
-  #0 pattern names: var b@60
+  #0 pattern capable names: var b@60
 vars:
   b@60 capable = member(param#0, b) uses(escapes)
 sites: none

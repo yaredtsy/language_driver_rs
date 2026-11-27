@@ -12,10 +12,13 @@ open | onDone | unresolved function_typed_value
 -- on
 main
   open
+    a
+    b
   a [Passed]
   b [Passed]
 edges:
-main | open | call open
+main | open | call open @feec76b2
 main | a | pass a
 main | b | pass b
-open | onDone | unresolved function_typed_value
+open @feec76b2 | onDone | call a
+open @feec76b2 | onDone | call b

@@ -842,7 +842,7 @@ fn the_parameter_rows_say_what_each_parameter_is() {
         row("uses", 0),
         [
             "#0 capable",
-            "#1 pattern names: var x@16",
+            "#1 pattern capable names: var x@16",
             "#2 rest capable"
         ]
     );

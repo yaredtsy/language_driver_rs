@@ -10,10 +10,11 @@ main | handleClose | pass handleClose
 -- on
 main
   Panel
+    handleClose
   handleClose [Passed]
 edges:
-Panel | onClose | unresolved function_typed_value
-main | Panel | call Panel
+Panel @a4dcb001 | onClose | call handleClose
+main | Panel | call Panel @a4dcb001
 main | handleClose | pass handleClose
 == Panel
 -- off

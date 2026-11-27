@@ -6,8 +6,9 @@
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::Arc;
 
+use crate::caps::Caps;
 use crate::eval::World;
-use crate::flow::{DefId, Expr, Flow, VarId};
+use crate::flow::{DefId, Expr, Flow, Part, VarId};
 
 /// The variables of the functions around `def` that `def` needs to be given (`07-tc3` §4), sorted by `VarId`. Empty for a def at the top of its file, and for
 /// a def whose table the world does not have.
@@ -131,7 +132,7 @@ fn component(world: &dyn World, def: DefId) -> (Component, Work) {
 /// row is capable. A variable whose declaring table or row the world does not have is not a read.
 fn reads(world: &dyn World, own: DefId, table: &Flow) -> BTreeSet<VarId> {
     let mut found = BTreeSet::new();
-    each_expr(table, &mut |expr| {
+    each_expr(table, world.knows(Caps::OBJECTS), &mut |expr| {
         if let Expr::Var(id) = expr
             && id.def != own
             && id.def.index().is_some()
@@ -149,7 +150,7 @@ fn reads(world: &dyn World, own: DefId, table: &Flow) -> BTreeSet<VarId> {
 /// The defs `table` names that are nested in another (`Flow::around` is `Some`): a def at the top of a file captures nothing. In the order of the table.
 fn named(world: &dyn World, table: &Flow) -> Vec<DefId> {
     let mut found: Vec<DefId> = Vec::new();
-    each_expr(table, &mut |expr| {
+    each_expr(table, world.knows(Caps::OBJECTS), &mut |expr| {
         if let Expr::Def(handle) = expr
             && !found.contains(handle)
             && world
@@ -162,45 +163,70 @@ fn named(world: &dyn World, table: &Flow) -> Vec<DefId> {
     found
 }
 
-/// Every expression of the table, `OneOf` members included: each site's callee and arguments, each hand-over's value, each parameter's default, and each
-/// row's assigned expressions.
-pub(crate) fn each_expr(table: &Flow, each: &mut dyn FnMut(&Expr)) {
-    fn walk(expr: &Expr, each: &mut dyn FnMut(&Expr)) {
-        each(expr);
-        match expr {
-            Expr::OneOf(members) => {
-                for member in members {
-                    walk(member, each);
+/// `expr` and every expression inside it, outside first: a `OneOf`'s members, and, with `objects` (the layer knows `Caps::OBJECTS`), what an object's members are
+/// read through: the object of a `Member` or an `Omit`, each value of an `Object`'s parts, and both sides of a `Default`. Without `objects` these are leaves, as
+/// before TC4. A `match` with no `_` arm, so a variant a later step adds does not compile until this decides it.
+pub(crate) fn each_in(expr: &Expr, objects: bool, each: &mut dyn FnMut(&Expr)) {
+    each(expr);
+    match expr {
+        Expr::OneOf(members) => {
+            for member in members {
+                each_in(member, objects, each);
+            }
+        }
+        Expr::Member(object, _) | Expr::Omit(object, _) => {
+            if objects {
+                each_in(object, objects, each);
+            }
+        }
+        Expr::Object(parts) => {
+            if objects {
+                for part in parts {
+                    match part {
+                        Part::Named(_, value) | Part::Spread(value) => {
+                            each_in(value, objects, each);
+                        }
+                        Part::Unnamed => {}
+                    }
                 }
             }
-            // entered from TC4 step 2
-            Expr::Member(..) | Expr::Object(_) | Expr::Omit(..) | Expr::Default(..) => {}
-            Expr::Unknown
-            | Expr::Data
-            | Expr::Undefined
-            | Expr::Def(_)
-            | Expr::Param(_)
-            | Expr::Anon(_)
-            | Expr::Var(_) => {}
         }
+        Expr::Default(value, default) => {
+            if objects {
+                each_in(value, objects, each);
+                each_in(default, objects, each);
+            }
+        }
+        Expr::Unknown
+        | Expr::Data
+        | Expr::Undefined
+        | Expr::Def(_)
+        | Expr::Param(_)
+        | Expr::Var(_)
+        | Expr::Anon(_) => {}
     }
+}
+
+/// Every expression of the table, `OneOf` members included: each site's callee and arguments, each hand-over's value, each parameter's default, and each
+/// row's assigned expressions, each walked by `each_in` (so `objects` says what is entered inside them).
+pub(crate) fn each_expr(table: &Flow, objects: bool, each: &mut dyn FnMut(&Expr)) {
     for site in &table.sites {
-        walk(&site.callee, each);
+        each_in(&site.callee, objects, each);
         for arg in site.args.iter().flatten() {
-            walk(&arg.value, each);
+            each_in(&arg.value, objects, each);
         }
     }
     for held in &table.handed {
-        walk(&held.value, each);
+        each_in(&held.value, objects, each);
     }
     for param in &table.params {
         if let Some(default) = &param.default {
-            walk(default, each);
+            each_in(default, objects, each);
         }
     }
     for var in &table.vars {
         for value in &var.assigned {
-            walk(value, each);
+            each_in(value, objects, each);
         }
     }
 }
@@ -221,6 +247,7 @@ mod tests {
     struct Tables(
         HashMap<DefId, Arc<Flow>>,
         RefCell<HashMap<DefId, Arc<[VarId]>>>,
+        Caps,
     );
 
     impl World for Tables {
@@ -230,8 +257,8 @@ mod tests {
 
         fn widened(&self) {}
 
-        fn knows(&self, _caps: Caps) -> bool {
-            true
+        fn knows(&self, caps: Caps) -> bool {
+            self.2.contains(caps)
         }
 
         fn note(&self, _key: &'static str) {}
@@ -330,8 +357,39 @@ mod tests {
         })
     }
 
+    /// A world whose layer is `Caps::BUILT`.
     fn world(tables: Vec<(DefId, Arc<Flow>)>) -> Tables {
-        Tables(tables.into_iter().collect(), RefCell::default())
+        Tables(
+            tables.into_iter().collect(),
+            RefCell::default(),
+            Caps::BUILT,
+        )
+    }
+
+    #[test]
+    fn a_variable_read_only_inside_a_member_is_needed_with_objects_and_not_without() {
+        // D = d(0) declares x@1; g = d(1) in D reads it only as the object of a member (`x.k`), as the object of an omit and in an object literal's part
+        let (dd, g) = (d(0), d(1));
+        let tables = |reads: Expr| {
+            vec![
+                (dd, table(None, vec![row(1, true)], vec![])),
+                (g, table(Some(dd), vec![], vec![reads])),
+            ]
+        };
+        let x = || Box::new(Expr::Var(var(dd, 1)));
+        let forms = [
+            Expr::Member(x(), "k".into()),
+            Expr::Omit(x(), ["k".into()].into()),
+            Expr::Object([Part::Named("k".into(), Expr::Var(var(dd, 1)))].into()),
+            Expr::Default(x(), Box::new(Expr::Unknown)),
+        ];
+        for form in forms {
+            let on = world(tables(form.clone()));
+            assert_eq!(*needs(&on, g), [var(dd, 1)], "{form:?}");
+            let mut off = world(tables(form.clone()));
+            off.2 = Caps::BUILT - Caps::OBJECTS;
+            assert!(needs(&off, g).is_empty(), "{form:?} off");
+        }
     }
 
     #[test]

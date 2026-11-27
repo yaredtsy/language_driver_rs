@@ -7,7 +7,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use crate::eval::World;
-use crate::flow::{DefId, Expr, Flow, Part, Uses, VarId};
+use crate::flow::{DefId, Expr, Flow, Uses, VarId};
 use crate::needs::each_expr;
 
 /// Each variable of a component with whether its object can be trusted.
@@ -148,12 +148,13 @@ pub(crate) fn body_counts(world: &dyn World, def: DefId, flow: &Flow) -> BodyCou
     );
     // the variables of the file's own code that the table reads, anywhere in an expression, each once
     let mut read: BTreeSet<VarId> = BTreeSet::new();
-    each_expr(flow, &mut |expr| {
-        each_var(expr, &mut |var| {
-            if var.def.index().is_none() {
-                read.insert(var);
-            }
-        });
+    // `body_counts` runs only with the bit, so `each_expr` enters every expression inside a member read, an object and a default
+    each_expr(flow, true, &mut |expr| {
+        if let Expr::Var(var) = expr
+            && var.def.index().is_none()
+        {
+            read.insert(*var);
+        }
     });
     let module_object_shared = read
         .into_iter()
@@ -170,37 +171,6 @@ pub(crate) fn body_counts(world: &dyn World, def: DefId, flow: &Flow) -> BodyCou
         member_call_on_trusted,
         this_written_outside_class,
         module_object_shared,
-    }
-}
-
-/// Every variable `expr` names, however deep: a member of a `OneOf`, the object of a `Member` or an `Omit`, a part of an `Object`, both sides of a `Default`.
-fn each_var(expr: &Expr, found: &mut impl FnMut(VarId)) {
-    match expr {
-        Expr::Var(var) => found(*var),
-        Expr::OneOf(members) => {
-            for member in members {
-                each_var(member, found);
-            }
-        }
-        Expr::Member(object, _) | Expr::Omit(object, _) => each_var(object, found),
-        Expr::Object(parts) => {
-            for part in parts {
-                match part {
-                    Part::Named(_, value) | Part::Spread(value) => each_var(value, found),
-                    Part::Unnamed => {}
-                }
-            }
-        }
-        Expr::Default(value, default) => {
-            each_var(value, found);
-            each_var(default, found);
-        }
-        Expr::Unknown
-        | Expr::Data
-        | Expr::Undefined
-        | Expr::Def(_)
-        | Expr::Param(_)
-        | Expr::Anon(_) => {}
     }
 }
 
@@ -770,7 +740,8 @@ mod tests {
             None,
         );
         let counts = |this_uses: Option<Uses>, reads: Vec<Expr>| {
-            // one trusted receiver, one that escapes, and one trusted with no method called on it
+            // one trusted receiver, one that escapes, one trusted with no method called on it, and one that is not capable and would be trusted, with a
+            // receiver: not counted (data has no method to write through `this`)
             let body = with_this(
                 vec![
                     Var {
@@ -779,6 +750,10 @@ mod tests {
                     },
                     row(2, None, receiver(true)),
                     row(3, None, clean()),
+                    Var {
+                        capable: false,
+                        ..row(4, None, receiver(false))
+                    },
                 ],
                 this_uses,
             );

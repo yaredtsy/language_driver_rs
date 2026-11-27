@@ -13,11 +13,12 @@ main | handleClose | pass handleClose
 main
   Panel
     Panel.<locals>.back [Passed]
+      handleClose
   handleClose [Passed]
 edges:
-Panel | back | pass Panel.<locals>.back
-Panel.<locals>.back | onClose | unresolved function_typed_value
-main | Panel | call Panel
+Panel @a4dcb001 | back | pass Panel.<locals>.back @a0e485c7
+Panel.<locals>.back @a0e485c7 | onClose | call handleClose
+main | Panel | call Panel @a4dcb001
 main | handleClose | pass handleClose
 == Panel
 -- off

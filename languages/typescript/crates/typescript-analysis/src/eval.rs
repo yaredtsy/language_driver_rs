@@ -1,12 +1,13 @@
 //! What an expression of a table can be (`docs/03-typescript/12-context-layer/03-design.md` §3, §7). What it needs that is not in the table it asks
 //! through `World`, so a test answers by hand and the file has no tie to the engine (§15.4).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::caps::Caps;
 use crate::env::{Env, MODULE_READS_MODULE, VARIABLE_ROUNDS_CAPPED};
 use crate::flow::{DefId, Expr, Flow, Part, VarId};
+use crate::needs::each_in;
 use crate::nested::{CaptureList, ObjectData, VALUE_WIDENED_DEPTH, VALUE_WIDENED_MEMBERS};
 use crate::value::{Captures, ObjectId, One, Value};
 
@@ -511,49 +512,190 @@ fn row_value(world: &dyn World, env: &Env, i: usize, current: &[Value]) -> Value
     value
 }
 
-/// The value of every row of the table, solved together (`07-tc3` §3). Start from data, the empty closed value (nothing can be there), and compute every row
-/// from the last round's values until a round changes nothing: values only grow, so this ends, and what it ends at is the least value that satisfies every row.
-/// Past `MAX_ROUNDS` the rows are opened instead, and `variable_rounds_capped` says so.
+/// The rows of the table that row `i` reads, sorted: what evaluating the row asks of `current`. An `Expr::Var` of this body with a row; an `Expr::Param` of a
+/// parameter the body writes (it reads that parameter's row: `param_value`); a def named in it (`Expr::Def`) reads the rows of this body that the def needs
+/// (`function` captures their values here). For a parameter's row, the same in the parameter's default (`passed`). Every form is entered, objects or not: this
+/// is only an order to solve the rows in.
+fn reads_of_row(world: &dyn World, env: &Env, i: usize) -> Vec<usize> {
+    let row = &env.flow.vars[i];
+    let captures = world.knows(Caps::CAPTURES);
+    let mut found: BTreeSet<usize> = BTreeSet::new();
+    let mut each = |expr: &Expr| match expr {
+        Expr::Var(id) if id.def == env.def => {
+            found.extend(env.flow.var_index(id.at));
+        }
+        Expr::Param(index) => {
+            if env
+                .flow
+                .params
+                .get(*index as usize)
+                .is_some_and(|param| param.assigned)
+            {
+                found.extend(env.flow.param_var(*index));
+            }
+        }
+        Expr::Def(def) if captures => {
+            for id in world.needs(*def).iter().filter(|id| id.def == env.def) {
+                found.extend(env.flow.var_index(id.at));
+            }
+        }
+        _ => {}
+    };
+    for assigned in &row.assigned {
+        each_in(assigned, true, &mut each);
+    }
+    if let Some(index) = row.param
+        && let Some(default) = env
+            .flow
+            .params
+            .get(index as usize)
+            .and_then(|param| param.default.as_ref())
+    {
+        each_in(default, true, &mut each);
+    }
+    found.into_iter().collect()
+}
+
+/// The strongly connected components of "row reads row" (`reads[i]` are the rows `i` reads), each component after every component it reads, rows of a component
+/// sorted. Tarjan's algorithm, written with a stack of its own: a body can have thousands of rows, and a recursion that deep would overflow the thread's. Rows are
+/// visited in index order and reads in sorted order, so the order of the components is the same on every run.
+fn components(reads: &[Vec<usize>]) -> Vec<Vec<usize>> {
+    const NONE: usize = usize::MAX;
+    let rows = reads.len();
+    let mut order = vec![NONE; rows];
+    let mut low = vec![0usize; rows];
+    let mut on_stack = vec![false; rows];
+    let mut stack: Vec<usize> = Vec::new();
+    // the rows being visited, each with the place of the next read to follow
+    let mut path: Vec<(usize, usize)> = Vec::new();
+    let mut found: Vec<Vec<usize>> = Vec::new();
+    let mut next = 0;
+    let mut enter = |row: usize,
+                     order: &mut Vec<usize>,
+                     low: &mut Vec<usize>,
+                     stack: &mut Vec<usize>,
+                     on_stack: &mut Vec<bool>| {
+        order[row] = next;
+        low[row] = next;
+        next += 1;
+        stack.push(row);
+        on_stack[row] = true;
+    };
+    for root in 0..rows {
+        if order[root] != NONE {
+            continue;
+        }
+        enter(root, &mut order, &mut low, &mut stack, &mut on_stack);
+        path.push((root, 0));
+        while let Some(&(row, at)) = path.last() {
+            if let Some(&read) = reads[row].get(at) {
+                if let Some(top) = path.last_mut() {
+                    top.1 = at + 1;
+                }
+                if order[read] == NONE {
+                    enter(read, &mut order, &mut low, &mut stack, &mut on_stack);
+                    path.push((read, 0));
+                } else if on_stack[read] {
+                    low[row] = low[row].min(order[read]);
+                }
+                continue;
+            }
+            path.pop();
+            if low[row] == order[row] {
+                let mut members = Vec::new();
+                while let Some(member) = stack.pop() {
+                    on_stack[member] = false;
+                    members.push(member);
+                    if member == row {
+                        break;
+                    }
+                }
+                members.sort_unstable();
+                found.push(members);
+            }
+            if let Some(&(parent, _)) = path.last() {
+                low[parent] = low[parent].min(low[row]);
+            }
+        }
+    }
+    found
+}
+
+/// The value of every row of the table (`07-tc3` §3), solved **in the order of their reads**: the rows are split into the strongly connected components of "row
+/// reads row" (`reads_of_row`) and each component is solved after every component it reads.
 ///
-/// Each round joins the last round's value in, so the rounds grow whatever the rows do (see the comment in the loop).
+/// A row that is alone in its component and does not read itself is evaluated **once**, from the rows settled before it (`row_value`).
 ///
-/// The rounds are quiet. One last round with the real world, from the values the rounds ended on, gives the answer and says what there is to say once
-/// (`value_widened_set`), however many rounds it took.
+/// Any other component iterates: start its rows from data, the empty closed value (nothing can be there), and compute each row from the last round's values
+/// until a round changes nothing. Values only grow, so this ends, and what it ends at is the least value that satisfies the rows. Past `MAX_ROUNDS` rounds
+/// the component does not settle, and the whole body is opened instead (every row joined with unknown), and `variable_rounds_capped` says so, once. Each round
+/// joins the last round's value in, so the rounds grow whatever the rows do (see the comment in the loop). The rounds are quiet: one last pass of the
+/// component's rows with the real world gives the answer and says what there is to say once (`value_widened_set`), however many rounds it took. A single row
+/// needs no last pass: it is evaluated with the real world the one time.
+///
+/// Why in this order. A row read through a row that has not been computed yet sees data, and a member of data is unknown (a string's `trim` is a function, so
+/// reading it as nothing would drop a call). The old loop started every row at data and kept it through the round join: `const o = opts; const { onDone } = o`,
+/// written `onDone`, `o`, `opts`, read `onDone` open in the first round and kept it open, although every name is trusted. Solving what a row reads first leaves
+/// no row read before it has its value, except inside a cycle, where the values really are the least answer of all of its rows together. For values of
+/// functions the answer is the same as before, since only a read through a member depends on the order.
 fn solve(world: &dyn World, env: &Env) -> Box<[Value]> {
     let rows = env.flow.vars.len();
     let quiet = Quiet(world);
+    let reads: Vec<Vec<usize>> = (0..rows).map(|i| reads_of_row(world, env, i)).collect();
     let mut current: Vec<Value> = vec![Value::data(); rows];
-    let mut capped = true;
-    for _ in 0..MAX_ROUNDS {
-        // each round keeps what the last had: every row of TC2 and TC3 step 2 only grows from round to round, so this changes none of them, but the depth cut of
-        // a closure (`captures`) writes a deeper one as its bare function, which is not growth, and a def that captures a variable that holds itself would
-        // then swap between two values for ever
-        let next: Vec<Value> = (0..rows)
-            .map(|i| join(&quiet, &current[i], &row_value(&quiet, env, i, &current)))
-            .collect();
-        if next == current {
-            capped = false;
-            break;
+    let mut capped = false;
+    for component in components(&reads) {
+        if let [row] = component[..]
+            && !reads[row].contains(&row)
+        {
+            current[row] = row_value(world, env, row, &current);
+            continue;
         }
-        current = next;
+        let mut settled = false;
+        for _ in 0..MAX_ROUNDS {
+            // each round keeps what the last had: every row of TC2 and TC3 step 2 only grows from round to round, so this changes none of them, but the depth cut
+            // of a closure (`captures`) writes a deeper one as its bare function, which is not growth, and a def that captures a variable that holds itself would
+            // then swap between two values for ever
+            let next: Vec<Value> = component
+                .iter()
+                .map(|&i| join(&quiet, &current[i], &row_value(&quiet, env, i, &current)))
+                .collect();
+            let same = component
+                .iter()
+                .zip(&next)
+                .all(|(&i, value)| current[i] == *value);
+            for (&i, value) in component.iter().zip(next) {
+                current[i] = value;
+            }
+            if same {
+                settled = true;
+                break;
+            }
+        }
+        if !settled {
+            for &i in &component {
+                current[i] = current[i].join(&Value::unknown());
+            }
+            if !capped {
+                world.note(VARIABLE_ROUNDS_CAPPED);
+            }
+            capped = true;
+        }
+        let last: Vec<Value> = component
+            .iter()
+            .map(|&i| join(world, &current[i], &row_value(world, env, i, &current)))
+            .collect();
+        for (&i, value) in component.iter().zip(last) {
+            current[i] = value;
+        }
     }
+    // a body that did not settle is open in every row, whatever the last pass says
     if capped {
         for value in &mut current {
             *value = value.join(&Value::unknown());
         }
-        world.note(VARIABLE_ROUNDS_CAPPED);
     }
-    (0..rows)
-        .map(|i| {
-            let value = join(world, &current[i], &row_value(world, env, i, &current));
-            // a body that did not settle is open in every row, whatever the last round says
-            if capped {
-                value.join(&Value::unknown())
-            } else {
-                value
-            }
-        })
-        .collect()
+    current.into()
 }
 
 #[cfg(test)]
@@ -1025,8 +1167,41 @@ mod tests {
     }
 
     #[test]
-    fn a_chain_that_needs_more_rounds_than_the_cap_opens_every_row() {
-        // row k reads row k + 1, and the last is `a`: a value moves one row a round, so row 0 needs 40
+    fn a_ring_that_needs_more_rounds_than_the_cap_opens_every_row() {
+        // row k reads row k + 1, and the last also holds `a` and reads row 0 (a cycle): a value moves one row a round, so row 0 needs 40
+        let ring = |length: u32| -> Vec<Var> {
+            (0..length)
+                .map(|k| {
+                    let assigned = if k + 1 == length {
+                        vec![Expr::Def(d(1)), Expr::Var(vid(0))]
+                    } else {
+                        vec![Expr::Var(vid((k + 1) * 10))]
+                    };
+                    local(k * 10, assigned)
+                })
+                .collect()
+        };
+        let env = env_with_vars(vec![], vec![], ring(40));
+        let long = world(&env);
+        for k in 0..40 {
+            assert!(of_var(&long, &env, k * 10).is_open(), "row {k}");
+        }
+        // however many rows were read, the body was capped once
+        assert_eq!(
+            *long.notes.borrow(),
+            BTreeMap::from([(VARIABLE_ROUNDS_CAPPED, 1)])
+        );
+        // a ring the cap holds is read exactly
+        let env = env_with_vars(vec![], vec![], ring(20));
+        let world = world(&env);
+        assert_eq!(of_var(&world, &env, 0), func(1));
+        assert!(world.notes.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_chain_is_read_exactly_however_long() {
+        // row k reads row k + 1, and the last is `a`: no row is in a cycle, so each is evaluated once, from the row it reads (the old loop moved a value one row a
+        // round and opened the body at 33 rows)
         let rows: Vec<Var> = (0..40)
             .map(|k| {
                 let assigned = if k == 39 {
@@ -1038,29 +1213,10 @@ mod tests {
             })
             .collect();
         let env = env_with_vars(vec![], vec![], rows);
-        let long = world(&env);
-        for k in 0..40 {
-            assert!(of_var(&long, &env, k * 10).is_open(), "row {k}");
-        }
-        // however many rows were read, the body was capped once
-        assert_eq!(
-            *long.notes.borrow(),
-            BTreeMap::from([(VARIABLE_ROUNDS_CAPPED, 1)])
-        );
-        // a chain the cap holds is read exactly
-        let short: Vec<Var> = (0..20)
-            .map(|k| {
-                let assigned = if k == 19 {
-                    Expr::Def(d(1))
-                } else {
-                    Expr::Var(vid((k + 1) * 10))
-                };
-                local(k * 10, vec![assigned])
-            })
-            .collect();
-        let env = env_with_vars(vec![], vec![], short);
         let world = world(&env);
-        assert_eq!(of_var(&world, &env, 0), func(1));
+        for k in 0..40 {
+            assert_eq!(of_var(&world, &env, k * 10), func(1), "row {k}");
+        }
         assert!(world.notes.borrow().is_empty());
     }
 
@@ -1396,7 +1552,7 @@ mod tests {
     #[test]
     fn objects_are_off_without_their_bit() {
         let env = env(vec![], vec![]);
-        let world = world_knowing(&env, Caps::BUILT);
+        let world = world_knowing(&env, Caps::BUILT - Caps::OBJECTS);
         let of = |expr: Expr| eval(&world, &env, &expr);
         let literal = || object_expr(vec![named("a", def(1))]);
         assert_eq!(of(literal()), Value::unknown());
@@ -1547,7 +1703,7 @@ mod tests {
 
     #[test]
     fn a_variable_that_holds_an_object_settles() {
-        // `x = f; x = g;  y = { a: x }`
+        // `x = f; x = g;  y = { a: x }`: y reads x, and no row is in a cycle, so each is evaluated once
         let env = env_with_vars(
             vec![],
             vec![],
@@ -1559,16 +1715,82 @@ mod tests {
         let world = world_knowing(&env, objects_on());
         let a_of_y = eval(&world, &env, &member_expr(Expr::Var(vid(20)), "a"));
         assert_eq!(a_of_y, Value::of([One::Fn(d(1)), One::Fn(d(2))], false));
-        // one object literal is evaluated once a row and round, and once more for the answer: the rounds are the calls less that one
-        let rounds = world.made.get() - 1;
+        // one object literal is evaluated once a row and round: one row, one round
+        assert_eq!(world.made.get(), 1);
         let y = of_var(&world, &env, 20);
-        let objects = y.known().len();
-        assert_eq!(rounds, 3);
         assert!(!y.is_open());
-        assert_eq!(
-            objects, 2,
-            "round one made `{{ a: data }}`, round two `{{ a: {{f, g}} }}`, and the value keeps both"
+        assert_eq!(y.known().len(), 1);
+    }
+
+    #[test]
+    fn a_cycle_through_a_member_settles_open() {
+        // `x = f; x = y.a;  y = { a: x }`: x and y read each other, so they iterate from data, as the old loop did. Round one reads `a` of data (unknown), and
+        // the round join keeps it: x is `{f}` and open. Not wrong, only wide; the order of the reads cannot help inside a cycle
+        let env = env_with_vars(
+            vec![],
+            vec![],
+            vec![
+                local(10, vec![def(1), member_expr(Expr::Var(vid(20)), "a")]),
+                local(20, vec![object_expr(vec![named("a", Expr::Var(vid(10)))])]),
+            ],
         );
+        let world = world_knowing(&env, objects_on());
+        let x = of_var(&world, &env, 10);
+        assert_eq!(x, opened(func(1)));
+        assert!(world.notes.borrow().is_empty());
+    }
+
+    #[test]
+    fn rows_are_solved_in_the_order_of_their_reads() {
+        // `opts` (a parameter whose key holds `{ onDone: save }`), `o = opts`, `onDone = o.onDone`, the rows written in the order onDone, o, opts: the worst order
+        // for a loop over the rows in index order, which reads `onDone` through a row that has not been computed
+        let vars = vec![
+            local(10, vec![member_expr(Expr::Var(vid(20)), "onDone")]),
+            local(20, vec![Expr::Var(vid(30))]),
+            var_row(30, Some(0), true, vec![], false),
+        ];
+        // the object is interned before the key that holds it is made; the world's table of this def is not read
+        let world = world_knowing(&param_env(Value::unknown()), objects_on());
+        let object = world.object(vec![("onDone".into(), func(5))], true).0;
+        let held = Value::of([One::Object(object.expect("an object"))], false);
+        let env = env_with_vars(vec![row(false, None, false)], vec![held], vars);
+        let on_done = of_var(&world, &env, 10);
+        assert_eq!(on_done, func(5));
+        assert!(!on_done.is_open());
+        assert!(world.notes.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_cycle_among_rows_still_gives_both_their_functions() {
+        // `a = b; b = a | f`
+        let env = env_with_vars(
+            vec![],
+            vec![],
+            vec![
+                local(10, vec![Expr::Var(vid(20))]),
+                local(20, vec![Expr::OneOf([Expr::Var(vid(10)), def(1)].into())]),
+            ],
+        );
+        let world = world(&env);
+        assert_eq!(of_var(&world, &env, 10), func(1));
+        assert_eq!(of_var(&world, &env, 20), func(1));
+    }
+
+    #[test]
+    fn the_components_come_after_what_they_read() {
+        // 0 reads 1, 1 reads 2 and 3, 2 and 3 read each other, 4 reads itself and 0
+        let reads = vec![vec![1], vec![2, 3], vec![3], vec![2], vec![0, 4]];
+        assert_eq!(
+            components(&reads),
+            vec![vec![2, 3], vec![1], vec![0], vec![4]]
+        );
+        // a deep chain does not overflow the stack
+        let chain: Vec<Vec<usize>> = (0..100_000)
+            .map(|k| if k + 1 < 100_000 { vec![k + 1] } else { vec![] })
+            .collect();
+        let found = components(&chain);
+        assert_eq!(found.len(), 100_000);
+        assert_eq!(found[0], vec![99_999]);
     }
 
     #[test]

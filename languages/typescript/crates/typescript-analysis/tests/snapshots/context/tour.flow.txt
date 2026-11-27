@@ -78,7 +78,7 @@ anons: 0
 handed: none
 == Panel
 params:
-  #0 pattern names: var onClose@13
+  #0 pattern capable names: var onClose@13
 vars:
   onClose@13 capable = member(param#0, onClose)
   back@14 capable = def Panel.<locals>.back uses(escapes)

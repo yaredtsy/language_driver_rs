@@ -5,8 +5,9 @@
 
 use std::collections::HashSet;
 
+use crate::caps::Caps;
 use crate::eval::World;
-use crate::flow::{DefId, Expr, Flow};
+use crate::flow::{DefId, Expr, Flow, Part};
 use crate::needs::each_expr;
 
 /// For each parameter of `def` (in `Flow::params` order): whether its value can reach a call of the body. Empty for a def whose table the world does not
@@ -24,9 +25,11 @@ pub(crate) fn relevant(world: &dyn World, def: DefId) -> Box<[bool]> {
     if flow.params.is_empty() {
         return Box::new([]);
     }
+    let objects = world.knows(Caps::OBJECTS);
     let mut marks = Marks {
         flow: &flow,
         def,
+        objects,
         params: vec![false; flow.params.len()],
         rows: vec![false; flow.vars.len()],
         work: Vec::new(),
@@ -43,7 +46,7 @@ pub(crate) fn relevant(world: &dyn World, def: DefId) -> Box<[bool]> {
     // a nested def named anywhere in the table is given what it needs: a variable of this def that it needs is read by the code it makes
     let mut named: HashSet<DefId> = HashSet::new();
     let mut nested: Vec<DefId> = Vec::new();
-    each_expr(&flow, &mut |expr| {
+    each_expr(&flow, objects, &mut |expr| {
         if let Expr::Def(handle) = expr
             && named.insert(*handle)
         {
@@ -70,6 +73,8 @@ enum Work {
 struct Marks<'a> {
     flow: &'a Flow,
     def: DefId,
+    /// The layer knows `Caps::OBJECTS`: an atom is looked for inside a member read, an object and a default too.
+    objects: bool,
     params: Vec<bool>,
     rows: Vec<bool>,
     work: Vec<Work>,
@@ -86,17 +91,33 @@ impl Marks<'_> {
                 }
             }
             Expr::OneOf(members) => members.iter().for_each(|member| self.atoms(member)),
-            // TC4 step 2 reads what is inside these
+            Expr::Member(object, _) | Expr::Omit(object, _) => {
+                if self.objects {
+                    self.atoms(object);
+                }
+            }
+            Expr::Object(parts) => {
+                if self.objects {
+                    for part in parts {
+                        match part {
+                            Part::Named(_, value) | Part::Spread(value) => self.atoms(value),
+                            Part::Unnamed => {}
+                        }
+                    }
+                }
+            }
+            Expr::Default(value, default) => {
+                if self.objects {
+                    self.atoms(value);
+                    self.atoms(default);
+                }
+            }
             Expr::Unknown
             | Expr::Data
             | Expr::Undefined
             | Expr::Def(_)
             | Expr::Anon(_)
-            | Expr::Var(_)
-            | Expr::Member(..)
-            | Expr::Object(_)
-            | Expr::Omit(..)
-            | Expr::Default(..) => {}
+            | Expr::Var(_) => {}
         }
     }
 
@@ -156,7 +177,7 @@ mod tests {
     use crate::value::{Captures, Value};
 
     /// A world of hand-made tables.
-    struct Tables(HashMap<DefId, Arc<Flow>>);
+    struct Tables(HashMap<DefId, Arc<Flow>>, Caps);
 
     impl World for Tables {
         fn flow(&self, def: DefId) -> Option<Arc<Flow>> {
@@ -165,8 +186,8 @@ mod tests {
 
         fn widened(&self) {}
 
-        fn knows(&self, _caps: Caps) -> bool {
-            true
+        fn knows(&self, caps: Caps) -> bool {
+            self.1.contains(caps)
         }
 
         fn note(&self, _key: &'static str) {}
@@ -292,8 +313,9 @@ mod tests {
         })
     }
 
+    /// A world whose layer is `Caps::BUILT`.
     fn world(tables: Vec<(DefId, Arc<Flow>)>) -> Tables {
-        Tables(tables.into_iter().collect())
+        Tables(tables.into_iter().collect(), Caps::BUILT)
     }
 
     /// One def, `d(0)`, at the top of its file, and what `relevant` says of it.
@@ -355,6 +377,41 @@ mod tests {
             ),
             [true, false]
         );
+    }
+
+    #[test]
+    fn a_parameter_read_through_a_member_reaches_the_call_only_with_objects() {
+        // `cb.k()`, `({ k: cb }).k()`, `const { k = cb } = o; k()`'s shapes: the callee is a member of the parameter, an object holding it, a default of it
+        let p = || Box::new(Expr::Param(0));
+        let callees = [
+            Expr::Member(p(), "k".into()),
+            Expr::Member(
+                Box::new(Expr::Object(
+                    [Part::Named("k".into(), Expr::Param(0))].into(),
+                )),
+                "k".into(),
+            ),
+            Expr::Default(Box::new(Expr::Unknown), p()),
+            Expr::Omit(p(), ["j".into()].into()),
+        ];
+        for callee in callees {
+            let tables = || {
+                vec![(
+                    d(0),
+                    table(
+                        None,
+                        vec![param(None)],
+                        vec![],
+                        vec![site(callee.clone(), vec![])],
+                        vec![],
+                    ),
+                )]
+            };
+            let mut on = world(tables());
+            assert_eq!(*relevant(&on, d(0)), [true], "{callee:?}");
+            on.1 = Caps::BUILT - Caps::OBJECTS;
+            assert_eq!(*relevant(&on, d(0)), [false], "{callee:?} off");
+        }
     }
 
     #[test]

@@ -12,10 +12,21 @@ walk | walk | call walk
 -- on
 main
   walk
+    save
     walk [Recursive]
   save [Passed]
 edges:
-main | walk | call walk
+main | walk | call walk @cfb4b704
 main | save | pass save
-walk | visit | unresolved function_typed_value
-walk | walk | call walk
+walk @03246be4 | visit | call save
+walk @03246be4 | visit | unresolved function_typed_value
+walk @03246be4 | walk | call walk @2e215067
+walk @2e215067 | visit | call save
+walk @2e215067 | visit | unresolved function_typed_value
+walk @2e215067 | walk | call walk @03246be4
+walk @44eb1d1c | visit | call save
+walk @44eb1d1c | visit | unresolved function_typed_value
+walk @44eb1d1c | walk | call walk @03246be4
+walk @cfb4b704 | visit | call save
+walk @cfb4b704 | visit | unresolved function_typed_value
+walk @cfb4b704 | walk | call walk @44eb1d1c

@@ -16,15 +16,19 @@ open | onDone | unresolved function_typed_value
 main
   open
     fallback [Passed]
+    fallback
   open
     fallback [Passed]
+    save
   save [Passed]
 edges:
-main | open | call open
-main | open | call open
+main | open | call open @dea50b55
+main | open | call open @1a0a65ee
 main | save | pass save
-open | fallback | pass fallback
-open | onDone | unresolved function_typed_value
+open @1a0a65ee | fallback | pass fallback
+open @1a0a65ee | onDone | call save
+open @dea50b55 | fallback | pass fallback
+open @dea50b55 | onDone | call fallback
 == open
 -- off
 open
@@ -35,6 +39,8 @@ open | onDone | unresolved function_typed_value
 -- on
 open
   fallback [Passed]
+  fallback
 edges:
 open | fallback | pass fallback
+open | onDone | call fallback
 open | onDone | unresolved function_typed_value

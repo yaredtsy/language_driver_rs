@@ -38,6 +38,9 @@ use crate::walk;
 /// The key of the counter in `Stats.language` for a key that named a def or a variable the program does not know: it is the open key then (`intern_key`). It
 /// should never be counted; a number above 0 is a bug to look for.
 pub(crate) const KEY_NAMES_UNKNOWN_DEF: &str = "key_names_unknown_def";
+/// A slot of a key (a parameter, or a captured variable) whose value holds two or more objects, counted once for each, each time a key is made (`intern_key`).
+/// Only objects at the top of the value are counted, not those inside another object: an upper bound for `08-tc4` §10 row 10, read at step 8.
+pub(crate) const KEY_SLOT_OBJECTS_TWO_OR_MORE: &str = "key_slot_objects_two_or_more";
 
 /// How to build a graph. The marker style is how a def's marker is read (`ID: …` in its JSDoc).
 #[derive(Clone, Debug)]
@@ -165,6 +168,23 @@ impl<'p> TypeScript<'p> {
         if !self.names_are_known(&data) {
             self.note_walk(KEY_NAMES_UNKNOWN_DEF);
             return KeyId::OPEN;
+        }
+        let two_or_more = |value: &Value| {
+            value
+                .known()
+                .iter()
+                .filter(|one| matches!(one, One::Object(_)))
+                .count()
+                >= 2
+        };
+        for value in data
+            .params
+            .iter()
+            .chain(data.captured.iter().map(|(_, value)| value))
+        {
+            if two_or_more(value) {
+                self.note_walk(KEY_SLOT_OBJECTS_TWO_OR_MORE);
+            }
         }
         // `names_are_known` has said every def is known, so the placeholder is never written into a digest
         let unknown = || StableDef::Path {
@@ -299,27 +319,30 @@ impl World for TypeScript<'_> {
 
     fn needs(&self, def: DefId) -> Arc<[VarId]> {
         // kept by the `Sem`, with the tables it is made from, so a request asks only what no request has
-        if let Some(found) = self.sem.needs_memo(def) {
+        let objects = self.knows(Caps::OBJECTS);
+        if let Some(found) = self.sem.needs_memo(def, objects) {
             return found;
         }
         let component = needs_of_component(self, def);
-        self.sem.remember_needs(component);
+        self.sem.remember_needs(component, objects);
         self.sem
-            .needs_memo(def)
+            .needs_memo(def, objects)
             .expect("the component holds the def asked")
     }
 
     fn needs_known(&self, def: DefId) -> Option<Arc<[VarId]>> {
-        self.sem.needs_memo(def)
+        self.sem.needs_memo(def, self.knows(Caps::OBJECTS))
     }
 
     fn relevant(&self, def: DefId) -> Arc<[bool]> {
         // kept by the `Sem` beside `needs`: a fact of the code, worked out once per program
-        if let Some(found) = self.sem.relevance_memo(def) {
+        let objects = self.knows(Caps::OBJECTS);
+        if let Some(found) = self.sem.relevance_memo(def, objects) {
             return found;
         }
         let found: Arc<[bool]> = Arc::from(relevant(self, def));
-        self.sem.remember_relevance(def, Arc::clone(&found));
+        self.sem
+            .remember_relevance(def, objects, Arc::clone(&found));
         found
     }
 
@@ -875,7 +898,12 @@ mod tests {
         assert_eq!(Precision::Precise.layer(), Some(Caps::BUILT));
         assert_eq!(
             Caps::BUILT,
-            Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES | Caps::MODULES | Caps::RELEVANCE
+            Caps::PARAMS
+                | Caps::LOCALS
+                | Caps::CAPTURES
+                | Caps::MODULES
+                | Caps::RELEVANCE
+                | Caps::OBJECTS
         );
     }
 

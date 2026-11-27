@@ -69,7 +69,7 @@ anons: 0
 handed: none
 == patterns
 params:
-  #0 pattern names: var onClose@20 var deep@20 var opt@20 var rest@20
+  #0 pattern capable names: var onClose@20 var deep@20 var opt@20 var rest@20
 vars:
   onClose@20 capable = member(param#0, onClose)
   deep@20 capable = member(member(param#0, nested), deep)
@@ -124,9 +124,9 @@ handed:
 params: none
 vars: none
 sites:
+  jsx def Panel ({onClose: def save})
   jsx def Panel ({onClose: def save, children: ?})
-  jsx def Panel ({onClose: def save, children: ?})
-  jsx def Panel ({onClose: def save, children: ?})
+  jsx def Panel ({onClose: def save})
 anons: 0
 handed:
   save def save
@@ -152,13 +152,21 @@ anons: 0
 handed: none
 == dataPattern
 params:
-  #0 pattern names: var id@59
+  #0 pattern capable names: var id@59
 vars:
   id@59
 sites: none
 anons: 0
 handed:
   id var id@59
+== restObject
+params:
+  #0 rest pattern names: var length@60
+vars:
+  length@60
+sites: none
+anons: 0
+handed: none
 == FILE
 params: none
 vars: none

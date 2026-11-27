@@ -5,5 +5,7 @@ edges:
 main | onSave | unresolved function_typed_value
 -- on
 main
+  save
 edges:
+main | onSave | call save
 main | onSave | unresolved function_typed_value

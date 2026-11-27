@@ -57,3 +57,4 @@ export function children() {
 function restPattern(...[first]: Array<() => void>) { first(); }
 function arrayPattern([first]: Array<() => void>) { first(); }
 function dataPattern({ id }: { id: string }) { return id; }
+function restObject(...{ length }: Array<() => void>) {}

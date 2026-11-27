@@ -480,6 +480,39 @@ fn the_counters_follow_the_edges() {
     }
 }
 
+/// The counters of TC4 step 4 (`policy.md`, the paragraph below the table): said with the layer on, in the rows that name them, and never with it off.
+#[test]
+fn the_counters_of_the_object_rows() {
+    const KEYS: [&str; 4] = [
+        "key_slot_objects_two_or_more",
+        "member_call_on_trusted",
+        "module_object_shared",
+        "this_written_outside_class",
+    ];
+    // (row, entry, the count of each key with the layer on); `None` is a counter that is not said at all
+    let cases: [(&str, &str, [Option<u64>; 4]); 4] = [
+        ("object-either", "main", [Some(1), None, None, None]),
+        ("object-options", "main", [None, Some(1), None, None]),
+        (
+            "object-module-const-exported",
+            "main",
+            [None, None, Some(1), None],
+        ),
+        ("object-module-const", "main", [None, None, None, None]),
+    ];
+    for (id, entry, want) in cases {
+        let row = context_rows()
+            .into_iter()
+            .find(|row| row.id == id)
+            .unwrap_or_else(|| panic!("no row `{id}`"));
+        let (_, project) = open_row(&row);
+        let (off, on, _) = graphs_of(&project, &row, entry);
+        let said = |graph: &Graph| KEYS.map(|key| graph.stats.language.get(key).copied());
+        assert_eq!(said(&on), want, "{id} {entry}");
+        assert_eq!(said(&off), [None; 4], "{id} {entry}: the layer is off");
+    }
+}
+
 #[test]
 fn value_widened_set_is_counted_where_a_set_passes_the_cap() {
     let mut seen = 0;

@@ -23,6 +23,9 @@ use crate::flow::{
     AnonFlow, Arg, DefId, Expr, Flow, FlowKind, HandedFlow, Param, Part, SiteFlow, Uses, Var, VarId,
 };
 
+/// A fact of a def kept per bit: the def, and whether the layer that asked knows `Caps::OBJECTS`.
+type PerBit<T> = HashMap<(DefId, bool), T>;
+
 /// The tables of one program, and the numbers they are written in.
 pub(super) struct Flows {
     /// This program's number: from `PROGRAMS`, taken when the `Sem` is made.
@@ -32,10 +35,11 @@ pub(super) struct Flows {
     files: RefCell<IndexSet<P<SourceFile>>>,
     memo: RefCell<HashMap<DefId, Arc<Flow>>>,
     /// What each def needs from the functions around it (`needs::needs_of_component`), kept with the tables it is made from: a fact of the program, not of a
-    /// request, so a request that reaches a def another already asked about does not compute its component again.
-    needs: RefCell<HashMap<DefId, Arc<[VarId]>>>,
+    /// request, so a request that reaches a def another already asked about does not compute its component again. Kept per bit: whether the layer knows
+    /// `Caps::OBJECTS` (the second of the key) changes what a table reads (`needs::each_expr`), so a request with the bit never sees what one without it kept.
+    needs: RefCell<PerBit<Arc<[VarId]>>>,
     /// Which parameters of each def can reach a call (`relevance::relevant`), kept the same way.
-    relevance: RefCell<HashMap<DefId, Arc<[bool]>>>,
+    relevance: RefCell<PerBit<Arc<[bool]>>>,
     /// Whether each variable's object can be trusted (`trust::trust_of_component`), kept the same way as `relevance`: a fact of the code.
     trust: RefCell<HashMap<VarId, bool>>,
 }
@@ -70,27 +74,38 @@ impl Sem {
         )
     }
 
-    /// What `def` needs, when a request of this program has already worked it out (`remember_needs`).
-    pub(crate) fn needs_memo(&self, def: DefId) -> Option<Arc<[VarId]>> {
-        self.flows.needs.borrow().get(&def).map(Arc::clone)
+    /// What `def` needs, when a request of this program with the same `objects` has already worked it out (`remember_needs`).
+    pub(crate) fn needs_memo(&self, def: DefId, objects: bool) -> Option<Arc<[VarId]>> {
+        self.flows
+            .needs
+            .borrow()
+            .get(&(def, objects))
+            .map(Arc::clone)
     }
 
-    /// Keep what a component of defs needs (`needs::needs_of_component`), for every request of this program: plain data in, plain data out.
-    pub(crate) fn remember_needs(&self, entries: Vec<(DefId, Box<[VarId]>)>) {
+    /// Keep what a component of defs needs (`needs::needs_of_component`), for every request of this program with the same `objects`: plain data in, plain data out.
+    pub(crate) fn remember_needs(&self, entries: Vec<(DefId, Box<[VarId]>)>, objects: bool) {
         let mut memo = self.flows.needs.borrow_mut();
         for (def, set) in entries {
-            memo.insert(def, Arc::from(set));
+            memo.insert((def, objects), Arc::from(set));
         }
     }
 
-    /// Which parameters of `def` can reach a call, when a request of this program has already worked it out (`remember_relevance`).
-    pub(crate) fn relevance_memo(&self, def: DefId) -> Option<Arc<[bool]>> {
-        self.flows.relevance.borrow().get(&def).map(Arc::clone)
+    /// Which parameters of `def` can reach a call, when a request of this program with the same `objects` has already worked it out (`remember_relevance`).
+    pub(crate) fn relevance_memo(&self, def: DefId, objects: bool) -> Option<Arc<[bool]>> {
+        self.flows
+            .relevance
+            .borrow()
+            .get(&(def, objects))
+            .map(Arc::clone)
     }
 
-    /// Keep which parameters of `def` can reach a call, for every request of this program: plain data.
-    pub(crate) fn remember_relevance(&self, def: DefId, flags: Arc<[bool]>) {
-        self.flows.relevance.borrow_mut().insert(def, flags);
+    /// Keep which parameters of `def` can reach a call, for every request of this program with the same `objects`: plain data.
+    pub(crate) fn remember_relevance(&self, def: DefId, objects: bool, flags: Arc<[bool]>) {
+        self.flows
+            .relevance
+            .borrow_mut()
+            .insert((def, objects), flags);
     }
 
     /// Whether the object `var` holds can be trusted, when a request of this program has already worked it out (`remember_trust`).
@@ -647,8 +662,8 @@ impl Reader<'_, '_> {
             .is_some_and(|exports| exports.contains(&symbol))
     }
 
-    /// The variables a binding pattern declares, nested patterns included, in source order; `None` when one of them has no row in this def's table (`var_of`: a
-    /// pattern of a nested def) or an element has no name the table can use.
+    /// The variables a binding pattern declares, nested patterns included, in source order; `None` when an element has no name the table can use. Each is
+    /// named by its declaring def (`declared_var`), wherever the pattern is in this def's node: a pattern in a nested def is that def's row.
     fn pattern_vars(&mut self, pattern: P<Node>) -> Option<Vec<VarId>> {
         let mut found = Vec::new();
         let mut pending = vec![pattern];
@@ -660,7 +675,7 @@ impl Reader<'_, '_> {
                 }
                 let name = element.name()?;
                 match name.kind() {
-                    Kind::Identifier => found.push(self.var_of(name)?),
+                    Kind::Identifier => found.push(self.declared_var(name)?),
                     Kind::ObjectBindingPattern | Kind::ArrayBindingPattern => pending.push(name),
                     _ => return None,
                 }
@@ -806,7 +821,7 @@ impl Reader<'_, '_> {
             && let Some(name) = parent.name()
         {
             match name.kind() {
-                Kind::Identifier => match self.var_of(name) {
+                Kind::Identifier => match self.declared_var(name) {
                     Some(var) => found.names.push(var),
                     None => found.escapes = true,
                 },
@@ -825,7 +840,7 @@ impl Reader<'_, '_> {
         {
             let left = unwrap_expression(binary.left());
             match (left.kind() == Kind::Identifier)
-                .then(|| self.var_of(left))
+                .then(|| self.declared_var(left))
                 .flatten()
             {
                 Some(var) => found.names.push(var),
@@ -921,10 +936,19 @@ impl Reader<'_, '_> {
         } else {
             None
         };
-        let capable = symbol.is_some_and(|symbol| {
-            let ty = self.checker.get_type_of_symbol(symbol);
-            !holds_only_data(self.checker, ty, 4)
-        });
+        let capable = if named {
+            symbol.is_some_and(|symbol| {
+                let ty = self.checker.get_type_of_symbol(symbol);
+                !holds_only_data(self.checker, ty, 4)
+            })
+        } else {
+            // an object pattern that is not rest (`{ onDone }: Opts`) holds what its parameter's type holds: the engine gives a binding pattern the type of
+            // its parameter (`get_type_of_node`). An array pattern and every rest parameter are not capable.
+            name.kind() == Kind::ObjectBindingPattern && !parameter.is_rest() && {
+                let ty = self.checker.get_type_at_location(name);
+                !holds_only_data(self.checker, ty, 4)
+            }
+        };
         (
             Param {
                 rest: parameter.is_rest(),
@@ -1063,10 +1087,15 @@ impl Reader<'_, '_> {
             && let Some(element) = tag.parent()
         {
             element.for_each_child(&mut |child| {
-                has_children |= !matches!(
-                    child.kind(),
-                    Kind::JsxOpeningElement | Kind::JsxClosingElement
-                );
+                has_children |= match child.kind() {
+                    Kind::JsxOpeningElement | Kind::JsxClosingElement => false,
+                    // text of white space with a line break in it is not rendered: `containsOnlyTriviaWhiteSpaces` (`ast::is_whitespace_only_jsx_text`);
+                    // spaces on one line are (`<P> </P>`), as React renders them
+                    Kind::JsxText => !ast::is_whitespace_only_jsx_text(child),
+                    // `{/* note */}` has no expression
+                    Kind::JsxExpression => expression_of(child).is_some(),
+                    _ => true,
+                };
                 has_children
             });
         }
@@ -1110,8 +1139,20 @@ impl Reader<'_, '_> {
 
     /// The variable `name` stands for: its symbol's value declaration is a variable, a parameter or a binding element of this file with a plain name, and the
     /// def that declares it is this def or one around it. An import (`SymbolFlags::Alias`, `export { x } from` too) is followed to what it names
-    /// (`imported_var`): the variable of another project file that is at the top of it.
+    /// (`imported_var`): the variable of another project file that is at the top of it. The scope rule is what an `Expr::Var` of this def's table may name.
     fn var_of(&mut self, name: P<Node>) -> Option<VarId> {
+        self.variable_named(name, true)
+    }
+
+    /// `var_of` without the scope rule, for a name the placement of a use meets inside this def's node (`const { a } = x`, `const o = x`, `y = x`): the
+    /// declaration is inside the node, so the def that declares it is this def or one nested in it, and the variable is that def's row (`08-tc4` §10, step 4
+    /// corrected at 4b, point 3). A name declared outside this def's node is named as `var_of` names it.
+    fn declared_var(&mut self, name: P<Node>) -> Option<VarId> {
+        self.variable_named(name, false)
+    }
+
+    /// `var_of` and `declared_var`: `scoped` asks that the declaring def is this def or one around it.
+    fn variable_named(&mut self, name: P<Node>, scoped: bool) -> Option<VarId> {
         let symbol = self.symbol_of(name)?;
         if symbol.flags().intersects(SymbolFlags::Alias) {
             let aliased = self.checker.get_aliased_symbol(symbol);
@@ -1140,13 +1181,15 @@ impl Reader<'_, '_> {
             up = node.parent();
         };
         // it must be this def, or hold it
-        let mut around = Some(self.def);
-        loop {
-            let node = around?;
-            if node == holder {
-                break;
+        if scoped {
+            let mut around = Some(self.def);
+            loop {
+                let node = around?;
+                if node == holder {
+                    break;
+                }
+                around = node.parent();
             }
-            around = node.parent();
         }
         let func = match self.defs.def_of.get(&holder) {
             Some(&index) => Func::def(self.file, index),

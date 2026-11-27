@@ -23,17 +23,20 @@ main
   open
     change
       fallback [Passed]
+    save
   save [Passed]
   looked
     look
+    save
   save [Passed]
 edges:
 change | fallback | pass fallback
-looked | look | call look
-looked | onDone | unresolved function_typed_value
-main | open | call open
+looked @1a0a65ee | look | call look
+looked @1a0a65ee | onDone | call save
+main | open | call open @1a0a65ee
 main | save | pass save
-main | looked | call looked
+main | looked | call looked @1a0a65ee
 main | save | pass save
-open | change | call change
-open | onDone | unresolved function_typed_value
+open @1a0a65ee | change | call change
+open @1a0a65ee | onDone | call save
+open @1a0a65ee | onDone | unresolved function_typed_value

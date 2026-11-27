@@ -11,12 +11,14 @@ open | opts.onDone | unresolved function_typed_value
 -- on
 main
   open
+    save
+    save
   save [Passed]
 edges:
-main | open | call open
+main | open | call open @1a0a65ee
 main | save | pass save
-open | done | unresolved function_typed_value
-open | opts.onDone | unresolved function_typed_value
+open @1a0a65ee | done | call save
+open @1a0a65ee | opts.onDone | call save
 == open
 -- off
 open

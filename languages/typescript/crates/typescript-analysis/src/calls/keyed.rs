@@ -407,7 +407,7 @@ fn the_modules_bit_off_is_step_3() {
     );
 }
 
-/// With `RELEVANCE` off the layer is step 5 exactly (`Caps::BUILT` without `RELEVANCE`): every entry of every row, written out whole, in
+/// With `RELEVANCE` off the layer is step 5 exactly (`Caps::PARAMS | LOCALS | CAPTURES | MODULES`, `OBJECTS` is not yet): every entry of every row, written out whole, in
 /// `snapshots/context/relevance-off.txt`. Blessed before TC3 step 6 changed any code and never changed since: the proof that the bit off is the layer of
 /// step 5.
 #[test]
@@ -519,8 +519,14 @@ fn the_variable_counters_count_where_the_table_says() {
             ("module-const", "main") => (Some(1), None),
             _ => (None, None),
         };
+        // TC3's layer: the rows of TC4 step 4 are read with `OBJECTS` on, and `the_counters_of_the_object_rows` (`tests/context.rs`) says what they count
         for (layer, unmodelled, added, more_than_once) in [
-            (Caps::BUILT, unmodelled, added, more_than_once),
+            (
+                Caps::BUILT - Caps::OBJECTS,
+                unmodelled,
+                added,
+                more_than_once,
+            ),
             (Caps::PARAMS, None, None, None),
         ] {
             let (solver, _) = solve_from(&sem, start, Some(layer));
@@ -829,19 +835,55 @@ fn the_trust_counters_are_said_once_per_body_and_only_with_objects() {
         keys.map(|key| notes.get(key).copied())
     };
     for (qname, expected) in rows {
-        assert_eq!(
-            said(qname, Caps::BUILT | Caps::OBJECTS),
-            expected,
-            "{qname}"
-        );
+        assert_eq!(said(qname, Caps::BUILT), expected, "{qname}");
         // objects off: the layer says nothing of them
-        assert_eq!(said(qname, Caps::BUILT), [None, None, None], "{qname} off");
+        assert_eq!(
+            said(qname, Caps::BUILT - Caps::OBJECTS),
+            [None, None, None],
+            "{qname} off"
+        );
     }
     // a body whose only `this` is a nested function's
-    assert_eq!(
-        said("nestedFunction", Caps::BUILT | Caps::OBJECTS),
-        [None, None, None]
-    );
+    assert_eq!(said("nestedFunction", Caps::BUILT), [None, None, None]);
+}
+
+/// The memos of `needs` and `relevance` are kept per bit (`08-tc4` §10, step 4): one `Sem` that serves a request with `OBJECTS` off and then one with it on (or the
+/// other way) gives each the graph a fresh `Sem` gives with that layer. Where the bit changes the graph (`tour`'s `lineE`: `back` reads `props` only through a
+/// member) a memo filled by the other request would show.
+#[test]
+fn the_memos_are_kept_per_bit() {
+    let rows = [
+        ("tests/fixtures/context/tour", "src/tour.tsx", "lineE"),
+        (
+            "tests/fixtures/context/props-nested-handler",
+            "src/main.tsx",
+            "main",
+        ),
+    ];
+    let off = Caps::BUILT - Caps::OBJECTS;
+    for (fixture, file, entry) in rows {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(fixture);
+        let graph_of = |sem: &Sem, layer: Caps| {
+            let start = sem
+                .entry(file, entry, 0, STYLE)
+                .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
+            solve_from(sem, start, Some(layer)).1
+        };
+        let fresh = |layer: Caps| graph_of(&Sem::open(&root, Path::new(file)).unwrap(), layer);
+        let (fresh_off, fresh_on) = (fresh(off), fresh(Caps::BUILT));
+        assert_ne!(fresh_off, fresh_on, "{fixture}: the bit changes this graph");
+        for order in [[off, Caps::BUILT], [Caps::BUILT, off]] {
+            let sem = Sem::open(&root, Path::new(file)).unwrap();
+            for layer in order {
+                let want = if layer == off { &fresh_off } else { &fresh_on };
+                assert_eq!(
+                    &graph_of(&sem, layer),
+                    want,
+                    "{fixture} {layer:?} in {order:?}"
+                );
+            }
+        }
+    }
 }
 
 /// The contexts of each function of a graph, through `spread`, and the qname of the first def (in `graph.defs` order) that has the most.

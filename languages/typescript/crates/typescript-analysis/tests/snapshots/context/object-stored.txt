@@ -10,8 +10,10 @@ open | onDone | unresolved function_typed_value
 -- on
 main
   open
+    save
   save [Passed]
 edges:
-main | open | call open
+main | open | call open @1a0a65ee
 main | save | pass save
-open | onDone | unresolved function_typed_value
+open @1a0a65ee | onDone | call save
+open @1a0a65ee | onDone | unresolved function_typed_value

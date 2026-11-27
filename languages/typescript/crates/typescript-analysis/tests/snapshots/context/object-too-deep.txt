@@ -15,13 +15,14 @@ runTwo | f | unresolved function_typed_value
 -- on
 main
   runTwo
+    save
   save [Passed]
   runThree
   save [Passed]
 edges:
-main | runTwo | call runTwo
+main | runTwo | call runTwo @b5274d6c
 main | save | pass save
-main | runThree | call runThree
+main | runThree | call runThree @08587f07
 main | save | pass save
-runThree | c | unresolved function_typed_value
-runTwo | f | unresolved function_typed_value
+runThree @08587f07 | c | unresolved function_typed_value
+runTwo @b5274d6c | f | call save
