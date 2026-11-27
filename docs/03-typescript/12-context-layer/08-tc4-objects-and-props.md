@@ -472,10 +472,21 @@ the bit on, the coder stopped on four differences from the rows; each is decided
 row as written, no off snapshot moved; a cycle through a member read stays open (sound). One CLI test from TC1 assumed `--precise`
 prints nothing new on the scenarios; it now prints a counter, and 4b-fix narrows the test.
 
-**Two steps added after 4b (owner's decisions, 2026-11-27).** **4c**, D68 (Q-TC9): a method call can change its own object. A
+**Step 4c, found at the samples (reviewer, 2026-11-27): a key keeps only what can reach a call.** With the bit on, the private
+codebase's sample went from 6,104 to 8,062 contexts and the cap of 64 per function cut 349, all at three functions called from many
+places with object literals whose members are all data (`logEvent(name, { duration: 12 })`; `engine/11-tc4.md`, "TC4 after step 4").
+Data cannot reach a call, so it is not a reason for a context, the rule relevance already has for a whole parameter. In a key (each
+parameter slot and each captured entry), every object is written **reduced**: a member whose value cannot reach a call is dropped, and an
+object that lost a member is not complete. A value can reach a call when it is open, or holds a function (`Fn`, `Closure`, `Anon`,
+`AnonAny`), `Undefined` (it selects a default), or an object whose reduced form keeps a member. `{}` stays complete (nothing was
+dropped: `open({})` still reads `Undefined` and takes the default); `{ a: 1 }` and `{ b: 2 }` are both `{}` not complete, one key. A
+member read of a dropped member is unknown: sound, and a default beside it is shown with the engine's answer. Values inside a body are
+not reduced. Pinned digests of TC2 and TC3 hold no object and do not move.
+
+**Two steps added after 4b (owner's decisions, 2026-11-27).** **4d**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
 when one of the object's function members writes through `this` or cannot be seen (an open member, an object that is not complete, an
-anonymous function that may not be an arrow); a key tells an arrow from another anonymous function. **4d**, D69 (§1.3 of the review
+anonymous function that may not be an arrow); a key tells an arrow from another anonymous function. **4e**, D69 (§1.3 of the review
 before TC3): a value before a type: a parameter or a variable declared as data holds the value it is given where one is known; the type
 says only that what is unknown is data. Each is designed when its prompt is written, with its cost measured.
 
