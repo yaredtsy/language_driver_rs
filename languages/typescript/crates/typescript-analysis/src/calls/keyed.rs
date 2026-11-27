@@ -813,7 +813,7 @@ fn relevance_and_the_bind_record_on_keys() {
 fn data_members_make_no_context() {
     let sem = open("tests/fixtures/context/object-data-members");
     let (_, on) = solve(&sem, Some(Caps::BUILT));
-    assert_eq!(contexts(&on)["report"].len(), 2);
+    assert_eq!(contexts(&on)["report"].len(), 3);
     let mut calls: Vec<(u32, [u8; 16])> = on
         .edges
         .iter()
@@ -826,12 +826,15 @@ fn data_members_make_no_context() {
         })
         .collect();
     calls.sort();
-    assert_eq!(calls.len(), 3);
+    assert_eq!(calls.len(), 4);
     assert_eq!(
         calls[0].1, calls[1].1,
         "{{ a: 1 }} and {{ b: 2 }} are one key"
     );
     assert_ne!(calls[1].1, calls[2].1, "{{ c: 3, f: save }} has its own");
+    // `d` is unknown and kept today, so `{ d: Date.now() }` has its own
+    assert_ne!(calls[3].1, calls[0].1);
+    assert_ne!(calls[3].1, calls[2].1);
 
     let (_, off) = solve(&sem, Some(Caps::BUILT - Caps::OBJECTS));
     assert_eq!(contexts(&off)["report"].len(), 1);

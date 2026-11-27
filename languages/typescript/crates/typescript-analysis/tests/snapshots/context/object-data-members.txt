@@ -5,11 +5,14 @@ main
   report
   report
   save [Passed]
+  report
 edges:
 main | report | call report
 main | report | call report
 main | report | call report
 main | save | pass save
+main | report | call report
+main | Date.now | external typescript:lib DateConstructor.now
 report | console.log | external typescript:lib Console.log
 -- on
 main
@@ -17,10 +20,14 @@ main
   report
   report
   save [Passed]
+  report
 edges:
 main | report | call report @07a92ab2
 main | report | call report @07a92ab2
 main | report | call report @077398c6
 main | save | pass save
+main | report | call report @b2ce4a50
+main | Date.now | external typescript:lib DateConstructor.now
 report @077398c6 | console.log | external typescript:lib Console.log
 report @07a92ab2 | console.log | external typescript:lib Console.log
+report @b2ce4a50 | console.log | external typescript:lib Console.log

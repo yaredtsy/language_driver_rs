@@ -6,4 +6,5 @@ function main() {
     report({ a: 1 });
     report({ b: 2 });
     report({ c: 3, f: save });
+    report({ d: Date.now() });
 }
