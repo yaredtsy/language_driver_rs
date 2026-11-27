@@ -843,6 +843,23 @@ fn relevance_and_the_bind_record_on_keys() {
     assert_eq!(read(pair), [false, true]);
 }
 
+/// TC4 step 4e-c (D69): relevance follows the assignments of a capable row only. In `relevance-through-data-row`, `g({ n }: { n: number; h: () => void })` reads
+/// only the data member `n` into a row declared `number` and calls `log(n)`: its parameter reaches no call, so `g` has one context for its two callers. `f(cb)`
+/// does `const n: number = cb.length`, which hands `cb.length` over (D22, a sink older than this rule): `cb` stays relevant and `f` keeps its two contexts.
+#[test]
+fn a_parameter_reaching_only_a_data_typed_row_is_not_relevant() {
+    let sem = open("tests/fixtures/context/relevance-through-data-row");
+    let main = sem.entry("src/main.ts", "main", 0, STYLE).unwrap();
+    let def_of = |qname: &str| sem.def_id(sem.entry("src/main.ts", qname, 0, STYLE).unwrap());
+    let (f, g) = (def_of("f"), def_of("g"));
+    let (_, graph) = solve_from(&sem, main, Some(Caps::BUILT));
+    assert_eq!(contexts(&graph)["g"].len(), 1);
+    assert_eq!(contexts(&graph)["f"].len(), 2);
+    let lang = TypeScript::new(&sem, STYLE).with_layer(Some(Caps::BUILT));
+    assert_eq!(World::relevant(&lang, g).to_vec(), [false]);
+    assert_eq!(World::relevant(&lang, f).to_vec(), [true]);
+}
+
 /// TC4 step 4e-a (D69, a value before a type): a parameter declared as data holds the function a cast handed it. `lied(cb: string, …)` is called with
 /// `handler as any` from `liar` and with `"x"` from `honest`: two contexts, and the one from `liar` holds `handler` in slot 0 (the other keeps slot 0 unknown, as
 /// every caller that passes data does).

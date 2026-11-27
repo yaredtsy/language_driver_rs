@@ -16,7 +16,11 @@ use crate::needs::each_expr;
 /// The **sinks** are every site's callee and arguments, every hand-over's value, and each variable of `def` that a nested def named in the table needs
 /// (`World::needs`): that def is handed over or called with the variable's value in its captures. From the sinks a worklist marks the **atoms** an expression
 /// is made of, `OneOf` members included: `Param(i)` marks parameter `i`; `Var(v)` of this def marks `v`'s row. A marked row marks the atoms of everything
-/// assigned to it, and the parameter it is the row of; a marked parameter marks the atoms of its default and its own row (the body may assign it). A
+/// assigned to it **only when it is capable**, and the parameter it is the row of whether it is or not (D69, step 4e-c: the type of a row that is not capable
+/// is read where no value is known, and a value reaches such a row only through a cast, so a parameter whose only way to a call is a data-typed row is no
+/// reason for a context; with a cast the parameter is not in the key, the row is data, and the site keeps the engine's answer: sound). A hand-over is still a
+/// sink, whatever it initializes (D22): `const n: number = cb.length` hands `cb.length` over, so `cb` stays relevant. A marked parameter marks the atoms of its
+/// default and its own row (the body may assign it). A
 /// condition is not in the table, so a parameter read only in one is not marked; a return is not there either until TC6, which adds it to the sinks.
 pub(crate) fn relevant(world: &dyn World, def: DefId) -> Box<[bool]> {
     let Some(flow) = world.flow(def) else {
@@ -146,8 +150,12 @@ impl Marks<'_> {
             match next {
                 Work::Row(row) => {
                     let var = &flow.vars[row];
-                    for value in &var.assigned {
-                        self.atoms(value);
+                    // D69 (step 4e-c): a row that is not capable is read where no value is known; what is assigned to it reaches a call only
+                    // through a cast, and then the row is data, so nothing it is assigned is a reason for a context
+                    if var.capable {
+                        for value in &var.assigned {
+                            self.atoms(value);
+                        }
                     }
                     if let Some(index) = var.param {
                         self.param(index as usize);

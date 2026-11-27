@@ -7,11 +7,22 @@ main
   f
     log
   b [Passed]
+  g
+    log
+  a [Passed]
+  g
+    log
+  b [Passed]
 edges:
 f | log | call log
+g | log | call log
 main | f | call f
 main | a | pass a
 main | f | call f
+main | b | pass b
+main | g | call g
+main | a | pass a
+main | g | call g
 main | b | pass b
 -- on
 main
@@ -21,10 +32,21 @@ main
   f
     log
   b [Passed]
+  g
+    log
+  a [Passed]
+  g
+    log
+  b [Passed]
 edges:
 f @5d2e5760 | log | call log
 f @ac15243e | log | call log
+g | log | call log
 main | f | call f @5d2e5760
 main | a | pass a
 main | f | call f @ac15243e
+main | b | pass b
+main | g | call g
+main | a | pass a
+main | g | call g
 main | b | pass b
