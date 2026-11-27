@@ -556,6 +556,28 @@ since that test is the one guard that sees a doubled edge.
 **4d-fix built, `2be3cc5`**: as decided; three off snapshots moved one number each (`Stats.unresolved`, the double that was
 counted), no edge. **Step 4d is closed**; next is 4e (D69).
 
+**Step 4e, as decided for the build (reviewer, 2026-11-27): D69, a value before a type.** Today a parameter or a variable whose declared
+type holds only data (`capable` false) is data in every context: its key slot is unknown (`key::admits`), `eval::passed` and
+`eval::row_value` answer data, and the table records no assignment of such a row. Probed at `b1a174d` (§1.3's program): `liar` draws
+`noop` alone and removes the engine's mark, though `handler` is what is called. D69: where a value is known it is used; the type says only
+that the **unknown** part is data.
+
+- **What a data-typed place keeps of a value** (`eval::as_data_typed`): its functions (`Fn`, `Closure`, `Anon`, `AnonArrow`,
+  `AnonFunction`) and its objects **opened** (`objects_opened`: the trust rule never followed a data-typed row, so a write through it is
+  not seen), closed (the rest is data, by the type); with none of these, data. `Undefined` is dropped (a data-typed default is data).
+- **4e-a, parameters.** `key::bind`: a slot that is not capable (and not rest) is relevant as any other; its value is the argument's
+  functions and objects, closed, and **unknown when it has none**, as today, so a caller that passes data (nearly all) keeps its key and
+  its digest, and a key splits only where a function or an object reaches a data-typed parameter (a cast). A missing argument is unknown,
+  not `Undefined`, for such a slot. `eval::passed` for a parameter that is not capable: `as_data_typed` of its slot (data for an open key
+  or an unknown slot); its default is not read. Row `param-data-holds-function` (§1.3's program, entries `liar` and `honest`).
+- **4e-b, variables.** The table records `assigned` and `open` for **every** row, not only capable ones (`Uses` stays capable-only, and
+  `needs` too: a captured read of a data-typed variable stays unknown in the nested def, sound). `eval::row_value` for a row that is not
+  capable: `as_data_typed` of what it is assigned (a parameter's row starts from `passed`). Row `var-data-holds-function`
+  (`const s: string = handler as any; (s as any)()`). Its cost is measured: every data-typed row is now evaluated (time and peak on the
+  samples, the table's size).
+- **What must not move**: a key or a value where no function or object reaches a data-typed place: `local-data` (both calls one context),
+  `callback-data`, every digest of the other rows.
+
 **Two steps added after 4b (owner's decisions, 2026-11-27).** **4d**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
 when one of the object's function members writes through `this` or cannot be seen (an open member, an object that is not complete, an
