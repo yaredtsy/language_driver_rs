@@ -577,6 +577,8 @@ that the **unknown** part is data.
   samples, the table's size).
 - **What must not move**: a key or a value where no function or object reaches a data-typed place: `local-data` (both calls one context),
   `callback-data`, every digest of the other rows.
+- **No bit**: D69 replaces TC2 step 5f's and TC3's rule, it is not a layer of its own, so it is on with every set of bits; the five
+  `*-off.txt` snapshots move in the two new rows' entries only.
 
 **Two steps added after 4b (owner's decisions, 2026-11-27).** **4d**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
