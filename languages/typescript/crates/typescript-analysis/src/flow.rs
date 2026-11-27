@@ -93,9 +93,10 @@ pub(crate) struct Var {
     pub(crate) param: Option<u32>,
     /// Its type can hold a function, an object or an instance (`holds_only_data` is false), as `Param::capable`.
     pub(crate) capable: bool,
-    /// Every expression assigned to it, in source order, the initializer first. Read only when `capable`; empty otherwise.
+    /// Every expression assigned to it, in source order, the initializer first. Read for every row: a capable one as it is, one that is not by `as_data_typed`
+    /// (D69, `08-tc4` §10, step 4e-b).
     pub(crate) assigned: Box<[Expr]>,
-    /// Assigned somewhere in a way the table does not model. Said only when `capable`; `false` otherwise.
+    /// Assigned somewhere in a way the table does not model. Said only when `capable`; `false` otherwise (a row that is not capable is closed by `as_data_typed`).
     pub(crate) open: bool,
     /// What the body does with the variable's value (`08-tc4` §5). Read only when `capable`; default otherwise.
     pub(crate) uses: Uses,

@@ -1132,3 +1132,30 @@ fn an_anonymous_function_knows_whether_it_is_an_arrow() {
     let arrows: Vec<bool> = flow.anons.iter().map(|anon| anon.arrow).collect();
     assert_eq!(arrows, [true, false]);
 }
+
+/// D69, step 4e-b: a variable whose type holds only data records what it is assigned, as a capable one does; nothing else of the row is read.
+#[test]
+fn a_data_typed_variable_records_what_it_is_assigned() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/context/var-data-holds-function");
+    let file = "src/main.ts";
+    let sem = Sem::open(&root, Path::new(file)).unwrap();
+    let text = std::fs::read_to_string(root.join(file)).unwrap();
+    let (id, flow) = table_of(&sem, file, "main", 0);
+    let row = flow
+        .vars
+        .iter()
+        .find(|var| name_at(&text, var.at).0 == "s")
+        .expect("main's row `s`");
+    assert!(!row.capable);
+    assert_eq!(
+        row.assigned
+            .iter()
+            .map(|value| expr(&sem, id, &text, value))
+            .collect::<Vec<_>>(),
+        ["def handler"],
+        "the `as any` is read through"
+    );
+    assert!(!row.open);
+    assert_eq!(row.uses, Uses::default());
+}

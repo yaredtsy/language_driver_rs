@@ -72,7 +72,7 @@ vars:
   f@40 capable open
   e@41 capable open uses(escapes)
   first@42 capable open
-  length@44
+  length@44 = member(var FILE:items@4, length)
 sites:
   call var f@40 ()
   call ? ()
@@ -119,8 +119,8 @@ handed:
 == data
 params: none
 vars:
-  n@71
-  s@72
+  n@71 = data
+  s@72 = data
 sites:
   call ? (var n@71, var s@72)
 anons: 0
@@ -133,7 +133,7 @@ params:
   #1
 vars:
   cb@76 param#0 capable = oneof(param#0 | def a) uses(escapes)
-  n@76 param#1
+  n@76 param#1 = data
 sites:
   call param#0 ()
 anons: 0

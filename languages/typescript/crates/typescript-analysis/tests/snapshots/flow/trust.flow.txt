@@ -201,7 +201,7 @@ vars:
   z@48 param#2 capable uses(escapes)
   w@48 param#3 capable
   b@49 capable = member(param#0, b) uses(escapes)
-  n@52
+  n@52 = member(param#3, n)
 sites:
   call def leaves2 (member(param#1, b))
 anons: 1

@@ -30,7 +30,7 @@ params:
   #0 capable
 vars:
   x@7 param#0 capable
-  k@8
+  k@8 = data
   short@10 capable = {save: def save, other: def other, m: def literals.<locals>.short.m, ...param#0, ?} uses(passed: open#0)
 sites:
   call def open ({onDone: def save})
@@ -154,7 +154,7 @@ handed: none
 params:
   #0 pattern capable names: var id@59
 vars:
-  id@59
+  id@59 = member(param#0, id)
 sites: none
 anons: 0
 handed:

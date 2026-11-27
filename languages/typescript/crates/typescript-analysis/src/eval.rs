@@ -726,12 +726,10 @@ fn param_value(world: &dyn World, env: &Env, index: u32, vars: Vars) -> Value {
 }
 
 /// The value of row `i` of the table, given the values `current` of all the rows: what a parameter was passed, or nothing for a local, joined with the value
-/// of every expression assigned to it, and with unknown when a write is not read (`open`). A row that cannot hold a function is data, whatever is written.
+/// of every expression assigned to it, and with unknown when a write is not read (`open`). A row that cannot hold a function (`capable` is false) keeps of
+/// that only what `as_data_typed` keeps (D69, step 4e-b): the functions and objects it was given, closed; data when it was given none, whatever else is written.
 fn row_value(world: &dyn World, env: &Env, i: usize, current: &[Value]) -> Value {
     let row = &env.flow.vars[i];
-    if !row.capable {
-        return Value::data();
-    }
     let mut value = match row.param {
         Some(index) => passed(world, env, index, Vars::Current(current)),
         None => Value::data(),
@@ -739,6 +737,9 @@ fn row_value(world: &dyn World, env: &Env, i: usize, current: &[Value]) -> Value
     for assigned in &row.assigned {
         let written = eval_below(world, env, assigned, u32::MAX, Vars::Current(current));
         value = join(world, &value, &written);
+    }
+    if !row.capable {
+        return as_data_typed(world, &value);
     }
     if row.open {
         value = join(world, &value, &Value::unknown());
@@ -1421,8 +1422,8 @@ mod tests {
                 var_row(20, None, true, vec![Expr::Def(d(1))], true),
                 // never assigned
                 local(30, vec![]),
-                // a type that holds only data: whatever is written is not read
-                var_row(40, None, false, vec![Expr::Def(d(1))], true),
+                // a type that holds only data: no function is known there but the ones it is assigned (`a_data_typed_row_holds_what_it_is_assigned`)
+                var_row(40, None, false, vec![Expr::Data], true),
                 // read through another
                 local(50, vec![Expr::Var(vid(10))]),
             ],
@@ -1448,6 +1449,34 @@ mod tests {
         // nothing was counted
         assert!(world.notes.borrow().is_empty());
         assert_eq!(world.widened.get(), 0);
+    }
+
+    /// D69, step 4e-b: a row that is not capable holds the functions it is assigned, closed, and is data when it is assigned none.
+    #[test]
+    fn a_data_typed_row_holds_what_it_is_assigned() {
+        let at = |assigned: Vec<Expr>| {
+            let env = env_with_vars(
+                vec![],
+                vec![],
+                vec![var_row(10, None, false, assigned, false)],
+            );
+            of_var(&world(&env), &env, 10)
+        };
+        let closed = |ids: &[u32]| Value::of(ids.iter().map(|id| One::Fn(d(*id))), false);
+        assert_eq!(at(vec![Expr::Def(d(1))]), closed(&[1]));
+        assert_eq!(at(vec![Expr::Unknown]), Value::data());
+        assert_eq!(at(vec![Expr::Data]), Value::data());
+        assert_eq!(at(vec![Expr::Def(d(1)), Expr::Unknown]), closed(&[1]));
+        // a parameter's row: what the key holds for it, and what it is assigned
+        let env = env_with_vars(
+            vec![Param {
+                capable: false,
+                ..row(false, None, true)
+            }],
+            vec![func(2)],
+            vec![var_row(5, Some(0), false, vec![Expr::Def(d(1))], false)],
+        );
+        assert_eq!(of_var(&world(&env), &env, 5), closed(&[1, 2]));
     }
 
     /// `cb = cb || f`, the parameter being `d(9)`'s first.

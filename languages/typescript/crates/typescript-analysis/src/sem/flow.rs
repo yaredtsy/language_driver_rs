@@ -579,31 +579,33 @@ impl Reader<'_, '_> {
             let mut open = declaration.open;
             let mut assigned = Vec::new();
             let mut uses = Uses::default();
-            if capable {
-                match declaration.initial {
-                    Some(Initial::Node(initializer)) => assigned.push(self.expr_of(initializer)),
-                    Some(Initial::Element(element)) => match self.element_value(element) {
-                        Some(value) => assigned.push(value),
-                        None => open = true,
-                    },
-                    None => {}
-                }
-                for (_, write) in writes
-                    .iter()
-                    .filter(|(written, _)| Some(*written) == symbol)
-                {
-                    match self.write(*write) {
-                        Write::Assigns(value) => assigned.push(value),
-                        Write::Open => open = true,
-                        Write::Unmodelled => {
-                            open = true;
+            // a row that is not capable records what it is assigned too (D69, step 4e-b): `eval::row_value` keeps of it what `as_data_typed` keeps. What
+            // the table does not model changes nothing there (its value is closed whatever is written), so `open` and `unmodelled` are for capable rows.
+            match declaration.initial {
+                Some(Initial::Node(initializer)) => assigned.push(self.expr_of(initializer)),
+                Some(Initial::Element(element)) => match self.element_value(element) {
+                    Some(value) => assigned.push(value),
+                    None => open = true,
+                },
+                None => {}
+            }
+            for (_, write) in writes
+                .iter()
+                .filter(|(written, _)| Some(*written) == symbol)
+            {
+                match self.write(*write) {
+                    Write::Assigns(value) => assigned.push(value),
+                    Write::Open => open = true,
+                    Write::Unmodelled => {
+                        open = true;
+                        if capable {
                             unmodelled += 1;
                         }
                     }
                 }
-                if let Some(symbol) = symbol {
-                    uses = self.uses_of(declaration.name, symbol, &references);
-                }
+            }
+            if capable && let Some(symbol) = symbol {
+                uses = self.uses_of(declaration.name, symbol, &references);
             }
             vars.push(Var {
                 at,

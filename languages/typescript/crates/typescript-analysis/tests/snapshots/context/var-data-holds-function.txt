@@ -8,6 +8,7 @@ main | (s as any) | unresolved any_or_untyped
 -- on
 main
   handler [Passed]
+  handler
 edges:
 main | handler | pass handler
-main | (s as any) | unresolved any_or_untyped
+main | (s as any) | call handler
