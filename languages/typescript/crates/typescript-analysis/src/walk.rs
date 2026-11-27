@@ -313,6 +313,8 @@ struct Members<'p> {
 /// type, or could not be asked inside generic code, or it does not fit and the mark is due), an anonymous function is `anonymous_function_called`, `undefined`
 /// is reported, not noted (`Members::saw_undefined`: only the open-entry path notes `callee_undefined`, the new path never). A function in `already` (what the engine calls at this site) is skipped before the tripwire is asked, and an
 /// anonymous function is skipped when `anon_already` (the engine's answer already has its mark: drawing it again would add the same edge and count it as added).
+/// A site gets **one** `anonymous_function_called` target however many anonymous members the value holds (`Anon`, `AnonArrow`, `AnonFunction` in any mix): which
+/// anonymous function is called is not said, so a second target adds nothing, and the first one sets `anon_already` for the rest.
 /// A closure is the function it names, a call that carries the list it captured (`07-tc3` §4), and the tripwire and the skip see it as that function.
 fn members<'p>(
     lang: &TypeScript<'p>,
@@ -320,7 +322,7 @@ fn members<'p>(
     site_index: usize,
     value: &Value,
     already: &[Func<'p>],
-    anon_already: bool,
+    mut anon_already: bool,
 ) -> Members<'p> {
     let mut found = Members {
         targets: Vec::new(),
@@ -367,10 +369,14 @@ fn members<'p>(
             },
             // an anonymous function is `AnonArrow` or `AnonFunction` in the body of a callee, where its key holds it
             One::Anon(..) | One::AnonArrow | One::AnonFunction if anon_already => {}
-            One::Anon(..) | One::AnonArrow | One::AnonFunction => found.targets.push((
-                Target::Unresolved(Reason::new(Why::AnonymousFunctionCalled.counter())),
-                None,
-            )),
+            // one target per site: which anonymous function is called is not said, so a second would add nothing
+            One::Anon(..) | One::AnonArrow | One::AnonFunction => {
+                found.targets.push((
+                    Target::Unresolved(Reason::new(Why::AnonymousFunctionCalled.counter())),
+                    None,
+                ));
+                anon_already = true;
+            }
             One::Undefined => found.saw_undefined = true,
             // an object is not a function: the call is something the layer cannot turn into a target (TC4 step 5 gives a member call its answer)
             One::Object(_) => found.open = true,

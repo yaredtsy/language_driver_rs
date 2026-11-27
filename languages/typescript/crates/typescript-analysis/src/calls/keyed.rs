@@ -635,7 +635,7 @@ fn nine_functions_make_a_wide_slot() {
 
 /// A context of `graph` walked alone, by a language that remembers nothing, has exactly the edges the graph has leaving it: what the solver kept for a context
 /// is not what an earlier walk left in a cache. Run with the layer as `Precise` runs it (`Caps::BUILT`), so what the walk adds beside the engine is in the
-/// comparison too: the graph drops an edge that is there twice, a walk alone does not (the comparison drops it too, below). `fixture` is opened on `file` and the graph is the one under `entry`.
+/// comparison too: the graph drops an edge that is there twice, a walk alone does not. `fixture` is opened on `file` and the graph is the one under `entry`.
 fn each_context_walked_alone(fixture: &str, file: &str, entry: &str) -> usize {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(fixture);
     let sem = Sem::open(&root, Path::new(file)).unwrap();
@@ -696,9 +696,6 @@ fn each_context_walked_alone(fixture: &str, file: &str, entry: &str) -> usize {
             }
         }
         alone.sort();
-        // the graph keeps one edge for a site and a target said twice, as a walk alone does not: a variable that holds an arrow and a function expression
-        // (`AnonArrow`, `AnonFunction`) gives the same unresolved target twice (TC4 step 4d)
-        alone.dedup();
         assert_eq!(
             in_graph,
             alone,
@@ -721,6 +718,43 @@ fn each_context_walked_alone_has_the_edges_of_the_graph() {
         "{} entries, {contexts} contexts walked alone",
         entries.len()
     );
+}
+
+/// A variable that holds an arrow and a function expression (`AnonArrow`, `AnonFunction`) is called at one site: the walk draws one
+/// `anonymous_function_called` target there, not one for each anonymous member (which one is called is not said). A walk alone keeps doubles, so it sees it.
+#[test]
+fn one_anonymous_target_per_site() {
+    let sem = open("tests/fixtures/context/anon-kinds-in-keys");
+    let main = sem.entry("src/main.ts", "main", 0, STYLE).unwrap();
+    let (solver, graph) = solve_from(&sem, main, Some(Caps::BUILT));
+    let walked: Vec<_> = solver
+        .lang()
+        .walked
+        .iter()
+        .filter(|(func, _)| {
+            graph.def(&sem.describe(*func, STYLE).id).unwrap().qname == "main.<locals>.h"
+        })
+        .collect();
+    assert!(!walked.is_empty(), "h was not walked");
+    for (func, key) in walked {
+        let mut fresh = TypeScript::new(&sem, STYLE).with_layer(Some(Caps::BUILT));
+        let data = solver.lang().keys.borrow().data(*key).clone();
+        *fresh.nested.borrow_mut() = solver.lang().nested.borrow().clone();
+        let again = fresh.intern_key(data);
+        let summary = Lang::walk(&mut fresh, *func, &again, &Cancel::new());
+        // `h` has one call site, `g()`
+        assert_eq!(summary.sites.len(), 1, "the sites of h");
+        let site = &summary.sites[0];
+        let said: Vec<&str> = site
+            .targets
+            .iter()
+            .map(|target| match target {
+                Target::Unresolved(reason) => reason.as_str(),
+                _ => "not unresolved",
+            })
+            .collect();
+        assert_eq!(said, ["anonymous_function_called"], "the edges at g()");
+    }
 }
 
 /// Over `counts`: the median and the 95th percentile by nearest rank (`sorted[(n - 1) / 2]`, `sorted[ceil(0.95 n) - 1]`), the greatest, and how many
