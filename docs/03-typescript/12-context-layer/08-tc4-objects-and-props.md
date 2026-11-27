@@ -412,6 +412,40 @@ ignored; only `trust.flow.txt` and `trust.trust.txt` moved. `this_written_outsid
 `return this.n` counts as a write: read the number as an upper bound. A receiver that is not capable is not counted, and no test shows it
 yet (owed in step 4).
 
+**Step 4, as decided for the build (2026-11-27).** The bit on. Member calls are still not answered (step 5), so what moves is what is
+read **out of** an object into a variable: a pattern (`const { onDone } = opts`, a pattern parameter), a member read into a name
+(`const done = opts.onDone`), a nested def that reads through a captured object. Two commits.
+
+- **4a, before any code changes**: the fixtures of the twenty policy rows `object-*` and `props-*` (`policy.md`, "With the context
+  layer"), their snapshots with **both halves as the code gives today** (the bit is off in both), and the flow-fixture lines below with their
+  table snapshots as today; the test `the_objects_bit_off_is_tc3` writing `snapshots/context/objects-off.txt` with `PARAMS | LOCALS |
+  CAPTURES | MODULES | RELEVANCE` named bit by bit; and `the_relevance_bit_off_is_step_5` given its bits by name (`PARAMS | LOCALS |
+  CAPTURES | MODULES`) in place of `BUILT - RELEVANCE`, which would take `OBJECTS` in with 4b. No other change: 4b's diff is then
+  exactly what the bit changes.
+- **4b, the bit**: `OBJECTS` in `Caps::BUILT`.
+  - **The readers read the new forms, only with the bit** (row 6): `needs::each_expr` takes `objects: bool` and, when it is set, enters
+    `Member(x, _)` and `Omit(x, _)` (`x`), `Object` (each `Named` and `Spread` value) and `Default` (both); when it is not, it enters none
+    of them, as today. `relevance::Marks::atoms` reads the same, under the same flag. `needs` and `relevance` pass
+    `world.knows(Caps::OBJECTS)`; `trust::body_counts` passes `true` (it runs only with the bit) and **`each_var` goes**: `each_expr`
+    now visits every expression inside. Without the flag a function read through a member (`cb.call()`) would become relevant with the
+    bit off and split contexts for nothing, and the off snapshots would move.
+  - **The memos are kept per bit**: `Flows::needs` and `Flows::relevance` are keyed by `(DefId, bool)`, the bool being whether the world
+    knows `OBJECTS`; `Sem::{needs_memo, remember_needs, relevance_memo, remember_relevance}` take it. One `Sem` serves requests with the bit
+    on and off (the tests do), and a memo filled with one must not answer the other. The trust memo is not keyed: trust is asked only with
+    the bit.
+  - **A pattern parameter is capable** when it is an object binding pattern, not rest, and its type can hold a function or an object (the
+    `holds_only_data` test of a named parameter, on the type of the parameter's node). An array pattern and a rest parameter's pattern stay
+    not capable (arrays are not modelled; a rest parameter is not a slot).
+  - **A JSX child the engine marks as only white space is no child** (`JsxText` with `containsOnlyTriviaWhiteSpaces`: white space with a
+    line break; `<a> </a>` keeps its child, as React does), nor is an expression container with no expression (`{/* note */}`).
+  - **`key_slot_objects_two_or_more`** (row 10's number for step 8): `intern_key` notes, per walk, each slot of the key (a parameter or a
+    captured entry) whose value holds two or more objects at its top.
+  - The test owed by 3c: a receiver row that is not capable is not counted by `member_call_on_trusted`.
+- **What moves in 4b**: the "on" halves of the twenty new rows and of `tour` (`main` and `lineE`: `back` calls `join`); the table
+  snapshots where an object pattern parameter gains `capable` and where a white-space child goes; the counters of keyed tests that run
+  `Caps::BUILT`. `locals-off.txt`, `captures-off.txt`, `modules-off.txt`, `relevance-off.txt` and `objects-off.txt` do not move, nor any
+  "off" half. Every other row's change is a finding to be read.
+
 **Step 1, as decided for the build (2026-11-26).** The table reads the new forms; nothing evaluates them yet, so no graph moves.
 
 - `Expr` gains four variants: `Member(Box<Expr>, Box<str>)` (`x.k`, `x?.k`, `x["k"]` with a string literal), `Object(Box<[Part]>)`
