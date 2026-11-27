@@ -580,6 +580,15 @@ that the **unknown** part is data.
 - **No bit**: D69 replaces TC2 step 5f's and TC3's rule, it is not a layer of its own, so it is on with every set of bits; the five
   `*-off.txt` snapshots move in the two new rows' entries only.
 
+**Step 4e-a built as decided, `fd997eb` and `c9d1bf7`** (`engine/11-tc4.md`): only `liar`'s context of `lied` moved; the samples did
+not move at all. **4e-b, as decided for the build**: in `Reader::vars` a row that is not capable records `assigned` (its initializer
+and its modelled writes) as a capable row does; `open` stays `capable && open` and `unmodelled` is counted for capable rows only (a
+data-typed row's value is closed by `as_data_typed`, so neither changes it); `uses` stays capable-only, and so do `needs` and
+`variable_assigned_more_than_once`; the table printer is unchanged. `eval::row_value` of a row that is not capable: what a parameter's
+row is passed (`passed`) joined with every assigned value, then `as_data_typed`. Evaluated only with `LOCALS`, so `locals-off.txt` does
+not move. Relevance now reads a data-typed row's assignments too, so a parameter assigned into one and called through it may become
+relevant: each such row is reported.
+
 **Two steps added after 4b (owner's decisions, 2026-11-27).** **4d**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
 when one of the object's function members writes through `this` or cannot be seen (an open member, an object that is not complete, an
