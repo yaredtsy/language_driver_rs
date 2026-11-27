@@ -1,0 +1,22 @@
+== main
+-- off
+main
+  f
+    f.<locals>.o.run
+  a [Passed]
+edges:
+f | o.run | call f.<locals>.o.run
+f.<locals>.o.run | cb | unresolved function_typed_value
+main | f | call f
+main | a | pass a
+-- on
+main
+  f
+    f.<locals>.o.run
+      a
+  a [Passed]
+edges:
+f @5d2e5760 | o.run | call f.<locals>.o.run @ed04e6db
+f.<locals>.o.run @ed04e6db | cb | call a
+main | f | call f @5d2e5760
+main | a | pass a
