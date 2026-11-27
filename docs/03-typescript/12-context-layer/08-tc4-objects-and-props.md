@@ -446,6 +446,28 @@ read **out of** an object into a variable: a pattern (`const { onDone } = opts`,
   `Caps::BUILT`. `locals-off.txt`, `captures-off.txt`, `modules-off.txt`, `relevance-off.txt` and `objects-off.txt` do not move, nor any
   "off" half. Every other row's change is a finding to be read.
 
+**Step 4 corrected at 4b (2026-11-27).** 4a was built as decided (`1ec66e4`: the twenty fixtures, `objects-off.txt`, 548 passed). With
+the bit on, the coder stopped on four differences from the rows; each is decided here.
+
+1. **Member calls are answered at step 4.** `walk::resolve_from_env` evaluates the callee of a site whose engine answer is open, and
+   a `Member` callee now has a value: `opts.onDone()` calls `save`, the tour's line d calls `encode`. Accepted, not gated: the trust rule
+   is what makes an answer safe, and it is in place (row 5); a gate would be code removed at step 5. Step 5 keeps the rest of its row: a
+   literal's method as a target, and what the layer says beside the engine at a member call the engine names (`walk::holds_name`, D59).
+2. **A body's rows are solved in the order of their reads.** `solve` started every row at the empty value, which is also data, and a
+   member of data is unknown; the round join kept that, so `const o = opts; const { onDone } = o` read `onDone` open although every name is
+   trusted. A member of data stays unknown (a string's `trim` is a function: reading it as nothing would drop a call). Instead the rows
+   are split into strongly connected components of "row reads row" (a `Var` of this body anywhere in what a row is assigned), solved
+   dependencies first: a row in no cycle is evaluated once, from settled rows; a cycle iterates as before (from data, with the round
+   join, at most 32 rounds; a cycle that does not settle opens every row of the body, `variable_rounds_capped`). For values of functions
+   only, the result is the same least answer (the off snapshots must not move); only a read through a member depends on the order.
+3. **A pattern or a second name declared in a nested def is that def's row.** The placement of a use (step 3a) named the variables of
+   `const { a } = x` and `const o = x` through `var_of`, which accepts only a variable of this def or one around it, so a pattern in a nested
+   def (a module object read in a function; `props` read in `back`) made the variable escape. The placement names a **declared** variable
+   by its declaring def, wherever it is in this def's node; `var_of`'s scope rule stays for the table's `Expr::Var`.
+4. **`dataPattern` (`{ id }: { id: string }`) is capable**, as a named parameter of that type already is: `holds_only_data` takes any
+   object type as able to hold an object. §7's narrowing (an object type whose members are all data) stays a [check], for every parameter
+   at once, and would move TC2's snapshots: not in TC4 unless step 8 counts contexts it would save.
+
 **Step 1, as decided for the build (2026-11-26).** The table reads the new forms; nothing evaluates them yet, so no graph moves.
 
 - `Expr` gains four variants: `Member(Box<Expr>, Box<str>)` (`x.k`, `x?.k`, `x["k"]` with a string literal), `Object(Box<[Part]>)`
