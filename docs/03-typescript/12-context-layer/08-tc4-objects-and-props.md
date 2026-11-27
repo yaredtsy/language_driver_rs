@@ -584,7 +584,9 @@ that the **unknown** part is data.
 not move at all. **4e-b, as decided for the build**: in `Reader::vars` a row that is not capable records `assigned` (its initializer
 and its modelled writes) as a capable row does; `open` stays `capable && open` and `unmodelled` is counted for capable rows only (a
 data-typed row's value is closed by `as_data_typed`, so neither changes it); `uses` stays capable-only, and so do `needs` and
-`variable_assigned_more_than_once`; the table printer is unchanged. `eval::row_value` of a row that is not capable: what a parameter's
+`variable_assigned_more_than_once`; the table printer is unchanged (**corrected at 4e-b**: it prints `= …` for every row
+with assignments, capable or not, so three table snapshots show the data-typed rows' assignments, nine lines; kept, not hidden: a table
+snapshot shows what the table holds). `eval::row_value` of a row that is not capable: what a parameter's
 row is passed (`passed`) joined with every assigned value, then `as_data_typed`. Evaluated only with `LOCALS`, so `locals-off.txt` does
 not move. Relevance now reads a data-typed row's assignments too, so a parameter assigned into one and called through it may become
 relevant: each such row is reported.
