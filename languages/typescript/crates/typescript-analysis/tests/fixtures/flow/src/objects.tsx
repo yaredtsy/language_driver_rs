@@ -44,3 +44,16 @@ export function elements(extra: { onClose: () => void }) {
         </>
     );
 }
+export function children() {
+    return (
+        <>
+            <Panel onClose={save}>
+            </Panel>
+            <Panel onClose={save}> </Panel>
+            <Panel onClose={save}>{/* note */}</Panel>
+        </>
+    );
+}
+function restPattern(...[first]: Array<() => void>) { first(); }
+function arrayPattern([first]: Array<() => void>) { first(); }
+function dataPattern({ id }: { id: string }) { return id; }

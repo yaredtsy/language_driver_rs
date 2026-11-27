@@ -1,0 +1,39 @@
+== main
+-- off
+main
+  open
+    change
+      fallback [Passed]
+  save [Passed]
+  looked
+    look
+  save [Passed]
+edges:
+change | fallback | pass fallback
+looked | look | call look
+looked | onDone | unresolved function_typed_value
+main | open | call open
+main | save | pass save
+main | looked | call looked
+main | save | pass save
+open | change | call change
+open | onDone | unresolved function_typed_value
+-- on
+main
+  open
+    change
+      fallback [Passed]
+  save [Passed]
+  looked
+    look
+  save [Passed]
+edges:
+change | fallback | pass fallback
+looked | look | call look
+looked | onDone | unresolved function_typed_value
+main | open | call open
+main | save | pass save
+main | looked | call looked
+main | save | pass save
+open | change | call change
+open | onDone | unresolved function_typed_value

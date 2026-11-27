@@ -1,0 +1,34 @@
+== main
+-- off
+main
+  Panel
+    Panel.<locals>.back [Passed]
+  handleClose [Passed]
+edges:
+Panel | back | pass Panel.<locals>.back
+Panel.<locals>.back | onClose | unresolved function_typed_value
+main | Panel | call Panel
+main | handleClose | pass handleClose
+-- on
+main
+  Panel
+    Panel.<locals>.back [Passed]
+  handleClose [Passed]
+edges:
+Panel | back | pass Panel.<locals>.back
+Panel.<locals>.back | onClose | unresolved function_typed_value
+main | Panel | call Panel
+main | handleClose | pass handleClose
+== Panel
+-- off
+Panel
+  Panel.<locals>.back [Passed]
+edges:
+Panel | back | pass Panel.<locals>.back
+Panel.<locals>.back | onClose | unresolved function_typed_value
+-- on
+Panel
+  Panel.<locals>.back [Passed]
+edges:
+Panel | back | pass Panel.<locals>.back
+Panel.<locals>.back | onClose | unresolved function_typed_value

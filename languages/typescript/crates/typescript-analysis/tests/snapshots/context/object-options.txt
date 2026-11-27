@@ -1,0 +1,30 @@
+== main
+-- off
+main
+  open
+  save [Passed]
+edges:
+main | open | call open
+main | save | pass save
+open | done | unresolved function_typed_value
+open | opts.onDone | unresolved function_typed_value
+-- on
+main
+  open
+  save [Passed]
+edges:
+main | open | call open
+main | save | pass save
+open | done | unresolved function_typed_value
+open | opts.onDone | unresolved function_typed_value
+== open
+-- off
+open
+edges:
+open | done | unresolved function_typed_value
+open | opts.onDone | unresolved function_typed_value
+-- on
+open
+edges:
+open | done | unresolved function_typed_value
+open | opts.onDone | unresolved function_typed_value

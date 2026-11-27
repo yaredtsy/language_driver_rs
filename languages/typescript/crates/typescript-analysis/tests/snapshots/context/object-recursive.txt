@@ -1,0 +1,21 @@
+== main
+-- off
+main
+  walk
+    walk [Recursive]
+  save [Passed]
+edges:
+main | walk | call walk
+main | save | pass save
+walk | visit | unresolved function_typed_value
+walk | walk | call walk
+-- on
+main
+  walk
+    walk [Recursive]
+  save [Passed]
+edges:
+main | walk | call walk
+main | save | pass save
+walk | visit | unresolved function_typed_value
+walk | walk | call walk

@@ -1,0 +1,21 @@
+== main
+-- off
+main
+  open
+    fallback [Passed]
+  save [Passed]
+edges:
+main | open | call open
+main | save | pass save
+open | fallback | pass fallback
+open | onDone | unresolved function_typed_value
+-- on
+main
+  open
+    fallback [Passed]
+  save [Passed]
+edges:
+main | open | call open
+main | save | pass save
+open | fallback | pass fallback
+open | onDone | unresolved function_typed_value

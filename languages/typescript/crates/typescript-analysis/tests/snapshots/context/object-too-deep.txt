@@ -1,0 +1,27 @@
+== main
+-- off
+main
+  runTwo
+  save [Passed]
+  runThree
+  save [Passed]
+edges:
+main | runTwo | call runTwo
+main | save | pass save
+main | runThree | call runThree
+main | save | pass save
+runThree | c | unresolved function_typed_value
+runTwo | f | unresolved function_typed_value
+-- on
+main
+  runTwo
+  save [Passed]
+  runThree
+  save [Passed]
+edges:
+main | runTwo | call runTwo
+main | save | pass save
+main | runThree | call runThree
+main | save | pass save
+runThree | c | unresolved function_typed_value
+runTwo | f | unresolved function_typed_value

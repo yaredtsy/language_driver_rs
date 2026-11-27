@@ -1,0 +1,17 @@
+== main
+-- off
+main
+  Panel
+  handleClose [Passed]
+edges:
+Panel | onClose | unresolved function_typed_value
+main | Panel | call Panel
+main | handleClose | pass handleClose
+-- on
+main
+  Panel
+  handleClose [Passed]
+edges:
+Panel | onClose | unresolved function_typed_value
+main | Panel | call Panel
+main | handleClose | pass handleClose

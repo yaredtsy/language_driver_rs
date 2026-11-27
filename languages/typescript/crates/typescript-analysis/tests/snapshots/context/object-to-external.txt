@@ -1,0 +1,19 @@
+== main
+-- off
+main
+  open
+  save [Passed]
+edges:
+main | open | call open
+main | save | pass save
+open | console.log | external typescript:lib Console.log
+open | onDone | unresolved function_typed_value
+-- on
+main
+  open
+  save [Passed]
+edges:
+main | open | call open
+main | save | pass save
+open | console.log | external typescript:lib Console.log
+open | onDone | unresolved function_typed_value

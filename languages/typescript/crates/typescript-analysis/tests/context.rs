@@ -30,7 +30,7 @@ fn snapshot_path(id: &str) -> PathBuf {
 }
 
 /// What is wrong with a table, one sentence for each: a row with no fixture, a fixture that is not there, no snapshot, a fixture no row names, a snapshot
-/// no row builds. `tour.flow.txt` is not a row's snapshot (`src/sem/flow/tests.rs` writes it), nor are `locals-off.txt`, `captures-off.txt`, `modules-off.txt` and `relevance-off.txt` (`calls/keyed.rs` writes them: every entry with `LOCALS`, `CAPTURES`, `MODULES`, then `RELEVANCE`, off).
+/// no row builds. `tour.flow.txt` is not a row's snapshot (`src/sem/flow/tests.rs` writes it), nor are `locals-off.txt`, `captures-off.txt`, `modules-off.txt`, `relevance-off.txt` and `objects-off.txt` (`calls/keyed.rs` writes them: every entry with `LOCALS`, `CAPTURES`, `MODULES`, `RELEVANCE`, then `OBJECTS`, off).
 fn problems(table: &str, tests: &Path) -> Vec<String> {
     let rows = rows(table);
     let mut found = Vec::new();
@@ -100,6 +100,7 @@ fn problems(table: &str, tests: &Path) -> Vec<String> {
                     && name != "captures-off.txt"
                     && name != "modules-off.txt"
                     && name != "relevance-off.txt"
+                    && name != "objects-off.txt"
             })
             .collect();
         names.sort();

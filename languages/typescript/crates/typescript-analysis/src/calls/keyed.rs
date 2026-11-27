@@ -419,11 +419,40 @@ fn the_relevance_bit_off_is_step_5() {
         let start = sem
             .entry(&file, &entry, 0, STYLE)
             .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
-        let (_, graph) = solve_from(&sem, start, Some(Caps::BUILT - Caps::RELEVANCE));
+        let (_, graph) = solve_from(
+            &sem,
+            start,
+            Some(Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES | Caps::MODULES),
+        );
         text.push_str(&format!("== {fixture} {entry}\n{graph:?}\n"));
     }
     analyzer_testkit::expect_file(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/context/relevance-off.txt"),
+        &text,
+    );
+}
+
+/// With `OBJECTS` off the layer is TC3 exactly (`Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES | Caps::MODULES | Caps::RELEVANCE`): every entry of every row,
+/// written out whole, in `snapshots/context/objects-off.txt`. Blessed before TC4 step 4 changed any code and never changed since: the proof that the bit
+/// off is the layer of TC3.
+#[test]
+fn the_objects_bit_off_is_tc3() {
+    let mut text = String::new();
+    for (fixture, file, entry) in every_entry() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(&fixture);
+        let sem = Sem::open(&root, Path::new(&file)).unwrap();
+        let start = sem
+            .entry(&file, &entry, 0, STYLE)
+            .unwrap_or_else(|| panic!("{fixture}: no entry `{entry}`"));
+        let (_, graph) = solve_from(
+            &sem,
+            start,
+            Some(Caps::PARAMS | Caps::LOCALS | Caps::CAPTURES | Caps::MODULES | Caps::RELEVANCE),
+        );
+        text.push_str(&format!("== {fixture} {entry}\n{graph:?}\n"));
+    }
+    analyzer_testkit::expect_file(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/context/objects-off.txt"),
         &text,
     );
 }
