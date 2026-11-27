@@ -637,19 +637,16 @@ fn row_of(world: &dyn World, env: &Env, row: usize, vars: Vars) -> Value {
     }
 }
 
-/// What was passed for parameter `index` in this context, before the body writes it: unknown for a rest parameter (checked first); data for a parameter
-/// that cannot hold a function (`capable` is false), whatever the key holds, since `admit` (step 4) never lists such a slot; otherwise what the key holds
-/// for it, unknown for a slot the key does not list. Where nothing may have been passed (the key holds `Undefined`, or is open) and there is a default, the
-/// default's value takes `Undefined`'s place.
+/// What was passed for parameter `index` in this context, before the body writes it: unknown for a rest parameter (checked first); for a parameter that
+/// cannot hold a function (`capable` is false), `as_data_typed` of its slot (D69: a function or an object a cast handed it is known, anything else is data), its
+/// default not read; otherwise what the key holds for it, unknown for a slot the key does not list. Where nothing may have been passed (the key holds
+/// `Undefined`, or is open) and there is a default, the default's value takes `Undefined`'s place.
 fn passed(world: &dyn World, env: &Env, index: u32, vars: Vars) -> Value {
     let Some(row) = env.flow.params.get(index as usize) else {
         return Value::unknown();
     };
     if row.rest {
         return Value::unknown();
-    }
-    if !row.capable {
-        return Value::data();
     }
     // a key lists no trailing unknowns (`KeyData::normal`), so a slot it does not list is unknown
     let passed = env
@@ -658,12 +655,39 @@ fn passed(world: &dyn World, env: &Env, index: u32, vars: Vars) -> Value {
         .get(index as usize)
         .cloned()
         .unwrap_or_else(Value::unknown);
+    if !row.capable {
+        return as_data_typed(world, &passed);
+    }
     match &row.default {
         Some(default) => defaulted(world, passed, || {
             eval_below(world, env, default, index, vars)
         }),
         None => passed,
     }
+}
+
+/// What a place declared as data keeps of a value (D69, `08-tc4` §10, step 4e: a value before a type): its functions (`Fn`, `Closure`, `Anon`, `AnonArrow`,
+/// `AnonFunction`) as they are and its objects **opened** (`objects_opened`), the whole closed; `Value::data()` when it holds none of these. The type says only
+/// that what is unknown is data, so a function that reached the place through a cast is still the function.
+///
+/// The objects are opened because the trust rule (`as_read`, `trust`) never followed a data-typed place: a write through it (`s.k = f`) would not be seen, so
+/// no member of an object it holds can be trusted. `Undefined` is dropped: a data-typed place that was not given a value is data.
+pub(crate) fn as_data_typed(world: &dyn World, value: &Value) -> Value {
+    let kept = Value::of(
+        value.known().iter().copied().filter(|one| {
+            matches!(
+                one,
+                One::Fn(_)
+                    | One::Closure(..)
+                    | One::Anon(..)
+                    | One::AnonArrow
+                    | One::AnonFunction
+                    | One::Object(_)
+            )
+        }),
+        false,
+    );
+    objects_opened(world, kept)
 }
 
 /// The value of parameter `index` in this context. A parameter the body writes holds what was passed **and** what the body assigns: its row of the table when
@@ -1213,12 +1237,50 @@ mod tests {
             capable: false,
             ..row(false, None, false)
         };
-        let env = env(vec![not_capable], vec![func(1)]);
+        // the key holds nothing for it (an open key, or a caller that passed data: `bind` keeps such a slot unknown)
+        let env = env(vec![not_capable], vec![Value::unknown()]);
         let world = world(&env);
         assert_eq!(eval(&world, &env, &Expr::Param(0)), Value::data());
         // data joined with a function is that function, closed
         let joined = Expr::OneOf([Expr::Param(0), Expr::Def(d(2))].into());
         assert_eq!(eval(&world, &env, &joined), func(2));
+    }
+
+    #[test]
+    fn a_data_typed_parameter_holds_what_it_is_passed() {
+        let not_capable = |default: Option<Expr>| Param {
+            capable: false,
+            default,
+            ..row(false, None, false)
+        };
+        let base = env(vec![not_capable(None)], vec![]);
+        let world = world_knowing(&base, objects_on());
+        let (made, _) = world.object(vec![("f".into(), func(1))], true);
+        let object = made.unwrap();
+        let passed_in = |param: Param, key: Vec<Value>| {
+            let env = env(vec![param], key);
+            passed(&world, &env, 0, Vars::Solved)
+        };
+        // a function a cast handed it stays, closed
+        assert_eq!(passed_in(not_capable(None), vec![func(1)]), func(1));
+        // an open key lists nothing for it: data
+        assert_eq!(passed_in(not_capable(None), vec![]), Value::data());
+        // an object stays, opened and no longer complete: its member holds the function and anything else
+        let got = passed_in(
+            not_capable(None),
+            vec![Value::of([One::Object(object)], false)],
+        );
+        assert_eq!(
+            members_of(&world, &got),
+            (vec![("f".to_owned(), opened(func(1)))], false)
+        );
+        // the default is not read: not for a function passed, and not where the key holds only `undefined`
+        let with_default = || not_capable(Some(Expr::Def(d(5))));
+        assert_eq!(passed_in(with_default(), vec![func(1)]), func(1));
+        assert_eq!(passed_in(with_default(), vec![undefined()]), Value::data());
+        assert_eq!(passed_in(with_default(), vec![]), Value::data());
+        // `as_data_typed`: `undefined` is data
+        assert_eq!(as_data_typed(&world, &undefined()), Value::data());
     }
 
     #[test]

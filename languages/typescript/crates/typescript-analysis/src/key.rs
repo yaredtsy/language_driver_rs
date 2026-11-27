@@ -86,15 +86,47 @@ impl KeyData {
     }
 }
 
-/// Whether a parameter's slot can hold a value in a key (`06-tc2` §4): it is capable and not a rest parameter. The others are unknown in every key.
+/// Whether a parameter has a slot in a key (`06-tc2` §4): every parameter but a rest parameter. A rest parameter is unknown in every key.
+///
+/// A parameter that is **not capable** (its declared type holds only data) has a slot too (D69, `08-tc4` §10, step 4e: a value before a type). The type says
+/// only that what is *unknown* is data; a function or an object that reaches the parameter through a cast (`lied(handler as any)`) is still known, and
+/// leaving it out would draw the wrong call in the callee. `bind` keeps such a slot unknown unless it holds a function or an object, so callers that pass data
+/// (nearly all of them) still share a context and keep their digests.
 fn admits(param: &Param) -> bool {
-    param.capable && !param.rest
+    !param.rest
+}
+
+/// What a slot of a parameter that is not capable keeps of its argument (D69): the functions (`Fn`, `Closure`, `Anon`, `AnonArrow`, `AnonFunction`) and the
+/// objects (`Object`), **closed**; unknown when it holds none of these. `Undefined` goes too (a data-typed parameter that was not passed is data, not
+/// "nothing was passed"). Unknown, not data, so a caller that passes data has the key and the digest it had before this rule, and two callers of data share a
+/// context.
+fn data_typed_slot(value: &Value) -> Value {
+    let kept = value.known().iter().copied().filter(|one| {
+        matches!(
+            one,
+            One::Fn(_)
+                | One::Closure(..)
+                | One::Anon(..)
+                | One::AnonArrow
+                | One::AnonFunction
+                | One::Object(_)
+        )
+    });
+    let kept = Value::of(kept, false);
+    if kept.known().is_empty() {
+        Value::unknown()
+    } else {
+        kept
+    }
 }
 
 /// The key a call passes: argument `i` bound to parameter `i` of the callee's own list (`Flow::params`), by position, as JavaScript binds it
 /// (`06-tc2` §5). Slot `i` is unknown when the parameter is not admitted or not relevant (`relevant[i]` is false, or `relevant` has no `i`: its argument is
 /// not evaluated) or when a spread is at an argument at or before `i`; else the argument's value (`value_of`), or `{Undefined}` when the call has no
 /// argument `i`. Arguments past the last parameter are not read.
+///
+/// A parameter that is not capable (D69) keeps of the argument only its functions and objects, closed (`data_typed_slot`), and is unknown when it has none;
+/// a missing argument is unknown too, not `{Undefined}`.
 pub(crate) fn bind(
     params: &[Param],
     args: &[Arg],
@@ -112,9 +144,16 @@ pub(crate) fn bind(
             {
                 Value::unknown()
             } else if let Some(arg) = args.get(i) {
-                value_of(&arg.value)
-            } else {
+                let value = value_of(&arg.value);
+                if param.capable {
+                    value
+                } else {
+                    data_typed_slot(&value)
+                }
+            } else if param.capable {
                 Value::of([One::Undefined], false)
+            } else {
+                Value::unknown()
             }
         })
         .collect();
@@ -770,16 +809,54 @@ mod tests {
     }
 
     #[test]
-    fn a_parameter_that_cannot_hold_a_value_is_unknown_and_its_argument_is_not_read() {
+    fn a_rest_parameter_is_unknown_and_its_argument_is_not_read() {
         let mut calls = 0;
         let key = bind(
-            &[param(false, false), param(true, true)],
+            &[param(true, true), param(false, true)],
             &[arg(0, false), arg(1, false)],
             &[true, true],
             by_hand(&mut calls),
         );
         assert_eq!(*key.params, [Value::unknown(), Value::unknown()]);
         assert_eq!(calls, 0);
+    }
+
+    #[test]
+    fn a_data_typed_slot_keeps_functions_and_objects() {
+        let slot = |value: Option<Value>| {
+            let args: Vec<Arg> = value.iter().map(|_| arg(0, false)).collect();
+            let given = value.unwrap_or_else(Value::unknown);
+            let key = bind(&[param(false, false)], &args, &[true], |_| given.clone());
+            key.params[0].clone()
+        };
+        let object = One::Object(ObjectId::new(0));
+        // a function stays, and so does an open one, closed
+        assert_eq!(slot(Some(f(0))), f(0));
+        assert_eq!(slot(Some(f(0).join(&Value::unknown()))), f(0));
+        // data and unknown are unknown, so a caller that passes data keeps its key
+        assert_eq!(slot(Some(Value::data())), Value::unknown());
+        assert_eq!(slot(Some(Value::unknown())), Value::unknown());
+        assert_eq!(
+            slot(Some(Value::of([One::Undefined], false))),
+            Value::unknown()
+        );
+        // no argument: unknown, not `{Undefined}`
+        assert_eq!(slot(None), Value::unknown());
+        // an object stays
+        assert_eq!(
+            slot(Some(Value::of([object], false))),
+            Value::of([object], false)
+        );
+        // `Undefined` goes, the open mark with it
+        assert_eq!(
+            slot(Some(Value::of([One::AnonFunction, One::Undefined], true))),
+            Value::of([One::AnonFunction], false)
+        );
+        // a capable parameter is as it was: data stays data
+        let key = bind(&[param(true, false)], &[arg(0, false)], &[true], |_| {
+            Value::data()
+        });
+        assert_eq!(*key.params, [Value::data()]);
     }
 
     #[test]

@@ -843,6 +843,57 @@ fn relevance_and_the_bind_record_on_keys() {
     assert_eq!(read(pair), [false, true]);
 }
 
+/// TC4 step 4e-a (D69, a value before a type): a parameter declared as data holds the function a cast handed it. `lied(cb: string, …)` is called with
+/// `handler as any` from `liar` and with `"x"` from `honest`: two contexts, and the one from `liar` holds `handler` in slot 0 (the other keeps slot 0 unknown, as
+/// every caller that passes data does).
+#[test]
+fn a_cast_function_reaches_a_data_typed_parameter() {
+    let sem = open("tests/fixtures/context/param-data-holds-function");
+    let def_of = |qname: &str| sem.def_id(sem.entry("src/main.ts", qname, 0, STYLE).unwrap());
+    let (lied, handler) = (def_of("lied"), def_of("handler"));
+    let lang = TypeScript::new(&sem, STYLE).with_layer(Some(Caps::BUILT));
+    let starts: Vec<_> = ["liar", "honest"]
+        .iter()
+        .map(|name| start_of(&lang, sem.entry("src/main.ts", name, 0, STYLE).unwrap()))
+        .collect();
+    let mut solver = Solver::new(lang, limits());
+    let graph = solver.graph_within(&starts, &Budget::default(), &Cancel::new());
+    assert_eq!(contexts(&graph)["lied"].len(), 2);
+    let slots: HashSet<Value> = solver
+        .lang()
+        .measure
+        .borrow()
+        .bound
+        .iter()
+        .filter(|(callee, _)| *callee == lied)
+        .map(|(_, data)| data.params[0].clone())
+        .collect();
+    assert_eq!(
+        slots,
+        HashSet::from([Value::of([One::Fn(handler)], false), Value::unknown()])
+    );
+    // and each context of `lied` draws what its key holds: `handler` and `noop` for the one `liar` makes, `noop` alone for the one `honest` makes
+    let mut drawn: BTreeMap<[u8; 16], BTreeSet<String>> = BTreeMap::new();
+    for edge in &graph.edges {
+        if graph.def(&edge.from.func).unwrap().qname != "lied" {
+            continue;
+        }
+        let EdgeTo::Context(callee, _) = &edge.to else {
+            panic!("`lied` draws a call: {edge:?}")
+        };
+        drawn
+            .entry(edge.from.digest)
+            .or_default()
+            .insert(graph.def(&callee.func).unwrap().qname.clone());
+    }
+    let mut drawn: Vec<Vec<String>> = drawn
+        .into_values()
+        .map(|callees| callees.into_iter().collect())
+        .collect();
+    drawn.sort();
+    assert_eq!(drawn, [vec!["handler", "noop"], vec!["noop"]]);
+}
+
 /// TC4 step 4c: a key keeps only what can reach a call (`for_key`). In `object-data-members` the objects of the first two calls of `report` hold only data, so both
 /// are `{}` not complete and the two calls reach one context; the third holds `save` and has its own; the fourth holds only an unknown member (`Date.now()`), which
 /// is dropped too (step 4c-fix), so it is the first's key. With the objects bit off no object is in a key and `report`

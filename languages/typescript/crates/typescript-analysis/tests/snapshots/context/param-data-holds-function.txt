@@ -12,14 +12,16 @@ lied | ((cb as any) || other) | unresolved any_or_untyped
 -- on
 liar
   lied
+    handler
     noop
   handler [Passed]
   noop [Passed]
 edges:
-liar | lied | call lied @67db1ea4
+liar | lied | call lied @de81bc1f
 liar | handler | pass handler
 liar | noop | pass noop
-lied @67db1ea4 | ((cb as any) || other) | call noop
+lied @de81bc1f | ((cb as any) || other) | call handler
+lied @de81bc1f | ((cb as any) || other) | call noop
 == honest
 -- off
 honest
