@@ -676,4 +676,47 @@ variable: show every function the receiver may hold.
 - **What this does not do**: a member read of an instance or a class (`this.x()`, a field holding a function): TC5; relevance by
   member: step 8b.
 
+**Step 5 corrected (reviewer, 2026-11-28, probed both ways at `0d529d8`, before any prompt was given).** The design above changes
+nothing: with its two `walk.rs` lines built, every probe (the six rows and four more forms) gives the same tree as HEAD. Its premise
+was wrong in two places. (1) The table does not write `s.save` as a `Member`: `sem/flow.rs` `expr_of` writes an access whose
+symbol is a project function as **`Expr::Def`** of that function (`Def(Saver.save)`), and falls to `member_of_access` only when the
+engine names none (which is why B7 on an interface works since step 4). So `holds_name` sees a `Def`, whatever its `Member` arm says.
+(2) The key of `run` does **not** hold the literal: relevance never sees `s` (a `Def` is not an atom), so the slot is unknown and
+`run`'s digest is zeros. What step 5 needs is the read of the access in the table, **beside** the engine's def:
+
+- **5-2, the whole change, as corrected.** (1) `sem/flow.rs`, `Reader::site`: for a site of kind `Call` whose callee is a property
+  access (`unwrap_expression(call.expr)` is a `PropertyAccessExpression`) and whose `expr_of` is a `Def` or a `OneOf` (the engine
+  names functions), the callee is `one_of([that, member_of_access(access)])` **when the read's object chain ends in a `Var` or a
+  `Param`** (`Member(Var | Param | Member(…), name)`; a private helper beside `member`). Otherwise the callee is as today. Not for
+  `New`, `Jsx`, `Tagged`, `Decorator`, `Accessor` (a tag that is a value is step 6), not for an argument or a hand-over (below).
+  (2) and (3): the two `walk.rs` lines above, unchanged. (4) Nothing else.
+- **Why `one_of` and not the `Member` alone.** Every reader of the table that saw the `Def` still sees it: `needs`/`each_expr` (a
+  nested def named in the table), the open-entry branch of `resolve_from_env`. The layer adds and never removes (D59), now in the
+  table too. Probed: both forms give the same tree on every probe.
+- **Why only a name.** `one_of` keeps an `Unknown` member, so a read of something unknown (`this.x`, a class, a namespace) would
+  make the callee open and change the open-entry branch; and a read of an inline literal would add atoms to relevance. A name is
+  D59's own scope ("a member of a variable").
+- **Probed with the change** (the reviewer's patch, then reverted): `member-named-by-type` on, the context of `run` calls `Saver.save`
+  and `main.<locals>.save` → `mine`, `variable_added_to_engine` 1. `member-two-sources` on: the two literals' methods have **two
+  qualnames**, `main.<locals>.s.save` (the initializer's, → `a`) and `main.<locals>.save` (the assignment's, → `b`); `main` calls
+  `Saver.save`, both, and the assignment's `[Passed]`; 5 → 7 contexts; `variable_added_to_engine` 1,
+  `variable_assigned_more_than_once` 1. `h.inner.save()` (two members), `{ save: mine }` (a field holding a named function) and an
+  opened object (`o.save = other`: `other` is not added; the non-open branch adds the known members only, as D59 for a variable)
+  move too. `object-method`, `object-implements`, `props-member-call`, the instance, and data receivers (`arr.push`, `m.set`: a
+  library method is already a `Member`) do not move.
+- **The suite with the change** (the policy table of `0224f02`, so the six new rows are not read): **579 passed, 13 ignored**: no
+  existing snapshot, off file or counter moves.
+- **The samples with the change** (in turn with HEAD, load 5–6): private **6,905** contexts both, 1.38–1.50 s HEAD and 1.41–1.42 s
+  with it; `variable_added_to_engine` 18 → 19, `unresolved` 21,191 → 21,192 (`anonymous_function_called` 848 → 849: an anonymous
+  function added beside the engine), `variable_assigned_more_than_once` 1,202 → 1,760, `object_opened_by_method` 141 → 181,
+  `value_widened_depth` 209 → 261, `module_object_shared` 901 → 916 (more callees are evaluated). V-NOC **733** contexts both,
+  TaskDetailPanel 94, no edge moves (`module_object_shared` 178 → 261, `variable_assigned_more_than_once` 9 → 12). Compare: 0
+  problems on both. The tsc sample is the reviewer's after the build.
+- **5-1 as decided above, with two rows more** (eight in all): `member-nested` (`h.inner.save()`, the one row that sees `holds_name`
+  recurse through two members) and `member-field-function` (`run({ save: mine })`), each probed both ways. Today's halves as probed; the wording of `member-two-sources` is corrected in `policy.md` (the walk
+  draws no `[Passed]` edge for an initializer's literal, as `object-method`'s `const o = …`, and draws one for an assignment's: today's
+  behaviour, not this step's; relevance's hand-over list is another thing, see "4e-c corrected").
+- **Noted, not asked.** A member read as a **value** (`const f = s.save; f()`, `run(s.save)`) is still the engine's `Def` alone: the
+  same hole one step further; it is not in the steps table and waits for a row of its own.
+
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
