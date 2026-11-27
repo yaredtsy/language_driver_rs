@@ -1,0 +1,29 @@
+== App
+-- off
+App
+  Btn
+  save [Passed]
+  Btn
+  save [Passed]
+edges:
+App | Btn | call Btn
+App | save | pass save
+App | Btn | call Btn
+App | save | pass save
+Btn | props.reset | unresolved function_typed_value
+Btn | props.onPress | unresolved function_typed_value
+-- on
+App
+  Btn
+    save
+  save [Passed]
+  Btn
+    save
+  save [Passed]
+edges:
+App | Btn | call Btn @60646e2a
+App | save | pass save
+App | Btn | call Btn @60646e2a
+App | save | pass save
+Btn @60646e2a | props.reset | unresolved anonymous_function_called
+Btn @60646e2a | props.onPress | call save

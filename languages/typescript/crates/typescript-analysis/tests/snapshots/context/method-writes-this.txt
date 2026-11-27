@@ -1,0 +1,30 @@
+== main
+-- off
+main
+  run
+  save [Passed]
+  main.<locals>.reset [Passed]
+    other [Passed]
+edges:
+main | run | call run
+main | save | pass save
+main | reset | pass main.<locals>.reset
+main.<locals>.reset | other | pass other
+run | o.reset | unresolved function_typed_value
+run | o.f | unresolved function_typed_value
+-- on
+main
+  run
+    main.<locals>.reset
+      other [Passed]
+    save
+  save [Passed]
+  main.<locals>.reset [Passed]
+    other [Passed]
+edges:
+main | run | call run @cdd25fae
+main | save | pass save
+main | reset | pass main.<locals>.reset
+main.<locals>.reset | other | pass other
+run @cdd25fae | o.reset | call main.<locals>.reset
+run @cdd25fae | o.f | call save

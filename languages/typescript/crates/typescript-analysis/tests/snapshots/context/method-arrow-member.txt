@@ -1,0 +1,20 @@
+== main
+-- off
+main
+  run
+  save [Passed]
+edges:
+main | run | call run
+main | save | pass save
+run | o.reset | unresolved function_typed_value
+run | o.f | unresolved function_typed_value
+-- on
+main
+  run
+    save
+  save [Passed]
+edges:
+main | run | call run @1a289559
+main | save | pass save
+run @1a289559 | o.reset | unresolved anonymous_function_called
+run @1a289559 | o.f | call save

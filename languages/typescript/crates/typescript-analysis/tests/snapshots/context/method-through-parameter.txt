@@ -1,0 +1,31 @@
+== main
+-- off
+main
+  save [Passed]
+  poke
+  main.<locals>.o.reset [Passed]
+    other [Passed]
+  save
+edges:
+main | save | pass save
+main | poke | call poke
+main | o | pass main.<locals>.o.reset
+main | o.f | call save
+main.<locals>.o.reset | other | pass other
+poke | t.reset | unresolved function_typed_value
+-- on
+main
+  save [Passed]
+  poke
+    main.<locals>.o.reset
+      other [Passed]
+  main.<locals>.o.reset [Passed]
+    other [Passed]
+  save
+edges:
+main | save | pass save
+main | poke | call poke @c96eeb36
+main | o | pass main.<locals>.o.reset
+main | o.f | call save
+main.<locals>.o.reset | other | pass other
+poke @c96eeb36 | t.reset | call main.<locals>.o.reset
