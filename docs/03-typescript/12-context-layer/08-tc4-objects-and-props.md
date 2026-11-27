@@ -605,6 +605,10 @@ not counted (`vars.ts`, `unmodelledData`).
 element (`const { id } = props`, a pattern parameter `{ n }`). The row now shows both: `f` (the initializer, a hand-over: two contexts,
 unchanged) and `g` (`g({ n }: { n: number; h: () => void })` calling `log(n)`: two contexts before the rule, one after; probed by the
 reviewer at `675d735` with HEAD's `relevance.rs` and with the rule). Hand-overs stay sinks.
+
+**4e-c built, `675d735` and `6631766`**: as corrected; the private sample is back to 6,905 contexts and 21,191 unresolved, no time
+measurable across 4e (`engine/11-tc4.md`). **Steps 4c, 4d and 4e are closed**; next is step 5 (a literal's method as a target,
+`walk::holds_name` of a `Member`: D59 beside the engine).
  `eval::row_value` of a row that is not capable: what a parameter's
 row is passed (`passed`) joined with every assigned value, then `as_data_typed`. Evaluated only with `LOCALS`, so `locals-off.txt` does
 not move. Relevance now reads a data-typed row's assignments too, so a parameter assigned into one and called through it may become
