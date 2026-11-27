@@ -693,6 +693,7 @@ mod tests {
                 vars: vars.into(),
                 unmodelled: 0,
                 around: None,
+                this_uses: None,
             }),
             d(9),
             KeyData {
@@ -1182,6 +1183,7 @@ mod tests {
             vars: vars.into(),
             unmodelled: 0,
             around,
+            this_uses: None,
         })
     }
 
@@ -1882,6 +1884,7 @@ mod tests {
                 vars: Box::new([]),
                 unmodelled: 0,
                 around: Some(d(8)),
+                this_uses: None,
             }),
             d(9),
             KeyData {

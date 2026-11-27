@@ -62,6 +62,10 @@ pub(crate) struct Flow {
     pub(crate) unmodelled: u64,
     /// The def this one is nested in; `None` at the top of its file (and for the file's own code). A method's is its class, as the outline says.
     pub(crate) around: Option<DefId>,
+    /// What the def does with its `this` (`08-tc4` §10, step 3c): `Some` for a function declaration, a function expression, and a method or accessor of an
+    /// object literal; `None` for a class member, a constructor, an arrow (its `this` is the enclosing def's), a class and a file's code. Read only for the
+    /// counter `this_written_outside_class`.
+    pub(crate) this_uses: Option<Uses>,
 }
 
 impl Flow {

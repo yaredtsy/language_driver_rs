@@ -27,7 +27,10 @@ use crate::needs::needs_of_component;
 use crate::nested::{CaptureList, Nested, ObjectData};
 use crate::relevance::relevant;
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
-use crate::trust::trust_of_component;
+use crate::trust::{
+    MEMBER_CALL_ON_TRUSTED, MODULE_OBJECT_SHARED, THIS_WRITTEN_OUTSIDE_CLASS, body_counts,
+    trust_of_component,
+};
 use crate::value::VALUE_WIDENED_SET;
 use crate::value::{Captures, ObjectId, One, Value};
 use crate::walk;
@@ -399,6 +402,16 @@ impl<'p> Lang for TypeScript<'p> {
             self.note_body_n(UNHANDLED_KEY, flow.unhandled);
             if self.knows(Caps::LOCALS) {
                 self.note_body_n(VARIABLE_WRITE_UNMODELLED, flow.unmodelled);
+            }
+            // the three counts the owner needs before Q-TC9 and N5 (`08-tc4` §10, step 3c)
+            if self.knows(Caps::OBJECTS) {
+                let counts = body_counts(self, def, &flow);
+                self.note_body_n(MEMBER_CALL_ON_TRUSTED, counts.member_call_on_trusted);
+                self.note_body_n(
+                    THIS_WRITTEN_OUTSIDE_CLASS,
+                    counts.this_written_outside_class,
+                );
+                self.note_body_n(MODULE_OBJECT_SHARED, counts.module_object_shared);
             }
             Env::new(flow, def, self.keys.borrow().data(*key).clone())
         });

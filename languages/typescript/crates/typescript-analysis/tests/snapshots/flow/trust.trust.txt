@@ -79,6 +79,37 @@
   x@61 untrusted
   y@61 trusted
   z@61 untrusted
+== sharedHolder.a
+  none
+== ownHolder.a
+  none
+== readsShared
+  none
+== counter.n.k
+  none
+== counter.reset
+  none
+== counter.read
+  none
+== counter.call
+  none
+== plain
+  none
+== arrowInside
+  f@78 trusted
+== arrowInside.<locals>.f
+  none
+== nestedFunction
+  none
+== nestedFunction.<locals>.g
+  none
+== K
+  none
+== K.m
+  none
 == FILE
   shared@44 untrusted
   own@45 trusted
+  sharedHolder@68 untrusted
+  ownHolder@69 trusted
+  counter@71 trusted

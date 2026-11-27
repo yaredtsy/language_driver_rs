@@ -296,11 +296,111 @@ handed:
   x param#2
   y param#3
   z param#4
+== sharedHolder.a
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== ownHolder.a
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== readsShared
+params: none
+vars: none
+sites:
+  call member(var FILE:sharedHolder@68, a) ()
+  call member(var FILE:ownHolder@69, a) ()
+  call member(var FILE:sharedHolder@68, a) ()
+anons: 0
+handed: none
+== counter.n.k
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== counter.reset
+params: none
+vars: none
+this: uses(escapes)
+sites: none
+anons: 1
+handed: none
+== counter.read
+params: none
+vars: none
+this: uses(escapes)
+sites: none
+anons: 0
+handed:
+  this.n def counter.n.k written
+== counter.call
+params: none
+vars: none
+this: uses(receiver)
+sites:
+  call def counter.n.k ()
+anons: 0
+handed: none
+== plain
+params: none
+vars: none
+this: uses(escapes)
+sites: none
+anons: 1
+handed: none
+== arrowInside
+params: none
+vars:
+  f@78 capable = def arrowInside.<locals>.f
+this: uses(escapes)
+sites:
+  call def arrowInside.<locals>.f ()
+anons: 0
+handed: none
+== arrowInside.<locals>.f
+params: none
+vars: none
+sites: none
+anons: 1
+handed: none
+== nestedFunction
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== nestedFunction.<locals>.g
+params: none
+vars: none
+this: uses(escapes)
+sites: none
+anons: 0
+handed: none
+== K
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
+== K.m
+params: none
+vars: none
+sites: none
+anons: 0
+handed: none
 == FILE
 params: none
 vars:
   shared@44 capable = {a: def shared.a} uses(exported)
   own@45 capable = {a: def own.a}
+  sharedHolder@68 capable = {a: def sharedHolder.a} uses(receiver, exported)
+  ownHolder@69 capable = {a: def ownHolder.a} uses(receiver)
+  counter@71 capable = {n: {k: def counter.n.k}, reset: def counter.reset, read: def counter.read, call: def counter.call}
 sites: none
 anons: 0
 handed: none

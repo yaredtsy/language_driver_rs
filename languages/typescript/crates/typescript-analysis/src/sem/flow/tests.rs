@@ -531,6 +531,11 @@ fn show_table(sem: &Sem, own: DefId, text: &str, flow: &Flow) -> String {
             out.push_str(&format!("  {}\n", show_var(sem, own, text, var)));
         }
     }
+    if let Some(uses) = &flow.this_uses
+        && *uses != Uses::default()
+    {
+        out.push_str(&format!("this:{}\n", show_uses(sem, own, text, uses)));
+    }
     if flow.sites.is_empty() {
         out.push_str("sites: none\n");
     } else {

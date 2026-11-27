@@ -771,6 +771,50 @@ fn relevance_and_the_bind_record_on_keys() {
     assert_eq!(read(pair), [false, true]);
 }
 
+/// The three counters of `08-tc4` §10, step 3c, as each entry of the trust fixture says them alone: said once per body, and only with `Caps::OBJECTS`.
+#[test]
+fn the_trust_counters_are_said_once_per_body_and_only_with_objects() {
+    use crate::trust::{MEMBER_CALL_ON_TRUSTED, MODULE_OBJECT_SHARED, THIS_WRITTEN_OUTSIDE_CLASS};
+    // the flow fixture has no `src/main.ts`, which `open` names: it is opened by the file under test
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/flow");
+    let sem = Sem::open(&root, Path::new("src/trust.tsx")).unwrap();
+    let keys = [
+        MEMBER_CALL_ON_TRUSTED,
+        THIS_WRITTEN_OUTSIDE_CLASS,
+        MODULE_OBJECT_SHARED,
+    ];
+    // each entry with the counts of the three keys, `None` where the key is absent
+    let rows: [(&str, [Option<u64>; 3]); 6] = [
+        ("reads", [Some(1), None, None]),
+        ("readsShared", [None, None, Some(1)]),
+        ("counter.reset", [None, Some(1), None]),
+        ("counter.call", [None, None, None]),
+        ("arrowInside", [None, Some(1), None]),
+        ("K.m", [None, None, None]),
+    ];
+    let said = |qname: &str, layer: Caps| {
+        let entry = sem.entry("src/trust.tsx", qname, 0, STYLE).unwrap();
+        // `solve_from` does not run `finish`, which copies the notes into `Stats.language`: the notes are what it would copy
+        let (solver, _) = solve_from(&sem, entry, Some(layer));
+        let notes = solver.lang().notes.borrow();
+        keys.map(|key| notes.get(key).copied())
+    };
+    for (qname, expected) in rows {
+        assert_eq!(
+            said(qname, Caps::BUILT | Caps::OBJECTS),
+            expected,
+            "{qname}"
+        );
+        // objects off: the layer says nothing of them
+        assert_eq!(said(qname, Caps::BUILT), [None, None, None], "{qname} off");
+    }
+    // a body whose only `this` is a nested function's
+    assert_eq!(
+        said("nestedFunction", Caps::BUILT | Caps::OBJECTS),
+        [None, None, None]
+    );
+}
+
 /// The contexts of each function of a graph, through `spread`, and the qname of the first def (in `graph.defs` order) that has the most.
 fn per_function(graph: &Graph) -> (Spread, String) {
     let mut counts: HashMap<&analyzer_core::graph::StableDef, usize> = HashMap::new();

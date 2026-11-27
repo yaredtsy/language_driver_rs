@@ -298,7 +298,56 @@ impl Reader<'_, '_> {
             vars: vars.0,
             unmodelled: vars.1,
             around: self.around(),
+            this_uses: self.this_uses(),
         }
+    }
+
+    /// What the def does with its `this` (`08-tc4` §10, step 3c). `Some` for a function declaration, a function expression, and a method or accessor of an
+    /// object literal: every `this` of its body is placed as a reference is, into one `Found`. A nested def with a `this` of its own is not entered (a function,
+    /// a method, an accessor, a constructor, a class); an arrow is, since its `this` is this def's. `None` for the other defs, whose `this` is not a variable.
+    fn this_uses(&mut self) -> Option<Uses> {
+        let has_own_this = match self.def.kind() {
+            Kind::FunctionDeclaration | Kind::FunctionExpression => true,
+            Kind::MethodDeclaration | Kind::GetAccessor | Kind::SetAccessor => self
+                .def
+                .parent()
+                .is_some_and(|parent| parent.kind() == Kind::ObjectLiteralExpression),
+            _ => false,
+        };
+        if !has_own_this {
+            return None;
+        }
+        let mut found = Found::default();
+        let mut pending = Vec::new();
+        self.def.for_each_child(&mut |child| {
+            pending.push(child);
+            false
+        });
+        while let Some(node) = pending.pop() {
+            match node.kind() {
+                Kind::FunctionDeclaration
+                | Kind::FunctionExpression
+                | Kind::MethodDeclaration
+                | Kind::GetAccessor
+                | Kind::SetAccessor
+                | Kind::Constructor
+                | Kind::ClassDeclaration
+                | Kind::ClassExpression => continue,
+                Kind::ThisKeyword => self.place(node, &mut found),
+                _ => {}
+            }
+            node.for_each_child(&mut |child| {
+                pending.push(child);
+                false
+            });
+        }
+        Some(Uses {
+            escapes: found.escapes,
+            passed: sorted(found.passed).into(),
+            names: sorted(found.names).into(),
+            receiver: found.receiver,
+            exported: false,
+        })
     }
 
     /// The def of the outline whose node holds this def's node, the nearest one: the first node above that is in the file's `def_of`. `None` when the first

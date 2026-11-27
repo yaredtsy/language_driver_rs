@@ -4,10 +4,11 @@
 //! trusted when no use of the variable that holds it, in the whole scope of that variable and in every function it is handed to, can change its members. The
 //! table says what each variable is used for (`Uses`, step 3a); this module follows the variables a value is passed on to and answers for all of them at once.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::eval::World;
-use crate::flow::{DefId, VarId};
+use crate::flow::{DefId, Expr, Flow, Part, Uses, VarId};
+use crate::needs::each_expr;
 
 /// Each variable of a component with whether its object can be trusted.
 pub(crate) type Component = Vec<(VarId, bool)>;
@@ -95,15 +96,112 @@ fn examine(world: &dyn World, var: VarId) -> (bool, Vec<VarId>) {
     if !row.capable {
         return (false, Vec::new());
     }
-    let mut bad = row.uses.escapes || row.uses.exported;
-    let mut follows: Vec<VarId> = row.uses.names.to_vec();
-    for &(def, index) in row.uses.passed.iter() {
+    judge(world, &row.uses)
+}
+
+/// What `uses` says on its own: whether it is a use the rule forbids, and the variables it follows. The rule of a row, for any value's uses.
+fn judge(world: &dyn World, uses: &Uses) -> (bool, Vec<VarId>) {
+    let mut bad = uses.escapes || uses.exported;
+    let mut follows: Vec<VarId> = uses.names.to_vec();
+    for &(def, index) in uses.passed.iter() {
         match parameter(world, def, index) {
             Some(variables) => follows.extend(variables),
             None => bad = true,
         }
     }
     (bad, follows)
+}
+
+/// Whether a value used as `uses` says can be trusted: the rule of a row, for a use that is not a row (a def's `this`). Asks the world for each variable the
+/// value follows.
+pub(crate) fn uses_trusted(world: &dyn World, uses: &Uses) -> bool {
+    let (bad, follows) = judge(world, uses);
+    !bad && follows.iter().all(|&var| world.trusted(var))
+}
+
+/// The key of the counter in `Stats.language`: a body's rows that are trusted and on which a method is called (Q-TC9).
+pub(crate) const MEMBER_CALL_ON_TRUSTED: &str = "member_call_on_trusted";
+/// A body that is not a class member and whose `this` is not trusted (Q-TC9).
+pub(crate) const THIS_WRITTEN_OUTSIDE_CLASS: &str = "this_written_outside_class";
+/// The exported rows of a file's own code that a body reads: never trusted, so their objects are read open (`08-tc4` §5, N5).
+pub(crate) const MODULE_OBJECT_SHARED: &str = "module_object_shared";
+
+/// The three counts of one body (`08-tc4` §10, step 3c).
+pub(crate) struct BodyCounts {
+    pub(crate) member_call_on_trusted: u64,
+    pub(crate) this_written_outside_class: u64,
+    pub(crate) module_object_shared: u64,
+}
+
+/// What `flow`, the table of `def`, says for the three counters.
+pub(crate) fn body_counts(world: &dyn World, def: DefId, flow: &Flow) -> BodyCounts {
+    let member_call_on_trusted = flow
+        .vars
+        .iter()
+        .filter(|row| row.capable && row.uses.receiver)
+        .filter(|row| world.trusted(VarId { def, at: row.at }))
+        .count() as u64;
+    let this_written_outside_class = u64::from(
+        flow.this_uses
+            .as_ref()
+            .is_some_and(|uses| !uses_trusted(world, uses)),
+    );
+    // the variables of the file's own code that the table reads, anywhere in an expression, each once
+    let mut read: BTreeSet<VarId> = BTreeSet::new();
+    each_expr(flow, &mut |expr| {
+        each_var(expr, &mut |var| {
+            if var.def.index().is_none() {
+                read.insert(var);
+            }
+        });
+    });
+    let module_object_shared = read
+        .into_iter()
+        .filter(|var| {
+            world.flow(var.def).is_some_and(|table| {
+                table.var_index(var.at).is_some_and(|row| {
+                    let row = &table.vars[row];
+                    row.capable && row.uses.exported
+                })
+            })
+        })
+        .count() as u64;
+    BodyCounts {
+        member_call_on_trusted,
+        this_written_outside_class,
+        module_object_shared,
+    }
+}
+
+/// Every variable `expr` names, however deep: a member of a `OneOf`, the object of a `Member` or an `Omit`, a part of an `Object`, both sides of a `Default`.
+fn each_var(expr: &Expr, found: &mut impl FnMut(VarId)) {
+    match expr {
+        Expr::Var(var) => found(*var),
+        Expr::OneOf(members) => {
+            for member in members {
+                each_var(member, found);
+            }
+        }
+        Expr::Member(object, _) | Expr::Omit(object, _) => each_var(object, found),
+        Expr::Object(parts) => {
+            for part in parts {
+                match part {
+                    Part::Named(_, value) | Part::Spread(value) => each_var(value, found),
+                    Part::Unnamed => {}
+                }
+            }
+        }
+        Expr::Default(value, default) => {
+            each_var(value, found);
+            each_var(default, found);
+        }
+        Expr::Unknown
+        | Expr::Data
+        | Expr::Undefined
+        | Expr::Def(_)
+        | Expr::Param(_)
+        | Expr::Anon(_) => {}
+    }
 }
 
 /// The variables that hold parameter `index` of `def` in its body: the parameter's own row when it is named, the variables of its pattern when it is not.
@@ -134,7 +232,7 @@ mod tests {
 
     use super::*;
     use crate::caps::Caps;
-    use crate::flow::{Flow, Param, Uses, Var};
+    use crate::flow::{Expr, Flow, Param, Part, Uses, Var};
     use crate::nested::{CaptureList, ObjectData};
     use crate::value::{Captures, ObjectId, Value};
 
@@ -169,8 +267,9 @@ mod tests {
             unreachable!("trust does not ask what is relevant")
         }
 
-        fn trusted(&self, _var: VarId) -> bool {
-            unreachable!("`trust_of_component` solves; it never asks the world to")
+        fn trusted(&self, var: VarId) -> bool {
+            // what the `Sem` answers: the first of the variable's own component
+            trust_of_component(self, var)[0].1
         }
 
         fn trusted_known(&self, var: VarId) -> Option<bool> {
@@ -268,6 +367,15 @@ mod tests {
             vars: vars.into(),
             unmodelled: 0,
             around: None,
+            this_uses: None,
+        })
+    }
+
+    /// A table of a def that is not function-like, with these rows and what it does with its `this`.
+    fn with_this(vars: Vec<Var>, this_uses: Option<Uses>) -> Arc<Flow> {
+        Arc::new(Flow {
+            this_uses,
+            ..Arc::try_unwrap(table(vec![], vars)).expect("made here, held once")
         })
     }
 
@@ -606,5 +714,103 @@ mod tests {
         for (reached, answer) in component {
             assert_eq!(trusted(&world, reached), answer, "{reached:?}");
         }
+    }
+
+    #[test]
+    fn uses_trusted_is_the_rule_of_a_row() {
+        let world = world(vec![
+            (
+                1,
+                table(vec![], vec![row(1, None, escapes()), row(2, None, clean())]),
+            ),
+            def_with_parameter(2, clean()),
+            def_with_parameter(3, escapes()),
+            (
+                4,
+                table(
+                    vec![Param {
+                        rest: true,
+                        ..named_param()
+                    }],
+                    vec![row(1, Some(0), clean())],
+                ),
+            ),
+        ]);
+        assert!(uses_trusted(&world, &clean()));
+        assert!(!uses_trusted(&world, &escapes()));
+        // a name whose row escapes, and one whose row does not
+        assert!(!uses_trusted(&world, &names(&[var(1, 1)])));
+        assert!(uses_trusted(&world, &names(&[var(1, 2)])));
+        // passed to a parameter whose row has no uses, to one that escapes, to a rest parameter
+        assert!(uses_trusted(&world, &passed(&[(2, 0)])));
+        assert!(!uses_trusted(&world, &passed(&[(3, 0)])));
+        assert!(!uses_trusted(&world, &passed(&[(4, 0)])));
+    }
+
+    #[test]
+    fn the_counts_of_a_body() {
+        let receiver = |escapes: bool| Uses {
+            receiver: true,
+            escapes,
+            ..Uses::default()
+        };
+        let exported = Uses {
+            exported: true,
+            ..Uses::default()
+        };
+        let module = DefId::new(0, 0, None);
+        let at = |at: u32| VarId { def: module, at };
+        // the file's rows: 1 and 2 are exported, 3 is not
+        let file = with_this(
+            vec![
+                row(1, None, exported.clone()),
+                row(2, None, exported),
+                row(3, None, clean()),
+            ],
+            None,
+        );
+        let counts = |this_uses: Option<Uses>, reads: Vec<Expr>| {
+            // one trusted receiver, one that escapes, and one trusted with no method called on it
+            let body = with_this(
+                vec![
+                    Var {
+                        assigned: reads.into(),
+                        ..row(1, None, receiver(false))
+                    },
+                    row(2, None, receiver(true)),
+                    row(3, None, clean()),
+                ],
+                this_uses,
+            );
+            let mut world = world(vec![(1, Arc::clone(&body))]);
+            world.flows.insert(module, Arc::clone(&file));
+            body_counts(&world, d(1), &body)
+        };
+        let nothing = counts(None, vec![]);
+        assert_eq!(nothing.member_call_on_trusted, 1);
+        assert_eq!(nothing.this_written_outside_class, 0);
+        assert_eq!(nothing.module_object_shared, 0);
+        assert_eq!(
+            counts(Some(Uses::default()), vec![]).this_written_outside_class,
+            0
+        );
+        assert_eq!(
+            counts(Some(escapes()), vec![]).this_written_outside_class,
+            1
+        );
+        // the file's row 1 is read inside an object's part and again as the default of a pattern element; row 2 only inside a member inside that default;
+        // row 3 is not exported; a row of the body itself is not the file's
+        let reads = vec![
+            Expr::Object(Box::new([
+                Part::Named("a".into(), Expr::Var(at(1))),
+                Part::Named("b".into(), Expr::Var(at(3))),
+                Part::Named("c".into(), Expr::Var(VarId { def: d(1), at: 1 })),
+            ])),
+            Expr::Default(
+                Box::new(Expr::Member(Box::new(Expr::Var(at(2))), "k".into())),
+                Box::new(Expr::Var(at(1))),
+            ),
+        ];
+        assert_eq!(counts(None, reads).module_object_shared, 2);
     }
 }

@@ -288,6 +288,7 @@ mod tests {
             vars: vars.into(),
             unmodelled: 0,
             around,
+            this_uses: None,
         })
     }
 

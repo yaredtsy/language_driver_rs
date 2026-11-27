@@ -65,3 +65,16 @@ export function callers(v: O, w: O, x: O, y: O, z: O) {
     pat(y);
     patWrites(z);
 }
+export const sharedHolder: { a: () => void } = { a: () => {} };
+const ownHolder: { a: () => void } = { a: () => {} };
+export function readsShared() { sharedHolder.a(); ownHolder.a(); sharedHolder.a(); }
+const counter = {
+    n: { k: () => {} },
+    reset() { this.n = { k: () => {} }; },
+    read() { return this.n; },
+    call() { this.n.k(); },
+};
+function plain(this: { a: () => void }) { this.a = () => {}; }
+function arrowInside(this: { a: () => void }) { const f = () => { this.a = () => {}; }; f(); }
+function nestedFunction(this: { a: () => void }) { function g(this: unknown) { (this as any).a = 1; } g; }
+class K { x = 0; m() { this.x = 1; } }
