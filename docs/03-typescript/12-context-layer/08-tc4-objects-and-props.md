@@ -488,6 +488,16 @@ step 4c as built"): `eval::for_key` in `intern_key`; `object-data-members` has t
 nothing else. On the samples the private codebase's cuts went 349 → 150, all at two functions whose callers' literals hold **unknown**
 members (not data): the key still splits by member names. A further rule (a bare unknown member is dropped too) was measured: 0 cuts.
 
+**Step 4c-fix, decided (owner, 2026-11-27): an unknown member is no reason for a context either.** In the callee, a member that is
+unknown and a member that is missing from an object that is not complete read the same (unknown), so a key gains nothing by keeping it.
+`reaches_a_call` no longer counts `open`: a value can reach a call when one of its **known** members can (`Fn`, `Closure`, `Anon`,
+`AnonAny`, `Undefined`, an object that keeps a member). So `{ a: x }` with `x` unknown is `{}` not complete, and so is `{ a: x }` with
+`x` unknown or `{ b: 1 }`; `{ a: x }` with `x` unknown or `save` keeps `a`. Only an object's members are reduced; a slot that is unknown
+stays unknown. The cost, accepted: a name the literal leaves out reads unknown, not `undefined`, when the literal has an unknown member,
+so a default there is shown beside the engine's answer instead of alone (sound). What the review measured was a looser form (an open value
+with any known member kept); the samples are run again on this one. The unit test also gains the case the review's mutation found
+untested: `{ inner: { u: undefined } }` is kept whole.
+
 **Two steps added after 4b (owner's decisions, 2026-11-27).** **4d**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
 when one of the object's function members writes through `this` or cannot be seen (an open member, an object that is not complete, an
