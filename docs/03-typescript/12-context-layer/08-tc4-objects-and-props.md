@@ -725,6 +725,7 @@ The samples: as the reviewer's patch, no cost past the noise. **Step 5-fix**: th
 engine's `Def`, failed no test, yet the `Def` matters. With `OBJECTS` off, the callee's `Def` is the table's only name for a nested
 def called through a local literal. Without it, `needs` misses what the def captures, and the TC3 layer loses the edge, as probed:
 `objects-off.txt` turns `cb()` inside `o.run` into `function_typed_value`. 5-fix is one row (`member-callee-nested-def`), blessed with
-today's code, no code change. After it, step 5 is closed.
+today's code, no code change. **Built, `5e2838e`**: the mutation fails `the_objects_bit_off_is_tc3` alone (in the other off files
+`RELEVANCE` is off, so every parameter is in the key anyway). **Step 5 is closed**; next is step 6 (a JSX tag that is a value).
 
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
