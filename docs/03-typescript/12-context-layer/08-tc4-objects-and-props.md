@@ -719,4 +719,12 @@ engine names none (which is why B7 on an interface works since step 4). So `hold
 - **Noted, not asked.** A member read as a **value** (`const f = s.save; f()`, `run(s.save)`) is still the engine's `Def` alone: the
   same hole one step further; it is not in the steps table and waits for a row of its own.
 
+**Step 5 built, `32359a5` and `a2a4865`** ([`engine/11-tc4.md`](../../../languages/typescript/engine/11-tc4.md), "TC4 step 5 as
+built"): as corrected, 580 passed; four row snapshots moved, no off file did (the correction said three would: none has `OBJECTS`).
+The samples: as the reviewer's patch, no cost past the noise. **Step 5-fix**: the coder's mutation (e), the read alone without the
+engine's `Def`, failed no test, yet the `Def` matters. With `OBJECTS` off, the callee's `Def` is the table's only name for a nested
+def called through a local literal. Without it, `needs` misses what the def captures, and the TC3 layer loses the edge, as probed:
+`objects-off.txt` turns `cb()` inside `o.run` into `function_typed_value`. 5-fix is one row (`member-callee-nested-def`), blessed with
+today's code, no code change. After it, step 5 is closed.
+
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
