@@ -1,0 +1,30 @@
+== main
+-- off
+main
+  run
+  run
+  run
+  main.<locals>.h [Passed]
+edges:
+main | run | call run
+main | run | call run
+main | run | call run
+main | h | pass main.<locals>.h
+main.<locals>.h | g | unresolved function_typed_value
+run | cb | unresolved function_typed_value
+-- on
+main
+  run
+  run
+  run
+    main.<locals>.h
+  main.<locals>.h [Passed]
+edges:
+main | run | call run @e33b6f72
+main | run | call run @79e70bb6
+main | run | call run @0d9842cd
+main | h | pass main.<locals>.h @37d52552
+main.<locals>.h @37d52552 | g | unresolved anonymous_function_called
+run @0d9842cd | cb | call main.<locals>.h @37d52552
+run @79e70bb6 | cb | unresolved anonymous_function_called
+run @e33b6f72 | cb | unresolved anonymous_function_called

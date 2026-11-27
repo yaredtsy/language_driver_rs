@@ -635,7 +635,7 @@ fn nine_functions_make_a_wide_slot() {
 
 /// A context of `graph` walked alone, by a language that remembers nothing, has exactly the edges the graph has leaving it: what the solver kept for a context
 /// is not what an earlier walk left in a cache. Run with the layer as `Precise` runs it (`Caps::BUILT`), so what the walk adds beside the engine is in the
-/// comparison too: the graph drops an edge that is there twice, a walk alone does not. `fixture` is opened on `file` and the graph is the one under `entry`.
+/// comparison too: the graph drops an edge that is there twice, a walk alone does not (the comparison drops it too, below). `fixture` is opened on `file` and the graph is the one under `entry`.
 fn each_context_walked_alone(fixture: &str, file: &str, entry: &str) -> usize {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(fixture);
     let sem = Sem::open(&root, Path::new(file)).unwrap();
@@ -696,6 +696,9 @@ fn each_context_walked_alone(fixture: &str, file: &str, entry: &str) -> usize {
             }
         }
         alone.sort();
+        // the graph keeps one edge for a site and a target said twice, as a walk alone does not: a variable that holds an arrow and a function expression
+        // (`AnonArrow`, `AnonFunction`) gives the same unresolved target twice (TC4 step 4d)
+        alone.dedup();
         assert_eq!(
             in_graph,
             alone,
