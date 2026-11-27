@@ -122,3 +122,8 @@ export function nest(cb: () => void) {
   function middle() { inner(); }
   run(middle);
 }
+
+export function unmodelledData() {
+  let s = "x";
+  (s) = "y";
+}
