@@ -585,8 +585,20 @@ not move at all. **4e-b, as decided for the build**: in `Reader::vars` a row tha
 and its modelled writes) as a capable row does; `open` stays `capable && open` and `unmodelled` is counted for capable rows only (a
 data-typed row's value is closed by `as_data_typed`, so neither changes it); `uses` stays capable-only, and so do `needs` and
 `variable_assigned_more_than_once`; the table printer is unchanged (**corrected at 4e-b**: it prints `= …` for every row
-with assignments, capable or not, so three table snapshots show the data-typed rows' assignments, nine lines; kept, not hidden: a table
-snapshot shows what the table holds). `eval::row_value` of a row that is not capable: what a parameter's
+with assignments, capable or not, so three table snapshots show the data-typed rows' assignments, seven rows; kept, not hidden: a table
+snapshot shows what the table holds).
+
+**Step 4e-b built, `0e48e37`**, and **4e-c found at its samples (reviewer, 2026-11-27).** The private sample went from 6,904 to 6,922
+contexts (+81 unresolved, every counter in step with the walks). 17 of the 18 come from relevance: it marks the atoms of a marked row's
+assignments, and now a data-typed row has them, so in `const n: number = cb.length; log(n)` the parameter `cb` became relevant and
+`f(a)`, `f(b)` split, though only data comes out of `cb` there. **Decided (4e-c):** relevance follows the assignments of a **capable**
+row only; a data-typed row still marks its own parameter. Why: by D69 the type is read where no value is known, and a value reaches a
+data-typed row only through a cast; a parameter whose only way to a call is a data-typed row is no reason for a context (if a cast does
+carry a function there, the parameter is not in the key, the row is data, and the site keeps the engine's answer: sound). Measured with
+the rule in place, locally: 6,905 contexts, unresolved back to 21,191, no test failing (so no fixture guarded it either way: row
+`relevance-through-data-row`). 4e-c also adds the guard the coder's mutation (d) found missing: a data-typed row's unmodelled write is
+not counted (`vars.ts`, `unmodelledData`).
+ `eval::row_value` of a row that is not capable: what a parameter's
 row is passed (`passed`) joined with every assigned value, then `as_data_typed`. Evaluated only with `LOCALS`, so `locals-off.txt` does
 not move. Relevance now reads a data-typed row's assignments too, so a parameter assigned into one and called through it may become
 relevant: each such row is reported.
