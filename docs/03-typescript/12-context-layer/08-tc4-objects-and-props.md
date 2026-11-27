@@ -728,4 +728,30 @@ def called through a local literal. Without it, `needs` misses what the def capt
 today's code, no code change. **Built, `5e2838e`**: the mutation fails `the_objects_bit_off_is_tc3` alone (in the other off files
 `RELEVANCE` is off, so every parameter is in the key anyway). **Step 5 is closed**; next is step 6 (a JSX tag that is a value).
 
+**Step 6, as decided for the build (reviewer, 2026-11-28, probed both ways at `e4f5156`).** §6's forms of a tag that is a value are
+answered **already**, as step 5's were. The open-entry branch of `resolve_from_env` does not look at a site's kind, so a JSX tag whose
+engine answer is open is evaluated like a callee since step 4; and a local tag gets D59's addition since TC3. Probed, on half:
+
+- `<Icon />`, with `Icon` a destructured prop (`Card({ Icon })`), and `<props.Icon />`: `Card` calls `Star`, the component passed;
+- `const C = flag ? A : B; <C />`: the engine names `A`, and the layer adds `B` (`variable_added_to_engine` 1);
+- `<Inner {...props} />` in `Outer`: `Inner`'s `props.onClose()` calls `close`;
+- `<Box>{run}</Box>` with `props.children()`: unresolved `function_typed_value` in both halves. `children` is written `Unknown` (§6:
+  "listed as unknown"; a named function given as a child is unknown too; a function child is TC7's, D54);
+- two `<Dialog>` that differ only in `onOpen`, which `Dialog` never reads: two contexts of `Dialog` (relevance by member is step 8b).
+
+**What is left is step 5's rule at a tag.** `<props.Icon />` with `Icon: typeof Base`, given `Mine`: the engine names `Base`, the table
+writes the callee as `Def(Base)` alone (step 5 limited its rule to `Call`), and `Mine` is not reached. The change: in `Reader::site`,
+the condition `kind == FlowKind::Call` becomes `matches!(kind, FlowKind::Call | FlowKind::Jsx)`. A JSX site's callee is its tag name
+(`call.expr`), a `PropertyAccessExpression` for `<props.Icon />`. Nothing else changes.
+
+- **Probed with the change** (reviewer's patch, reverted): `Card` calls `Base` **and** `Mine` (→ `mine`), with
+  `variable_added_to_engine` 1. The other ten probes do not move. The suite: 580 passed, nothing moves. The samples (load 7–15, time
+  not readable): private **6,905** contexts, V-NOC **733** (TaskDetailPanel 94), **no counter differs** on either sample, compare 0
+  problems on both.
+- **Two commits.** **6-1**: seven rows (below), blessed with today's code. **6-2**: the one condition. Only `props-tag-named-by-type`
+  moves, and no off file does (none has `OBJECTS`, so `props.Icon` reads nothing there).
+- **Rows** (`policy.md`): `props-component-as-prop`, `props-tag-member`, `props-tag-local`, `props-spread-through`, `props-children`,
+  `props-unread-member` (two contexts), `props-tag-named-by-type`. `New`, `Tagged`, `Decorator`, `Accessor` stay out of the rule: a
+  class tag is step 7.
+
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
