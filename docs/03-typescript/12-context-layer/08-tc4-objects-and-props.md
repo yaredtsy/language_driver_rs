@@ -501,6 +501,44 @@ untested: `{ inner: { u: undefined } }` is kept whole.
 **Step 4c-fix built as decided, `fe9151e` and `812e533`** (`engine/11-tc4.md`): the private sample has 0 cuts and 6,904 contexts
 (objects off: 6,104), V-NOC 733 (off: 693). Step 4c is closed; next is 4d (D68).
 
+**Step 4d, as decided for the build (reviewer, 2026-11-27): D68, a method call can change its own object.** D68 opens a receiver's object
+when a function member writes `this` or cannot be seen. Read literally (every member of the object), it would open almost every key's
+object since step 4c: a reduced object is rarely complete, and a props object often holds an unknown member (`value={state.x}`). Only
+the **methods that are called** can write, so the rule reads the names called:
+
+- **The table** (`Uses`, step 3a's placement): a chain that ends as the callee of a call (`x.m()`, `x.a.m()`, `x?.m()`, `x["m"]()`) records
+  its last name in `Uses::called` (sorted, no repeats); a last access with no literal name (`x[k]()`) sets `Uses::called_any`. `receiver`
+  stays (the counter reads it). The same for a def's `this_uses` (`this.clear()` inside a method). `Flow::arrow`: the def's node is an arrow.
+  `AnonFlow::arrow`: the anonymous function is an arrow (read where `collect.rs` lists them); `anons` is then read outside tests.
+- **Values**: `One::AnonAny` is renamed **`One::AnonArrow`** (an anonymous arrow, which one not said), `Canon::AnonAny` likewise with
+  `#[serde(rename = "AnonAny")]`, so its bytes and every digest that holds an arrow stay. **`One::AnonFunction`** and
+  **`Canon::AnonFunction`** are added **last**: an anonymous function expression (`function () {}`), which one not said.
+  `eval::anon_kinds(world, value)` writes each `Anon(def, i)` that is not an arrow (or whose table or anon is not found) as `AnonFunction`;
+  `TypeScript::object`, `TypeScript::capture` and `intern_key` (first) apply it, and the normal forms (`nested.rs`, `KeyData::normal`) keep
+  writing the remaining `Anon` (arrows) as `AnonArrow`. Only a key, a capture list or an object that holds a function expression moves
+  its digest; two callers that pass an arrow and a function expression no longer share a context.
+- **The program fact** (`trust.rs`): `Trust { trusted, calls }`, `Calls { any, names }`, one per variable of a component, kept in the same
+  memo. A variable's calls are its own `called` and those of every variable it follows (second names and the parameters it is passed to:
+  a pattern parameter's variables too), spread to a fixpoint as "not trusted" is. Names are matched at **any depth** of the value (a name
+  does not say which object of the value it was called on): sound, and simpler than paths through patterns and member reads.
+  `trust::uses_calls(world, uses)` gives the same for a method's `this_uses`.
+- **The read** (`eval::as_read`, a trusted variable with calls): the value's objects are **opened** (as for an untrusted one) when, in
+  any object of the value at any depth, a called name (every member when `any`) is a member that is open, or is missing from an object
+  that is not complete, or holds a function that may write `this`: a def with no table, a def that is not an arrow and has no `this_uses`
+  (a class member), a def whose `this_uses` is not trusted, a non-arrow `Anon`, or an `AnonFunction` (an anonymous function has no table,
+  so it cannot be seen). A def whose `this_uses` is trusted adds its own calls to the names (`this.clear()` makes `clear` called), to a
+  fixpoint. An arrow, `AnonArrow`, `Undefined`, data and an object cannot write `this`. A member that is itself unknown needs no opening
+  of its own: what it holds is read unknown already. Counted: **`object_opened_by_method`**, at each read that opens by this rule.
+- **The rows** (written by hand; policy rows `method-*`): `method-writes-this` (`reset() { this.f = other }`, `run` calls `o.reset();
+  o.f()`: `o.f` is `save` and the engine's answer beside), `method-reads-this` (`if (this.f) {}`: `save` alone), `method-arrow-member`
+  (`reset: () => {}`: `save` alone), `method-uncalled` (`run` calls only `o.f()`: `save` alone), `method-through-parameter` (`poke(o)`
+  calls `t.reset()`, then `main` calls `o.f()`: opened), `method-this-calls-this` (`reset() { this.clear() }`, `clear() { this.f =
+  other }`: opened), `method-unknown-member` (`reset: makeReset()`, dropped from the key by 4c-fix: opened), `method-anon-member` (JSX:
+  `reset={() => {}}` and `reset={function () {}}`: two contexts of `Btn`, only the second opened).
+- **Split in two prompts**: **4d-a** (the fixtures with today's code; then the table and the values, which move only table snapshots,
+  digests, and the contexts of a row that passes an arrow and a function expression to one function) and **4d-b** (the fact, the read,
+  the counter; the rows' "on" halves move as written). The cost is measured on the samples after 4d-b.
+
 **Two steps added after 4b (owner's decisions, 2026-11-27).** **4d**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
 when one of the object's function members writes through `this` or cannot be seen (an open member, an object that is not complete, an
