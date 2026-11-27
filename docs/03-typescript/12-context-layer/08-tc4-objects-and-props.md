@@ -407,6 +407,11 @@ bounds by design:
 `trust::body_counts(world, def, flow)` computes the three; `TypeScript::walk` notes them beside `variable_write_unmodelled`. Policy
 rows for them wait for step 4 (the bit on).
 
+**Step 3c built as decided, `b92d671`** ([`engine/11-tc4.md`](../../../languages/typescript/engine/11-tc4.md)): 547 passed, 13
+ignored; only `trust.flow.txt` and `trust.trust.txt` moved. `this_written_outside_class` counts any `this` that is not trusted, so a
+`return this.n` counts as a write: read the number as an upper bound. A receiver that is not capable is not counted, and no test shows it
+yet (owed in step 4).
+
 **Step 1, as decided for the build (2026-11-26).** The table reads the new forms; nothing evaluates them yet, so no graph moves.
 
 - `Expr` gains four variants: `Member(Box<Expr>, Box<str>)` (`x.k`, `x?.k`, `x["k"]` with a string literal), `Object(Box<[Part]>)`
