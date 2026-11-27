@@ -508,7 +508,9 @@ the **methods that are called** can write, so the rule reads the names called:
 
 - **The table** (`Uses`, step 3a's placement): a chain that ends as the callee of a call (`x.m()`, `x.a.m()`, `x?.m()`, `x["m"]()`) records
   its last name in `Uses::called` (sorted, no repeats); a last access with no literal name (`x[k]()`) sets `Uses::called_any`. `receiver`
-  stays (the counter reads it). The same for a def's `this_uses` (`this.clear()` inside a method). `Flow::arrow`: the def's node is an arrow.
+  stays (the counter reads it). The same for a def's `this_uses` (`this.clear()` inside a method). `Flow::arrow`: the def's node is an arrow
+  (a named arrow that is a def, `const reset = () => {}`; **corrected at 4d-a**: a property arrow of an argument literal, `run({ reset: () => {} })`,
+  is not a def but an anonymous function of the def it is written in, D21).
   `AnonFlow::arrow`: the anonymous function is an arrow (read where `collect.rs` lists them); `anons` is then read outside tests.
 - **Values**: `One::AnonAny` is renamed **`One::AnonArrow`** (an anonymous arrow, which one not said), `Canon::AnonAny` likewise with
   `#[serde(rename = "AnonAny")]`, so its bytes and every digest that holds an arrow stay. **`One::AnonFunction`** and
@@ -538,6 +540,11 @@ the **methods that are called** can write, so the rule reads the names called:
 - **Split in two prompts**: **4d-a** (the fixtures with today's code; then the table and the values, which move only table snapshots,
   digests, and the contexts of a row that passes an arrow and a function expression to one function) and **4d-b** (the fact, the read,
   the counter; the rows' "on" halves move as written). The cost is measured on the samples after 4d-b.
+
+**Step 4d-a built, `40461ff` and `e8037f9`** ([`engine/11-tc4.md`](../../../languages/typescript/engine/11-tc4.md)): as decided, with
+the correction above. No rule applied; only `method-anon-member` split into two contexts of `Btn`. Two guards were untested (`anon_kinds`
+in `intern_key` and in `capture`: each mutation passes every test); 4d-b's first commit adds the row `anon-kinds-in-keys`, and the row
+`method-arrow-def` for an arrow that is a def (no row read `Flow::arrow` in a graph).
 
 **Two steps added after 4b (owner's decisions, 2026-11-27).** **4d**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
