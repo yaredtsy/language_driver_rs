@@ -468,6 +468,10 @@ the bit on, the coder stopped on four differences from the rows; each is decided
    object type as able to hold an object. §7's narrowing (an object type whose members are all data) stays a [check], for every parameter
    at once, and would move TC2's snapshots: not in TC4 unless step 8 counts contexts it would save.
 
+**Step 4 built as decided, `1ec66e4` and `aaf5f53`** ([`engine/11-tc4.md`](../../../languages/typescript/engine/11-tc4.md)): every
+row as written, no off snapshot moved; a cycle through a member read stays open (sound). One CLI test from TC1 assumed `--precise`
+prints nothing new on the scenarios; it now prints a counter, and 4b-fix narrows the test.
+
 **Two steps added after 4b (owner's decisions, 2026-11-27).** **4c**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
 when one of the object's function members writes through `this` or cannot be seen (an open member, an object that is not complete, an
