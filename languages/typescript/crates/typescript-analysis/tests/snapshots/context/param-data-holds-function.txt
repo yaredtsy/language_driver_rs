@@ -1,0 +1,40 @@
+== liar
+-- off
+liar
+  lied
+  handler [Passed]
+  noop [Passed]
+edges:
+liar | lied | call lied
+liar | handler | pass handler
+liar | noop | pass noop
+lied | ((cb as any) || other) | unresolved any_or_untyped
+-- on
+liar
+  lied
+    noop
+  handler [Passed]
+  noop [Passed]
+edges:
+liar | lied | call lied @67db1ea4
+liar | handler | pass handler
+liar | noop | pass noop
+lied @67db1ea4 | ((cb as any) || other) | call noop
+== honest
+-- off
+honest
+  lied
+  noop [Passed]
+edges:
+honest | lied | call lied
+honest | noop | pass noop
+lied | ((cb as any) || other) | unresolved any_or_untyped
+-- on
+honest
+  lied
+    noop
+  noop [Passed]
+edges:
+honest | lied | call lied @67db1ea4
+honest | noop | pass noop
+lied @67db1ea4 | ((cb as any) || other) | call noop
