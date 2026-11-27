@@ -15,9 +15,11 @@ main
   run
     Saver.save
       base
+    mine
   mine [Passed]
 edges:
 Saver.save | base | call base
-main | run | call run
+main | run | call run @ac5cb480
 main | mine | pass mine
-run | s.save | call Saver.save
+run @ac5cb480 | s.save | call Saver.save
+run @ac5cb480 | s.save | call mine

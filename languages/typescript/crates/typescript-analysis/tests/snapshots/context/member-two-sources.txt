@@ -16,8 +16,15 @@ main
     b
   Saver.save
     base
+  main.<locals>.s.save
+    a
+  main.<locals>.save
+    b
 edges:
 Saver.save | base | call base
 main | save | pass main.<locals>.save
 main | s.save | call Saver.save
+main | s.save | call main.<locals>.s.save
+main | s.save | call main.<locals>.save
+main.<locals>.s.save | a | call a
 main.<locals>.save | b | call b

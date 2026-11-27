@@ -1039,7 +1039,18 @@ impl Reader<'_, '_> {
             SiteKind::Decorator => FlowKind::Decorator,
             SiteKind::Accessor(_) => FlowKind::Accessor,
         };
-        let callee = self.expr_of(call.expr);
+        let mut callee = self.expr_of(call.expr);
+        // the engine named a function through the type (`s.save()` with `s: Saver`): the read of the access is written beside it, so the layer can add
+        // what the receiver holds (D59, TC4 step 5); only a read of a name, since `one_of` keeps an `Unknown` and would make the callee open
+        if kind == FlowKind::Call && matches!(callee, Expr::Def(_) | Expr::OneOf(_)) {
+            let access = unwrap_expression(call.expr);
+            if access.kind() == Kind::PropertyAccessExpression {
+                let read = self.member_of_access(access);
+                if reads_a_name(&read) {
+                    callee = one_of([callee, read]);
+                }
+            }
+        }
         let args = match kind {
             FlowKind::Call | FlowKind::New => Some(
                 arguments_of(call.call)
@@ -1508,6 +1519,23 @@ fn member(object: Expr, name: Box<str>) -> Expr {
     match object {
         Expr::Unknown => Expr::Unknown,
         object => Expr::Member(Box::new(object), name),
+    }
+}
+
+/// Whether `expr` reads a variable or a parameter, itself or through members (`s`, `h.inner`). Every other kind of expression is not a name.
+fn reads_a_name(expr: &Expr) -> bool {
+    match expr {
+        Expr::Var(_) | Expr::Param(_) => true,
+        Expr::Member(inner, _) => reads_a_name(inner),
+        Expr::Unknown
+        | Expr::Data
+        | Expr::Undefined
+        | Expr::Def(_)
+        | Expr::Anon(_)
+        | Expr::Object(_)
+        | Expr::Omit(..)
+        | Expr::Default(..)
+        | Expr::OneOf(_) => false,
     }
 }
 

@@ -526,12 +526,12 @@ fn the_counters_of_the_member_rows() {
         ("object-implements", "main", [None, None]),
         ("object-implements", "emit", [None, None]),
         ("props-member-call", "main", [None, None]),
-        ("member-named-by-type", "main", [None, None]),
+        ("member-named-by-type", "main", [Some(1), None]),
         ("member-named-by-type", "run", [None, None]),
         ("member-named-by-type-instance", "main", [None, None]),
-        ("member-two-sources", "main", [None, None]),
-        ("member-nested", "main", [None, None]),
-        ("member-field-function", "main", [None, None]),
+        ("member-two-sources", "main", [Some(1), Some(1)]),
+        ("member-nested", "main", [Some(1), None]),
+        ("member-field-function", "main", [Some(1), None]),
     ];
     for (id, entry, want) in cases {
         let row = context_rows()

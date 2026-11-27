@@ -17,14 +17,17 @@ main
   run
     Saver.save
       base
+    main.<locals>.save
+      mine
   main.<locals>.save [Passed]
     mine
 edges:
 Saver.save | base | call base
-main | run | call run
+main | run | call run @5ea236b3
 main | save | pass main.<locals>.save
 main.<locals>.save | mine | call mine
-run | s.save | call Saver.save
+run @5ea236b3 | s.save | call Saver.save
+run @5ea236b3 | s.save | call main.<locals>.save
 == run
 -- off
 run

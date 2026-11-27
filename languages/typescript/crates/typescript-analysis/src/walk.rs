@@ -408,13 +408,13 @@ fn holds_name(expr: &Expr) -> bool {
     match expr {
         Expr::Var(_) | Expr::Param(_) => true,
         Expr::OneOf(members) => members.iter().any(holds_name),
-        // TC4 step 2 decides a member, an object, an omission and a default
+        // a member read of a name is a name (TC4 step 5): `s.save` holds what `s` holds; an object, an omission and a default are not
+        Expr::Member(inner, _) => holds_name(inner),
         Expr::Unknown
         | Expr::Data
         | Expr::Undefined
         | Expr::Def(_)
         | Expr::Anon(_)
-        | Expr::Member(..)
         | Expr::Object(_)
         | Expr::Omit(..)
         | Expr::Default(..) => false,
@@ -422,7 +422,7 @@ fn holds_name(expr: &Expr) -> bool {
 }
 
 /// Whether `expr` reads a row of this body's variables that has two or more sources: its assignments, and what was passed when it is a parameter. A read is a
-/// `Var` of this def, or a parameter the body writes. Only a capable row counts.
+/// `Var` of this def, a parameter the body writes, or a member of either. Only a capable row counts.
 fn reads_many_sources(env: &Env, expr: &Expr) -> bool {
     let row = match expr {
         Expr::Var(id) if id.def == env.def => env.flow.var_index(id.at),
@@ -435,14 +435,14 @@ fn reads_many_sources(env: &Env, expr: &Expr) -> bool {
         Expr::OneOf(members) => {
             return members.iter().any(|member| reads_many_sources(env, member));
         }
-        // TC4 step 2 reads a row through a member, an object, an omission and a default
+        // a row is read through a member (TC4 step 5): `s.save` reads the row of `s`; an object, an omission and a default read none
+        Expr::Member(inner, _) => return reads_many_sources(env, inner),
         Expr::Var(_)
         | Expr::Unknown
         | Expr::Data
         | Expr::Undefined
         | Expr::Def(_)
         | Expr::Anon(_)
-        | Expr::Member(..)
         | Expr::Object(_)
         | Expr::Omit(..)
         | Expr::Default(..) => None,
@@ -470,7 +470,7 @@ fn site_reads_many_sources(env: &Env, site_index: usize) -> bool {
 ///
 /// - **`found` has an open entry**: the targets are the engine's entries that are not open, then one for each member of the value (`members`), then one
 ///   `value_type_mismatch` mark if due (D61), then the open entries again if the value is open (a write we cannot read, a way in we do not track).
-/// - **`found` has none, and the layer knows `LOCALS`, and the callee is a variable or a parameter** (`07-tc3` §3, D59): the engine named a function through its
+/// - **`found` has none, and the layer knows `LOCALS`, and the callee reads a variable or a parameter, itself or through members** (`07-tc3` §3, D59): the engine named a function through its
 ///   type and the value may hold more. The targets are **all** the engine's, then one for each member it does not already call, then the mark if due. The
 ///   layer adds and never removes; if nothing is added, the engine's answer stands.
 fn resolve_from_env<'p>(
