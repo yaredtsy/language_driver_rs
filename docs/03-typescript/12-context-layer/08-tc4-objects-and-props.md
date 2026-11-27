@@ -498,6 +498,9 @@ so a default there is shown beside the engine's answer instead of alone (sound).
 with any known member kept); the samples are run again on this one. The unit test also gains the case the review's mutation found
 untested: `{ inner: { u: undefined } }` is kept whole.
 
+**Step 4c-fix built as decided, `fe9151e` and `812e533`** (`engine/11-tc4.md`): the private sample has 0 cuts and 6,904 contexts
+(objects off: 6,104), V-NOC 733 (off: 693). Step 4c is closed; next is 4d (D68).
+
 **Two steps added after 4b (owner's decisions, 2026-11-27).** **4d**, D68 (Q-TC9): a method call can change its own object. A
 variable that is a receiver (in its scope, or through a parameter it is passed to that is a receiver) has its object opened at the read
 when one of the object's function members writes through `this` or cannot be seen (an open member, an object that is not complete, an
