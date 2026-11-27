@@ -204,11 +204,11 @@ mod tests {
             Arc::from(relevant(self, def))
         }
 
-        fn trusted(&self, _var: VarId) -> bool {
+        fn trust(&self, _var: VarId) -> crate::trust::Trust {
             unreachable!("these tests do not evaluate")
         }
 
-        fn trusted_known(&self, _var: VarId) -> Option<bool> {
+        fn trust_known(&self, _var: VarId) -> Option<crate::trust::Trust> {
             unreachable!("these tests do not evaluate")
         }
 

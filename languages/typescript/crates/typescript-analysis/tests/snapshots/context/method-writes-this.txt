@@ -27,4 +27,6 @@ main | save | pass save
 main | reset | pass main.<locals>.reset
 main.<locals>.reset | other | pass other
 run @cdd25fae | o.reset | call main.<locals>.reset
+run @cdd25fae | o.reset | unresolved function_typed_value
 run @cdd25fae | o.f | call save
+run @cdd25fae | o.f | unresolved function_typed_value

@@ -9,6 +9,7 @@ use crate::env::{Env, MODULE_READS_MODULE, VARIABLE_ROUNDS_CAPPED};
 use crate::flow::{DefId, Expr, Flow, Part, VarId};
 use crate::needs::each_in;
 use crate::nested::{CaptureList, ObjectData, VALUE_WIDENED_DEPTH, VALUE_WIDENED_MEMBERS};
+use crate::trust::{self, Calls, Trust};
 use crate::value::{Captures, ObjectId, One, Value};
 
 /// How many rounds `solve` repeats before it gives up and opens every variable of the body (`07-tc3` §3). A chain of rows each reading the next settles in as
@@ -37,12 +38,13 @@ pub(crate) trait World {
     /// For each parameter of `def` (in `Flow::params` order): whether its value can reach a call of the body (`relevance::relevant`). Kept by the world, as
     /// `needs` is, since it is a fact of the code.
     fn relevant(&self, def: DefId) -> Arc<[bool]>;
-    /// Whether the object `var` holds can be trusted (`trust::trust_of_component`, `08-tc4` §5): no use of it, in its whole scope and in every function it
-    /// is handed to, can change its members. Kept by the world, as `relevant` is, since it is a fact of the code.
-    fn trusted(&self, var: VarId) -> bool;
-    /// `trusted` when the world has already worked it out, without working anything out: `trust_of_component` does not follow such a variable (its
+    /// What the program says of the object `var` holds (`trust::trust_of_component`, `08-tc4` §5): whether it can be trusted (no use of it, in its whole scope
+    /// and in every function it is handed to, can change its members), and the methods called on it (step 4d). Kept by the world, as `relevant` is, since it is
+    /// a fact of the code.
+    fn trust(&self, var: VarId) -> Trust;
+    /// `trust` when the world has already worked it out, without working anything out: `trust_of_component` does not follow such a variable (its
     /// answer covers everything it reaches).
-    fn trusted_known(&self, var: VarId) -> Option<bool>;
+    fn trust_known(&self, var: VarId) -> Option<Trust>;
     /// `list` interned (`Nested::intern`): the number of its normal form, `None` when nothing is left, and how many inner closures were cut. It counts
     /// nothing: the caller notes the cuts, so a quiet world stays quiet.
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32);
@@ -87,12 +89,12 @@ impl World for Quiet<'_> {
         self.0.relevant(def)
     }
 
-    fn trusted(&self, var: VarId) -> bool {
-        self.0.trusted(var)
+    fn trust(&self, var: VarId) -> Trust {
+        self.0.trust(var)
     }
 
-    fn trusted_known(&self, var: VarId) -> Option<bool> {
-        self.0.trusted_known(var)
+    fn trust_known(&self, var: VarId) -> Option<Trust> {
+        self.0.trust_known(var)
     }
 
     fn capture(&self, list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
@@ -265,9 +267,14 @@ fn object_literal(world: &dyn World, env: &Env, parts: &[Part], below: u32, vars
     made_object(world, members.into_iter().collect(), complete)
 }
 
-/// What a read of `var` gives, its value being `value` (`08-tc4` §10 row 11): when the world knows `OBJECTS`, `value` holds an object and `var` is not trusted
-/// (`World::trusted`; `None`, a parameter with no row, is not trusted), `value` with its objects opened (`objects_opened`); else `value`. Trust is asked
-/// only of a value that holds an object.
+/// The key of the counter in `Stats.language` for a read the method rule opens (step 4d, D68): a variable that is trusted, with a method called on it that may
+/// write the object it is a member of. Counted at each read that this rule opens, so a read evaluated again, in the rounds of a cycle, counts again.
+pub(crate) const OBJECT_OPENED_BY_METHOD: &str = "object_opened_by_method";
+
+/// What a read of `var` gives, its value being `value` (`08-tc4` §10 row 11): when the world knows `OBJECTS` and `value` holds an object, `value` with its objects
+/// opened (`objects_opened`) if `var` is not trusted (`World::trust`; `None`, a parameter with no row, is not trusted), or if it is trusted but a method called
+/// on it may write the object (`changed_by_methods`, step 4d; counted as `OBJECT_OPENED_BY_METHOD`); else `value`. Trust is asked only of a value that holds an
+/// object.
 fn as_read(world: &dyn World, var: Option<VarId>, value: Value) -> Value {
     if !world.knows(Caps::OBJECTS)
         || !value
@@ -277,9 +284,123 @@ fn as_read(world: &dyn World, var: Option<VarId>, value: Value) -> Value {
     {
         return value;
     }
-    match var {
-        Some(var) if world.trusted(var) => value,
-        _ => objects_opened(world, value),
+    let Some(var) = var else {
+        return objects_opened(world, value);
+    };
+    let trust = world.trust(var);
+    if !trust.trusted {
+        return objects_opened(world, value);
+    }
+    if !trust.calls.is_empty() && changed_by_methods(world, &value, &trust.calls) {
+        world.note(OBJECT_OPENED_BY_METHOD);
+        return objects_opened(world, value);
+    }
+    value
+}
+
+/// Whether a method called on `value` (the names in `calls`) may write the object it is a member of (`08-tc4` §10, step 4d, D68).
+///
+/// The rule: a trusted variable's object is not opened for what the code does with it, but a method that is **called** on it can write through `this`. So the
+/// objects of `value` (every `One::Object`, and the objects inside each member's value, at any depth) are searched for the names called, and the answer is yes
+/// when a called name is a member that is open, or is missing from an object that is not complete, or holds a function that may write `this`: a def with no
+/// table, a def that is not an arrow and has no `this_uses` (a class member, a constructor), a def whose `this_uses` is not trusted, a non-arrow `Anon`, or an
+/// `AnonFunction` (an anonymous function has no table, so it cannot be seen). A def whose `this_uses` is trusted adds the methods it calls on `this` to the
+/// names (`this.clear()` makes `clear` called), until the names stop growing. With `any` (a call by a name the table cannot read) every member counts as called,
+/// and an object that is not complete is yes at once. An arrow, `AnonArrow`, `Undefined` and an object cannot write `this`. A method that is not called is not
+/// looked at: it cannot write. A name is matched at any depth because a name does not say which object of the value it was called on: sound, and simpler than
+/// paths through patterns and member reads. A member that is itself unknown is not opened here, since what it holds already reads unknown.
+fn changed_by_methods(world: &dyn World, value: &Value, calls: &Calls) -> bool {
+    let mut names: BTreeSet<Box<str>> = calls.names.iter().cloned().collect();
+    let mut any = calls.any;
+    // the objects of the value and the ones inside them, each once, in the order found
+    let mut seen: BTreeSet<ObjectId> = BTreeSet::new();
+    let mut objects: Vec<ObjectData> = Vec::new();
+    let mut pending: Vec<ObjectId> = Vec::new();
+    let mut take = |value: &Value, pending: &mut Vec<ObjectId>| {
+        for one in value.known() {
+            if let One::Object(id) = one
+                && seen.insert(*id)
+            {
+                pending.push(*id);
+            }
+        }
+    };
+    take(value, &mut pending);
+    while let Some(id) = pending.pop() {
+        let data = world.object_data(id);
+        for (_, member) in data.members.iter() {
+            take(member, &mut pending);
+        }
+        objects.push(data);
+    }
+    let mut checked: BTreeSet<DefId> = BTreeSet::new();
+    loop {
+        let before = (any, names.len());
+        for data in &objects {
+            if any && !data.complete {
+                return true;
+            }
+            let called: Vec<&str> = if any {
+                data.members.iter().map(|(name, _)| name.as_ref()).collect()
+            } else {
+                names.iter().map(|name| name.as_ref()).collect()
+            };
+            let mut joined: Vec<Calls> = Vec::new();
+            for name in called {
+                let found = data
+                    .members
+                    .binary_search_by(|(member, _)| member.as_ref().cmp(name));
+                let Ok(at) = found else {
+                    if data.complete {
+                        continue;
+                    }
+                    return true;
+                };
+                let member = &data.members[at].1;
+                if member.is_open() {
+                    return true;
+                }
+                for one in member.known() {
+                    match one {
+                        One::Fn(def) | One::Closure(def, _) => {
+                            if !checked.insert(*def) {
+                                continue;
+                            }
+                            let Some(flow) = world.flow(*def) else {
+                                return true;
+                            };
+                            if flow.arrow {
+                                continue;
+                            }
+                            let Some(uses) = &flow.this_uses else {
+                                return true;
+                            };
+                            if !trust::uses_trusted(world, uses) {
+                                return true;
+                            }
+                            joined.push(trust::uses_calls(world, uses));
+                        }
+                        One::Anon(def, index) => {
+                            let arrow = world.flow(*def).and_then(|flow| {
+                                flow.anons.get(*index as usize).map(|anon| anon.arrow)
+                            });
+                            if arrow != Some(true) {
+                                return true;
+                            }
+                        }
+                        One::AnonFunction => return true,
+                        One::AnonArrow | One::Undefined | One::Object(_) => {}
+                    }
+                }
+            }
+            for calls in joined {
+                any |= calls.any;
+                names.extend(calls.names.iter().cloned());
+            }
+        }
+        if (any, names.len()) == before {
+            return false;
+        }
     }
 }
 
@@ -793,7 +914,7 @@ mod tests {
     use std::collections::{BTreeMap, HashMap, HashSet};
 
     use super::*;
-    use crate::flow::{Param, Var};
+    use crate::flow::{Param, Uses, Var};
     use crate::key::KeyData;
     use crate::nested::Nested;
     use crate::value::MAX_SET;
@@ -810,10 +931,14 @@ mod tests {
         made: Cell<u32>,
         /// What `module_value` answers, by variable; unknown for one not listed.
         modules: HashMap<VarId, Value>,
-        /// The variables `trusted` says no to; every other is trusted.
+        /// The variables `trust` says no to; every other is trusted.
         untrusted: RefCell<HashSet<VarId>>,
-        /// How many times `trusted` was asked.
+        /// How many times `trust` was asked.
         trust_asked: Cell<u32>,
+        /// The methods `trust` says are called on a variable; none for one not listed.
+        called: RefCell<HashMap<VarId, Calls>>,
+        /// Objects that were not interned, so their members keep what interning would change (an `Anon` is written `AnonArrow` there); asked before `nested`.
+        raw: RefCell<HashMap<ObjectId, ObjectData>>,
     }
 
     impl World for ByHand {
@@ -845,12 +970,15 @@ mod tests {
             Arc::from(crate::relevance::relevant(self, def))
         }
 
-        fn trusted(&self, var: VarId) -> bool {
+        fn trust(&self, var: VarId) -> Trust {
             self.trust_asked.set(self.trust_asked.get() + 1);
-            !self.untrusted.borrow().contains(&var)
+            Trust {
+                trusted: !self.untrusted.borrow().contains(&var),
+                calls: Arc::new(self.called.borrow().get(&var).cloned().unwrap_or_default()),
+            }
         }
 
-        fn trusted_known(&self, _var: VarId) -> Option<bool> {
+        fn trust_known(&self, _var: VarId) -> Option<Trust> {
             None
         }
 
@@ -872,6 +1000,9 @@ mod tests {
         }
 
         fn object_data(&self, id: ObjectId) -> ObjectData {
+            if let Some(raw) = self.raw.borrow().get(&id) {
+                return raw.clone();
+            }
             self.nested.borrow().object(id).clone()
         }
 
@@ -951,6 +1082,8 @@ mod tests {
             modules: HashMap::new(),
             untrusted: RefCell::new(HashSet::new()),
             trust_asked: Cell::new(0),
+            called: RefCell::new(HashMap::new()),
+            raw: RefCell::new(HashMap::new()),
         };
         assert!(world.flow(env.def).is_some());
         assert!(world.flow(DefId::new(0, 0, None)).is_none());
@@ -2411,5 +2544,244 @@ mod tests {
         let (world, o) = world_and_object(objects_on());
         let once = objects_opened(&world, Value::of([One::Fn(d(2)), One::Object(o)], false));
         assert_eq!(objects_opened(&world, once.clone()), once);
+    }
+
+    // ---- TC4 step 4d: a method that is called can change its own object ------------------------------------------------------------------------------------
+
+    /// The table of a def that is called as a method: what it does with `this` (`None` for a class member), whether it is an arrow, and its anonymous functions
+    /// (`true` for an arrow).
+    fn method(this_uses: Option<Uses>, arrow: bool, anons: &[bool]) -> Arc<Flow> {
+        Arc::new(Flow {
+            this_uses,
+            arrow,
+            ..Arc::try_unwrap(with_anons(anons)).expect("made here, held once")
+        })
+    }
+
+    /// A method that writes through `this`.
+    fn writer() -> Arc<Flow> {
+        method(
+            Some(Uses {
+                escapes: true,
+                ..Uses::default()
+            }),
+            false,
+            &[],
+        )
+    }
+
+    /// A method that does nothing with `this`.
+    fn reader() -> Arc<Flow> {
+        method(Some(Uses::default()), false, &[])
+    }
+
+    fn calling(names: &[&str]) -> Calls {
+        Calls {
+            any: false,
+            names: names.iter().map(|&name| name.into()).collect(),
+        }
+    }
+
+    /// An object value with these members.
+    fn object_of(world: &ByHand, members: Vec<(&str, Value)>, complete: bool) -> Value {
+        let (made, _) = world.object(
+            members
+                .into_iter()
+                .map(|(name, value)| (name.into(), value))
+                .collect(),
+            complete,
+        );
+        Value::of([One::Object(made.expect("few members"))], false)
+    }
+
+    #[test]
+    fn a_called_method_that_may_write_opens_the_object() {
+        // d(1) writes through `this`, d(2) only reads it, d(3) is an arrow with no `this`, d(4) has no table, d(5) is a class member (no `this_uses`),
+        // d(6) calls `clear` on `this`, d(7) writes, d(8) calls a method by a name that is not read; d(10) has an anonymous arrow, d(11) an anonymous
+        // function expression
+        let env = env(vec![], vec![]);
+        let world = world_with(
+            &env,
+            vec![
+                (d(1), writer()),
+                (d(2), reader()),
+                (d(3), method(None, true, &[])),
+                (d(5), method(None, false, &[])),
+                (
+                    d(6),
+                    method(
+                        Some(Uses {
+                            called: Box::new(["clear".into()]),
+                            ..Uses::default()
+                        }),
+                        false,
+                        &[],
+                    ),
+                ),
+                (d(7), writer()),
+                (
+                    d(8),
+                    method(
+                        Some(Uses {
+                            called_any: true,
+                            ..Uses::default()
+                        }),
+                        false,
+                        &[],
+                    ),
+                ),
+                (d(10), with_anons(&[true])),
+                (d(11), with_anons(&[false])),
+                (d(11), with_anons(&[false])),
+            ],
+            objects_on(),
+        );
+        // `true` is "opened": the member `f` of a complete object is called
+        let opens = |member: Value| {
+            let object = object_of(&world, vec![("f", member)], true);
+            changed_by_methods(&world, &object, &calling(&["f"]))
+        };
+        // a def whose `this_uses` escapes
+        assert!(opens(func(1)));
+        // a def whose `this_uses` is trusted and empty
+        assert!(!opens(func(2)));
+        // an arrow def
+        assert!(!opens(func(3)));
+        // a def with no table
+        assert!(opens(func(4)));
+        // a def with `this_uses: None` that is not an arrow (a class member, a constructor)
+        assert!(opens(func(5)));
+        // a member that is open
+        assert!(opens(Value::of([One::Fn(d(2))], true)));
+        assert!(opens(Value::unknown()));
+        // a closure of a writer, as a def (its list is interned in the world)
+        let (captures, _) = world.capture(vec![(vid(1), func(2))]);
+        let closure = One::Closure(d(1), captures.expect("one captured variable"));
+        assert!(opens(Value::of([closure], false)));
+        // one writer among several known members
+        assert!(opens(Value::of([One::Fn(d(2)), One::Fn(d(1))], false)));
+
+        // `m` is missing from a complete object: nothing; from one that is not complete: the call may be to a method that is not seen
+        let complete = object_of(&world, vec![("f", func(1))], true);
+        assert!(!changed_by_methods(&world, &complete, &calling(&["m"])));
+        let partial = object_of(&world, vec![("f", func(2))], false);
+        assert!(changed_by_methods(&world, &partial, &calling(&["m"])));
+        // and a name that is there is read as it is, though the object is not complete
+        assert!(!changed_by_methods(&world, &partial, &calling(&["f"])));
+
+        // a writer that is a member but is not called
+        let two = object_of(&world, vec![("f", func(2)), ("w", func(1))], true);
+        assert!(!changed_by_methods(&world, &two, &calling(&["f"])));
+        assert!(changed_by_methods(&world, &two, &calling(&["f", "w"])));
+
+        // a called name one level down: `{ inner: { f: writer } }` with `f` called
+        let inner = object_of(&world, vec![("f", func(1))], true);
+        let outer = object_of(&world, vec![("inner", inner)], true);
+        assert!(changed_by_methods(&world, &outer, &calling(&["f"])));
+        assert!(!changed_by_methods(&world, &outer, &calling(&["g"])));
+        // a member that is data, or an object that has nothing called in it, cannot write
+        let data = object_of(&world, vec![("inner", Value::data())], true);
+        assert!(!changed_by_methods(&world, &data, &calling(&["inner"])));
+
+        // `reset` is trusted and calls `clear` on `this`; `clear` writes: the name `clear` is called too
+        let chain = object_of(&world, vec![("reset", func(6)), ("clear", func(7))], true);
+        assert!(changed_by_methods(&world, &chain, &calling(&["reset"])));
+        // and when `clear` only reads, nothing writes
+        let calm = object_of(&world, vec![("reset", func(6)), ("clear", func(2))], true);
+        assert!(!changed_by_methods(&world, &calm, &calling(&["reset"])));
+        // `reset` calls `clear` and the object has none: a complete object leaves it, one that is not complete does not
+        let lone = object_of(&world, vec![("reset", func(6))], true);
+        assert!(!changed_by_methods(&world, &lone, &calling(&["reset"])));
+        let lone_open = object_of(&world, vec![("reset", func(6))], false);
+        assert!(changed_by_methods(&world, &lone_open, &calling(&["reset"])));
+
+        // a call by a name that is not read: every member is called, and an object that is not complete is yes at once
+        let any = Calls {
+            any: true,
+            names: Box::new([]),
+        };
+        assert!(changed_by_methods(&world, &partial, &any));
+        assert!(changed_by_methods(&world, &complete, &any));
+        let calm_members = object_of(&world, vec![("a", func(2)), ("b", func(3))], true);
+        assert!(!changed_by_methods(&world, &calm_members, &any));
+        // a method that calls another by a name that is not read: every member of the object is then called
+        let by_any = object_of(&world, vec![("reset", func(8)), ("w", func(1))], true);
+        assert!(changed_by_methods(&world, &by_any, &calling(&["reset"])));
+        let by_any_calm = object_of(&world, vec![("reset", func(8)), ("r", func(2))], true);
+        assert!(!changed_by_methods(
+            &world,
+            &by_any_calm,
+            &calling(&["reset"])
+        ));
+        let by_any_open = object_of(&world, vec![("reset", func(8))], false);
+        assert!(changed_by_methods(
+            &world,
+            &by_any_open,
+            &calling(&["reset"])
+        ));
+
+        // anonymous functions
+        assert!(opens(Value::of([One::AnonFunction], false)));
+        assert!(!opens(Value::of([One::AnonArrow], false)));
+        assert!(!opens(Value::of([One::Undefined], false)));
+        // an `Anon` is not in an interned object (the normal form writes it `AnonArrow`), so these members are in objects made by hand: a non-arrow, an arrow,
+        // one with no table, one past the last anonymous function of its def
+        let opens_raw = |member: One| {
+            let id = ObjectId::new(1000);
+            world.raw.borrow_mut().insert(
+                id,
+                ObjectData {
+                    members: Box::new([("f".into(), Value::of([member], false))]),
+                    complete: true,
+                },
+            );
+            changed_by_methods(
+                &world,
+                &Value::of([One::Object(id)], false),
+                &calling(&["f"]),
+            )
+        };
+        assert!(opens_raw(One::Anon(d(11), 0)));
+        assert!(!opens_raw(One::Anon(d(10), 0)));
+        assert!(opens_raw(One::Anon(d(4), 0)));
+        assert!(opens_raw(One::Anon(d(10), 1)));
+    }
+
+    #[test]
+    fn a_trusted_variable_is_opened_only_by_a_method_that_may_write() {
+        let env = env(vec![], vec![]);
+        let world = world_with(&env, vec![(d(1), writer()), (d(2), reader())], objects_on());
+        let at = vid(5);
+        let held = |member: Value| object_of(&world, vec![("f", member), ("g", func(2))], true);
+        // trusted with no calls: as it is, and no note
+        let written = held(func(1));
+        assert_eq!(as_read(&world, Some(at), written.clone()), written);
+        assert!(!world.notes.borrow().contains_key(OBJECT_OPENED_BY_METHOD));
+        // trusted, `g` called (it reads): as it is
+        world.called.borrow_mut().insert(at, calling(&["g"]));
+        assert_eq!(as_read(&world, Some(at), written.clone()), written);
+        assert!(!world.notes.borrow().contains_key(OBJECT_OPENED_BY_METHOD));
+        // trusted, `f` called (it writes): opened, and counted once
+        world.called.borrow_mut().insert(at, calling(&["f"]));
+        let read = as_read(&world, Some(at), written.clone());
+        assert_eq!(read, objects_opened(&world, written.clone()));
+        assert_ne!(read, written);
+        assert_eq!(world.notes.borrow()[OBJECT_OPENED_BY_METHOD], 1);
+        // a value with no object is left alone, and the world is not asked
+        let asked = world.trust_asked.get();
+        assert_eq!(as_read(&world, Some(at), func(1)), func(1));
+        assert_eq!(world.trust_asked.get(), asked);
+        // not trusted: opened, and not counted as this rule
+        world.untrusted.borrow_mut().insert(at);
+        assert_eq!(
+            as_read(&world, Some(at), written.clone()),
+            objects_opened(&world, written.clone())
+        );
+        assert_eq!(world.notes.borrow()[OBJECT_OPENED_BY_METHOD], 1);
+        // no variable: opened
+        assert_eq!(
+            as_read(&world, None, written.clone()),
+            objects_opened(&world, written)
+        );
     }
 }

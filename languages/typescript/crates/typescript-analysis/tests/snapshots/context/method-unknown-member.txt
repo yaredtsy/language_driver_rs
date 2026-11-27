@@ -22,3 +22,4 @@ main | save | pass save
 main | makeReset | call makeReset
 run @077398c6 | o.reset | unresolved function_typed_value
 run @077398c6 | o.f | call save
+run @077398c6 | o.f | unresolved function_typed_value

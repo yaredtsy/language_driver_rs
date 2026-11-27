@@ -61,13 +61,6 @@ pub(crate) struct Flow {
     pub(crate) this_uses: Option<Uses>,
     /// The def's own node is an `ArrowFunction` (`08-tc4` §10, step 4d): a property `reset: () => {}` is a def whose node is the arrow. An arrow has no `this` of
     /// its own, so a call of it cannot write the object it is a member of.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "kept for step 4d-b, whose read asks whether a member def is an arrow; only the table's tests read it today"
-        )
-    )]
     pub(crate) arrow: bool,
 }
 

@@ -22,6 +22,7 @@ use super::*;
 use crate::flow::{
     AnonFlow, Arg, DefId, Expr, Flow, FlowKind, HandedFlow, Param, Part, SiteFlow, Uses, Var, VarId,
 };
+use crate::trust::Trust;
 
 /// A fact of a def kept per bit: the def, and whether the layer that asked knows `Caps::OBJECTS`.
 type PerBit<T> = HashMap<(DefId, bool), T>;
@@ -40,8 +41,8 @@ pub(super) struct Flows {
     needs: RefCell<PerBit<Arc<[VarId]>>>,
     /// Which parameters of each def can reach a call (`relevance::relevant`), kept the same way.
     relevance: RefCell<PerBit<Arc<[bool]>>>,
-    /// Whether each variable's object can be trusted (`trust::trust_of_component`), kept the same way as `relevance`: a fact of the code.
-    trust: RefCell<HashMap<VarId, bool>>,
+    /// What the program says of each variable's object (`trust::trust_of_component`): trusted or not, and the methods called on it. Kept the same way as `relevance`: a fact of the code.
+    trust: RefCell<HashMap<VarId, Trust>>,
 }
 
 /// The next program's number. It never reaches an output: it only tells two programs' numbers apart.
@@ -108,13 +109,13 @@ impl Sem {
             .insert((def, objects), flags);
     }
 
-    /// Whether the object `var` holds can be trusted, when a request of this program has already worked it out (`remember_trust`).
-    pub(crate) fn trust_memo(&self, var: VarId) -> Option<bool> {
-        self.flows.trust.borrow().get(&var).copied()
+    /// What the program says of the object `var` holds (whether it can be trusted, and the methods called on it), when a request of this program has already worked it out (`remember_trust`).
+    pub(crate) fn trust_memo(&self, var: VarId) -> Option<Trust> {
+        self.flows.trust.borrow().get(&var).cloned()
     }
 
     /// Keep which variables' objects can be trusted (`trust::trust_of_component`), for every request of this program: plain data in, plain data out.
-    pub(crate) fn remember_trust(&self, entries: Vec<(VarId, bool)>) {
+    pub(crate) fn remember_trust(&self, entries: Vec<(VarId, Trust)>) {
         self.flows.trust.borrow_mut().extend(entries);
     }
 

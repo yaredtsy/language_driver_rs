@@ -5,45 +5,103 @@
 //! table says what each variable is used for (`Uses`, step 3a); this module follows the variables a value is passed on to and answers for all of them at once.
 
 use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
 
 use crate::eval::World;
 use crate::flow::{DefId, Expr, Flow, Uses, VarId};
 use crate::needs::each_expr;
 
-/// Each variable of a component with whether its object can be trusted.
-pub(crate) type Component = Vec<(VarId, bool)>;
+/// The names of the methods called on a variable's object, and on every object it reaches (`08-tc4` §10, step 4d, D68): only a method that is **called** can
+/// write the object it is a member of, so what is called is what the read of an object checks.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Calls {
+    /// A method is called by a name the table cannot read (`x[k]()`): any member may be the one called.
+    pub(crate) any: bool,
+    /// The names called, sorted, no repeats.
+    pub(crate) names: Box<[Box<str>]>,
+}
 
-/// Whether the object `var` holds can be trusted, and the same for every variable reached from it, `var` first, then in the order reached.
+impl Calls {
+    /// The calls one `Uses` records on its own: its `called` and `called_any`.
+    pub(crate) fn of(uses: &Uses) -> Calls {
+        Calls {
+            any: uses.called_any,
+            names: uses.called.clone(),
+        }
+    }
+
+    /// Nothing is called.
+    pub(crate) fn is_empty(&self) -> bool {
+        !self.any && self.names.is_empty()
+    }
+
+    /// `self` joined with `other`; whether `self` grew.
+    pub(crate) fn absorb(&mut self, other: &Calls) -> bool {
+        let mut grew = other.any && !self.any;
+        self.any |= other.any;
+        let missing: Vec<&Box<str>> = other
+            .names
+            .iter()
+            .filter(|name| self.names.binary_search(name).is_err())
+            .collect();
+        if !missing.is_empty() {
+            grew = true;
+            let mut all: Vec<Box<str>> = self.names.to_vec();
+            all.extend(missing.into_iter().cloned());
+            all.sort();
+            self.names = all.into();
+        }
+        grew
+    }
+}
+
+/// What the program says of one variable's object: whether it can be trusted, and which methods are called on it, or on an object it is handed to or named by.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Trust {
+    pub(crate) trusted: bool,
+    pub(crate) calls: Arc<Calls>,
+}
+
+/// Each variable of a component with what the program says of its object.
+pub(crate) type Component = Vec<(VarId, Trust)>;
+
+/// What the program says of the object `var` holds and of every variable reached from it, `var` first, then in the order reached.
 ///
 /// The variables reached are the nodes of a graph: a node follows the variables named by it (`const o = x`) and the parameters it is passed to. "Not trusted"
 /// spreads from a node back to every node that follows it, starting at the nodes with a use the rule forbids, so the answer is the least one: a cycle with no
-/// bad use is trusted, and the answers do not depend on which variable was asked first (`08-tc4` §10, row 12). A variable the world already knows
-/// (`World::trusted_known`, other than `var` itself) is a fixed node: its answer covers everything it reaches, so nothing is followed from it, and it is not in
-/// the result. No limit is needed: every node is a row of a table of the program, taken once.
+/// bad use is trusted, and the answers do not depend on which variable was asked first (`08-tc4` §10, row 12). **Calls spread the same way** (step 4d): a
+/// node's calls are its own (a capable row's `called` and `called_any`) joined with the calls of every node it follows, to a fixpoint, so a method called
+/// through a second name or a parameter is a method called on the object. A variable the world already knows (`World::trust_known`, other than `var`
+/// itself) is a fixed node: its answer and its calls cover everything it reaches, so nothing is followed from it, and it is not in the result. No limit is
+/// needed: every node is a row of a table of the program, taken once.
 pub(crate) fn trust_of_component(world: &dyn World, var: VarId) -> Component {
     // the variables reached, in the order found: a `Vec` and a position found by a map that is only looked up, never iterated (rule 9)
     let mut nodes: Vec<VarId> = vec![var];
     let mut place_of: HashMap<VarId, usize> = HashMap::from([(var, 0)]);
-    // for each node, the nodes that follow to it: where "not trusted" has to go
+    // for each node, the nodes that follow to it: where "not trusted" and the calls have to go
     let mut named_by: Vec<Vec<usize>> = vec![Vec::new()];
     // the answer of a fixed node, `None` for a node that is solved here
     let mut fixed: Vec<Option<bool>> = Vec::new();
     // a node that is itself a use the rule forbids
     let mut bad: Vec<bool> = Vec::new();
+    // the calls of each node: its own first, then (below) with those of every node it follows
+    let mut calls: Vec<Calls> = Vec::new();
     let mut next = 0;
     while next < nodes.len() {
         let at = nodes[next];
         if next != 0
-            && let Some(answer) = world.trusted_known(at)
+            && let Some(known) = world.trust_known(at)
         {
-            fixed.push(Some(answer));
+            fixed.push(Some(known.trusted));
             bad.push(false);
+            calls.push(Calls::clone(&known.calls));
             next += 1;
             continue;
         }
         fixed.push(None);
-        let (is_bad, follows) = examine(world, at);
+        let (is_bad, follows, own) = examine(world, at);
         bad.push(is_bad);
+        calls.push(own);
         for followed in follows {
             let place = *place_of.entry(followed).or_insert_with(|| {
                 nodes.push(followed);
@@ -74,29 +132,57 @@ pub(crate) fn trust_of_component(world: &dyn World, var: VarId) -> Component {
             }
         }
     }
+    // the calls go back the same way, a follower taking those of the node it follows, until no set grows
+    let mut worklist: Vec<usize> = (0..nodes.len())
+        .filter(|&place| !calls[place].is_empty())
+        .collect();
+    while let Some(place) = worklist.pop() {
+        let from = calls[place].clone();
+        for &follower in &named_by[place] {
+            if calls[follower].absorb(&from) {
+                worklist.push(follower);
+            }
+        }
+    }
+    let none = Arc::new(Calls::default());
     nodes
         .into_iter()
         .zip(marked)
         .zip(fixed)
-        .filter(|(_, fixed)| fixed.is_none())
-        .map(|((node, marked), _)| (node, !marked))
+        .zip(calls)
+        .filter(|(((_, _), fixed), _)| fixed.is_none())
+        .map(|(((node, marked), _), calls)| {
+            let calls = if calls.is_empty() {
+                Arc::clone(&none)
+            } else {
+                Arc::new(calls)
+            };
+            (
+                node,
+                Trust {
+                    trusted: !marked,
+                    calls,
+                },
+            )
+        })
         .collect()
 }
 
-/// What one variable is on its own: whether its own uses are forbidden (so it is bad), and the variables it follows. A variable with no table or no row is bad;
-/// one that is not capable holds no member to write, so it is neither bad nor followed. `receiver` is not read (Q-TC9 is open).
-fn examine(world: &dyn World, var: VarId) -> (bool, Vec<VarId>) {
+/// What one variable is on its own: whether its own uses are forbidden (so it is bad), the variables it follows, and the methods it calls itself. A variable
+/// with no table or no row is bad; one that is not capable holds no member to write, so it is neither bad nor followed, and calls nothing.
+fn examine(world: &dyn World, var: VarId) -> (bool, Vec<VarId>, Calls) {
     let Some(flow) = world.flow(var.def) else {
-        return (true, Vec::new());
+        return (true, Vec::new(), Calls::default());
     };
     let Some(row) = flow.var_index(var.at) else {
-        return (true, Vec::new());
+        return (true, Vec::new(), Calls::default());
     };
     let row = &flow.vars[row];
     if !row.capable {
-        return (false, Vec::new());
+        return (false, Vec::new(), Calls::default());
     }
-    judge(world, &row.uses)
+    let (bad, follows) = judge(world, &row.uses);
+    (bad, follows, Calls::of(&row.uses))
 }
 
 /// What `uses` says on its own: whether it is a use the rule forbids, and the variables it follows. The rule of a row, for any value's uses.
@@ -116,7 +202,17 @@ fn judge(world: &dyn World, uses: &Uses) -> (bool, Vec<VarId>) {
 /// value follows.
 pub(crate) fn uses_trusted(world: &dyn World, uses: &Uses) -> bool {
     let (bad, follows) = judge(world, uses);
-    !bad && follows.iter().all(|&var| world.trusted(var))
+    !bad && follows.iter().all(|&var| world.trust(var).trusted)
+}
+
+/// The methods called on a value used as `uses` says (step 4d), for a use that is not a row (a def's `this`): its own `called` and `called_any`, joined with
+/// the calls of every variable it follows (`judge`: a name, a parameter it is passed to).
+pub(crate) fn uses_calls(world: &dyn World, uses: &Uses) -> Calls {
+    let mut calls = Calls::of(uses);
+    for var in judge(world, uses).1 {
+        calls.absorb(&world.trust(var).calls);
+    }
+    calls
 }
 
 /// The key of the counter in `Stats.language`: a body's rows that are trusted and on which a method is called (Q-TC9).
@@ -139,7 +235,7 @@ pub(crate) fn body_counts(world: &dyn World, def: DefId, flow: &Flow) -> BodyCou
         .vars
         .iter()
         .filter(|row| row.capable && row.uses.receiver)
-        .filter(|row| world.trusted(VarId { def, at: row.at }))
+        .filter(|row| world.trust(VarId { def, at: row.at }).trusted)
         .count() as u64;
     let this_written_outside_class = u64::from(
         flow.this_uses
@@ -209,7 +305,7 @@ mod tests {
     /// A world of hand-made tables, and the variables it already knows the answer for.
     struct Tables {
         flows: HashMap<DefId, Arc<Flow>>,
-        known: HashMap<VarId, bool>,
+        known: HashMap<VarId, Trust>,
     }
 
     impl World for Tables {
@@ -237,13 +333,17 @@ mod tests {
             unreachable!("trust does not ask what is relevant")
         }
 
-        fn trusted(&self, var: VarId) -> bool {
+        fn trust(&self, var: VarId) -> Trust {
             // what the `Sem` answers: the first of the variable's own component
-            trust_of_component(self, var)[0].1
+            trust_of_component(self, var)
+                .into_iter()
+                .next()
+                .expect("the component holds the variable asked")
+                .1
         }
 
-        fn trusted_known(&self, var: VarId) -> Option<bool> {
-            self.known.get(&var).copied()
+        fn trust_known(&self, var: VarId) -> Option<Trust> {
+            self.known.get(&var).cloned()
         }
 
         fn capture(&self, _list: Vec<(VarId, Value)>) -> (Option<Captures>, u32) {
@@ -364,7 +464,45 @@ mod tests {
     fn trusted(world: &Tables, var: VarId) -> bool {
         let component = trust_of_component(world, var);
         assert_eq!(component[0].0, var, "the asked variable comes first");
-        component[0].1
+        component[0].1.trusted
+    }
+
+    /// Each variable of the component of `var` with whether it is trusted, the calls left out.
+    fn answers(world: &Tables, var: VarId) -> Vec<(VarId, bool)> {
+        trust_of_component(world, var)
+            .into_iter()
+            .map(|(node, trust)| (node, trust.trusted))
+            .collect()
+    }
+
+    /// Each variable of the component of `var` with the names called on it (`any` written as `*`), sorted.
+    fn called(world: &Tables, var: VarId) -> Vec<(VarId, Vec<String>)> {
+        trust_of_component(world, var)
+            .into_iter()
+            .map(|(node, trust)| {
+                let mut names: Vec<String> = trust
+                    .calls
+                    .names
+                    .iter()
+                    .map(|name| name.to_string())
+                    .collect();
+                if trust.calls.any {
+                    names.push("*".into());
+                }
+                (node, names)
+            })
+            .collect()
+    }
+
+    /// What a fixed node says: trusted or not, and the names it calls.
+    fn fixed(trusted: bool, names: &[&str]) -> Trust {
+        Trust {
+            trusted,
+            calls: Arc::new(Calls {
+                any: false,
+                names: names.iter().map(|&name| name.into()).collect(),
+            }),
+        }
     }
 
     /// A def `index` with one variable at 1, with these uses.
@@ -399,11 +537,7 @@ mod tests {
             ),
         )]);
         for at in 1..=3 {
-            assert_eq!(
-                trust_of_component(&world, var(1, at)),
-                [(var(1, at), true)],
-                "{at}"
-            );
+            assert_eq!(answers(&world, var(1, at)), [(var(1, at), true)], "{at}");
         }
     }
 
@@ -429,13 +563,13 @@ mod tests {
         let passes = (1, table(vec![], vec![row(1, None, passed(&[(2, 0)]))]));
         let clean_world = world(vec![passes, def_with_parameter(2, clean())]);
         assert_eq!(
-            trust_of_component(&clean_world, var(1, 1)),
+            answers(&clean_world, var(1, 1)),
             [(var(1, 1), true), (var(2, 1), true)]
         );
         let passes = (1, table(vec![], vec![row(1, None, passed(&[(2, 0)]))]));
         let bad_world = world(vec![passes, def_with_parameter(2, escapes())]);
         assert_eq!(
-            trust_of_component(&bad_world, var(1, 1)),
+            answers(&bad_world, var(1, 1)),
             [(var(1, 1), false), (var(2, 1), false)]
         );
     }
@@ -507,7 +641,7 @@ mod tests {
             (1, table(vec![], vec![row(1, None, passed(&[(2, 0)]))])),
             (2, table(vec![pattern(clean())], vec![])),
         ]);
-        assert_eq!(trust_of_component(&none, var(1, 1)), [(var(1, 1), true)]);
+        assert_eq!(answers(&none, var(1, 1)), [(var(1, 1), true)]);
     }
 
     #[test]
@@ -540,7 +674,7 @@ mod tests {
         )]);
         assert!(!trusted(&world, var(1, 1)));
         assert_eq!(
-            trust_of_component(&world, var(1, 11)),
+            answers(&world, var(1, 11)),
             [
                 (var(1, 11), false),
                 (var(1, 12), false),
@@ -597,10 +731,7 @@ mod tests {
                 vec![row(1, Some(0), passed(&[(1, 0)]))],
             ),
         )]);
-        assert_eq!(
-            trust_of_component(&recursion, var(1, 1)),
-            [(var(1, 1), true)]
-        );
+        assert_eq!(answers(&recursion, var(1, 1)), [(var(1, 1), true)]);
     }
 
     #[test]
@@ -608,20 +739,22 @@ mod tests {
         // by a second name: the known variable's def has no table, which would make it bad if it were followed
         let by_name = |answer: Option<bool>| {
             let mut world = world(vec![def_with(1, names(&[var(3, 1)]))]);
-            world.known.extend(answer.map(|answer| (var(3, 1), answer)));
+            world
+                .known
+                .extend(answer.map(|answer| (var(3, 1), fixed(answer, &[]))));
             world
         };
         assert_eq!(
-            trust_of_component(&by_name(Some(true)), var(1, 1)),
+            answers(&by_name(Some(true)), var(1, 1)),
             [(var(1, 1), true)]
         );
         assert_eq!(
-            trust_of_component(&by_name(Some(false)), var(1, 1)),
+            answers(&by_name(Some(false)), var(1, 1)),
             [(var(1, 1), false)]
         );
         // not known: followed, and there is no table
         assert_eq!(
-            trust_of_component(&by_name(None), var(1, 1)),
+            answers(&by_name(None), var(1, 1)),
             [(var(1, 1), false), (var(3, 1), false)]
         );
         // by a parameter (its def has a table, since the parameter's row is read to name it): its own row would escape if it were followed
@@ -630,21 +763,18 @@ mod tests {
                 def_with(1, passed(&[(2, 0)])),
                 def_with_parameter(2, escapes()),
             ]);
-            world.known.insert(var(2, 1), answer);
+            world.known.insert(var(2, 1), fixed(answer, &[]));
             world
         };
+        assert_eq!(answers(&by_parameter(true), var(1, 1)), [(var(1, 1), true)]);
         assert_eq!(
-            trust_of_component(&by_parameter(true), var(1, 1)),
-            [(var(1, 1), true)]
-        );
-        assert_eq!(
-            trust_of_component(&by_parameter(false), var(1, 1)),
+            answers(&by_parameter(false), var(1, 1)),
             [(var(1, 1), false)]
         );
         // the asked variable is solved even when the world knows it
         let mut asked = world(vec![def_with(1, escapes())]);
-        asked.known.insert(var(1, 1), true);
-        assert_eq!(trust_of_component(&asked, var(1, 1)), [(var(1, 1), false)]);
+        asked.known.insert(var(1, 1), fixed(true, &[]));
+        assert_eq!(answers(&asked, var(1, 1)), [(var(1, 1), false)]);
     }
 
     #[test]
@@ -672,7 +802,7 @@ mod tests {
             ),
             def_with_parameter(2, clean()),
         ]);
-        let component = trust_of_component(&world, var(1, 1));
+        let component = answers(&world, var(1, 1));
         assert_eq!(
             component,
             [
@@ -788,5 +918,241 @@ mod tests {
             ),
         ];
         assert_eq!(counts(None, reads).module_object_shared, 2);
+    }
+
+    // ---- TC4 step 4d: the methods called ------------------------------------------------------------------------------------------------------------------
+
+    /// Uses that call these methods.
+    fn calls(names: &[&str]) -> Uses {
+        Uses {
+            called: names.iter().map(|&name| name.into()).collect(),
+            ..Uses::default()
+        }
+    }
+
+    fn calls_any() -> Uses {
+        Uses {
+            called_any: true,
+            ..Uses::default()
+        }
+    }
+
+    fn strings(names: &[&str]) -> Vec<String> {
+        names.iter().map(|&name| name.to_string()).collect()
+    }
+
+    #[test]
+    fn calls_spread_through_a_second_name() {
+        let world = world(vec![(
+            1,
+            table(
+                vec![],
+                vec![
+                    // x calls `a` and names o; o calls `reset` and names p; p calls `any`'s own: nothing, then a call by a name that is not read
+                    row(
+                        1,
+                        None,
+                        Uses {
+                            names: Box::new([var(1, 2)]),
+                            ..calls(&["a"])
+                        },
+                    ),
+                    row(
+                        2,
+                        None,
+                        Uses {
+                            names: Box::new([var(1, 3)]),
+                            ..calls(&["reset"])
+                        },
+                    ),
+                    row(3, None, calls_any()),
+                    // y names a variable that is not capable, which calls `hidden`: a variable that cannot hold an object calls nothing
+                    row(11, None, names(&[var(1, 12)])),
+                    Var {
+                        capable: false,
+                        ..row(12, None, calls(&["hidden"]))
+                    },
+                ],
+            ),
+        )]);
+        assert_eq!(
+            called(&world, var(1, 1)),
+            [
+                (var(1, 1), strings(&["a", "reset", "*"])),
+                (var(1, 2), strings(&["reset", "*"])),
+                (var(1, 3), strings(&["*"])),
+            ]
+        );
+        // the calls go to the node that follows, never back: o does not take x's `a`
+        assert_eq!(called(&world, var(1, 2))[0].1, strings(&["reset", "*"]));
+        assert_eq!(
+            called(&world, var(1, 11)),
+            [(var(1, 11), vec![]), (var(1, 12), vec![])]
+        );
+        // what is trusted does not change
+        assert_eq!(
+            answers(&world, var(1, 1)),
+            [(var(1, 1), true), (var(1, 2), true), (var(1, 3), true)]
+        );
+    }
+
+    #[test]
+    fn calls_spread_through_a_parameter_and_a_pattern_parameter() {
+        let pattern = Param {
+            named: false,
+            uses: names(&[var(2, 10), var(2, 11)]),
+            ..named_param()
+        };
+        let world = world(vec![
+            (
+                1,
+                table(
+                    vec![],
+                    vec![
+                        row(
+                            1,
+                            None,
+                            Uses {
+                                passed: Box::new([(d(2), 0)]),
+                                ..calls(&["own"])
+                            },
+                        ),
+                        row(2, None, passed(&[(3, 0)])),
+                    ],
+                ),
+            ),
+            // a pattern parameter: the calls of its variables
+            (
+                2,
+                table(
+                    vec![pattern],
+                    vec![row(10, None, calls(&["a"])), row(11, None, calls(&["b"]))],
+                ),
+            ),
+            // a named parameter
+            def_with_parameter(3, calls(&["poke"])),
+        ]);
+        assert_eq!(
+            called(&world, var(1, 1)),
+            [
+                (var(1, 1), strings(&["a", "b", "own"])),
+                (var(2, 10), strings(&["a"])),
+                (var(2, 11), strings(&["b"])),
+            ]
+        );
+        assert_eq!(
+            called(&world, var(1, 2)),
+            [
+                (var(1, 2), strings(&["poke"])),
+                (var(3, 1), strings(&["poke"]))
+            ]
+        );
+        assert!(trusted(&world, var(1, 1)));
+        assert!(trusted(&world, var(1, 2)));
+    }
+
+    #[test]
+    fn calls_go_round_a_cycle() {
+        // f's parameter is passed to g's and calls `a`; g's is passed back to f's and calls `b`
+        let world = world(vec![
+            (
+                1,
+                table(
+                    vec![named_param()],
+                    vec![row(
+                        1,
+                        Some(0),
+                        Uses {
+                            passed: Box::new([(d(2), 0)]),
+                            ..calls(&["a"])
+                        },
+                    )],
+                ),
+            ),
+            (
+                2,
+                table(
+                    vec![named_param()],
+                    vec![row(
+                        1,
+                        Some(0),
+                        Uses {
+                            passed: Box::new([(d(1), 0)]),
+                            ..calls(&["b"])
+                        },
+                    )],
+                ),
+            ),
+        ]);
+        for start in [var(1, 1), var(2, 1)] {
+            let found = called(&world, start);
+            assert_eq!(found.len(), 2);
+            for (_, names) in found {
+                assert_eq!(names, strings(&["a", "b"]));
+            }
+            assert!(trusted(&world, start));
+        }
+    }
+
+    #[test]
+    fn a_known_node_gives_its_calls_and_is_not_followed() {
+        // x calls `a` and names a variable the world knows: the variable's def has no table, which would make it bad if it were followed
+        let mut world = world(vec![def_with(
+            1,
+            Uses {
+                names: Box::new([var(3, 1)]),
+                ..calls(&["a"])
+            },
+        )]);
+        world.known.insert(var(3, 1), fixed(true, &["k", "z"]));
+        assert_eq!(
+            called(&world, var(1, 1)),
+            [(var(1, 1), strings(&["a", "k", "z"]))]
+        );
+        assert!(trusted(&world, var(1, 1)));
+        // a known node that is not trusted makes x not trusted, and its calls still come
+        world.known.insert(var(3, 1), fixed(false, &["k"]));
+        assert_eq!(
+            called(&world, var(1, 1)),
+            [(var(1, 1), strings(&["a", "k"]))]
+        );
+        assert!(!trusted(&world, var(1, 1)));
+        // the asked variable is solved even when the world knows it: its own calls, not the known ones
+        let mut asked = world_of_one();
+        asked.known.insert(var(1, 1), fixed(true, &["known"]));
+        assert_eq!(called(&asked, var(1, 1)), [(var(1, 1), strings(&["own"]))]);
+    }
+
+    fn world_of_one() -> Tables {
+        world(vec![def_with(1, calls(&["own"]))])
+    }
+
+    #[test]
+    fn uses_calls_is_the_calls_of_a_method_that_hands_its_this_on() {
+        let world = world(vec![
+            def_with_parameter(2, calls(&["m"])),
+            def_with(3, calls(&["n"])),
+        ]);
+        // `this` is passed to a parameter that calls `m`, calls `z` itself, and names a variable that calls `n`
+        let this_uses = Uses {
+            passed: Box::new([(d(2), 0)]),
+            names: Box::new([var(3, 1)]),
+            ..calls(&["z"])
+        };
+        let found = uses_calls(&world, &this_uses);
+        assert!(!found.any);
+        assert_eq!(&*found.names, ["m".into(), "n".into(), "z".into()]);
+        assert!(uses_trusted(&world, &this_uses));
+        // nothing called, nothing followed
+        assert!(uses_calls(&world, &Uses::default()).is_empty());
+        // a call by a name that is not read
+        assert!(uses_calls(&world, &calls_any()).any);
+        // a parameter that cannot be followed adds nothing, and `this` is then not trusted
+        let past = Uses {
+            passed: Box::new([(d(2), 5)]),
+            ..calls(&["z"])
+        };
+        assert_eq!(&*uses_calls(&world, &past).names, ["z".into()]);
+        assert!(!uses_trusted(&world, &past));
     }
 }

@@ -884,6 +884,46 @@ fn the_trust_counters_are_said_once_per_body_and_only_with_objects() {
     assert_eq!(said("nestedFunction", Caps::BUILT), [None, None, None]);
 }
 
+/// `object_opened_by_method` (`08-tc4` §10, step 4d, D68), as each row of the method rows says it, with the entry the row's snapshot is of: counted where a
+/// called method may write the object it is a member of, so the rows that move are the rows that count; never with `Caps::OBJECTS` off.
+#[test]
+fn object_opened_by_method_is_counted() {
+    use crate::eval::OBJECT_OPENED_BY_METHOD;
+    // (row, file, entry, whether the rule opens a read there)
+    let rows = [
+        ("method-writes-this", "src/main.ts", "main", true),
+        ("method-through-parameter", "src/main.ts", "main", true),
+        ("method-this-calls-this", "src/main.ts", "main", true),
+        ("method-unknown-member", "src/main.ts", "main", true),
+        ("method-anon-member", "src/main.tsx", "App", true),
+        ("method-reads-this", "src/main.ts", "main", false),
+        ("method-arrow-member", "src/main.ts", "main", false),
+        ("method-arrow-def", "src/main.ts", "main", false),
+        ("method-uncalled", "src/main.ts", "main", false),
+        ("anon-kinds-in-keys", "src/main.ts", "main", false),
+    ];
+    for (id, file, entry, opens) in rows {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/context")
+            .join(id);
+        let sem = Sem::open(&root, Path::new(file)).unwrap();
+        let start = sem.entry(file, entry, 0, STYLE).unwrap();
+        let said = |layer: Caps| {
+            // `solve_from` does not run `finish`, which copies the notes into `Stats.language`: the notes are what it would copy
+            let (solver, _) = solve_from(&sem, start, Some(layer));
+            let notes = solver.lang().notes.borrow();
+            notes.get(OBJECT_OPENED_BY_METHOD).copied()
+        };
+        let on = said(Caps::BUILT);
+        if opens {
+            assert!(on.is_some_and(|count| count >= 1), "{id}: {on:?}");
+        } else {
+            assert_eq!(on, None, "{id}");
+        }
+        assert_eq!(said(Caps::BUILT - Caps::OBJECTS), None, "{id} off");
+    }
+}
+
 /// The memos of `needs` and `relevance` are kept per bit (`08-tc4` §10, step 4): one `Sem` that serves a request with `OBJECTS` off and then one with it on (or the
 /// other way) gives each the graph a fresh `Sem` gives with that layer. Where the bit changes the graph (`tour`'s `lineE`: `back` reads `props` only through a
 /// member) a memo filled by the other request would show.

@@ -28,7 +28,7 @@ use crate::nested::{CaptureList, Nested, ObjectData};
 use crate::relevance::relevant;
 use crate::sem::{Func, FunctionOrigin, Handed, Sem, UNHANDLED_KEY, Uncovered, counted};
 use crate::trust::{
-    MEMBER_CALL_ON_TRUSTED, MODULE_OBJECT_SHARED, THIS_WRITTEN_OUTSIDE_CLASS, body_counts,
+    MEMBER_CALL_ON_TRUSTED, MODULE_OBJECT_SHARED, THIS_WRITTEN_OUTSIDE_CLASS, Trust, body_counts,
     trust_of_component,
 };
 use crate::value::VALUE_WIDENED_SET;
@@ -357,7 +357,7 @@ impl World for TypeScript<'_> {
         found
     }
 
-    fn trusted(&self, var: VarId) -> bool {
+    fn trust(&self, var: VarId) -> Trust {
         // kept by the `Sem` beside `needs`: a fact of the code, worked out once per program, a component at a time
         if let Some(found) = self.sem.trust_memo(var) {
             return found;
@@ -368,7 +368,7 @@ impl World for TypeScript<'_> {
             .expect("the component holds the variable asked")
     }
 
-    fn trusted_known(&self, var: VarId) -> Option<bool> {
+    fn trust_known(&self, var: VarId) -> Option<Trust> {
         self.sem.trust_memo(var)
     }
 

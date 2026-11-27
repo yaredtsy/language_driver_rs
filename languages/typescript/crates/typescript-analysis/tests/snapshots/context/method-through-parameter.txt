@@ -24,8 +24,9 @@ main
   save
 edges:
 main | save | pass save
-main | poke | call poke @c96eeb36
+main | poke | call poke @5deb57aa
 main | o | pass main.<locals>.o.reset
 main | o.f | call save
 main.<locals>.o.reset | other | pass other
-poke @c96eeb36 | t.reset | call main.<locals>.o.reset
+poke @5deb57aa | t.reset | call main.<locals>.o.reset
+poke @5deb57aa | t.reset | unresolved function_typed_value

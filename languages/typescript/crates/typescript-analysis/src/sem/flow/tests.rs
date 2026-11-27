@@ -601,11 +601,11 @@ impl crate::eval::World for OfSem<'_> {
         Arc::from(crate::relevance::relevant(self, def))
     }
 
-    fn trusted(&self, _var: crate::flow::VarId) -> bool {
+    fn trust(&self, _var: crate::flow::VarId) -> crate::trust::Trust {
         unreachable!("the tables are not evaluated here")
     }
 
-    fn trusted_known(&self, _var: crate::flow::VarId) -> Option<bool> {
+    fn trust_known(&self, _var: crate::flow::VarId) -> Option<crate::trust::Trust> {
         unreachable!("the tables are not evaluated here")
     }
 
@@ -712,7 +712,7 @@ fn the_uses_of_a_variable_are_reviewed() {
     );
 }
 
-/// Whether the object each capable variable of every table of `file` holds can be trusted, as `World::trusted` of the `TypeScript` world answers: for each def in
+/// Whether the object each capable variable of every table of `file` holds can be trusted, as `World::trust` of the `TypeScript` world answers: for each def in
 /// `entries_of`'s order, its name and its capable rows in row order, each `<name>@<line>` (as `show_var` begins) and its answer. The variables are asked in table
 /// order, or, with `reversed`, from the last to the first; the answers are put back in table order.
 fn trust_of(root: &Path, file: &str, reversed: bool) -> Vec<(String, Vec<(String, bool)>)> {
@@ -746,7 +746,7 @@ fn trust_of(root: &Path, file: &str, reversed: bool) -> Vec<(String, Vec<(String
         (0..asked.len()).collect()
     };
     for at in order {
-        answers[at] = Some(lang.trusted(asked[at].1));
+        answers[at] = Some(lang.trust(asked[at].1).trusted);
     }
     let mut found: Vec<(String, Vec<(String, bool)>)> = entries
         .iter()

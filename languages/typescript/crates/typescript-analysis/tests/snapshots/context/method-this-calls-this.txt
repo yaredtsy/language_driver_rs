@@ -32,4 +32,6 @@ main | clear | pass main.<locals>.clear
 main.<locals>.clear | other | pass other
 main.<locals>.reset | this.clear | unresolved function_typed_value
 run @fe895f25 | o.reset | call main.<locals>.reset
+run @fe895f25 | o.reset | unresolved function_typed_value
 run @fe895f25 | o.f | call save
+run @fe895f25 | o.f | unresolved function_typed_value
