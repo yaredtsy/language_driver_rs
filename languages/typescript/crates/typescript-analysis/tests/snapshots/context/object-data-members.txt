@@ -18,10 +18,9 @@ main
   report
   save [Passed]
 edges:
-main | report | call report @ed8fccfe
-main | report | call report @58965fa0
-main | report | call report @eed3de6c
+main | report | call report @07a92ab2
+main | report | call report @07a92ab2
+main | report | call report @077398c6
 main | save | pass save
-report @58965fa0 | console.log | external typescript:lib Console.log
-report @ed8fccfe | console.log | external typescript:lib Console.log
-report @eed3de6c | console.log | external typescript:lib Console.log
+report @077398c6 | console.log | external typescript:lib Console.log
+report @07a92ab2 | console.log | external typescript:lib Console.log

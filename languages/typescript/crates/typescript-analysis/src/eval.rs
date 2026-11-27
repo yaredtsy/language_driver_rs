@@ -311,6 +311,63 @@ fn objects_opened(world: &dyn World, value: Value) -> Value {
     opened
 }
 
+/// `value` as a key holds it (`08-tc4` §10, "Step 4c"): every object in it **reduced**, every other member and whether it is open as they were. A reduced object
+/// keeps the members whose value can reach a call (`reaches_a_call`), each itself written by `for_key` (the objects inside are reduced too), and drops the
+/// others; it is complete only when it was and nothing was dropped. It is made again through the world's interning (`made_object`), so objects that reduce to the
+/// same members are one object, and the value stays sorted and without duplicates.
+///
+/// Why: data cannot reach a call, so it is no reason for a context. A function called from many places with `{ duration: 12 }`, `{ duration: 40 }`, … would
+/// get one context for each literal for nothing (`engine/11-tc4.md` has the numbers: 261 contexts of one function, 349 cuts at the cap of 64 in one sample).
+/// This is the rule relevance has for a whole parameter (`relevance::relevant`), for the members of an object. The callee then reads the reduced object: a member
+/// that was dropped reads unknown, since the object is no longer complete, which is sound. Only a key is reduced; the values inside a body are not.
+pub(crate) fn for_key(world: &dyn World, value: &Value) -> Value {
+    if !value
+        .known()
+        .iter()
+        .any(|one| matches!(one, One::Object(_)))
+    {
+        return value.clone();
+    }
+    let mut reduced = Value::of(
+        value
+            .known()
+            .iter()
+            .filter(|one| !matches!(one, One::Object(_)))
+            .copied(),
+        value.is_open(),
+    );
+    for one in value.known() {
+        if let One::Object(id) = one {
+            let data = world.object_data(*id);
+            let mut complete = data.complete;
+            let mut members = Vec::new();
+            for (name, member) in data.members.iter() {
+                if reaches_a_call(world, member) {
+                    members.push((name.clone(), for_key(world, member)));
+                } else {
+                    complete = false;
+                }
+            }
+            reduced = reduced.join(&made_object(world, members, complete));
+        }
+    }
+    reduced
+}
+
+/// Whether `value` can reach a call: it is open, or a known member is a function (`Fn`, `Closure`, `Anon`, `AnonAny`), `Undefined` (it selects a default), or an
+/// object that keeps at least one member when reduced. Data (no known member, not open) cannot; an object that keeps nothing is data for this purpose.
+fn reaches_a_call(world: &dyn World, value: &Value) -> bool {
+    value.is_open()
+        || value.known().iter().any(|one| match one {
+            One::Fn(_) | One::Closure(..) | One::Anon(..) | One::AnonAny | One::Undefined => true,
+            One::Object(id) => world
+                .object_data(*id)
+                .members
+                .iter()
+                .any(|(_, member)| reaches_a_call(world, member)),
+        })
+}
+
 /// The member `name` of `value` (`08-tc4` §4): the join over its members of what each has there. An object with the name, its value; a complete one without
 /// it, `undefined`; one that is not complete, unknown; `undefined`, `undefined` (reading through nothing calls nothing); any other member, unknown. A value
 /// with no member (data: a string has methods) is unknown, and an open value is open.
@@ -2136,6 +2193,94 @@ mod tests {
         assert_eq!(read(), func(1));
         world.untrusted.borrow_mut().insert(top);
         assert_eq!(read(), opened(func(1)));
+    }
+
+    /// `value` as a key holds it.
+    fn reduced(world: &ByHand, value: Value) -> Value {
+        for_key(world, &value)
+    }
+
+    #[test]
+    fn an_object_in_a_key_keeps_what_can_reach_a_call() {
+        let (_, world) = with_objects();
+        let make = |members: Vec<(&str, Value)>, complete: bool| {
+            let members = members
+                .into_iter()
+                .map(|(name, value)| (name.into(), value))
+                .collect();
+            made_object(&world, members, complete)
+        };
+        let data = Value::data;
+        let fun = || func(1);
+        let nothing_known = |value: Value| members_of(&world, &value);
+
+        // { a: data } -> {} not complete
+        assert_eq!(
+            nothing_known(reduced(&world, make(vec![("a", data())], true))),
+            (vec![], false)
+        );
+        // {} complete -> the same object
+        let empty = make(vec![], true);
+        assert_eq!(reduced(&world, empty.clone()), empty);
+        assert_eq!(nothing_known(reduced(&world, empty)), (vec![], true));
+        // { f: Fn } -> itself, complete
+        let with_fn = make(vec![("f", fun())], true);
+        assert_eq!(reduced(&world, with_fn.clone()), with_fn);
+        assert_eq!(
+            nothing_known(reduced(&world, with_fn)),
+            (vec![("f".to_owned(), fun())], true)
+        );
+        // { f: Fn, a: data } -> { f: Fn } not complete
+        assert_eq!(
+            nothing_known(reduced(
+                &world,
+                make(vec![("f", fun()), ("a", data())], true)
+            )),
+            (vec![("f".to_owned(), fun())], false)
+        );
+        // { u: Undefined } -> itself
+        let with_undefined = make(vec![("u", undefined())], true);
+        assert_eq!(reduced(&world, with_undefined.clone()), with_undefined);
+        // { o: open } -> itself
+        let with_open = make(vec![("o", Value::unknown())], true);
+        assert_eq!(reduced(&world, with_open.clone()), with_open);
+        // { inner: { a: data } } -> {} not complete
+        let inner_data = make(vec![("inner", make(vec![("a", data())], true))], true);
+        assert_eq!(nothing_known(reduced(&world, inner_data)), (vec![], false));
+        // { inner: { f: Fn } } -> itself
+        let inner_fn = make(vec![("inner", make(vec![("f", fun())], true))], true);
+        assert_eq!(reduced(&world, inner_fn.clone()), inner_fn);
+        // { inner: { f: Fn, a: data } } -> { inner: { f: Fn } not complete }: the object inside is reduced too
+        let inner_mixed = make(
+            vec![("inner", make(vec![("f", fun()), ("a", data())], true))],
+            true,
+        );
+        let (members, complete) = nothing_known(reduced(&world, inner_mixed));
+        assert!(complete);
+        assert_eq!(members.len(), 1);
+        assert_eq!(
+            nothing_known(members[0].1.clone()),
+            (vec![("f".to_owned(), fun())], false)
+        );
+        // a value that holds { a: data } and { b: data } is one object after
+        let two = make(vec![("a", data())], true).join(&make(vec![("b", data())], true));
+        assert_eq!(two.known().len(), 2);
+        let one = reduced(&world, two);
+        assert_eq!(one.known().len(), 1);
+        assert_eq!(nothing_known(one), (vec![], false));
+        // a value with no object is unchanged
+        let no_object = Value::of([One::Fn(d(1)), One::Undefined], false);
+        assert_eq!(reduced(&world, no_object.clone()), no_object);
+        // an open value that holds { a: data }: {} not complete, still open
+        let open_with = make(vec![("a", data())], true).join(&Value::unknown());
+        let got = reduced(&world, open_with);
+        assert!(got.is_open());
+        assert_eq!(got.known().len(), 1);
+        let One::Object(id) = got.known()[0] else {
+            panic!("not an object: {got:?}")
+        };
+        let object = world.object_data(id);
+        assert!(object.members.is_empty() && !object.complete);
     }
 
     #[test]

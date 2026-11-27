@@ -20,7 +20,7 @@ use analyzer_core::solve::{Budget, Cancel, Lang, Limits, Solver, Start, Summary}
 use crate::Project;
 use crate::caps::Caps;
 use crate::env::{Env, VARIABLE_WRITE_UNMODELLED};
-use crate::eval::{World, eval};
+use crate::eval::{World, eval, for_key};
 use crate::flow::{DefId, Expr, Flow, VarId};
 use crate::key::{CanonVar, Key, KeyData, KeyId, Keys};
 use crate::needs::needs_of_component;
@@ -39,6 +39,7 @@ use crate::walk;
 /// should never be counted; a number above 0 is a bug to look for.
 pub(crate) const KEY_NAMES_UNKNOWN_DEF: &str = "key_names_unknown_def";
 /// A slot of a key (a parameter, or a captured variable) whose value holds two or more objects, counted once for each, each time a key is made (`intern_key`).
+/// The objects counted are the reduced ones (`eval::for_key`): objects that differ only in data are one object by then and are not counted.
 /// Only objects at the top of the value are counted, not those inside another object: an upper bound for `08-tc4` §10 row 10, read at step 8.
 pub(crate) const KEY_SLOT_OBJECTS_TWO_OR_MORE: &str = "key_slot_objects_two_or_more";
 
@@ -164,7 +165,17 @@ impl<'p> TypeScript<'p> {
 
     /// The number of the key that holds `data`, interned in this request's `Keys`. A def in it is named by the id the graph gives it. A key that names a def
     /// or a variable this program does not know is the open key, and `key_names_unknown_def` is counted: an analysis step never fails (`CLAUDE.md` rule 8).
-    pub(crate) fn intern_key(&self, data: KeyData) -> KeyId {
+    ///
+    /// A key keeps only what can reach a call (`for_key`, TC4 step 4c): every object in a slot or a captured value is reduced first, before anything reads
+    /// `data`, so `KEY_SLOT_OBJECTS_TWO_OR_MORE` counts reduced objects and the digest is of the reduced key.
+    pub(crate) fn intern_key(&self, mut data: KeyData) -> KeyId {
+        let world: &dyn World = self;
+        for value in data.params.iter_mut() {
+            *value = for_key(world, value);
+        }
+        for (_, value) in data.captured.iter_mut() {
+            *value = for_key(world, value);
+        }
         if !self.names_are_known(&data) {
             self.note_walk(KEY_NAMES_UNKNOWN_DEF);
             return KeyId::OPEN;

@@ -806,6 +806,37 @@ fn relevance_and_the_bind_record_on_keys() {
     assert_eq!(read(pair), [false, true]);
 }
 
+/// TC4 step 4c: a key keeps only what can reach a call (`for_key`). In `object-data-members` the objects of the first two calls of `report` hold only data, so both
+/// are `{}` not complete and the two calls reach one context; the third holds `save` and has its own. With the objects bit off no object is in a key and `report`
+/// has one context.
+#[test]
+fn data_members_make_no_context() {
+    let sem = open("tests/fixtures/context/object-data-members");
+    let (_, on) = solve(&sem, Some(Caps::BUILT));
+    assert_eq!(contexts(&on)["report"].len(), 2);
+    let mut calls: Vec<(u32, [u8; 16])> = on
+        .edges
+        .iter()
+        .filter(|edge| on.def(&edge.from.func).unwrap().qname == "main")
+        .filter_map(|edge| match &edge.to {
+            EdgeTo::Context(id, _) if on.def(&id.func).unwrap().qname == "report" => {
+                Some((edge.site.start, id.digest))
+            }
+            _ => None,
+        })
+        .collect();
+    calls.sort();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(
+        calls[0].1, calls[1].1,
+        "{{ a: 1 }} and {{ b: 2 }} are one key"
+    );
+    assert_ne!(calls[1].1, calls[2].1, "{{ c: 3, f: save }} has its own");
+
+    let (_, off) = solve(&sem, Some(Caps::BUILT - Caps::OBJECTS));
+    assert_eq!(contexts(&off)["report"].len(), 1);
+}
+
 /// The three counters of `08-tc4` §10, step 3c, as each entry of the trust fixture says them alone: said once per body, and only with `Caps::OBJECTS`.
 #[test]
 fn the_trust_counters_are_said_once_per_body_and_only_with_objects() {

@@ -13,6 +13,6 @@ main
     save
   save [Passed]
 edges:
-main | open | call open @47a35971
+main | open | call open @fc20372a
 main | save | pass save
-open @47a35971 | onDone | call save
+open @fc20372a | onDone | call save
