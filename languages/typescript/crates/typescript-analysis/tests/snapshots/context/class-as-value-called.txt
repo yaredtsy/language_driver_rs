@@ -1,0 +1,15 @@
+== main
+-- off
+main
+  call
+edges:
+call | f | unresolved any_or_untyped
+main | call | call call
+uncovered: class=1
+-- on
+main
+  call
+edges:
+call | f | unresolved any_or_untyped
+main | call | call call
+uncovered: class=1

@@ -1,0 +1,11 @@
+== main
+-- off
+main
+edges:
+main | C | unresolved function_typed_value
+uncovered: class=1
+-- on
+main
+edges:
+main | C | unresolved function_typed_value
+uncovered: class=1

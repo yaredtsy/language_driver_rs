@@ -1,0 +1,18 @@
+== main
+-- off
+main
+  Panel
+  close [Passed]
+edges:
+Panel.constructor | props.onClose | unresolved function_typed_value
+main | Panel | construct Panel init Panel.constructor
+main | close | pass close
+-- on
+main
+  Panel
+    close
+  close [Passed]
+edges:
+Panel.constructor @7b0c50d8 | props.onClose | call close
+main | Panel | construct Panel init Panel.constructor @7b0c50d8
+main | close | pass close

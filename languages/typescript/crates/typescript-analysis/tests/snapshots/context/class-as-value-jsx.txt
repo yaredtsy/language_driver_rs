@@ -1,0 +1,15 @@
+== main
+-- off
+main
+  Card
+edges:
+Card | Icon | unresolved function_typed_value
+main | Card | call Card
+uncovered: class=1
+-- on
+main
+  Card
+edges:
+Card @07a92ab2 | Icon | unresolved function_typed_value
+main | Card | call Card @07a92ab2
+uncovered: class=1

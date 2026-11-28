@@ -490,7 +490,7 @@ fn the_counters_of_the_object_rows() {
         "this_written_outside_class",
     ];
     // (row, entry, the count of each key with the layer on); `None` is a counter that is not said at all
-    let cases: [(&str, &str, [Option<u64>; 4]); 4] = [
+    let cases: [(&str, &str, [Option<u64>; 4]); 5] = [
         ("object-either", "main", [Some(1), None, None, None]),
         ("object-options", "main", [None, Some(1), None, None]),
         (
@@ -499,6 +499,7 @@ fn the_counters_of_the_object_rows() {
             [None, None, Some(1), None],
         ),
         ("object-module-const", "main", [None, None, None, None]),
+        ("props-tag-member", "main", [None, None, None, None]),
     ];
     for (id, entry, want) in cases {
         let row = context_rows()

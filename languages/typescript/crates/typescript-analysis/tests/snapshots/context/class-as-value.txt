@@ -1,0 +1,15 @@
+== main
+-- off
+main
+  register
+edges:
+main | register | call register
+register | C | unresolved function_typed_value
+uncovered: class=1
+-- on
+main
+  register
+edges:
+main | register | call register
+register | C | unresolved function_typed_value
+uncovered: class=1

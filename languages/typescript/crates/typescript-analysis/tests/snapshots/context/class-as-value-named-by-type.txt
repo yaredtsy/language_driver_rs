@@ -1,0 +1,19 @@
+== main
+-- off
+main
+  build
+  build
+edges:
+build | C | unresolved function_typed_value
+main | build | call build
+main | build | call build
+uncovered: class=2
+-- on
+main
+  build
+  build
+edges:
+build | C | unresolved function_typed_value
+main | build | call build
+main | build | call build
+uncovered: class=2

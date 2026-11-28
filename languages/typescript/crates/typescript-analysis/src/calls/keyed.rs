@@ -521,6 +521,8 @@ fn the_variable_counters_count_where_the_table_says() {
             ("member-two-sources", "main") => (None, Some(1)),
             // TC4 step 6: `<C />` under `const C = flag ? A : B`: the engine names `A`, the layer adds `B`, as `local-either`
             ("props-tag-local", "main") => (Some(1), None),
+            // TC4 step 7: `new C()` under `let C = class X {..}; C = TextWriter`: `C` is a variable assigned twice, as `member-two-sources`'s `s`
+            ("class-as-value-reassigned", "main") => (None, Some(1)),
             _ => (None, None),
         };
         // TC3's layer: the rows of TC4 step 4 are read with `OBJECTS` on, and `the_counters_of_the_object_rows` (`tests/context.rs`) says what they count

@@ -1,0 +1,15 @@
+== main
+-- off
+main
+  make
+edges:
+main | make | call make
+make | o.W | unresolved function_typed_value
+uncovered: class=1
+-- on
+main
+  make
+edges:
+main | make | call make @07a92ab2
+make @07a92ab2 | o.W | unresolved function_typed_value
+uncovered: class=1
