@@ -287,7 +287,7 @@ calls are answered):
 | 4 | **on**: `OBJECTS` in `Caps::BUILT`; `objects-off.txt` first; `relevance` and `needs` read the new forms (row 6); a pattern parameter is capable; a whitespace-only JSX child is no child | `object-options`, `object-pattern-*`, `object-too-deep`, `object-written-*`, `object-to-external`, `object-stored`, `object-second-name*`, `object-module-const*`, `object-in-array`, `props-function-component`, `props-destructured`, `props-nested-handler` |
 | 5 | member calls answered (`walk::holds_name` of a `Member`); a literal's method as a target | `object-method`, `object-implements`, `props-*` read through `props.x` |
 | 6 | a JSX tag that is a value | `props-component-as-prop`, `props-spread-through`, `props-children`, `props-unread-member` (two contexts) |
-| 7 | `Class` | `class-as-value*`, `props-class-component`; `uncovered_class` drops where an edge appears |
+| 7 | `Class` | `class-as-value*`, `props-class-component`; the construction appears in the callee's context (`uncovered_class` does **not** drop: "Step 7, as decided" below) |
 | 8 | the four projects; `TaskDetailPanel` from its parent; the ceiling of relevance by member | `engine/11-tc4.md` |
 | 8b | relevance by member, only if step 8 says it pays | `props-unread-member` flips |
 | 9 | (mine) `policy.md`, `ENGINE.md`; the README's phase rule | reviewed |
@@ -783,5 +783,39 @@ keeps its digest). The samples equal step 5's (private 6,905 contexts, V-NOC 733
 mutation (b), 2b setting `receiver`, failed no test. A receiver feeds only `member_call_on_trusted`, and no step 6 row was in the test
 that reads it. 6-fix is one case, `("props-tag-member", "main", [None; 4])` in `the_counters_of_the_object_rows`; probed by me, it
 passes today and fails under (b). It is the first commit of step 7's prompt; step 6 closes when it is in.
+
+**Step 7, as decided for the build (reviewer, 2026-11-28, at `2200b6f`).** A class held by a value. Read at HEAD with the CLI (built at
+`024ce4f`): `props-class-component` is answered already (a JSX element on a class is the engine's `Construct`, and since step 4 its
+attributes are the constructor's parameter 0). A class handed over is not: `expr_of` writes a class name `Unknown` ("a class is
+TC5's"), so `register(JsonWriter)` → `new C()`, `const C = flag ? A : B; new C()` and `<Icon />` with a class stay
+`function_typed_value`. The design (no reviewer patch: the owner's rule, 2026-11-28; the coder's 7-1 blesses today's answers first):
+
+- **`Expr::Class(DefId)`, a variant of its own, added last**, not `Def(class)` as §2 said: `Def` is "a def with a body", and every
+  reader of it (`needs`, D22's `holds_a_def`, `captured_of`) would take a class for a function silently. A new variant does not
+  compile until each `match` decides it. `expr_of` writes it for a class of this file's outline (where it writes `Unknown` today), and
+  for a name whose **symbol's own declarations** include a project `ClassDeclaration` or `ClassExpression` (new `Sem::classes_named`,
+  beside `functions_named`), only when no function is named. A variable that holds a class (`let C = class X {}`) is not one: its
+  declarations are variable declarations, so it stays a `Var` and its writes are read (row `class-as-value-reassigned`).
+- **`One::Class(DefId)`, last in `One`; `Canon::Class(StableDef)`, last in `Canon`**: no existing order or digest moves. A class is a
+  constant, as Python's `Fp::Class` (`interp/key.rs`).
+- **Behind `Caps::OBJECTS`**: `eval` of `Expr::Class` is unknown when the bit is off, as `Member` and `Object` are, so no `*-off.txt`
+  moves.
+- **Each arm**: `reaches_a_call` true (a constructor runs) and `data_typed_slot` keeps it (a key keeps a class); `member` of a class
+  unknown (statics are TC5's); `changed_by_methods` no (a constructor's `this` is the new object; a class cannot be called); depth 0;
+  `needs`, `relevance`, `holds_name`, `reads_a_name`, `reads_many_sources`, `holds_a_def`: a class reads no variable and is not a
+  name or a def.
+- **`walk::members`**: at a `New` or `Jsx` site a `Class` member is a `Target::Construct` from `walk::construction(lang, class,
+  jsx)` (the same `init` rule and counters as the engine's `new C()`, `uncovered_class_component_render` included at a tag); `keyed`
+  already gives the `init` its key. At any other kind of site (a call, a tagged template, a decorator, an accessor) it is no target and
+  the value is open there (calling a class throws; the engine's answer stands). No tripwire (D61 checks functions; a class is not
+  asked). `resolve_from_env`'s `already` keeps **every** `Resolved::Def`, classes too, so a class the engine already constructs is not
+  constructed twice (D59 path, row `class-as-value-named-by-type`).
+- **`uncovered_class` does not drop**, against the step table's first proof: it counts a hand-over of a class in the caller's body, and
+  that hand-over still has no edge in either half. The construction is a new edge in the callee's context.
+- **Limit, not built**: a class value carries no captures, so a nested class constructed elsewhere has its constructor's outer
+  variables unknown (row `class-as-value-nested`; sound). The value of a `new` expression (an instance) is TC5's.
+- **Two commits.** 7-1: the ten rows (`policy.md`, "TC4 (step 7)") blessed with today's code, and 6-fix's one counter case. 7-2: the
+  change. What 7-2 may move: the on halves of the nine `class-as-value*` rows as written, and the table snapshots that print a class
+  name (`?` becomes `class <qualname>`). Anything else is a stop: no full-suite probe was run before the prompt.
 
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
