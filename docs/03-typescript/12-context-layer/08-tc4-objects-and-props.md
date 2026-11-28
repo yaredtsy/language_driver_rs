@@ -818,4 +818,18 @@ TC5's"), so `register(JsonWriter)` → `new C()`, `const C = flag ? A : B; new C
   change. What 7-2 may move: the on halves of the nine `class-as-value*` rows as written, and the table snapshots that print a class
   name (`?` becomes `class <qualname>`). Anything else is a stop: no full-suite probe was run before the prompt.
 
+**Step 7 corrected at 7-1 (the coder's stop, 2026-11-28).** 7-1 is built (`9217ba0`: the ten rows and 6-fix, 580 passed). The
+design said the engine constructs `JsonWriter` through `C: typeof JsonWriter`; it does not (`build | C | unresolved
+function_typed_value` in both halves), and I had not checked that row. Checked since with the CLI at `9217ba0`: the engine names
+**no** class held by a variable or a parameter (`typeof` a class, `const C = class X {}` in a function, a top-level
+`const Named = class Y {}`: all `function_typed_value`). So:
+
+- **The `already` change is dropped**: a class can be in `found` only where the callee is a class name, which `holds_name` does not
+  follow, so D59's path never meets a class. Today's filter stays as it is, and so does mutation (d)'s question (dropped).
+- **`class-as-value-named-by-type` is an open-path row**: on, `build` has two contexts, one constructing `JsonWriter`, the other `Sub`;
+  `variable_added_to_engine` is not said by any step 7 row.
+- **6-fix is in** (`the_counters_of_the_object_rows`, `props-tag-member` `[None; 4]`): **step 6 is closed.** The coder also added, in
+  `keyed.rs`, `("class-as-value-reassigned", "main") => (None, Some(1))`: `C` is assigned twice, so the ceiling counts it with
+  `OBJECTS` off, as `member-two-sources`. Accepted (test-only, needed).
+
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
