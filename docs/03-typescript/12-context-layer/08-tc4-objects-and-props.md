@@ -754,4 +754,27 @@ the condition `kind == FlowKind::Call` becomes `matches!(kind, FlowKind::Call | 
   `props-unread-member` (two contexts), `props-tag-named-by-type`. `New`, `Tagged`, `Decorator`, `Accessor` stay out of the rule: a
   class tag is step 7.
 
+**Step 6 corrected (the coder's stop, 2026-11-28; re-probed by the reviewer at `e4f5156` with a fresh build).** The design above was
+probed with a binary built **before step 5** (`0d529d8`), so its "with the change" half showed step 5's moves, not the `Jsx`
+condition's. With today's code:
+
+- **`props-tag-named-by-type` is answered already, by step 5.** `Icon: typeof Base` is a property of a type, not a function
+  declaration, so `expr_of` writes the tag `<props.Icon />` as `Member(Param 0, Icon)`, not as `Def(Base)`. Step 5's `holds_name` arm
+  then lets the layer add `Mine` (`variable_added_to_engine` 1). The `Jsx` condition is **not built**: it would change nothing (the
+  samples agreed: no counter moved with it). The row stays as a guard of step 5's rule at a tag.
+- **What is left is a use the trust rule does not list.** At `<props.Icon />` with `Icon: () => null`, the layer draws `Star` **and
+  keeps the engine's `function_typed_value` beside it**. The same member called as `props.Icon()` does not, whatever the caller. The
+  reason: `Reader::place_used` (the uses of §5) follows a member read that can hold a function as a reference (point 1), and a JSX tag
+  name is none of its points, so it falls to point 10. `props` escapes, its object is opened, the value is open, and the open entry
+  stays. §5's list says reading a member is allowed: the code is stricter than the plan, and the code is what is wrong.
+- **6-2, the whole change, as corrected.** `sem/flow.rs`, `place_used`, a point beside 2 (the callee of a call): the value that is the
+  **tag name** of a JSX element (`JsxOpeningElement` or `JsxSelfClosingElement` whose `tag_name_of` is the node) keeps nothing and
+  returns, with **no** receiver and no called name: React calls a tag's component as a plain function (`jsx(props.Icon, …)`), with no
+  `this`, so it cannot write through the object it was read from (D68 is about methods called on the object). Nothing else.
+- **Probed with it** (patch, reverted; the coder's uncommitted fixtures as the reference): only `props-tag-member` moves, its open edge
+  gone; no off file and no other row. Samples, in turn (load 8–10, time not readable): private 6,905 contexts, V-NOC 733
+  (TaskDetailPanel 94), **no counter differs**, compare 0 problems.
+- **6-1 as the coder blessed it**, with the counters as today's code says: `props-tag-local` and `props-tag-named-by-type` `[Some(1),
+  None]` in `the_counters_of_the_member_rows`; `keyed.rs` gets `("props-tag-local", "main") => (Some(1), None)` (`OBJECTS` off).
+
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
