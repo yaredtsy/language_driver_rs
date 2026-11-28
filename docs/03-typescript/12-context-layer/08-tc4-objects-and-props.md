@@ -777,4 +777,11 @@ condition's. With today's code:
 - **6-1 as the coder blessed it**, with the counters as today's code says: `props-tag-local` and `props-tag-named-by-type` `[Some(1),
   None]` in `the_counters_of_the_member_rows`; `keyed.rs` gets `("props-tag-local", "main") => (Some(1), None)` (`OBJECTS` off).
 
+**Step 6 built, `a2f5e7e` and `024ce4f`** ([`engine/11-tc4.md`](../../../languages/typescript/engine/11-tc4.md), "TC4 step 6 as
+built"): as corrected. 6-1 blessed the seven rows with today's code; 6-2 moved one line, the open edge of `props-tag-member` (`Card`
+keeps its digest). The samples equal step 5's (private 6,905 contexts, V-NOC 733), compare 0 problems. **Step 6-fix**: the coder's
+mutation (b), 2b setting `receiver`, failed no test. A receiver feeds only `member_call_on_trusted`, and no step 6 row was in the test
+that reads it. 6-fix is one case, `("props-tag-member", "main", [None; 4])` in `the_counters_of_the_object_rows`; probed by me, it
+passes today and fails under (b). It is the first commit of step 7's prompt; step 6 closes when it is in.
+
 Next: [`09-tc5-instances.md`](09-tc5-instances.md)
