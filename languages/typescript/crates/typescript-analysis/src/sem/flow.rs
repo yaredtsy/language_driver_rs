@@ -797,6 +797,15 @@ impl Reader<'_, '_> {
         {
             return;
         }
+        // 2b. the tag name of a JSX element (`<props.Icon />`): React calls the component as a plain function (`jsx(props.Icon, …)`), with no `this`, so it
+        // keeps nothing of the object it was read from and cannot write through it; it is not an escape, a receiver or a called name
+        if matches!(
+            parent.kind(),
+            Kind::JsxOpeningElement | Kind::JsxSelfClosingElement
+        ) && tag_name_of(parent) == Some(used)
+        {
+            return;
+        }
         // 3. a condition, or a place whose value is only tested
         if is_tested(used) {
             return;

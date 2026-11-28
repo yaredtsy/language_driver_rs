@@ -18,7 +18,6 @@ main
     star
 edges:
 Card @86991999 | props.Icon | call Star
-Card @86991999 | props.Icon | unresolved function_typed_value
 Star | star | call star
 main | Card | call Card @86991999
 main | Star | pass Star
