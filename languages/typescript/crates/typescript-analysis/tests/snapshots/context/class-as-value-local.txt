@@ -6,6 +6,13 @@ main | C | unresolved function_typed_value
 uncovered: class=2
 -- on
 main
+  JsonWriter
+    encode
+  TextWriter
+    other
 edges:
-main | C | unresolved function_typed_value
+JsonWriter.constructor | encode | call encode
+TextWriter.constructor | other | call other
+main | C | construct JsonWriter init JsonWriter.constructor
+main | C | construct TextWriter init TextWriter.constructor
 uncovered: class=2

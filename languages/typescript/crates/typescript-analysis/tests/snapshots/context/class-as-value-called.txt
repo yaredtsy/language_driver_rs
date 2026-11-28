@@ -10,6 +10,6 @@ uncovered: class=1
 main
   call
 edges:
-call | f | unresolved any_or_untyped
-main | call | call call
+call @24d64505 | f | unresolved any_or_untyped
+main | call | call call @24d64505
 uncovered: class=1

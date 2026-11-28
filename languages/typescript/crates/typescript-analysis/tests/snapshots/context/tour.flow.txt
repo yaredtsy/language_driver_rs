@@ -107,7 +107,7 @@ handed: none
 params: none
 vars: none
 sites:
-  new ? ()
+  new class Csv ()
 anons: 0
 handed: none
 == twice
@@ -131,7 +131,7 @@ sites:
   call def open ({onDone: def encode})
   jsx def Panel ({onClose: def join})
   call def send (?)
-  new ? ()
+  new class Json ()
   call def pick ()
   call ? ()
   call def twice (def encode)
@@ -192,7 +192,7 @@ params: none
 vars: none
 sites:
   call def send (?)
-  new ? ()
+  new class Json ()
 anons: 0
 handed: none
 == lineG

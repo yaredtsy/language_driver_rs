@@ -6,6 +6,13 @@ main | C | unresolved function_typed_value
 uncovered: class=1
 -- on
 main
+  TextWriter
+    other
+  main.<locals>.X
+    encode
 edges:
-main | C | unresolved function_typed_value
+TextWriter.constructor | other | call other
+main | C | construct TextWriter init TextWriter.constructor
+main | C | construct main.<locals>.X init main.<locals>.X.constructor
+main.<locals>.X.constructor | encode | call encode
 uncovered: class=1

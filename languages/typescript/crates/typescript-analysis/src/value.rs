@@ -44,7 +44,7 @@ impl ObjectId {
 /// One thing a value can hold: a function, a nested function with what it captured, an anonymous function, an anonymous arrow or an anonymous function
 /// expression of which one is not said (how a key, a capture list and an object hold one), "nothing was passed", or an object. TC4 adds classes, TC5
 /// instances. The derived order is `Fn` by def, then `Closure` by def and list, then `Anon` by def and number, then `AnonArrow`, then `Undefined`, then
-/// `Object` by number, then `AnonFunction`.
+/// `Object` by number, then `AnonFunction`, then `Class` by def.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum One {
     /// A def with a body.
@@ -63,6 +63,8 @@ pub(crate) enum One {
     /// An anonymous function expression (`function () {}`), which one not said. Unlike an arrow it has a `this` of its own, so a call of it may write the object it
     /// is a member of (`08-tc4` §10, step 4d). Made only by `eval::anon_kinds`, from an `Anon` that is not an arrow.
     AnonFunction,
+    /// A project class: what a class name evaluates to (TC4 step 7). A constant, as a function is.
+    Class(DefId),
 }
 
 /// What can be at a place. `unknown` (nothing known: ask the engine), `data` (nothing callable, and the layer knows it), `wide` (too much to list: no

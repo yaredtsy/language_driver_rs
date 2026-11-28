@@ -14,10 +14,12 @@ uncovered: class=1
 main
   nested
     register
+      nested.<locals>.W
   encode [Passed]
 edges:
 main | nested | call nested
 main | encode | pass encode
-nested | register | call register
-register | C | unresolved function_typed_value
+nested | register | call register @f9cf6f34
+nested.<locals>.W.constructor | cb | unresolved function_typed_value
+register @f9cf6f34 | C | construct nested.<locals>.W init nested.<locals>.W.constructor
 uncovered: class=1

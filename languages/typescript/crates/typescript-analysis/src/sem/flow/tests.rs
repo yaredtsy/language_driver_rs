@@ -43,7 +43,7 @@ fn name_at(text: &str, at: u32) -> (String, usize) {
     (name, text[..start].matches('\n').count() + 1)
 }
 
-/// An expression as the tests write it: `?`, `data`, `def <qualname>`, `param#<i>`, `anon#<i>`, `var <name>@<line>` (`var <qualname>:<name>@<line>` for a
+/// An expression as the tests write it: `?`, `data`, `def <qualname>`, `class <qualname>`, `param#<i>`, `anon#<i>`, `var <name>@<line>` (`var <qualname>:<name>@<line>` for a
 /// variable of another def, `FILE` for the file's code), `oneof(<a> | <b>)`. `own` is the def of the table the expression is in, `text` the file's.
 fn expr(sem: &Sem, own: DefId, text: &str, expr: &Expr) -> String {
     match expr {
@@ -53,6 +53,10 @@ fn expr(sem: &Sem, own: DefId, text: &str, expr: &Expr) -> String {
         Expr::Def(id) => {
             let func = sem.func(*id).expect("a def of this program");
             format!("def {}", sem.describe(func, STYLE).qualname)
+        }
+        Expr::Class(id) => {
+            let func = sem.func(*id).expect("a def of this program");
+            format!("class {}", sem.describe(func, STYLE).qualname)
         }
         Expr::Param(index) => format!("param#{index}"),
         Expr::Anon(index) => format!("anon#{index}"),
@@ -260,6 +264,7 @@ fn holds_a_def(expr: &Expr) -> bool {
         | Expr::Undefined
         | Expr::Param(_)
         | Expr::Anon(_)
+        | Expr::Class(_)
         | Expr::Var(_) => false,
     }
 }
@@ -284,8 +289,8 @@ fn the_table_of_flow_reads_each_callee_and_argument() {
             "call ? (anon#1, def flow.<locals>.named)",
             "call ? (oneof(def held | def target), oneof(param#0 | def held), oneof(param#0 | def held), oneof(param#0 | def held))",
             "call ? (data, data, data, data, data, data, data)",
-            "call ? (?, ?, ?, {held: def held}, ?, param#1)",
-            "new ? ()",
+            "call ? (class Shape, ?, ?, {held: def held}, ?, param#1)",
+            "new class Shape ()",
             "jsx def Card ({title: data})",
             "call ? (anon#2)",
             "call ? (anon#3) in anon#2",
@@ -471,18 +476,18 @@ fn the_hand_overs_of_flow_are_handed_overs_defs_and_the_other_names() {
             "held def held",
             "held def held",
             "held def held",
+            "Shape class Shape",
             "held def held",
             "held def held",
             "held def held",
             "q param#1",
         ]
     );
-    // every other entry is a name nothing is known of
-    for (entry, shown) in flow.handed.iter().zip(&all) {
-        if entry.value == Expr::Unknown {
-            assert!(["Shape ?"].contains(&shown.as_str()), "{shown}");
-        }
-    }
+    // since TC4 step 7 a class is `Expr::Class` (it was the one name nothing was known of, `Shape ?`): no entry of this file is unknown
+    assert!(
+        flow.handed.iter().all(|entry| entry.value != Expr::Unknown),
+        "{all:?}"
+    );
 }
 
 /// A one-of never lists a member twice and is never one member alone: an overloaded function is one def, and `flag ? over : over` is that def.
@@ -951,6 +956,7 @@ fn vars_in(expr: &Expr, out: &mut Vec<crate::flow::VarId>) {
         | Expr::Data
         | Expr::Undefined
         | Expr::Def(_)
+        | Expr::Class(_)
         | Expr::Param(_)
         | Expr::Anon(_) => {}
     }

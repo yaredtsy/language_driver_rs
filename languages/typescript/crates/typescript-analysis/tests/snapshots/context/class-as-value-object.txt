@@ -9,7 +9,10 @@ uncovered: class=1
 -- on
 main
   make
+    JsonWriter
+      encode
 edges:
-main | make | call make @07a92ab2
-make @07a92ab2 | o.W | unresolved function_typed_value
+JsonWriter.constructor | encode | call encode
+main | make | call make @a5acd3bf
+make @a5acd3bf | o.W | construct JsonWriter init JsonWriter.constructor
 uncovered: class=1

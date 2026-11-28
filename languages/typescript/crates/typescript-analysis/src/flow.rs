@@ -164,13 +164,7 @@ pub(crate) struct SiteFlow {
         )
     )]
     pub(crate) span: Span,
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "kept for the table's tests and for TC4 and TC5, which treat a `new`, a JSX element or an accessor differently from a call; no phase reads it yet"
-        )
-    )]
+    /// What the site is: a `new` and a JSX tag construct a class held by a value, a call does not (TC4 step 7).
     pub(crate) kind: FlowKind,
     pub(crate) callee: Expr,
     /// `Some` for a call or a `new` (its arguments) and for JSX (one `Expr::Object`: the attributes, TC4). `None` for the other kinds: **not read**, which a
@@ -243,6 +237,8 @@ pub(crate) enum Expr {
     Omit(Box<Expr>, Box<[Box<str>]>),
     /// A pattern element's `= d`: `x`, or `d` where `x` is nothing (`undefined`).
     Default(Box<Expr>, Box<Expr>),
+    /// A name the checker resolves to a project class (TC4 step 7): constructed by `new` and by a JSX tag, never called.
+    Class(DefId),
 }
 
 /// One part of an `Expr::Object`.

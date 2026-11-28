@@ -203,7 +203,8 @@ pub(crate) fn each_in(expr: &Expr, objects: bool, each: &mut dyn FnMut(&Expr)) {
         | Expr::Def(_)
         | Expr::Param(_)
         | Expr::Var(_)
-        | Expr::Anon(_) => {}
+        | Expr::Anon(_)
+        | Expr::Class(_) => {}
     }
 }
 

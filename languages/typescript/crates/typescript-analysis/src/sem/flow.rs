@@ -1388,12 +1388,13 @@ impl Reader<'_, '_> {
     /// What the expression is, as far as the code alone says (`crate::flow::Expr`).
     fn expr_of(&mut self, node: P<Node>) -> Expr {
         let node = unwrap_expression(node);
-        // a def of this file's outline: itself, but a class is TC5's
+        // a def of this file's outline: itself; a class is a value of its own, constructed and never called (TC4 step 7)
         if let Some(&index) = self.defs.def_of.get(&node) {
+            let def = self.sem.def_id(Func::def(self.file, index));
             if self.defs.outline.defs[index].kind == DefKind::Class {
-                return Expr::Unknown;
+                return Expr::Class(def);
             }
-            return Expr::Def(self.sem.def_id(Func::def(self.file, index)));
+            return Expr::Def(def);
         }
         match node.kind() {
             Kind::ArrowFunction | Kind::FunctionExpression => {
@@ -1416,6 +1417,17 @@ impl Reader<'_, '_> {
                 let (functions, classes) =
                     self.sem
                         .functions_named(&mut *self.checker, node, self.style);
+                // a name whose symbol is itself a class (not a variable that holds one): the class, where no function is named too (TC4 step 7)
+                if classes > 0 && functions.is_empty() {
+                    let named = self.sem.classes_named(&mut *self.checker, node, self.style);
+                    if !named.is_empty() {
+                        return one_of(
+                            named
+                                .into_iter()
+                                .map(|class| Expr::Class(self.sem.def_id(class))),
+                        );
+                    }
+                }
                 if classes > 0 || functions.is_empty() {
                     // where no function is named, an access is a member of what its object is (`x.k`), a name a variable
                     return if is_access {
@@ -1541,6 +1553,7 @@ fn reads_a_name(expr: &Expr) -> bool {
         | Expr::Undefined
         | Expr::Def(_)
         | Expr::Anon(_)
+        | Expr::Class(_)
         | Expr::Object(_)
         | Expr::Omit(..)
         | Expr::Default(..)

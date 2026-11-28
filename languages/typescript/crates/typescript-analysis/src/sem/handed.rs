@@ -481,6 +481,58 @@ impl Sem {
         (functions, classes)
     }
 
+    /// The project classes a name stands for when its symbol is a class itself, not a variable that holds one (TC4 step 7). The symbol is found as
+    /// `functions_named` finds it; each of its **own** declarations that is a class declaration or a class expression of the project and a def of kind class
+    /// is one. It does not go through `callable_declarations`: a variable's initializer must not count (`let C = class X {}` is a variable, read as one).
+    pub(super) fn classes_named<'p>(
+        &'p self,
+        checker: &mut Checker,
+        node: P<Node>,
+        style: MarkerStyle<'_>,
+    ) -> Vec<Func<'p>> {
+        let symbol = if node.kind() == Kind::ShorthandPropertyAssignment {
+            checker.get_shorthand_assignment_value_symbol(Some(node))
+        } else {
+            checker.get_symbol_at_location_exported(node)
+        };
+        let Some(mut symbol) = symbol else {
+            return Vec::new();
+        };
+        if symbol.flags().intersects(SymbolFlags::Alias) {
+            symbol = checker.get_aliased_symbol(symbol);
+        }
+        let mut classes = Vec::new();
+        for &declaration in symbol.declarations() {
+            if !matches!(
+                declaration.kind(),
+                Kind::ClassDeclaration | Kind::ClassExpression
+            ) {
+                continue;
+            }
+            let Some(file_node) = ast::get_source_file_of_node(declaration) else {
+                continue;
+            };
+            let file = File {
+                node: file_node,
+                _sem: PhantomData,
+                _one_thread: PhantomData,
+            };
+            if !self.is_project_code(file) {
+                continue;
+            }
+            let Some(defs) = self.file_defs(file, style) else {
+                continue;
+            };
+            let Some(&def) = defs.def_of.get(&declaration) else {
+                continue;
+            };
+            if defs.outline.defs[def].kind == DefKind::Class {
+                classes.push(Func::def(file, def));
+            }
+        }
+        classes
+    }
+
     /// What one declaration is, as something a call would enter: the project functions with a body, and the number of project classes.
     pub(super) fn functions_of_declaration<'p>(
         &'p self,

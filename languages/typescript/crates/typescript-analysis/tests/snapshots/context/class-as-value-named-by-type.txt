@@ -11,9 +11,19 @@ uncovered: class=2
 -- on
 main
   build
+    JsonWriter
+      encode
   build
+    Sub
+      JsonWriter
+        encode
+      other
 edges:
-build | C | unresolved function_typed_value
-main | build | call build
-main | build | call build
+JsonWriter.constructor | encode | call encode
+Sub.constructor | super | construct JsonWriter init JsonWriter.constructor
+Sub.constructor | other | call other
+build @24d64505 | C | construct JsonWriter init JsonWriter.constructor
+build @9a85e6c5 | C | construct Sub init Sub.constructor
+main | build | call build @24d64505
+main | build | call build @9a85e6c5
 uncovered: class=2

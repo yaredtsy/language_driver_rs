@@ -9,7 +9,14 @@ uncovered: class=2
 -- on
 main
   register
+    JsonWriter
+      encode
+    TextWriter
+      other
 edges:
-main | register | call register
-register | C | unresolved function_typed_value
+JsonWriter.constructor | encode | call encode
+TextWriter.constructor | other | call other
+main | register | call register @78f456bd
+register @78f456bd | C | construct JsonWriter init JsonWriter.constructor
+register @78f456bd | C | construct TextWriter init TextWriter.constructor
 uncovered: class=2

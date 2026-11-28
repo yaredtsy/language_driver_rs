@@ -121,6 +121,7 @@ impl Marks<'_> {
             | Expr::Undefined
             | Expr::Def(_)
             | Expr::Anon(_)
+            | Expr::Class(_)
             | Expr::Var(_) => {}
         }
     }

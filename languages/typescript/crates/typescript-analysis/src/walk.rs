@@ -13,7 +13,7 @@ use crate::calls::TypeScript;
 use crate::caps::Caps;
 use crate::env::{Env, VARIABLE_ADDED_TO_ENGINE, VARIABLE_ASSIGNED_MORE_THAN_ONCE};
 use crate::eval::{World, eval};
-use crate::flow::{DefId, Expr, VarId};
+use crate::flow::{DefId, Expr, FlowKind, VarId};
 use crate::key::{Key, KeyData, KeyId, bind};
 use crate::sem::{Fits, Func, Init, Resolved, Sem, UNHANDLED_KEY, Uncovered, Why, counted};
 use crate::value::{Captures, One, Value};
@@ -316,6 +316,12 @@ struct Members<'p> {
 /// A site gets **one** `anonymous_function_called` target however many anonymous members the value holds (`Anon`, `AnonArrow`, `AnonFunction` in any mix): which
 /// anonymous function is called is not said, so a second target adds nothing, and the first one sets `anon_already` for the rest.
 /// A closure is the function it names, a call that carries the list it captured (`07-tc3` §4), and the tripwire and the skip see it as that function.
+/// A class (TC4 step 7) is a construction when the site is a `new` or a JSX tag (`constructs`; `jsx` is the tag), drawn as the engine draws `new C()`; at any other
+/// site it is no target and the value is open.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the one place that makes the targets of a value; `constructs` and `jsx` (TC4 step 7) are two facts of the site, not worth a struct for one caller pair"
+)]
 fn members<'p>(
     lang: &TypeScript<'p>,
     f: Func<'p>,
@@ -323,6 +329,8 @@ fn members<'p>(
     value: &Value,
     already: &[Func<'p>],
     mut anon_already: bool,
+    constructs: bool,
+    jsx: bool,
 ) -> Members<'p> {
     let mut found = Members {
         targets: Vec::new(),
@@ -345,7 +353,8 @@ fn members<'p>(
             | One::AnonArrow
             | One::AnonFunction
             | One::Undefined
-            | One::Object(_) => (None, None),
+            | One::Object(_)
+            | One::Class(_) => (None, None),
         };
         match one {
             One::Fn(_) | One::Closure(..) => match lang.sem.func(*def.expect("a function")) {
@@ -380,6 +389,18 @@ fn members<'p>(
             One::Undefined => found.saw_undefined = true,
             // an object is not a function: the call is something the layer cannot turn into a target (TC4 step 5 gives a member call its answer)
             One::Object(_) => found.open = true,
+            // a class is constructed by `new` and by a JSX tag (TC4 step 7); a call of a class is no target, so the value is open there
+            One::Class(class) => match lang.sem.func(*class) {
+                Some(_) if !constructs => found.open = true,
+                Some(class) if already.contains(&class) => {}
+                Some(class) => {
+                    let (class, init) = construction(lang, class, jsx);
+                    found
+                        .targets
+                        .push((Target::Construct { class, init }, None));
+                }
+                None => found.open = true,
+            },
         }
     }
     found
@@ -394,7 +415,7 @@ fn member_order(lang: &TypeScript<'_>, one: &One) -> (u8, Option<StableDef>, u32
             .map(|func| lang.sem.describe(func, lang.style).id)
     };
     match one {
-        One::Fn(def) | One::Closure(def, _) => (0, id(*def), 0),
+        One::Fn(def) | One::Closure(def, _) | One::Class(def) => (0, id(*def), 0),
         One::Anon(def, number) => (1, id(*def), *number),
         One::AnonArrow => (2, None, 0),
         One::Undefined | One::AnonFunction => (3, None, 0),
@@ -415,6 +436,7 @@ fn holds_name(expr: &Expr) -> bool {
         | Expr::Undefined
         | Expr::Def(_)
         | Expr::Anon(_)
+        | Expr::Class(_)
         | Expr::Object(_)
         | Expr::Omit(..)
         | Expr::Default(..) => false,
@@ -443,6 +465,7 @@ fn reads_many_sources(env: &Env, expr: &Expr) -> bool {
         | Expr::Undefined
         | Expr::Def(_)
         | Expr::Anon(_)
+        | Expr::Class(_)
         | Expr::Object(_)
         | Expr::Omit(..)
         | Expr::Default(..) => None,
@@ -482,6 +505,8 @@ fn resolve_from_env<'p>(
     jsx: bool,
 ) -> Option<Spoken<'p>> {
     let site = env.flow.sites.get(site_index)?;
+    // a class is constructed by `new` and by a JSX tag, never by a call (TC4 step 7)
+    let constructs = matches!(site.kind, FlowKind::New | FlowKind::Jsx);
     if !found.iter().any(is_open_entry) {
         if !lang.knows(Caps::LOCALS) || !holds_name(&site.callee) {
             return None;
@@ -501,7 +526,16 @@ fn resolve_from_env<'p>(
             })
             .collect();
         let anon_already = found.contains(&Resolved::Unknown(Why::AnonymousFunctionCalled));
-        let added = members(lang, f, site_index, &value, &already, anon_already);
+        let added = members(
+            lang,
+            f,
+            site_index,
+            &value,
+            &already,
+            anon_already,
+            constructs,
+            jsx,
+        );
         if added.targets.is_empty() && !added.mismatch {
             return None;
         }
@@ -533,7 +567,7 @@ fn resolve_from_env<'p>(
         .map(|resolved| (target(lang, resolved, jsx), None))
         .collect();
     // a member that cannot be turned into a function leaves the value open at this site
-    let made = members(lang, f, site_index, &value, &[], false);
+    let made = members(lang, f, site_index, &value, &[], false, constructs, jsx);
     let open = value.is_open() || made.open;
     if made.saw_undefined {
         lang.note_walk(CALLEE_UNDEFINED);

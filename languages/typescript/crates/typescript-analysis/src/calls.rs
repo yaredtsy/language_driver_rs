@@ -229,7 +229,9 @@ impl<'p> TypeScript<'p> {
         let known = |def: DefId| self.sem.func(def).is_some();
         let value_is_known = |value: &Value| {
             value.known().iter().all(|one| match one {
-                One::Fn(def) | One::Anon(def, _) | One::Closure(def, _) => known(*def),
+                One::Fn(def) | One::Anon(def, _) | One::Closure(def, _) | One::Class(def) => {
+                    known(*def)
+                }
                 One::AnonArrow | One::AnonFunction | One::Undefined | One::Object(_) => true,
             })
         };

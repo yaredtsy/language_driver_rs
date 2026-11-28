@@ -162,7 +162,12 @@ impl Nested {
         match one {
             One::Closure(_, captures) => self.depth_of(captures),
             One::Object(id) => self.object_depth[id.index() as usize],
-            One::Fn(_) | One::Anon(..) | One::AnonArrow | One::AnonFunction | One::Undefined => 0,
+            One::Fn(_)
+            | One::Anon(..)
+            | One::AnonArrow
+            | One::AnonFunction
+            | One::Undefined
+            | One::Class(_) => 0,
         }
     }
 

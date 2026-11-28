@@ -161,6 +161,9 @@ fn eval_below(world: &dyn World, env: &Env, expr: &Expr, below: u32, vars: Vars)
         {
             Value::unknown()
         }
+        // TC4 step 7: a class name is a constant, as a function is; behind `OBJECTS` so that with it off nothing moves
+        Expr::Class(_) if !world.knows(Caps::OBJECTS) => Value::unknown(),
+        Expr::Class(def) => Value::of([One::Class(*def)], false),
         Expr::Object(parts) => object_literal(world, env, parts, below, vars),
         Expr::Member(object, name) => {
             let value = eval_below(world, env, object, below, vars);
@@ -389,7 +392,8 @@ fn changed_by_methods(world: &dyn World, value: &Value, calls: &Calls) -> bool {
                             }
                         }
                         One::AnonFunction => return true,
-                        One::AnonArrow | One::Undefined | One::Object(_) => {}
+                        // a constructor's `this` is the new object, and a class cannot be called
+                        One::AnonArrow | One::Undefined | One::Object(_) | One::Class(_) => {}
                     }
                 }
             }
@@ -511,6 +515,8 @@ fn reaches_a_call(world: &dyn World, value: &Value) -> bool {
         | One::AnonArrow
         | One::AnonFunction
         | One::Undefined => true,
+        // a constructor runs
+        One::Class(_) => true,
         One::Object(id) => world
             .object_data(*id)
             .members
@@ -538,9 +544,13 @@ fn member(world: &dyn World, value: &Value, name: &str) -> Value {
                 }
             }
             One::Undefined => Value::of([One::Undefined], false),
-            One::Fn(_) | One::Closure(..) | One::Anon(..) | One::AnonArrow | One::AnonFunction => {
-                Value::unknown()
-            }
+            // a static member of a class is TC5's
+            One::Fn(_)
+            | One::Closure(..)
+            | One::Anon(..)
+            | One::AnonArrow
+            | One::AnonFunction
+            | One::Class(_) => Value::unknown(),
         };
         found = Some(match found {
             Some(so_far) => join(world, &so_far, &got),

@@ -9,7 +9,10 @@ uncovered: class=1
 -- on
 main
   Card
+    Star
+      star
 edges:
-Card @07a92ab2 | Icon | unresolved function_typed_value
-main | Card | call Card @07a92ab2
-uncovered: class=1
+Card @e6f2ef9b | Icon | construct Star init Star.constructor
+Star.constructor | star | call star
+main | Card | call Card @e6f2ef9b
+uncovered: class=1, class_component_render=1

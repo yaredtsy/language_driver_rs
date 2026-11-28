@@ -96,8 +96,8 @@ fn admits(param: &Param) -> bool {
     !param.rest
 }
 
-/// What a slot of a parameter that is not capable keeps of its argument (D69): the functions (`Fn`, `Closure`, `Anon`, `AnonArrow`, `AnonFunction`) and the
-/// objects (`Object`), **closed**; unknown when it holds none of these. `Undefined` goes too (a data-typed parameter that was not passed is data, not
+/// What a slot of a parameter that is not capable keeps of its argument (D69): the functions (`Fn`, `Closure`, `Anon`, `AnonArrow`, `AnonFunction`), the
+/// classes (`Class`) and the objects (`Object`), **closed**; unknown when it holds none of these. `Undefined` goes too (a data-typed parameter that was not passed is data, not
 /// "nothing was passed"). Unknown, not data, so a caller that passes data has the key and the digest it had before this rule, and two callers of data share a
 /// context.
 fn data_typed_slot(value: &Value) -> Value {
@@ -110,6 +110,7 @@ fn data_typed_slot(value: &Value) -> Value {
                 | One::AnonArrow
                 | One::AnonFunction
                 | One::Object(_)
+                | One::Class(_)
         )
     });
     let kept = Value::of(kept, false);
@@ -193,6 +194,8 @@ enum Canon {
     },
     /// An anonymous function expression, which one not said (`One::AnonFunction`). Last, as the canonical form only grows.
     AnonFunction,
+    /// A project class (`One::Class`). Last, as the canonical form only grows.
+    Class(StableDef),
 }
 
 /// A captured variable written with stable ids only: the def that declares it, its name, and which row of that name it is among the rows of that def (by
@@ -278,6 +281,7 @@ where
             },
             One::AnonArrow => Canon::AnonArrow,
             One::AnonFunction => Canon::AnonFunction,
+            One::Class(def) => Canon::Class((names.stable)(*def)),
             One::Undefined => Canon::Undefined,
             One::Object(id) => {
                 let object = (names.objects)(*id);
