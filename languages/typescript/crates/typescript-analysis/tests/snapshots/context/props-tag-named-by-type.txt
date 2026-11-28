@@ -1,0 +1,30 @@
+== main
+-- off
+main
+  Card
+    Base
+      base
+  Mine [Passed]
+    mine
+edges:
+Base | base | call base
+Card | props.Icon | call Base
+Mine | mine | call mine
+main | Card | call Card
+main | Mine | pass Mine
+-- on
+main
+  Card
+    Base
+      base
+    Mine
+      mine
+  Mine [Passed]
+    mine
+edges:
+Base | base | call base
+Card @cf2acc60 | props.Icon | call Base
+Card @cf2acc60 | props.Icon | call Mine
+Mine | mine | call mine
+main | Card | call Card @cf2acc60
+main | Mine | pass Mine

@@ -1,0 +1,23 @@
+== main
+-- off
+main
+  Card
+  Star [Passed]
+    star
+edges:
+Card | Icon | unresolved function_typed_value
+Star | star | call star
+main | Card | call Card
+main | Star | pass Star
+-- on
+main
+  Card
+    Star
+      star
+  Star [Passed]
+    star
+edges:
+Card @86991999 | Icon | call Star
+Star | star | call star
+main | Card | call Card @86991999
+main | Star | pass Star

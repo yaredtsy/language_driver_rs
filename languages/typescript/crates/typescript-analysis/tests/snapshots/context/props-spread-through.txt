@@ -1,0 +1,22 @@
+== main
+-- off
+main
+  Outer
+    Inner
+  close [Passed]
+edges:
+Inner | props.onClose | unresolved function_typed_value
+Outer | Inner | call Inner
+main | Outer | call Outer
+main | close | pass close
+-- on
+main
+  Outer
+    Inner
+      close
+  close [Passed]
+edges:
+Inner @7b0c50d8 | props.onClose | call close
+Outer @7b0c50d8 | Inner | call Inner @7b0c50d8
+main | Outer | call Outer @7b0c50d8
+main | close | pass close

@@ -1,0 +1,36 @@
+== main
+-- off
+main
+  Dialog
+  close [Passed]
+  openA [Passed]
+  Dialog
+  close [Passed]
+  openB [Passed]
+edges:
+Dialog | props.onClose | unresolved function_typed_value
+main | Dialog | call Dialog
+main | close | pass close
+main | openA | pass openA
+main | Dialog | call Dialog
+main | close | pass close
+main | openB | pass openB
+-- on
+main
+  Dialog
+    close
+  close [Passed]
+  openA [Passed]
+  Dialog
+    close
+  close [Passed]
+  openB [Passed]
+edges:
+Dialog @54acf8d2 | props.onClose | call close
+Dialog @671ae63f | props.onClose | call close
+main | Dialog | call Dialog @671ae63f
+main | close | pass close
+main | openA | pass openA
+main | Dialog | call Dialog @54acf8d2
+main | close | pass close
+main | openB | pass openB

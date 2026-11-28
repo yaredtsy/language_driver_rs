@@ -519,6 +519,8 @@ fn the_variable_counters_count_where_the_table_says() {
             ("module-const", "main") => (Some(1), None),
             // TC4 step 5: `s.save()` under `let s = {..}; s = {..}`: the ceiling reads through the member with `LOCALS` alone; with `OBJECTS` off nothing is added
             ("member-two-sources", "main") => (None, Some(1)),
+            // TC4 step 6: `<C />` under `const C = flag ? A : B`: the engine names `A`, the layer adds `B`, as `local-either`
+            ("props-tag-local", "main") => (Some(1), None),
             _ => (None, None),
         };
         // TC3's layer: the rows of TC4 step 4 are read with `OBJECTS` on, and `the_counters_of_the_object_rows` (`tests/context.rs`) says what they count

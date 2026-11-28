@@ -513,7 +513,7 @@ fn the_counters_of_the_object_rows() {
     }
 }
 
-/// The counters of TC4 step 5 (`policy.md`, the rows marked step 5), with the layer on and off.
+/// The counters of TC4 steps 5 and 6 (`policy.md`, the rows marked step 5 or 6), with the layer on and off.
 #[test]
 fn the_counters_of_the_member_rows() {
     const KEYS: [&str; 2] = [
@@ -521,7 +521,7 @@ fn the_counters_of_the_member_rows() {
         "variable_assigned_more_than_once",
     ];
     // (row, entry, the count of each key with the layer on); `None` is a counter that is not said at all
-    let cases: [(&str, &str, [Option<u64>; 2]); 10] = [
+    let cases: [(&str, &str, [Option<u64>; 2]); 17] = [
         ("object-method", "main", [None, None]),
         ("object-implements", "main", [None, None]),
         ("object-implements", "emit", [None, None]),
@@ -532,6 +532,13 @@ fn the_counters_of_the_member_rows() {
         ("member-two-sources", "main", [Some(1), Some(1)]),
         ("member-nested", "main", [Some(1), None]),
         ("member-field-function", "main", [Some(1), None]),
+        ("props-component-as-prop", "main", [None, None]),
+        ("props-tag-member", "main", [None, None]),
+        ("props-tag-local", "main", [Some(1), None]),
+        ("props-spread-through", "main", [None, None]),
+        ("props-children", "main", [None, None]),
+        ("props-unread-member", "main", [None, None]),
+        ("props-tag-named-by-type", "main", [Some(1), None]),
     ];
     for (id, entry, want) in cases {
         let row = context_rows()

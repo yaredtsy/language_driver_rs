@@ -1,0 +1,17 @@
+== main
+-- off
+main
+  Box
+  run [Passed]
+edges:
+Box | props.children | unresolved function_typed_value
+main | Box | call Box
+main | run | pass run
+-- on
+main
+  Box
+  run [Passed]
+edges:
+Box @07a92ab2 | props.children | unresolved function_typed_value
+main | Box | call Box @07a92ab2
+main | run | pass run
